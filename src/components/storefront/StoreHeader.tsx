@@ -24,6 +24,9 @@ import {
   Sun,
   Moon,
   Bell,
+  Coins,
+  RefreshCw,
+  CheckCircle2,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 
@@ -70,9 +73,24 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   isDarkMode,
   onToggleTheme,
 }) => {
-  const { storeCart, wishlist, activeCustomerUser, products, appliedCoupon, formatCurrency } = useCommerce();
+  const {
+    storeCart,
+    wishlist,
+    activeCustomerUser,
+    products,
+    appliedCoupon,
+    formatCurrency,
+    currencyCode,
+    setCurrencyCode,
+    currentCurrency,
+    supportedCurrencies,
+    isRatesLoading,
+    refreshExchangeRates,
+    lastRatesUpdate,
+  } = useCommerce();
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
 
   const cartItemsCount = storeCart.reduce((sum, item) => sum + item.quantity, 0);
   const wishlistCount = wishlist.length;
@@ -314,6 +332,79 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 </p>
               </div>
             </button>
+
+            {/* Global Currency Switcher in Storefront */}
+            <div className="relative">
+              <button
+                id="btn-storefront-currency-switcher"
+                type="button"
+                onClick={() => setShowCurrencyMenu(!showCurrencyMenu)}
+                className="p-2 sm:px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-white transition-all flex items-center gap-1.5 shadow-xs min-h-[38px] cursor-pointer"
+                title={`Active Currency: ${currentCurrency.name} (${currentCurrency.code}) - Click to change`}
+              >
+                <span className="text-sm leading-none">{currentCurrency.flag}</span>
+                <span className="text-xs font-bold font-mono">{currentCurrency.code}</span>
+                <ChevronDown className="w-3 h-3 text-slate-400 opacity-80" />
+              </button>
+
+              {showCurrencyMenu && (
+                <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2.5 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-3.5 pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Store Currency</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Live rate conversion</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        refreshExchangeRates();
+                      }}
+                      disabled={isRatesLoading}
+                      className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-40 cursor-pointer"
+                      title="Refresh live exchange rates"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRatesLoading ? 'animate-spin text-indigo-500' : ''}`} />
+                    </button>
+                  </div>
+
+                  <div className="py-1 max-h-64 overflow-y-auto divide-y divide-slate-50 dark:divide-slate-800/40 custom-scrollbar">
+                    {supportedCurrencies.map((curr) => {
+                      const isSelected = curr.code === currencyCode;
+                      return (
+                        <button
+                          key={curr.code}
+                          type="button"
+                          onClick={() => {
+                            setCurrencyCode(curr.code);
+                            setShowCurrencyMenu(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 font-bold'
+                              : 'text-slate-700 dark:text-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{curr.flag}</span>
+                            <div>
+                              <span className="font-bold font-mono">{curr.code}</span>
+                              <span className="text-slate-400 font-mono text-[10px] ml-1">({curr.symbol})</span>
+                              {curr.code === 'SLE' && (
+                                <span className="ml-1.5 text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full">
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Admin Portal Quick Switcher */}
             {onOpenAdmin && (
@@ -819,6 +910,43 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Currency Selector (Mobile Drawer) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Currency & Rates</p>
+                  <button
+                    type="button"
+                    onClick={refreshExchangeRates}
+                    disabled={isRatesLoading}
+                    className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRatesLoading ? 'animate-spin' : ''}`} />
+                    <span>Live FX</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {supportedCurrencies.map((curr) => {
+                    const isSelected = curr.code === currencyCode;
+                    return (
+                      <button
+                        key={curr.code}
+                        type="button"
+                        onClick={() => setCurrencyCode(curr.code)}
+                        className={`p-2 rounded-xl text-center border text-xs transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="text-sm">{curr.flag}</div>
+                        <div className="font-mono text-[11px] font-bold">{curr.code}</div>
+                        <div className="text-[10px] text-slate-400">{curr.symbol}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Enterprise & Admin Switchers */}
               {(onOpenAdmin || onOpenPos) && (
