@@ -3,6 +3,8 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_BRANDS } from './src/data/initialData.ts';
 import { Product, ProductVariant, CatalogAttribute } from './src/types/index.ts';
+import { getDatabaseClient } from './server/db/client.ts';
+import { runMigrations, getAppliedMigrations } from './server/db/migrator.ts';
 
 // Master Data Store (In-Memory Single Source of Truth for Product Service API)
 let masterProductsStore: Product[] = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
@@ -84,6 +86,32 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Initialize Database Persistence Layer
+  const dbStatus = {
+    connected: false,
+    engine: 'unknown',
+    version: 'none',
+    migrationsApplied: [] as string[],
+    error: null as string | null,
+  };
+
+  try {
+    const db = getDatabaseClient();
+    const ping = await db.query('SELECT 1 as val');
+    if (ping.rows.length > 0) {
+      dbStatus.connected = true;
+      dbStatus.engine = db.isEmbedded() ? 'embedded-pglite' : 'postgresql';
+      await runMigrations(db, undefined, { includeSeed: true });
+      const applied = await getAppliedMigrations(db);
+      dbStatus.migrationsApplied = Array.from(applied);
+      dbStatus.version = Array.from(applied).pop() || '000';
+      console.log(`[Omnicore DB] Connected (${dbStatus.engine}). Active schema migrations: ${Array.from(applied).join(', ')}`);
+    }
+  } catch (dbErr: any) {
+    dbStatus.error = dbErr.message || 'Database initialization error';
+    console.warn('[Omnicore DB] Running in degraded persistence mode:', dbStatus.error);
+  }
+
   app.use(express.json({ limit: '10mb' }));
 
   // Request Logging Middleware for API Health Audit
@@ -98,11 +126,30 @@ async function startServer() {
   // ------------------------------------------------------------------
   app.get('/api/health', (req: Request, res: Response) => {
     res.json({
-      status: 'ok',
+      status: dbStatus.connected ? 'ok' : 'degraded',
       service: 'Centralized Product Service',
       version: '2.4.0',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      database: {
+        connected: dbStatus.connected,
+        engine: dbStatus.engine,
+        schemaVersion: dbStatus.version,
+        migrationsCount: dbStatus.migrationsApplied.length,
+      },
+    });
+  });
+
+  app.get('/api/admin/db-status', (req: Request, res: Response) => {
+    res.json({
+      success: true,
+      data: {
+        connected: dbStatus.connected,
+        engine: dbStatus.engine,
+        schemaVersion: dbStatus.version,
+        migrationsApplied: dbStatus.migrationsApplied,
+        error: dbStatus.error,
+      },
     });
   });
 

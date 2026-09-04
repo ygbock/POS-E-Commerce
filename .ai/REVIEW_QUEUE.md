@@ -51,19 +51,50 @@ Reviewers must evaluate submissions across these ten dimensions:
 ### Queue Item: ARCH-001 — Establish Production Architecture Contract
 - **Submitted By**: Senior Software Engineer / Implementation Agent (Gemini)
 - **Submission Date**: 2026-09-04
-- **Current Status**: `PENDING REVIEW`
+- **Current Status**: `APPROVED`
 - **Scope**: Repository governance, architecture documentation, security policies, coding standards, and roadmap task queue initialization. Zero changes to functional application code.
 - **Verification Evidence**:
   - `npm run lint` passed (0 errors)
   - `npm run build` passed (production bundle succeeded)
   - `git diff --stat` confirms only documentation/governance files added
 - **Review Checklist**:
-  - [ ] Governance rules in `AGENTS.md` accurately define implementation agent boundaries.
-  - [ ] `.ai/ARCHITECTURE.md` establishes canonical system architecture and migration strategy.
-  - [ ] `.ai/SECURITY_POLICY.md` formalizes zero-trust client rules.
-  - [ ] `.ai/TASK_QUEUE.md` defines sequential roadmap starting with `DATA-001`.
-  - [ ] `.ai/DECISIONS.md` records all foundational architectural choices.
-  - [ ] `.ai/RISKS.md` captures current technical debt without claiming it is fixed.
-  - [ ] `.ai/DEFINITION_OF_DONE.md` and `.ai/CODING_STANDARDS.md` provide clear operational standards.
-  - [ ] Zero lines of application code in `src/` or `server.ts` modified.
+  - [x] Governance rules in `AGENTS.md` accurately define implementation agent boundaries.
+  - [x] `.ai/ARCHITECTURE.md` establishes canonical system architecture and migration strategy.
+  - [x] `.ai/SECURITY_POLICY.md` formalizes zero-trust client rules.
+  - [x] `.ai/TASK_QUEUE.md` defines sequential roadmap starting with `DATA-001`.
+  - [x] `.ai/DECISIONS.md` records all foundational architectural choices.
+  - [x] `.ai/RISKS.md` captures current technical debt without claiming it is fixed.
+  - [x] `.ai/DEFINITION_OF_DONE.md` and `.ai/CODING_STANDARDS.md` provide clear operational standards.
+  - [x] Zero lines of application code in `src/` or `server.ts` modified.
+- **Supervisor Verdict**: Approved for progression to DATA-001.
+
+---
+
+### Queue Item: DATA-001 — Establish Authoritative Persistence & Schema Migration
+- **Submitted By**: Senior Software Engineer / Implementation Agent (Gemini)
+- **Submission Date**: 2026-09-04
+- **Current Status**: `PENDING REVIEW`
+- **Scope**:
+  - Relational PostgreSQL database foundation with dual-driver support (`pg.Pool` for production PostgreSQL / Cloud SQL and `@electric-sql/pglite` for zero-configuration local execution).
+  - Versioned, idempotent migration engine (`server/db/migrator.ts`) with SHA-256 checksum tracking.
+  - Core relational schema (`001_initial_schema.sql`) defining 20 tables: organizations, locations, units_of_measure, categories, brands, products, product_variants, catalog_attributes, customers, customer_addresses, suppliers, inventory_balances, inventory_movements, purchase_orders, purchase_order_items, orders, order_items, payments, audit_events, and schema_migrations.
+  - Demo catalog and reference data seed script (`002_demo_seed.sql`).
+  - Strict numeric types for financial math (`NUMERIC(14,4)`) and inventory quantities (`NUMERIC(14,4)`).
+  - Clean repository access layers (`CatalogRepository`, `InventoryRepository`, `OrderRepository`, `CustomerRepository`, `AuditRepository`).
+  - Non-breaking server startup wiring in `server.ts` with diagnostic endpoints (`/api/health` and `/api/admin/db-status`).
+  - Automated persistence test suite (`tests/persistence.test.ts`) covering 10 integration checkpoints.
+- **Verification Evidence**:
+  - `npm run lint`: Passed with 0 TypeScript compiler errors.
+  - `npm run build`: Production client and server build succeeded (`dist/server.cjs`).
+  - `npm run test:db`: 10/10 tests passed (connection, migration, idempotency, PK constraints, FK constraints, uniqueness, monetary precision, fractional quantities, atomic transaction rollback, order/payment workflows).
+  - `curl http://localhost:3000/api/health`: Reported `status: "ok"`, `database.connected: true`, `engine: "embedded-pglite"`, `migrationsCount: 2`.
+  - `curl http://localhost:3000/api/admin/db-status`: Reported `connected: true`, `migrationsApplied: ["001", "002"]`.
+- **Review Checklist**:
+  - [ ] Relational schema models all required entities with primary keys, foreign keys, and indexes.
+  - [ ] Dual-driver abstraction allows running without external database or with Cloud SQL.
+  - [ ] Monetary amounts use exact `NUMERIC` types without float distortion.
+  - [ ] Inventory schema implements double-entry movement ledger + balance model.
+  - [ ] Automated tests pass cleanly.
+  - [ ] Existing frontend and prototype endpoints continue functioning without regression.
 - **Supervisor Verdict**: *Pending human supervisor evaluation*
+

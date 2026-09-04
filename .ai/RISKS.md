@@ -93,3 +93,11 @@
 - **Description**: No automated Continuous Integration (CI) pipeline exists to block merges or deployments if linting or compilation fails.
 - **Vulnerability**: Unchecked code can be deployed or merged, causing production outages.
 - **Planned Mitigation**: Define CI workflows executing `npm run lint` and `npm run build` on every pull request (`QA-001`, `PROD-001`).
+
+---
+
+### RISK-011: Coexistence Window Between In-Memory Stores and Relational Database
+- **Description**: While DATA-001 establishes the relational database and migration foundation, existing frontend modules (`POSRegister`, `Storefront`) currently communicate with in-memory arrays and `CommerceContext`.
+- **Vulnerability**: If state is updated in the database but the in-memory array is not refreshed (or vice versa) during the transitional phase before domain routes are fully migrated, read inconsistency could occur.
+- **Planned Mitigation**: Subsequent tasks (`SEC-001`, `INV-001`, `POS-001`) will systematically migrate individual domain controllers to use the newly created repository layer (`CatalogRepository`, `InventoryRepository`, `OrderRepository`), retiring in-memory arrays incrementally.
+

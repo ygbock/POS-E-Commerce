@@ -17,6 +17,7 @@
 - [ADR-007: Inventory Evolution to Balance + Movement Ledger Architecture](#adr-007-inventory-evolution-to-balance--movement-ledger-architecture)
 - [ADR-008: POS Checkout Must Become Server-Authoritative and Transactional](#adr-008-pos-checkout-must-become-server-authoritative-and-transactional)
 - [ADR-009: Incremental, Task-Driven Engineering Lifecycle](#adr-009-incremental-task-driven-engineering-lifecycle)
+- [ADR-010: Relational PostgreSQL Schema & Dual-Driver Persistence Layer](#adr-010-relational-postgresql-schema--dual-driver-persistence-layer)
 
 ---
 
@@ -98,3 +99,22 @@
 - **Context**: Large-scale "big bang" rewrites introduce major regression risks, broken builds, and unpredictable system state.
 - **Decision**: All engineering work must proceed strictly in incremental, tracked phases governed by task IDs in `.ai/TASK_QUEUE.md`.
 - **Consequences**: No task may exceed its approved scope. Foundational data and security tasks must precede higher-level feature enhancements.
+
+---
+
+### ADR-010: Relational PostgreSQL Schema & Dual-Driver Persistence Layer
+- **Date**: 2026-09-04
+- **Status**: `IMPLEMENTED (PENDING REVIEW)`
+- **Task Association**: `DATA-001`
+- **Context**: Omnicore requires strict relational integrity (foreign keys, check constraints, composite uniqueness, decimal precision) across multi-entity retail operations (organizations, locations, products, variants, balances, movements, orders, items, payments, audit events). In local development and cloud sandbox environments without external database containers, developers need zero-configuration startup, while production deployments require standard PostgreSQL / Cloud SQL connection pooling.
+- **Decision**: 
+  1. Standardize the persistence layer on standard SQL / PostgreSQL schemas with full transactional DDL and DML.
+  2. Implement a unified `DatabaseClient` interface (`server/db/client.ts`) with dual-driver capability:
+     - `PostgresPoolClient`: Production driver utilizing `pg.Pool` with SSL, connection limits, and statement timeouts.
+     - `PGliteDatabaseClient`: Embedded WebAssembly-compiled PostgreSQL engine (`@electric-sql/pglite`) executing locally against `.data/postgres` when no external `DATABASE_URL` or `PGHOST` is configured.
+  3. Implement an incremental, versioned, idempotent migration runner (`server/db/migrator.ts`) with SHA-256 checksum tracking and separate demo seed scripts.
+  4. Represent all monetary values as `NUMERIC(14, 4)` and inventory quantities as `NUMERIC(14, 4)` to eliminate floating-point distortion.
+- **Consequences**:
+  - The application runs identically in local development, CI test suites, and production Cloud SQL without external Docker dependencies.
+  - Zero application downtime or broken prototype states during migration: existing in-memory API endpoints continue to coexist while database foundations and repositories are established.
+

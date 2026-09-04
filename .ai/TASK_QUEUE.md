@@ -11,9 +11,9 @@
 ```text
 BASELINE-001 (COMPLETED)
      ↓
-ARCH-001 (IN PROGRESS)
+ARCH-001 (APPROVED)
      ↓
-DATA-001 (NOT STARTED)
+DATA-001 (READY FOR REVIEW)
      ↓
 SEC-001 (NOT STARTED)
      ↓
@@ -50,7 +50,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 2: ARCH-001 — Establish Production Architecture Contract
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED`
 - **Objective**: Formalize the architectural, governance, security, and quality contract for the repository to guide all subsequent engineering tasks.
 - **Scope**:
   - Create root `AGENTS.md` defining implementation agent authority, hierarchy, and operating rules.
@@ -80,19 +80,27 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 3: DATA-001 — Establish Authoritative Persistence & Schema Migration
-- **Status**: `NOT STARTED`
+- **Status**: `READY FOR REVIEW`
 - **Objective**: Introduce durable server-side relational database persistence (Cloud SQL / PostgreSQL or Firestore) to replace ephemeral in-memory arrays and client `localStorage`.
 - **Scope**:
-  - Define relational schema / ORM models for Products, Categories, Brands, Stock, Orders, Customers, Shifts, and General Ledger.
+  - Define relational schema / ORM models for Organizations, Locations, Products, Variants, Inventory Balances, Inventory Movements, Orders, Order Items, Payments, Customers, and Audit Events.
   - Create database migration scripts and connection pooling in backend server.
   - Provide database seed scripts with existing catalog and initial chart of accounts.
+  - Implement dual-driver database client supporting both production PostgreSQL (`pg.Pool`) and embedded PGlite for zero-configuration local execution.
+  - Implement clean repository access layers (`CatalogRepository`, `InventoryRepository`, `OrderRepository`, `CustomerRepository`, `AuditRepository`).
+  - Wire database initialization into `server.ts` with `/api/health` and `/api/admin/db-status` diagnostic endpoints.
+  - Create comprehensive persistence test suite verifying connections, migrations, constraints, monetary representation, fractional quantities, and atomic transactions.
 - **Dependencies**: `ARCH-001`.
 - **Acceptance Criteria**:
-  - Database schema models all core entities with proper primary keys, foreign keys, and indexes.
-  - Database migrations execute cleanly up and down.
-  - Backend server connects reliably with environment-driven credentials.
-- **Security Requirements**: Database credentials stored in `.env.example`, SSL connection enforced, SQL injection prevented via parameterized queries.
-- **Validation Requirements**: Migration run logs, schema inspection, database connectivity test.
+  - [x] Database schema models all core entities with proper primary keys, foreign keys, check constraints, composite uniqueness, and indexes.
+  - [x] Database migrations execute cleanly, idempotently, and track applied versions via `schema_migrations`.
+  - [x] Backend server connects reliably with environment-driven credentials or falls back to embedded PGlite without crashing.
+  - [x] Monetary amounts represented using exact decimal precision (`NUMERIC(14,4)`).
+  - [x] Inventory quantities support fractional values (`NUMERIC(14,4)`).
+  - [x] Comprehensive automated persistence test suite passes (`npm run test:db` -> 10/10 passed).
+  - [x] Existing API endpoints and application UI continue functioning without regressions.
+- **Security Requirements**: Database credentials stored in `.env.example`, SQL injection prevented via parameterized queries and prepared statements.
+- **Validation Requirements**: Migration run logs, schema inspection, database connectivity test, persistence test suite.
 
 ---
 
