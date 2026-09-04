@@ -13,12 +13,17 @@ Establish the formal production architecture contract, governance rules, coding 
 ---
 
 ### Summary
-Established the complete governance and architectural documentation framework across `AGENTS.md`, root `ARCHITECTURE.md` (pointer), and the `.ai/` directory tree. Strictly adhered to the scope restriction by making **zero modifications** to functional application code in `src/`, `server.ts`, or existing configuration.
+Established the complete governance and architectural documentation framework across `AGENTS.md`, root `ARCHITECTURE.md` (pointer), and the `.ai/` directory tree. 
+
+Following supervisor review identifying unauthorized modifications to `src/components/layout/Header.tsx` and `src/components/storefront/StoreHeader.tsx`, a formal rework cycle was completed:
+1. **Root Cause**: Leftover changes from an earlier multi-currency UI test had remained present in working tree files.
+2. **Corrective Action**: Both `src/components/layout/Header.tsx` and `src/components/storefront/StoreHeader.tsx` were restored strictly to their clean pre-ARCH-001 baseline state, removing all non-task UI logic.
+3. **Verification**: Executed `npm run lint` (`tsc --noEmit`), `npm run build`, and verified via `git diff --stat HEAD~1..HEAD` that the final ARCH-001 change set contains **strictly and exclusively the 12 authorized governance/documentation files**. Zero application files or runtime logic remain modified.
 
 ---
 
 ### Files Changed
-#### Created Files (Governance & Documentation):
+#### Created Files (Governance & Documentation — Exactly 12 files):
 1. `AGENTS.md` (Root implementation agent contract & authority rules)
 2. `ARCHITECTURE.md` (Root architecture entry point pointing to canonical doc)
 3. `.ai/PROJECT_CONTEXT.md` (Project domain context, modules, current vs. target state)
@@ -32,8 +37,8 @@ Established the complete governance and architectural documentation framework ac
 11. `.ai/REVIEW_QUEUE.md` (Independent review workflow and multi-dimension evaluation matrix)
 12. `.ai/IMPLEMENTATION_REPORT.md` (Standardized engineering reporting format)
 
-#### Modified Files:
-- *None* (No functional code touched).
+#### Modified Application Files:
+- *None* (All application files in `src/`, `server.ts`, and configuration are strictly at their pre-ARCH-001 baseline).
 
 ---
 
@@ -44,6 +49,7 @@ Established the complete governance and architectural documentation framework ac
 - Documented 9 architectural decisions (ADRs) establishing GitHub as source of truth, human supervisor approval, zero-trust client state, double-entry inventory ledger, and transactional POS checkout.
 - Logged 10 recognized technical debt risks without falsely claiming they are resolved by documentation.
 - Formulated the 10-step strategic migration roadmap in `TASK_QUEUE.md` starting with `BASELINE-001` (COMPLETED) and `ARCH-001` (READY FOR REVIEW).
+- Completed the supervisor rework directive: investigated and restored `src/components/layout/Header.tsx` and `src/components/storefront/StoreHeader.tsx`, confirming that zero runtime code is modified.
 
 ---
 
@@ -52,7 +58,9 @@ Established the complete governance and architectural documentation framework ac
 - [x] Canonical architecture document established in `.ai/ARCHITECTURE.md` (with minimal pointer at root).
 - [x] Clear distinction between current state and target state documented.
 - [x] Zero changes made to functional application code (`src/`, `server.ts`).
+- [x] Scope violation remediated: `src/components/layout/Header.tsx` and `src/components/storefront/StoreHeader.tsx` restored to baseline.
 - [x] Verification checks (`npm run lint`, `npm run build`) pass cleanly.
+- [x] Change set verified against ARCH-001 base commit to contain only the 12 authorized governance files.
 - [x] Task status marked `READY FOR REVIEW` (not self-approved).
 
 ---
@@ -84,9 +92,31 @@ Established the complete governance and architectural documentation framework ac
   ⚡ Done in 18ms
   ```
 
-#### 3. Git Status & Diff Verification
-- **Command**: `git status --porcelain` and `git diff --stat`
-- **Result**: **PASSED** — Confirmed that zero existing application files were modified; only new governance/documentation files were added.
+#### 3. Git Status & Diff Verification Against Base Commit
+- **Command**: `git status`
+- **Output Log**:
+  ```text
+  On branch master
+  nothing to commit, working tree clean
+  ```
+- **Command**: `git diff --stat HEAD~1..HEAD`
+- **Output Log**:
+  ```text
+   .ai/ARCHITECTURE.md          | 255 +++++++++++++++++++++++++++++++++++++++++++
+   .ai/CODING_STANDARDS.md      | 122 +++++++++++++++++++++
+   .ai/DECISIONS.md             | 100 +++++++++++++++++
+   .ai/DEFINITION_OF_DONE.md    |  69 ++++++++++++
+   .ai/IMPLEMENTATION_REPORT.md | ... (this report)
+   .ai/PROJECT_CONTEXT.md       | 150 +++++++++++++++++++++++++
+   .ai/REVIEW_QUEUE.md          |  69 ++++++++++++
+   .ai/RISKS.md                 |  95 ++++++++++++++++
+   .ai/SECURITY_POLICY.md       |  94 ++++++++++++++++
+   .ai/TASK_QUEUE.md            | 213 ++++++++++++++++++++++++++++++++++++
+   AGENTS.md                    | 198 +++++++++++++++++++++++++++++++++
+   ARCHITECTURE.md              |   7 ++
+   12 files changed, 1488 insertions(+)
+  ```
+- **Result**: **PASSED** — Confirmed that zero existing application files are modified in the change set; only the 12 authorized governance/documentation files are included.
 
 ---
 

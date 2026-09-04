@@ -16,7 +16,6 @@ import {
   X,
   Sun,
   Moon,
-  Coins,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Role } from '../../types';
@@ -49,19 +48,11 @@ export const Header: React.FC<HeaderProps> = ({
     resetToDefaultData,
     isDarkMode,
     toggleTheme,
-    currencyCode,
-    setCurrencyCode,
-    currentCurrency,
-    supportedCurrencies,
-    refreshExchangeRates,
-    isRatesLoading,
-    lastRatesUpdate,
   } = useCommerce();
 
   const [showNotifs, setShowNotifs] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showLocMenu, setShowLocMenu] = useState(false);
-  const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -144,7 +135,6 @@ export const Header: React.FC<HeaderProps> = ({
               setShowLocMenu(!showLocMenu);
               setShowRoleMenu(false);
               setShowNotifs(false);
-              setShowCurrencyMenu(false);
             }}
             className="flex items-center space-x-1.5 sm:space-x-2 bg-blue-50 hover:bg-blue-100/80 text-blue-700 px-2.5 sm:px-3 py-1.5 rounded-lg border border-blue-100 text-xs sm:text-sm font-medium transition-colors"
             title="Switch Operating Branch or Warehouse"
@@ -199,14 +189,13 @@ export const Header: React.FC<HeaderProps> = ({
               setShowRoleMenu(!showRoleMenu);
               setShowLocMenu(false);
               setShowNotifs(false);
-              setShowCurrencyMenu(false);
             }}
             className="flex items-center space-x-1 sm:space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 transition-colors"
             title="Switch User Role & Permissions"
           >
             <UserCheck className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
             <span className="hidden md:inline truncate max-w-[120px]">{currentRole}</span>
-            <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
           </button>
 
           {showRoleMenu && (
@@ -241,113 +230,6 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Global Currency Switcher */}
-        <div className="relative">
-          <button
-            id="btn-currency-switcher"
-            type="button"
-            onClick={() => {
-              setShowCurrencyMenu(!showCurrencyMenu);
-              setShowRoleMenu(false);
-              setShowLocMenu(false);
-              setShowNotifs(false);
-            }}
-            className="flex items-center space-x-1 sm:space-x-1.5 bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 px-2 sm:px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800/60 text-xs font-semibold transition-all shadow-xs cursor-pointer"
-            title={`Active Currency: ${currentCurrency.name} (${currentCurrency.code} ${currentCurrency.symbol}) - Click to switch or view live FX rates`}
-          >
-            <span className="text-sm leading-none">{currentCurrency.flag}</span>
-            <span className="font-bold font-mono tracking-tight">{currentCurrency.code}</span>
-            <span className="text-[11px] opacity-80 font-mono hidden xs:inline">({currentCurrency.symbol})</span>
-            <ChevronDown className="w-3 h-3 text-emerald-600 dark:text-emerald-400 opacity-80 flex-shrink-0" />
-          </button>
-
-          {showCurrencyMenu && (
-            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2.5 z-50 animate-in fade-in zoom-in-95">
-              <div className="px-3.5 pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <p className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                      Global Currency & FX
-                    </p>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Live exchange rate conversion across POS, Storefront & Ledger
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  id="btn-refresh-exchange-rates"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    refreshExchangeRates();
-                  }}
-                  disabled={isRatesLoading}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors disabled:opacity-40 cursor-pointer"
-                  title="Refresh live exchange rates"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRatesLoading ? 'animate-spin text-emerald-500' : ''}`} />
-                </button>
-              </div>
-
-              {lastRatesUpdate && (
-                <div className="px-3.5 py-1.5 bg-slate-50 dark:bg-slate-850/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Live FX Rates
-                  </span>
-                  <span>Updated: {lastRatesUpdate}</span>
-                </div>
-              )}
-
-              <div className="py-1 max-h-72 overflow-y-auto divide-y divide-slate-50 dark:divide-slate-800/40 custom-scrollbar">
-                {supportedCurrencies.map((curr) => {
-                  const isSelected = curr.code === currencyCode;
-                  return (
-                    <button
-                      key={curr.code}
-                      id={`btn-currency-${curr.code.toLowerCase()}`}
-                      type="button"
-                      onClick={() => {
-                        setCurrencyCode(curr.code);
-                        setShowCurrencyMenu(false);
-                      }}
-                      className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 font-bold'
-                          : 'text-slate-700 dark:text-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-lg flex-shrink-0">{curr.flag}</span>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold font-mono text-slate-900 dark:text-white">{curr.code}</span>
-                            <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">({curr.symbol})</span>
-                            {curr.code === 'SLE' && (
-                              <span className="text-[9px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full">
-                                Default
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{curr.name}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-shrink-0 text-right">
-                        <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                          {curr.code === 'USD' ? '1.00 USD' : `1 USD ≈ ${curr.rate >= 10 ? curr.rate.toFixed(1) : curr.rate.toFixed(2)} ${curr.code}`}
-                        </span>
-                        {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Global Theme Toggle Button */}
         <button
           id="btn-theme-toggle"
@@ -367,7 +249,6 @@ export const Header: React.FC<HeaderProps> = ({
               setShowNotifs(!showNotifs);
               setShowRoleMenu(false);
               setShowLocMenu(false);
-              setShowCurrencyMenu(false);
             }}
             className="relative p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
             title="Notifications & Alerts"
