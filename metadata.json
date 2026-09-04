@@ -1,0 +1,6 @@
+{
+  "name": "OmniCore Inventory, POS & E-Commerce",
+  "description": "Unified Central Inventory & Commerce Platform connecting Back Office, Point of Sale (POS), Multi-Warehouse, Fulfillment, Ledger Accounting, and Customer E-Commerce Storefront.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

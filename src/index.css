@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@layer utilities {
+  /* Clean professional scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* Hide scrollbars for clean carousels across all browsers */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+    width: 0px;
+    height: 0px;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  /* Dark themed scrollbar for dark sidebars */
+  .sidebar-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 9999px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print\:bg-white, .print\:bg-white * {
+    visibility: visible;
+  }
+  .print\:bg-white {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
