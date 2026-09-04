@@ -81,26 +81,29 @@ PROD-001 (NOT STARTED)
 
 ### Task 3: DATA-001 — Establish Authoritative Persistence & Schema Migration
 - **Status**: `READY FOR REVIEW`
-- **Objective**: Introduce durable server-side relational database persistence (Cloud SQL / PostgreSQL or Firestore) to replace ephemeral in-memory arrays and client `localStorage`.
+- **Objective**: Introduce durable server-side relational database persistence (Cloud SQL / PostgreSQL) to replace ephemeral in-memory arrays and client `localStorage`, with strict production fail-closed driver selection, seed isolation, and migration checksum verification.
 - **Scope**:
-  - Define relational schema / ORM models for Organizations, Locations, Products, Variants, Inventory Balances, Inventory Movements, Orders, Order Items, Payments, Customers, and Audit Events.
-  - Create database migration scripts and connection pooling in backend server.
-  - Provide database seed scripts with existing catalog and initial chart of accounts.
-  - Implement dual-driver database client supporting both production PostgreSQL (`pg.Pool`) and embedded PGlite for zero-configuration local execution.
-  - Implement clean repository access layers (`CatalogRepository`, `InventoryRepository`, `OrderRepository`, `CustomerRepository`, `AuditRepository`).
-  - Wire database initialization into `server.ts` with `/api/health` and `/api/admin/db-status` diagnostic endpoints.
-  - Create comprehensive persistence test suite verifying connections, migrations, constraints, monetary representation, fractional quantities, and atomic transactions.
+  - Define relational schema for Organizations, Locations, Products, Variants, Inventory Balances, Inventory Movements (immutable ledger), Orders, Order Items, Payments, Customers, and Audit Events.
+  - Create database migration engine with SHA-256 checksum verification and `schema_migrations` tracking.
+  - Isolate demo seed scripts outside the migration pipeline (`server/db/seeds/001_demo_seed.sql`), never executing on startup and blocked in production.
+  - Implement dual-driver database client with strict environment-aware rules: PostgreSQL mandatory in production (PGlite strictly forbidden); PGlite permitted in development and test.
+  - Implement clean repository access layers (`CatalogRepository`, `InventoryRepository` with pessimistic row locking and negative-stock prevention, `OrderRepository`, `CustomerRepository`, `AuditRepository`).
+  - Wire database initialization into `server.ts` with `/api/health`, `/api/ready`, and production-protected `/api/admin/db-status` (HTTP 403 in production).
+  - Create comprehensive persistence test suite verifying 15 critical database, driver selection, concurrency, seed isolation, and checksum enforcement checkpoints.
 - **Dependencies**: `ARCH-001`.
 - **Acceptance Criteria**:
   - [x] Database schema models all core entities with proper primary keys, foreign keys, check constraints, composite uniqueness, and indexes.
   - [x] Database migrations execute cleanly, idempotently, and track applied versions via `schema_migrations`.
-  - [x] Backend server connects reliably with environment-driven credentials or falls back to embedded PGlite without crashing.
+  - [x] Migration checksum verification enforces SHA-256 matching for already-applied migrations; modified scripts fail closed immediately.
+  - [x] Production driver selection strictly requires PostgreSQL and fails closed on missing config or connection failure; PGlite is never permitted in production.
+  - [x] Demo seed data is strictly isolated from migrations and blocked from production execution.
+  - [x] Admin diagnostic endpoint `/api/admin/db-status` returns 403 Forbidden in production pending SEC-001 authenticated RBAC.
   - [x] Monetary amounts represented using exact decimal precision (`NUMERIC(14,4)`).
-  - [x] Inventory quantities support fractional values (`NUMERIC(14,4)`).
-  - [x] Comprehensive automated persistence test suite passes (`npm run test:db` -> 10/10 passed).
+  - [x] Inventory quantities support fractional values (`NUMERIC(14,4)`), row-level locks, and negative-stock prevention.
+  - [x] Comprehensive automated persistence test suite passes (`npm run test:db` -> 15/15 passed).
   - [x] Existing API endpoints and application UI continue functioning without regressions.
-- **Security Requirements**: Database credentials stored in `.env.example`, SQL injection prevented via parameterized queries and prepared statements.
-- **Validation Requirements**: Migration run logs, schema inspection, database connectivity test, persistence test suite.
+- **Security Requirements**: Database credentials stored in `.env.example`, SQL injection prevented via parameterized queries and prepared statements. Production fail-closed database enforcement.
+- **Validation Requirements**: Migration run logs, schema inspection, database connectivity test, automated persistence test suite (15 tests).
 
 ---
 

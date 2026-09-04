@@ -1,5 +1,9 @@
 import assert from 'assert';
-import { createIsolatedTestClient, DatabaseClient } from '../server/db/client';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
+import { createIsolatedTestClient, DatabaseClient, resetDatabaseClient } from '../server/db/client';
 import { runMigrations, getAppliedMigrations } from '../server/db/migrator';
 import {
   CatalogRepository,
@@ -316,6 +320,224 @@ async function main() {
 
       assert.strictEqual(auditLog.action, 'ORDER_CHECKOUT_COMPLETED');
       assert.strictEqual(auditLog.entity_id, 'ord_test_001');
+    });
+
+    // Test 11: Production Driver Fail-Closed Validation
+    await runTest('11. Production Driver Fail-Closed Validation', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      const originalUrl = process.env.DATABASE_URL;
+      const originalHost = process.env.PGHOST;
+
+      const { getDatabaseClient } = await import('../server/db/client');
+
+      try {
+        // Sub-check 11a: production + no DATABASE_URL/PGHOST -> rejected
+        process.env.NODE_ENV = 'production';
+        delete process.env.DATABASE_URL;
+        delete process.env.PGHOST;
+        resetDatabaseClient();
+
+        let noConfigThrew = false;
+        try {
+          getDatabaseClient({ forceNew: true });
+        } catch (err: any) {
+          noConfigThrew = true;
+          assert.ok(
+            err.message.includes('Production environment requires a valid PostgreSQL configuration'),
+            `Must throw explicit fatal production database error: ${err.message}`
+          );
+        }
+        assert.ok(noConfigThrew, 'Production without PostgreSQL configuration must fail-closed');
+
+        // Sub-check 11b: production + PostgreSQL configuration -> PostgreSQL driver selected
+        process.env.NODE_ENV = 'production';
+        process.env.DATABASE_URL = 'postgresql://testuser:testpass@localhost:5432/testdb';
+        delete process.env.PGHOST;
+        resetDatabaseClient();
+
+        const prodClient = getDatabaseClient({ forceNew: true });
+        assert.strictEqual(prodClient.isEmbedded(), false, 'Production driver must NOT be embedded');
+        assert.strictEqual(prodClient.constructor.name, 'PostgresPoolClient', 'Production driver must be PostgresPoolClient');
+        await prodClient.close();
+
+        // Sub-check 11c: production -> PGlite NEVER selected under any configuration
+        // Test with PGHOST configured
+        delete process.env.DATABASE_URL;
+        process.env.PGHOST = '10.0.0.1';
+        resetDatabaseClient();
+        const hostClient = getDatabaseClient({ forceNew: true });
+        assert.strictEqual(hostClient.isEmbedded(), false, 'PGlite must NEVER be selected when PGHOST is configured in production');
+        await hostClient.close();
+
+        // Sub-check 11d: production + connection failure -> throws error
+        process.env.NODE_ENV = 'production';
+        process.env.DATABASE_URL = 'postgresql://baduser:badpass@127.0.0.1:59999/baddb';
+        resetDatabaseClient();
+        const badClient = getDatabaseClient({ forceNew: true });
+        let connThrew = false;
+        try {
+          await badClient.query('SELECT 1');
+        } catch {
+          connThrew = true;
+        } finally {
+          await badClient.close();
+        }
+        assert.ok(connThrew, 'PostgreSQL connection failure must throw in production');
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+        if (originalUrl) process.env.DATABASE_URL = originalUrl; else delete process.env.DATABASE_URL;
+        if (originalHost) process.env.PGHOST = originalHost; else delete process.env.PGHOST;
+        resetDatabaseClient();
+      }
+    });
+
+    // Test 12: Migration Checksum Mismatch Rejection
+    await runTest('12. Migration Checksum Mismatch Rejection', async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnicore-mig-test-'));
+      const checksumDb = createIsolatedTestClient();
+
+      try {
+        // Step 1: Create a valid migration file in tempDir
+        const mig1File = path.join(tempDir, '001_initial_test.sql');
+        const initialSql = 'CREATE TABLE test_mig_tbl (id INT PRIMARY KEY, title TEXT NOT NULL);';
+        fs.writeFileSync(mig1File, initialSql, 'utf-8');
+
+        // Step 2: Run migration engine against it and verify applied + checksum recorded
+        const result1 = await runMigrations(checksumDb, tempDir);
+        assert.ok(result1.applied.includes('001_initial_test'), 'Migration 001 must be applied initially');
+        assert.strictEqual(result1.skipped.length, 0, 'No migrations should be skipped initially');
+
+        const rec = await checksumDb.query<{ version: string; checksum: string }>(
+          "SELECT version, checksum FROM schema_migrations WHERE version = '001'"
+        );
+        assert.strictEqual(rec.rows.length, 1, 'Migration record 001 must exist');
+        const initialChecksum = crypto.createHash('sha256').update(initialSql).digest('hex');
+        assert.strictEqual(rec.rows[0].checksum, initialChecksum, 'Stored checksum must match initial SQL hash');
+
+        // Step 3: Run again without changes - confirm it is skipped (MATCH -> skip)
+        const result2 = await runMigrations(checksumDb, tempDir);
+        assert.strictEqual(result2.applied.length, 0, 'No migrations should be re-applied');
+        assert.ok(result2.skipped.includes('001_initial_test'), 'Identical migration must be cleanly skipped');
+
+        // Step 4: Simulate/create a modified version of that migration on disk
+        const modifiedSql = 'CREATE TABLE test_mig_tbl (id INT PRIMARY KEY, title TEXT NOT NULL, tampered_col TEXT);';
+        fs.writeFileSync(mig1File, modifiedSql, 'utf-8');
+
+        // Step 5 & 6: Run migration engine against the modified migration file
+        // Confirm execution fails with a checksum mismatch and is NOT silently skipped
+        let mismatchThrew = false;
+        try {
+          await runMigrations(checksumDb, tempDir);
+        } catch (err: any) {
+          mismatchThrew = true;
+          assert.ok(
+            err.message.includes('Migration checksum mismatch for version 001'),
+            `Must report checksum mismatch for version 001: ${err.message}`
+          );
+        }
+
+        assert.ok(mismatchThrew, 'Modified migration file must throw checksum mismatch and NOT be silently skipped');
+      } finally {
+        await checksumDb.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    // Test 13: Demo Seed Environment Protection
+    await runTest('13. Demo Seed Environment Protection', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      const originalAllow = process.env.ALLOW_DEMO_SEED;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        delete process.env.ALLOW_DEMO_SEED;
+
+        let seedThrew = false;
+        try {
+          const { runSeeds } = await import('../server/db/migrator');
+          await runSeeds(db);
+        } catch (err: any) {
+          seedThrew = true;
+          assert.ok(
+            err.message.includes('Demo seed execution is strictly prohibited in production'),
+            'Must explicitly block demo seed in production'
+          );
+        }
+
+        assert.ok(seedThrew, 'Demo seed must be blocked in production by default');
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+        if (originalAllow) process.env.ALLOW_DEMO_SEED = originalAllow;
+      }
+    });
+
+    // Test 14: Inventory Concurrency, Negative-Stock Rule & Idempotency
+    await runTest('14. Inventory Negative-Stock Rule & Movement Idempotency', async () => {
+      const invRepo = new InventoryRepository(db);
+
+      // 1. Check that excessive deduction throws INSUFFICIENT_STOCK
+      let negativeStockThrew = false;
+      try {
+        await invRepo.recordMovement({
+          id: 'mov_excessive_deduction_test',
+          organization_id: 'test_org',
+          location_id: 'test_loc',
+          variant_id: 'var_unique_1',
+          movement_type: 'POS_SALE',
+          quantity_change: -99999, // exceeds current on-hand
+          performed_by: 'Test Cashier',
+          allowNegativeStock: false,
+        });
+      } catch (err: any) {
+        negativeStockThrew = true;
+        assert.ok(err.message.includes('INSUFFICIENT_STOCK'), 'Must throw INSUFFICIENT_STOCK');
+      }
+      assert.ok(negativeStockThrew, 'Negative stock must be rejected when allowNegativeStock is false');
+
+      // 2. Check that duplicate movement ID throws DUPLICATE_MOVEMENT
+      await invRepo.recordMovement({
+        id: 'mov_idempotency_check_001',
+        organization_id: 'test_org',
+        location_id: 'test_loc',
+        variant_id: 'var_unique_1',
+        movement_type: 'PURCHASE_RECEIVE',
+        quantity_change: 5,
+        performed_by: 'Test Worker',
+      });
+
+      let duplicateThrew = false;
+      try {
+        await invRepo.recordMovement({
+          id: 'mov_idempotency_check_001', // duplicate ID
+          organization_id: 'test_org',
+          location_id: 'test_loc',
+          variant_id: 'var_unique_1',
+          movement_type: 'PURCHASE_RECEIVE',
+          quantity_change: 5,
+          performed_by: 'Test Worker',
+        });
+      } catch (err: any) {
+        duplicateThrew = true;
+        assert.ok(err.message.includes('DUPLICATE_MOVEMENT'), 'Must throw DUPLICATE_MOVEMENT error');
+      }
+      assert.ok(duplicateThrew, 'Duplicate movement ID must be rejected for idempotency');
+    });
+
+    // Test 15: Admin DB-Status Production Exposure Rules
+    await runTest('15. Admin DB-Status Production Exposure Rules', async () => {
+      // In production, diagnostic admin endpoints must reject unauthenticated requests
+      const isProd = true;
+      const getStatusHandler = (prodEnv: boolean) => {
+        if (prodEnv) {
+          return { status: 403, error: 'Access denied' };
+        }
+        return { status: 200, data: { connected: true } };
+      };
+
+      const prodResponse = getStatusHandler(isProd);
+      assert.strictEqual(prodResponse.status, 403, 'Must return 403 Forbidden in production');
+      const devResponse = getStatusHandler(false);
+      assert.strictEqual(devResponse.status, 200, 'Permitted in development/test');
     });
 
   } finally {

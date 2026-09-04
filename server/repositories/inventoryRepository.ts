@@ -90,8 +90,15 @@ export class InventoryRepository {
   }
 
   /**
-   * Records an inventory movement atomically, maintaining double-entry movement ledger
+   * Records an inventory movement atomically, maintaining an immutable inventory movement ledger
    * and updating the location's inventory balance.
+   * 
+   * CONCURRENCY & INTEGRITY CONTROLS:
+   * - Transaction boundary: balance lookup, validation, movement insertion, and balance update are executed inside a single transaction.
+   * - Row locking: balance row is locked with FOR UPDATE to prevent race conditions during concurrent updates.
+   * - Negative stock rule: by default, prevents stock from dropping below zero unless allowNegativeStock: true is specified.
+   * - Idempotency: rejects duplicate movement IDs.
+   * - Actor attribution: records performed_by; will be bound to authenticated session identity under SEC-001.
    */
   async recordMovement(
     params: {
@@ -107,6 +114,7 @@ export class InventoryRepository {
       reason?: string;
       performed_by: string;
       notes?: string;
+      allowNegativeStock?: boolean;
     },
     client?: DatabaseClient
   ): Promise<{ balance: InventoryBalanceRecord; movement: InventoryMovementRecord }> {
@@ -115,8 +123,23 @@ export class InventoryRepository {
     return db.withTransaction(async (tx) => {
       const orgId = params.organization_id || 'org_default';
 
-      // 1. Ensure balance row exists or lock existing row
-      const existingBal = await tx.query<InventoryBalanceRecord>(
+      // 1. Idempotency protection: ensure movement ID has not already been processed
+      const existingMov = await tx.query('SELECT id FROM inventory_movements WHERE id = $1', [params.id]);
+      if (existingMov.rows.length > 0) {
+        throw new Error(`DUPLICATE_MOVEMENT: Inventory movement with ID '${params.id}' has already been recorded.`);
+      }
+
+      // 2. Ensure balance row exists (upsert without overwriting existing stock)
+      const balanceId = `bal_${params.location_id}_${params.variant_id}`;
+      await tx.query(
+        `INSERT INTO inventory_balances (id, organization_id, location_id, variant_id, on_hand, reserved)
+         VALUES ($1, $2, $3, $4, 0, 0)
+         ON CONFLICT (location_id, variant_id) DO NOTHING`,
+        [balanceId, orgId, params.location_id, params.variant_id]
+      );
+
+      // 3. Acquire pessimistic row lock (FOR UPDATE) to serialize concurrent updates on this variant at this location
+      const lockedBal = await tx.query<InventoryBalanceRecord>(
         `SELECT id, organization_id, location_id, variant_id,
                 on_hand::float, reserved::float, available::float
          FROM inventory_balances
@@ -125,28 +148,22 @@ export class InventoryRepository {
         [params.location_id, params.variant_id]
       );
 
-      let balanceId: string;
-      let currentOnHand = 0;
-      let currentReserved = 0;
+      const actualBalanceId = lockedBal.rows[0].id;
+      const currentOnHand = Number(lockedBal.rows[0].on_hand);
+      
+      // Exact decimal arithmetic with 4 decimal places precision
+      const roundedQuantityChange = Math.round(params.quantity_change * 10000) / 10000;
+      const newOnHand = Math.round((currentOnHand + roundedQuantityChange) * 10000) / 10000;
 
-      if (existingBal.rows.length === 0) {
-        balanceId = `bal_${params.location_id}_${params.variant_id}`;
-        currentOnHand = 0;
-        currentReserved = 0;
-        await tx.query(
-          `INSERT INTO inventory_balances (id, organization_id, location_id, variant_id, on_hand, reserved)
-           VALUES ($1, $2, $3, $4, 0, 0)`,
-          [balanceId, orgId, params.location_id, params.variant_id]
+      // 4. Negative stock validation rule
+      if (newOnHand < 0 && !params.allowNegativeStock) {
+        throw new Error(
+          `INSUFFICIENT_STOCK: Inventory movement of ${roundedQuantityChange} would cause negative stock balance (${newOnHand}) ` +
+          `for variant ${params.variant_id} at location ${params.location_id}. Current balance: ${currentOnHand}.`
         );
-      } else {
-        balanceId = existingBal.rows[0].id;
-        currentOnHand = Number(existingBal.rows[0].on_hand);
-        currentReserved = Number(existingBal.rows[0].reserved);
       }
 
-      const newOnHand = currentOnHand + params.quantity_change;
-
-      // 2. Insert into inventory_movements (immutable ledger)
+      // 5. Insert into inventory_movements (immutable movement ledger - append only)
       const movRes = await tx.query<InventoryMovementRecord>(
         `INSERT INTO inventory_movements (
           id, organization_id, location_id, variant_id, movement_type,
@@ -162,7 +179,7 @@ export class InventoryRepository {
           params.location_id,
           params.variant_id,
           params.movement_type,
-          params.quantity_change,
+          roundedQuantityChange,
           currentOnHand,
           newOnHand,
           params.unit_cost ?? 0,
@@ -174,7 +191,7 @@ export class InventoryRepository {
         ]
       );
 
-      // 3. Update inventory_balances
+      // 6. Update inventory_balances with new on-hand balance
       const updatedBalRes = await tx.query<InventoryBalanceRecord>(
         `UPDATE inventory_balances
          SET on_hand = $1, updated_at = CURRENT_TIMESTAMP
@@ -182,7 +199,7 @@ export class InventoryRepository {
          RETURNING id, organization_id, location_id, variant_id,
                    on_hand::float, reserved::float, available::float,
                    created_at, updated_at`,
-        [newOnHand, balanceId]
+        [newOnHand, actualBalanceId]
       );
 
       return {

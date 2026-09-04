@@ -1,6 +1,6 @@
 -- Omnicore Unified Commerce
--- Migration 002: Optional Demo Seed Data
--- Clearly isolated development seed records; runs cleanly after initial schema
+-- Demo Seed Data: Development & Testing Demo Data
+-- Strictly isolated from migrations. NEVER executed in production unless explicitly authorized.
 
 -- Default Organization
 INSERT INTO organizations (id, name, code, is_active)

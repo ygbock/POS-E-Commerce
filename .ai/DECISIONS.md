@@ -75,11 +75,11 @@
 
 ---
 
-### ADR-007: Inventory Evolution to Balance + Movement Ledger Architecture
+### ADR-007: Inventory Evolution to Balance + Immutable Movement Ledger Architecture
 - **Date**: 2026-09-04
 - **Status**: `APPROVED`
-- **Context**: The current model overwrites a single `product.stock` number, leaving inventory vulnerable to race conditions, unaccounted shrinkage, and audit gaps.
-- **Decision**: The inventory engine will transition to an immutable double-entry movement ledger (`Balance + Movement Ledger + Atomic Transactions + Audit Trail`).
+- **Context**: The current prototype model overwrites a single `product.stock` number, leaving inventory vulnerable to race conditions, unaccounted shrinkage, and audit gaps.
+- **Decision**: The inventory engine will transition to an immutable inventory movement ledger (`Balance + Movement Ledger + Atomic Transactions + Audit Trail`). To avoid conflation with General Ledger accounting (which is handled separately for financial transactions), the inventory engine tracks physical stock movements with immutable append-only records.
 - **Consequences**: Every stock change will require an associated `StockMovement` event record.
 
 ---
@@ -109,12 +109,20 @@
 - **Context**: Omnicore requires strict relational integrity (foreign keys, check constraints, composite uniqueness, decimal precision) across multi-entity retail operations (organizations, locations, products, variants, balances, movements, orders, items, payments, audit events). In local development and cloud sandbox environments without external database containers, developers need zero-configuration startup, while production deployments require standard PostgreSQL / Cloud SQL connection pooling.
 - **Decision**: 
   1. Standardize the persistence layer on standard SQL / PostgreSQL schemas with full transactional DDL and DML.
-  2. Implement a unified `DatabaseClient` interface (`server/db/client.ts`) with dual-driver capability:
+  2. Implement a unified `DatabaseClient` interface (`server/db/client.ts`) with dual-driver capability and strict environment boundaries:
      - `PostgresPoolClient`: Production driver utilizing `pg.Pool` with SSL, connection limits, and statement timeouts.
-     - `PGliteDatabaseClient`: Embedded WebAssembly-compiled PostgreSQL engine (`@electric-sql/pglite`) executing locally against `.data/postgres` when no external `DATABASE_URL` or `PGHOST` is configured.
-  3. Implement an incremental, versioned, idempotent migration runner (`server/db/migrator.ts`) with SHA-256 checksum tracking and separate demo seed scripts.
-  4. Represent all monetary values as `NUMERIC(14, 4)` and inventory quantities as `NUMERIC(14, 4)` to eliminate floating-point distortion.
+     - `PGliteDatabaseClient`: Embedded WebAssembly-compiled PostgreSQL engine (`@electric-sql/pglite`) executing locally against `.data/postgres` in development and test environments only.
+     - **Production Fail-Closed Rule**: In `NODE_ENV === 'production'`, PostgreSQL is strictly required. If credentials or connectivity are missing, the system fails closed immediately. It must **never** fall back to PGlite in production.
+  3. **Seed Isolation**: Schema migrations (`server/db/migrations`) contain DDL/schema definitions only. Demo seeds (`server/db/seeds`) are strictly decoupled and never executed automatically on server startup. In production, demo seeds are rejected unless `ALLOW_DEMO_SEED=true` is explicitly set.
+  4. **Checksum Enforcement**: The migration runner computes SHA-256 checksums and fails closed if any previously applied migration has been altered in-place.
+  5. **Transitional Authority Model**:
+     - PostgreSQL = Authoritative persistence for domains implemented through DATA-001.
+     - Existing in-memory stores = Legacy compatibility only.
+     - `CommerceContext` / `localStorage` = Transitional client state only.
+     - Prohibited: New functionality must not extend legacy in-memory stores.
+  6. **Inventory Concurrency & Precision**:
+     - Inventory movements use `SELECT ... FOR UPDATE` row-level locks, serialized atomic upsert, exact 4-decimal precision arithmetic, negative-stock prevention, and movement ID idempotency checks.
 - **Consequences**:
-  - The application runs identically in local development, CI test suites, and production Cloud SQL without external Docker dependencies.
-  - Zero application downtime or broken prototype states during migration: existing in-memory API endpoints continue to coexist while database foundations and repositories are established.
+  - Development and testing run instantly with embedded PGlite, while production enforces strict, uncompromised PostgreSQL ACID semantics.
+  - Zero application downtime during migration: legacy endpoints coexist safely while authoritative database repositories are established.
 

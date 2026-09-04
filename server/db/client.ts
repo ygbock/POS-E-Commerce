@@ -159,25 +159,86 @@ class PGliteDatabaseClient implements DatabaseClient {
 
 let activeDbInstance: DatabaseClient | null = null;
 
-export function getDatabaseClient(): DatabaseClient {
-  if (activeDbInstance) {
+export function isProductionEnvironment(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
+/**
+ * Resolves the appropriate database client based on explicit execution environment rules:
+ * 
+ * NODE_ENV=development
+ *   DATABASE_URL or PGHOST present -> PostgreSQL (PostgresPoolClient)
+ *   otherwise -> PGlite (PGliteDatabaseClient)
+ * 
+ * NODE_ENV=test
+ *   isolated PGlite permitted (or PostgreSQL if DATABASE_URL/PGHOST explicitly configured)
+ * 
+ * NODE_ENV=production
+ *   valid PostgreSQL configuration required (DATABASE_URL or PGHOST)
+ *   missing configuration -> throw fatal error
+ *   PostgreSQL connection failure -> throw fatal error
+ *   PGlite -> NEVER permitted under any circumstances
+ * 
+ * Direct conditions only; no indirect heuristics (such as pgHost !== 'localhost').
+ */
+export function getDatabaseClient(options?: { forceNew?: boolean }): DatabaseClient {
+  if (activeDbInstance && !options?.forceNew) {
     return activeDbInstance;
   }
 
+  const env = process.env.NODE_ENV;
   const databaseUrl = process.env.DATABASE_URL;
   const pgHost = process.env.PGHOST;
 
-  if (databaseUrl || (pgHost && pgHost !== 'localhost')) {
-    activeDbInstance = new PostgresPoolClient(databaseUrl);
-  } else {
-    // Embedded PostgreSQL engine (PGlite) for local development, tests, or standalone execution
-    const dataDir = process.env.NODE_ENV === 'test' ? undefined : path.join(process.cwd(), '.data/postgres');
-    activeDbInstance = new PGliteDatabaseClient(dataDir);
+  // NODE_ENV=production:
+  // - valid PostgreSQL configuration required
+  // - missing configuration → throw
+  // - PGlite → NEVER permitted
+  if (env === 'production') {
+    if (!databaseUrl && !pgHost) {
+      throw new Error(
+        '[Omnicore DB Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST). ' +
+        'PGlite is NEVER permitted in production.'
+      );
+    }
+    const client = new PostgresPoolClient(databaseUrl);
+    activeDbInstance = client;
+    return client;
   }
 
-  return activeDbInstance;
+  // NODE_ENV=test:
+  // - isolated PGlite permitted (or PostgreSQL if explicitly configured)
+  if (env === 'test') {
+    if (databaseUrl || pgHost) {
+      const client = new PostgresPoolClient(databaseUrl);
+      activeDbInstance = client;
+      return client;
+    }
+    const client = new PGliteDatabaseClient();
+    activeDbInstance = client;
+    return client;
+  }
+
+  // NODE_ENV=development (or default):
+  // - DATABASE_URL/PGHOST present → PostgreSQL
+  // - otherwise → PGlite
+  if (databaseUrl || pgHost) {
+    const client = new PostgresPoolClient(databaseUrl);
+    activeDbInstance = client;
+    return client;
+  }
+
+  const dataDir = path.join(process.cwd(), '.data/postgres');
+  const client = new PGliteDatabaseClient(dataDir);
+  activeDbInstance = client;
+  return client;
+}
+
+export function resetDatabaseClient(client?: DatabaseClient): void {
+  activeDbInstance = client || null;
 }
 
 export function createIsolatedTestClient(): DatabaseClient {
   return new PGliteDatabaseClient();
 }
+

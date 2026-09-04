@@ -229,14 +229,44 @@ The target architecture establishes a clean, decoupled, layered system where all
 1. **Server-Authoritative Business Engine**:
    - The browser never submits final order totals or updated stock quantities.
    - The browser submits items and requested quantities; the server looks up authoritative prices, validates discounts, calculates taxes, checks stock availability, executes atomic reservation, and creates the order.
-2. **Double-Entry Inventory Movement Ledger**:
-   - Stock balances are not freely overwritten. Every stock change is backed by an immutable ledger entry (`StockMovement`) referencing an event ID (`SALE`, `PURCHASE_RECEIPT`, `TRANSFER_IN`, `TRANSFER_OUT`, `DAMAGE_WRITE_OFF`, `INVENTORY_COUNT`).
-   - Current stock at location $L$ for product variant $V$ equals:
+2. **Immutable Inventory Movement Ledger**:
+   - Stock balances are not freely overwritten. Every stock change is backed by an immutable movement ledger entry (`inventory_movements`) referencing an event ID (`POS_SALE`, `ECOMMERCE_SALE`, `PURCHASE_RECEIVE`, `TRANSFER_IN`, `TRANSFER_OUT`, `DAMAGE_WRITE_OFF`, etc.).
+   - Terminology note: Inventory movements track physical stock additions and deductions with append-only ledger records; this is distinct from financial double-entry General Ledger bookkeeping.
+   - Current on-hand stock at location $L$ for product variant $V$ equals:
      $$\text{Balance}(V, L) = \sum \text{Movements}(V, L)$$
 3. **Transactionally Bound Checkout**:
    - Order creation, stock deduction, payment tender verification, and general ledger journal posting occur inside a single atomic database transaction. If any step fails, the entire transaction rolls back.
 4. **Zero-Trust Client Input**:
    - All input parameters are validated against strict type schemas before reaching business logic.
+
+---
+
+## 10.1 Transitional Authority Model & Database Runtime Controls (DATA-001)
+
+During the migration roadmap, the application operates in a transitional coexistence window governed by strict authority boundaries:
+
+```text
+PostgreSQL
+→ Authoritative persistence for all domains implemented through DATA-001 (Catalog, Inventory, Orders, Customers, Audit).
+
+Existing In-Memory Stores (server.ts)
+→ Legacy backward-compatibility only for unmigrated endpoints during transitional phases.
+→ MANDATE: New functionality must NEVER extend legacy in-memory stores.
+
+CommerceContext / localStorage
+→ Transitional client-side display cache only; non-authoritative.
+```
+
+### Production Database Fail-Closed Policy
+- **Driver Selection Rules**:
+  - `Development / Test`: Embedded WebAssembly PGlite (`@electric-sql/pglite`) is permitted for instant, zero-dependency local startup.
+  - `Production`: Standard PostgreSQL (`PostgresPoolClient` via `pg.Pool`) is strictly required.
+  - `Production Fail-Closed Rule`: If `DATABASE_URL` or `PGHOST` is missing, invalid, or unavailable in production, the application fails closed immediately (crashes or reports 503 on health/readiness). Production **must never** silently fall back to PGlite.
+
+### Seed Isolation Policy
+- Schema migrations (`server/db/migrations`) contain DDL/schema statements and operational tables only.
+- Demo seed scripts (`server/db/seeds`) are decoupled and isolated. Server startup executes migrations only and never executes demo seeds.
+- Demo seeds are blocked in production environments unless `ALLOW_DEMO_SEED=true` is explicitly provided.
 
 ---
 

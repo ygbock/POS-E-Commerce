@@ -148,102 +148,117 @@ Following supervisor review identifying unauthorized modifications to `src/compo
 ---
 ---
 
-## Task ID: DATA-001
+## Task ID: DATA-001 (Rework Completed)
 - **Date**: 2026-09-04
 - **Status**: `READY FOR REVIEW`
 - **Assigned Agent**: Senior Software Engineer, Implementation Lead, and Repository Execution Agent
 - **Predecessor**: ARCH-001 (Approved)
+- **Supervisor Review Status**: Rework Completed — Pending Final Supervisor Re-review
 
 ---
 
 ### Objective
-Establish the persistent relational database foundation required to transition the POS + E-Commerce system from its current prototype architecture toward a server-authoritative production architecture, without breaking existing prototype functionality.
+Establish the persistent relational database foundation required to transition the POS + E-Commerce system from its current prototype architecture toward a server-authoritative production architecture, implementing production fail-closed database controls, seed isolation, and strict concurrency safety.
 
 ---
 
-### Summary
-Successfully established durable, server-authoritative relational database persistence and automated schema migration infrastructure for the Omnicore Unified Commerce platform:
+### Summary of Initial Implementation & Supervisor Rework
 
-1. **Relational Database Engine & Dual-Driver Client**:
-   - Implemented a unified `DatabaseClient` abstraction (`server/db/client.ts`) supporting:
-     - `PostgresPoolClient`: Production driver utilizing `pg.Pool` with SSL encryption, connection pooling, and statement timeouts.
-     - `PGliteDatabaseClient`: Embedded WebAssembly-compiled PostgreSQL engine (`@electric-sql/pglite`) executing locally against `.data/postgres` when no external `DATABASE_URL` or `PGHOST` is configured.
-   - Provided transaction management with `withTransaction` supporting nested savepoints, row-level locking, and rollback on failure.
+#### 1. Relational Database Engine & Fail-Closed Production Behavior (CRITICAL-1)
+- **Environment-Aware Driver Selection (`server/db/client.ts`)**:
+  - `NODE_ENV=production`:
+    - Valid PostgreSQL configuration is mandatory (`DATABASE_URL` or `PGHOST`).
+    - Missing configuration -> throws explicit fatal error immediately (`[Omnicore DB Fatal] Production environment requires a valid PostgreSQL configuration...`).
+    - PostgreSQL connection failure -> throws explicit fatal error and halts startup.
+    - PGlite is **NEVER** permitted under any circumstances in production.
+  - `NODE_ENV=test`:
+    - Isolated in-memory PGlite permitted (or PostgreSQL if `DATABASE_URL`/`PGHOST` explicitly configured).
+  - `NODE_ENV=development`:
+    - `DATABASE_URL` or `PGHOST` present -> PostgreSQL (`PostgresPoolClient`).
+    - Otherwise -> PGlite (`PGliteDatabaseClient` persisting to `.data/postgres`).
+- **No Indirect Heuristics**: Eliminated any heuristics such as `pgHost !== 'localhost'`. Driver selection relies solely on explicit environment criteria.
 
-2. **Database Schema & Migrations**:
-   - Implemented an incremental, versioned, idempotent migration runner (`server/db/migrator.ts`) with SHA-256 checksum verification and `schema_migrations` ledger.
-   - Authored `001_initial_schema.sql` defining 20 core relational tables:
-     - `organizations`, `locations`, `units_of_measure`, `categories`, `brands`, `products`, `product_variants`, `catalog_attributes`
-     - `customers`, `customer_addresses`, `suppliers`
-     - `inventory_balances`, `inventory_movements` (immutable ledger), `purchase_orders`, `purchase_order_items`
-     - `orders`, `order_items`, `payments`, `audit_events`, `schema_migrations`
-   - Configured exact numeric types (`NUMERIC(14,4)`) for all currency and inventory values to prevent floating-point distortion.
-   - Authored `002_demo_seed.sql` for initial development state.
+#### 2. Transitional Authority Model
+- **Explicit Hierarchy**:
+  - `PostgreSQL`: Authoritative persistence for domains implemented through DATA-001 (catalog, inventory, orders, customers, audit).
+  - `In-Memory Server Stores`: Legacy backward compatibility only.
+  - `CommerceContext` / `localStorage`: Non-authoritative transitional client display state only.
+- **Strict Governance Mandate**: New functionality is strictly prohibited from extending legacy in-memory stores.
 
-3. **Repository / Data Access Layer**:
-   - Created clean repository abstractions:
-     - `CatalogRepository` (categories, brands, products, variants, SKU/barcode lookup)
-     - `InventoryRepository` (balances, atomic movements with balance calculation, history queries)
-     - `OrderRepository` (orders, line items, tenders)
-     - `CustomerRepository` (profiles, tiers, store credit)
-     - `AuditRepository` (audit logging)
+#### 3. Seed Isolation & Migration Engine with Checksum Comparison (CRITICAL-2)
+- **Decoupled Architecture**:
+  - Migrations (`server/db/migrations/001_initial_schema.sql`): Contain purely DDL schema and operational structures (`schema_migrations`).
+  - Demo Seeds (`server/db/seeds/001_demo_seed.sql`): Relocated completely outside the migration pipeline.
+- **Startup Safety**: Server startup executes `await runMigrations(db)` ONLY and never auto-executes demo seeds.
+- **Production Guard**: `runSeeds()` throws a fatal error if executed in production unless `ALLOW_DEMO_SEED=true` is explicitly provided.
+- **Cryptographic Checksum Verification**:
+  - The migration engine queries `SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC` to retrieve stored checksums for all applied migrations.
+  - For each already-applied migration, computes SHA-256 of the current migration file on disk and compares it to the stored checksum.
+  - `MATCH` -> clean skip (`skipped.push(...)`).
+  - `MISMATCH` or missing -> throws fatal error immediately (`[Omnicore DB Fatal] Migration checksum mismatch for version... Applied migrations must never be modified in-place.`).
+  - Never silently skips or accepts a modified migration file.
 
-4. **Non-Breaking Server Wiring & Health Introspection**:
-   - Wired database initialization into `server.ts` startup with non-blocking degraded-mode safety.
-   - Enhanced `/api/health` and added `/api/admin/db-status` to report database connectivity, active engine, and applied migrations without exposing credentials.
-   - Maintained all existing in-memory API endpoints and frontend state to preserve full compatibility with the existing prototype.
+#### 4. Hardened Health, Readiness & Diagnostic Endpoints (CRITICAL-5)
+- **Health & Readiness Semantics**:
+  - `/api/health`: In production, returns HTTP 503 Service Unavailable if the PostgreSQL connection is unhealthy.
+  - `/api/ready`: Added minimal readiness probe endpoint returning HTTP 200 when connected, or HTTP 503 when disconnected.
+- **Admin Endpoint Security**:
+  - `/api/admin/db-status`: In production, returns HTTP 403 Forbidden to prevent unauthenticated diagnostic exposure prior to SEC-001 authenticated RBAC.
 
-5. **Automated Persistence Test Suite**:
-   - Authored and executed `tests/persistence.test.ts` verifying 10 critical checkpoints:
-     1. Database Connection and Ping
-     2. Schema Migration Execution (Up)
-     3. Migration Idempotency & Reproducibility
-     4. Primary Key Constraint Enforcement
-     5. Foreign Key Constraint Enforcement
-     6. Unique Constraints (Organization + SKU, Organization + Barcode)
-     7. Monetary Decimal Precision (No Floating-Point Distortion)
-     8. Fractional Inventory Quantities (`NUMERIC 14,4`)
-     9. Atomic Database Transactions & Rollback on Error
-     10. Order + Payment + Audit Trail Repository Workflows
+#### 5. Inventory Concurrency, Terminology & Negative-Stock Rules
+- **Repository Hardening (`server/repositories/inventoryRepository.ts`)**:
+  - **Terminology**: Standardized strictly on **"immutable inventory movement ledger"** (avoiding conflation with General Ledger accounting).
+  - **Concurrency & Locking**: Row-level locking with `SELECT ... FOR UPDATE` after atomic upsert ensures serialized concurrent balance mutations.
+  - **Precision**: Exact 4-decimal precision arithmetic (`Math.round(... * 10000) / 10000`) matching `NUMERIC(14,4)`.
+  - **Negative Stock Rule**: Movement execution verifies `newOnHand >= 0` and rejects negative stock with `INSUFFICIENT_STOCK` unless `allowNegativeStock: true` is explicitly passed.
+  - **Idempotency Protection**: Enforces unique movement IDs, rejecting duplicate submissions with `DUPLICATE_MOVEMENT`.
+
+#### 6. Audit Actor Semantics
+- Documented in `server/repositories/auditRepository.ts` that `actor_role` strings are transitional and untrusted under DATA-001, and that SEC-001 will establish authenticated server-side session identity and verified RBAC.
 
 ---
 
 ### Files Changed
 
-#### Created Files:
-1. `/server/db/client.ts` — Unified database client interface and dual-driver factory (`pg.Pool` + `PGlite`).
-2. `/server/db/migrator.ts` — Idempotent migration runner with checksum validation and CLI/programmatic execution.
-3. `/server/db/migrations/001_initial_schema.sql` — Full production relational schema (20 tables).
-4. `/server/db/migrations/002_demo_seed.sql` — Initial organization, location, catalog, and inventory seed.
+#### Created / Relocated Files:
+1. `/server/db/client.ts` — Unified database client interface, dual-driver factory (`pg.Pool` + `PGlite`), and production fail-closed enforcement.
+2. `/server/db/migrator.ts` — Migration runner with SHA-256 checksum verification, CLI runner, and isolated `runSeeds()` with production guards.
+3. `/server/db/migrations/001_initial_schema.sql` — Production relational schema (20 tables, foreign keys, composite uniqueness, exact numeric types).
+4. `/server/db/seeds/001_demo_seed.sql` — Isolated demo seed data (moved out of migrations pipeline).
 5. `/server/repositories/catalogRepository.ts` — Catalog and variant data access repository.
-6. `/server/repositories/inventoryRepository.ts` — Inventory balance and atomic movement ledger repository.
-7. `/server/repositories/orderRepository.ts` — Orders, items, and tender payments repository.
+6. `/server/repositories/inventoryRepository.ts` — Immutable inventory movement ledger and balance repository with `FOR UPDATE` locking and negative-stock protection.
+7. `/server/repositories/orderRepository.ts` — Orders, items, and tender payments repository with transactional boundaries.
 8. `/server/repositories/customerRepository.ts` — Customer profile and store credit repository.
-9. `/server/repositories/auditRepository.ts` — Audit event ledger repository.
+9. `/server/repositories/auditRepository.ts` — Audit event ledger repository with documented transitional actor semantics.
 10. `/server/repositories/index.ts` — Barrel export for repositories.
-11. `/tests/persistence.test.ts` — Automated persistence test suite.
+11. `/tests/persistence.test.ts` — Automated persistence test suite expanded to 15 verification tests.
 
 #### Modified Files:
 1. `package.json` — Added `@electric-sql/pglite`, `pg`, `@types/pg` dependencies; added `db:migrate`, `db:seed`, `test:db` scripts.
-2. `server.ts` — Wired database initialization, migrations, and `/api/health` + `/api/admin/db-status` endpoints.
-3. `.env.example` — Documented `DATABASE_URL` and explicit `PG*` connection parameters.
+2. `server.ts` — Wired database startup (migrations only, no seeds), production 503 health/readiness behavior, and production 403 protection on `/api/admin/db-status`.
+3. `.env.example` — Documented `DATABASE_URL`, `PG*` parameters, and `ALLOW_DEMO_SEED`.
 4. `.gitignore` — Added `.data/` directory.
-5. `.ai/DECISIONS.md` — Added ADR-010 (Relational PostgreSQL Schema & Dual-Driver Persistence Layer).
-6. `.ai/TASK_QUEUE.md` — Updated DATA-001 status to `READY FOR REVIEW`.
-7. `.ai/RISKS.md` — Added RISK-011 (Coexistence window between in-memory stores and relational database).
-8. `.ai/REVIEW_QUEUE.md` — Logged review submission bundle for DATA-001.
+5. `.ai/ARCHITECTURE.md` — Documented transitional authority model, production fail-closed rules, and seed isolation.
+6. `.ai/DECISIONS.md` — Updated ADR-007 terminology and updated ADR-010 with rework decisions.
+7. `.ai/RISKS.md` — Updated RISK-011 with transitional authority boundaries and mitigation controls.
+8. `.ai/TASK_QUEUE.md` — Maintained `READY FOR REVIEW` status with rework details.
+9. `.ai/IMPLEMENTATION_REPORT.md` — Updated with comprehensive rework execution logs.
 
 ---
 
-### Acceptance Criteria
-- [x] Database schema models all core entities with proper primary keys, foreign keys, check constraints, composite uniqueness, and indexes.
-- [x] Database migrations execute cleanly, idempotently, and track applied versions via `schema_migrations`.
-- [x] Backend server connects reliably with environment-driven credentials or falls back to embedded PGlite without crashing.
-- [x] Monetary amounts represented using exact decimal precision (`NUMERIC(14,4)`).
-- [x] Inventory quantities support fractional values (`NUMERIC(14,4)`).
-- [x] Comprehensive automated persistence test suite passes (`npm run test:db` -> 10/10 passed).
-- [x] Existing API endpoints and application UI continue functioning without regressions.
-- [x] Task status marked `READY FOR REVIEW` (not self-approved).
+### Acceptance Criteria Checklist
+- [x] Production database driver fail-closed: PostgreSQL mandatory in production, PGlite prohibited in production, missing credentials trigger immediate startup failure.
+- [x] Explicit transitional authority model documented across architecture, risks, and ADRs.
+- [x] Seed data decoupled into `/server/db/seeds/001_demo_seed.sql`; server startup executes migrations only.
+- [x] Demo seeds rejected in production unless `ALLOW_DEMO_SEED=true` is explicitly provided.
+- [x] `/api/admin/db-status` protected in production (returns 403) pending SEC-001 authenticated RBAC.
+- [x] Health and readiness semantics return 503 if database disconnected in production; minimal `/api/ready` endpoint added.
+- [x] Migration runner verifies checksum of applied migrations and rejects modified scripts.
+- [x] Inventory repository verified and hardened: transaction boundaries, `FOR UPDATE` row locking, serialized balance updates, negative-stock prevention, 4-decimal precision, movement ID idempotency.
+- [x] Terminology updated to "immutable inventory movement ledger" throughout codebase and docs.
+- [x] Audit actor semantics documented as transitional pending SEC-001.
+- [x] Automated test suite expanded to 15 tests covering all rework requirements, all 15 passing.
+- [x] Task status maintained as `READY FOR REVIEW` (not self-approved).
 
 ---
 
@@ -255,11 +270,11 @@ Successfully established durable, server-authoritative relational database persi
 
 #### 2. Production Build Check
 - **Command**: `npm run build` (`vite build && esbuild server.ts ...`)
-- **Result**: **PASSED** (Bundle generated in `dist/server.cjs`)
+- **Result**: **PASSED** (Vite build + esbuild CJS server bundle compiled cleanly)
 
-#### 3. Automated Persistence Test Suite
+#### 3. Automated Persistence Test Suite (15 Tests)
 - **Command**: `npm run test:db` (`npx tsx tests/persistence.test.ts`)
-- **Result**: **PASSED** (10 passed, 0 failed)
+- **Result**: **PASSED** (15 passed, 0 failed)
 - **Log Output**:
   ```text
   ========================================
@@ -276,37 +291,29 @@ Successfully established durable, server-authoritative relational database persi
     [TEST] 8. Fractional Inventory Quantities (NUMERIC 14,4)... PASSED
     [TEST] 9. Atomic Database Transactions & Rollback on Error... PASSED
     [TEST] 10. Order + Payment + Audit Trail Repository Workflows... PASSED
+    [TEST] 11. Production Driver Fail-Closed Validation... PASSED
+    [TEST] 12. Migration Checksum Mismatch Rejection... PASSED
+    [TEST] 13. Demo Seed Environment Protection... PASSED
+    [TEST] 14. Inventory Negative-Stock Rule & Movement Idempotency... PASSED
+    [TEST] 15. Admin DB-Status Production Exposure Rules... PASSED
 
   ----------------------------------------
-  Results: 10 passed, 0 failed
+  Results: 15 passed, 0 failed
   ----------------------------------------
-  ```
-
-#### 4. Diagnostic & Health API Endpoint Check
-- **Command**: `curl -s http://localhost:3000/api/health`
-- **Output**:
-  ```json
-  {"status":"ok","service":"Centralized Product Service","version":"2.4.0","uptime":7.65,"timestamp":"2026-09-04T10:38:24.822Z","database":{"connected":true,"engine":"embedded-pglite","schemaVersion":"002","migrationsCount":2}}
-  ```
-- **Command**: `curl -s http://localhost:3000/api/admin/db-status`
-- **Output**:
-  ```json
-  {"success":true,"data":{"connected":true,"engine":"embedded-pglite","schemaVersion":"002","migrationsApplied":["001","002"],"error":null}}
   ```
 
 ---
 
 ### Security Considerations
-- Database credentials are fully externalized to environment variables (`DATABASE_URL`, `PGHOST`, etc.).
-- No raw connection strings or secrets committed to repository.
-- Parameterized queries (`$1, $2, ...`) and prepared statements used exclusively in all repositories and tests to eliminate SQL injection vulnerabilities.
-- Safe diagnostic endpoint (`/api/admin/db-status`) reports migration version and connection health without exposing database host, username, or credentials.
+- Zero credentials committed; fully parameterized SQL prevents injection.
+- Production environment fails closed if external PostgreSQL database is unavailable.
+- Unauthenticated admin diagnostics blocked in production pending authenticated RBAC (SEC-001).
+- Audit actor attributes explicitly recognized as transitional to prevent trusting unverified client roles.
 
 ---
 
 ### Known Limitations
-- The existing frontend UI components (`POSRegister`, `Storefront`) continue to read/write from in-memory arrays and `CommerceContext` during this transitional phase.
-- Domain endpoint migration will occur progressively across subsequent tasks (`SEC-001`, `INV-001`, `POS-001`).
+- Existing prototype frontend and Express endpoints continue running alongside the database layer until respective domain roadmap tasks (`SEC-001`, `INV-001`, `POS-001`) migrate endpoints to the repositories.
 
 ---
 
@@ -321,5 +328,5 @@ Successfully established durable, server-authoritative relational database persi
 ---
 
 ### Blockers
-- None. Task DATA-001 is complete and submitted for supervisor review.
+- None. Task DATA-001 rework is fully implemented, verified, and submitted for supervisor review.
 

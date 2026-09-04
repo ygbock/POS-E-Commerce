@@ -1,11 +1,21 @@
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 
+/**
+ * Audit Event Record
+ * 
+ * TRANSITIONAL ACTOR IDENTITY NOTE:
+ * - Under DATA-001, actor_id, actor_name, and actor_role reflect the caller's reported identity.
+ * - SECURITY NOTICE: Unauthenticated client role strings are NOT trusted security boundaries.
+ * - Under SEC-001, actor_id will be authoritatively derived by server-side authentication
+ *   middleware from validated session tokens / cryptographic claims, and actor_role will
+ *   reflect the server-verified RBAC assignment.
+ */
 export interface AuditEventRecord {
   id: string;
   organization_id?: string;
-  actor_id?: string | null;
+  actor_id?: string | null; // Authoritative user ID (to be enforced by SEC-001)
   actor_name: string;
-  actor_role: string;
+  actor_role: string;       // Transitional until SEC-001 binds verified role
   action: string;
   entity_type: string;
   entity_id: string;

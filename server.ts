@@ -85,6 +85,7 @@ let syncAuditLogs: Array<{
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const isProd = process.env.NODE_ENV === 'production';
 
   // Initialize Database Persistence Layer
   const dbStatus = {
@@ -101,7 +102,8 @@ async function startServer() {
     if (ping.rows.length > 0) {
       dbStatus.connected = true;
       dbStatus.engine = db.isEmbedded() ? 'embedded-pglite' : 'postgresql';
-      await runMigrations(db, undefined, { includeSeed: true });
+      // Execute schema migrations ONLY. Demo seeds are never auto-executed on server startup.
+      await runMigrations(db);
       const applied = await getAppliedMigrations(db);
       dbStatus.migrationsApplied = Array.from(applied);
       dbStatus.version = Array.from(applied).pop() || '000';
@@ -109,7 +111,12 @@ async function startServer() {
     }
   } catch (dbErr: any) {
     dbStatus.error = dbErr.message || 'Database initialization error';
-    console.warn('[Omnicore DB] Running in degraded persistence mode:', dbStatus.error);
+    if (isProd) {
+      console.error('[Omnicore DB Fatal] Production PostgreSQL startup failed:', dbStatus.error);
+      throw new Error(`[Omnicore DB Fatal] Production PostgreSQL startup failed: ${dbStatus.error}`);
+    } else {
+      console.warn('[Omnicore DB] Non-production running in degraded persistence mode:', dbStatus.error);
+    }
   }
 
   app.use(express.json({ limit: '10mb' }));
@@ -125,8 +132,26 @@ async function startServer() {
   // 1. HEALTH & SYNC STATUS ENDPOINTS
   // ------------------------------------------------------------------
   app.get('/api/health', (req: Request, res: Response) => {
+    // In production, an instance cannot appear healthy if its required PostgreSQL database is unavailable
+    if (isProd && !dbStatus.connected) {
+      return res.status(503).json({
+        status: 'unhealthy',
+        ready: false,
+        service: 'Centralized Product Service',
+        version: '2.4.0',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        database: {
+          connected: false,
+          engine: dbStatus.engine,
+          error: dbStatus.error || 'Production PostgreSQL unavailable',
+        },
+      });
+    }
+
     res.json({
       status: dbStatus.connected ? 'ok' : 'degraded',
+      ready: dbStatus.connected,
       service: 'Centralized Product Service',
       version: '2.4.0',
       uptime: process.uptime(),
@@ -140,7 +165,36 @@ async function startServer() {
     });
   });
 
+  // Minimal readiness probe endpoint
+  app.get('/api/ready', (req: Request, res: Response) => {
+    if (!dbStatus.connected) {
+      return res.status(503).json({
+        ready: false,
+        status: 'unready',
+        error: dbStatus.error || 'Database unavailable',
+      });
+    }
+    res.json({
+      ready: true,
+      status: 'ready',
+      database: {
+        connected: true,
+        engine: dbStatus.engine,
+        schemaVersion: dbStatus.version,
+      },
+    });
+  });
+
   app.get('/api/admin/db-status', (req: Request, res: Response) => {
+    // SEC-001 has not yet established authenticated admin RBAC:
+    // Do not expose unauthenticated diagnostic endpoint in production
+    if (isProd) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. Admin diagnostic endpoints are disabled in production pending authenticated RBAC (SEC-001).',
+      });
+    }
+
     res.json({
       success: true,
       data: {
