@@ -14,13 +14,15 @@
 | **RISK-001** | Client-Authoritative Business State | **Critical** | Business logic, price overrides, and stock state execute in browser | `POS-001`, `INV-001` |
 | **RISK-002** | `localStorage` Business Persistence | **Critical** | Data loss if browser storage cleared; single-device isolation | `DATA-001` |
 | **RISK-003** | In-Memory Ephemeral Backend Persistence | **Critical** | Server restart erases all catalog additions and sync logs | `DATA-001` |
-| **RISK-004** | Missing Trusted Auth & RBAC Boundary | **High** | Any client can invoke mutating endpoints without credentials | `SEC-001` |
+| **RISK-004** | Missing Trusted Auth & RBAC Boundary | **High** | Any client can invoke mutating endpoints without credentials | Mitigated via `SEC-001` |
 | **RISK-005** | Client-Side Financial Calculations | **High** | Price tampering, erroneous tax or discount math in browser | `POS-001` |
 | **RISK-006** | Inventory Integrity & Race Conditions | **High** | Overselling possible under concurrent checkouts; desync | `INV-001` |
 | **RISK-007** | API Validation & Mass-Assignment Risk | **Medium** | Unvalidated JSON accepted on Express endpoints | `API-001` |
 | **RISK-008** | Simulated Payment Tender Processing | **Medium** | No real-world gateway verification or idempotent settlement | `POS-001`, `PROD-001` |
 | **RISK-009** | Absence of Automated Test Suite | **Medium** | Manual testing required; regressions can go unnoticed | `QA-001` |
 | **RISK-010** | Absence of CI Quality Gates | **Medium** | Potential broken builds or type errors deployed unnoticed | `QA-001`, `PROD-001` |
+| **RISK-011** | Coexistence Window Between In-Memory and DB | **Medium** | Potential read desync during transitional phased rollout | `SEC-001`, `INV-001`, `POS-001` |
+| **RISK-012** | Single-Instance Revocation Cache | **Low** | In-memory token blacklist cache is local to container instance | Multi-instance Redis in `PROD-001` |
 
 ---
 
@@ -100,4 +102,12 @@
 - **Description**: While DATA-001 establishes the relational database and migration foundation, existing frontend modules (`POSRegister`, `Storefront`) currently communicate with in-memory arrays and `CommerceContext`.
 - **Vulnerability**: If state is updated in the database but the in-memory array is not refreshed (or vice versa) during the transitional phase before domain routes are fully migrated, read inconsistency could occur.
 - **Planned Mitigation**: Subsequent tasks (`SEC-001`, `INV-001`, `POS-001`) will systematically migrate individual domain controllers to use the newly created repository layer (`CatalogRepository`, `InventoryRepository`, `OrderRepository`), retiring in-memory arrays incrementally.
+
+---
+
+### RISK-012: Single-Instance In-Memory Revocation Cache
+- **Description**: While token revocations are persisted to the PostgreSQL `revoked_tokens` table, an in-memory cache is maintained per process for high-speed checks.
+- **Vulnerability**: In horizontally scaled multi-container clusters, immediate cross-node invalidation requires either Redis pub/sub or direct DB check fallback.
+- **Planned Mitigation**: Multi-instance Redis cache or central Postgres validation in `PROD-001`.
+
 

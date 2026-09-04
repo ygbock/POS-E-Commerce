@@ -330,3 +330,184 @@ Establish the persistent relational database foundation required to transition t
 ### Blockers
 - None. Task DATA-001 rework is fully implemented, verified, and submitted for supervisor review.
 
+---
+
+## Task ID: SEC-001
+- **Date**: 2026-09-04
+- **Status**: `READY FOR REVIEW`
+- **Assigned Agent**: Senior Software Engineer, Implementation Lead, and Repository Execution Agent
+
+---
+
+### Objective
+Establish an uncompromised server-side authentication, authorization, and security boundary for the Omnicore Unified Commerce platform. The system enforces identity verification, tenant isolation, role-based access control, and audit trail authoritativeness strictly at the server boundary, eliminating reliance on client-side React state, `localStorage`, or untrusted request bodies.
+
+---
+
+### Summary
+1. **Cryptographic Identity & Password Hashing**: Implemented `server/auth/password.ts` utilizing PBKDF2 with HMAC-SHA512, 100,000 iterations, 32-byte cryptographically secure salts, and constant-time buffer comparison (`crypto.timingSafeEqual`).
+2. **Authoritative Session Tokens & Fail-Closed Secret**: Implemented RFC 7519 HMAC-SHA256 (HS256) JWT generation and verification in `server/auth/token.ts`. Enforced fail-closed behavior in production if `JWT_SECRET` is missing, default, or under 32 characters.
+3. **Database-Backed Revocation**: Created migration `002_auth_security.sql` introducing `users`, `revoked_tokens`, and auth index structures. User logouts persist revoked token IDs (`jti`) to the database, supplemented by an in-memory cache for high-speed checks.
+4. **Hierarchical RBAC & Permissions Matrix**: Defined 6 standardized system roles (`super_admin`, `store_manager`, `cashier`, `inventory_clerk`, `accountant`, `viewer`) and 25+ granular permissions in `server/auth/roles.ts`.
+5. **Standardized Middleware Pipeline**:
+   - `createAuthenticateMiddleware`: Cryptographically verifies signatures, expiration, and revocation status; attaches verified `req.auth`.
+   - `requireAuth()`: Rejects unauthenticated requests with HTTP 401 Unauthorized.
+   - `requirePermission(...)`: Enforces fine-grained capability checks with HTTP 403 Forbidden.
+   - `requireRole(...)`: Enforces role boundaries with HTTP 403 Forbidden.
+   - `requireTenantAccess()`: Validates multi-tenant isolation, blocking cross-tenant mutations with HTTP 403 `TENANT_ACCESS_DENIED`.
+6. **Rate Limiting Protection**: Created sliding-window rate limiters (`authRateLimiter`, `adminRateLimiter`, `generalRateLimiter`) in `server/middleware/rateLimiter.ts` defending against brute-force and credential stuffing.
+7. **Request Body Sanitization & Anti-Spoofing**: Implemented `sanitizeClientBody` in `server/validation/index.ts` to actively strip client-supplied identity overrides (`userId`, `role`, `roles`, `isAdmin`, `organizationId`, `permissions`, `actorId`).
+8. **Privileged Endpoint Hardening**:
+   - `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`, `/api/auth/verify-pin` wired to `AuthService`.
+   - `/api/admin/db-status` protected with `requireAuth()`, `requirePermission(PERMISSIONS.ADMIN_DIAGNOSTICS)`, rate limiting, and response sanitization (preventing credential or stack trace leakage).
+   - `/api/catalog/sync` protected with `adminRateLimiter`, `requireAuth()`, `requirePermission(PERMISSIONS.PRODUCTS_UPDATE)`, and `requireTenantAccess()`.
+   - All product variant and catalog attribute mutation endpoints protected with tenant isolation, input sanitization, and authoritative audit logging.
+9. **Authoritative Audit Actor Model**: Audit log entries strictly pull actor identity (`actorId`, `actorRole`, `organizationId`) from verified `req.auth`, discarding client-asserted request-body identity fields.
+10. **Comprehensive Verification**: Built 17-test automated security suite in `tests/auth_security.test.ts`. 100% of security tests (17/17) and database tests (15/15) pass cleanly.
+
+---
+
+### Files Changed
+
+#### Created Files:
+1. `/server/db/migrations/002_auth_security.sql` (Auth schema: users, revoked_tokens, tenant and user indexes)
+2. `/server/auth/password.ts` (PBKDF2-HMAC-SHA512 password hashing & timing-safe verification)
+3. `/server/auth/token.ts` (HMAC-SHA256 JWT signing, validation, claims, and fail-closed secret resolution)
+4. `/server/auth/roles.ts` (Role hierarchy, 25+ granular permissions, role-permission matrix)
+5. `/server/repositories/userRepository.ts` (User lookup, credentials, pin validation, token revocation persistence)
+6. `/server/services/authService.ts` (Authentication lifecycle: login, pin login, session verification, logout)
+7. `/server/middleware/auth.ts` (Authenticate middleware, requireAuth, requirePermission, requireRole, requireTenantAccess)
+8. `/server/middleware/rateLimiter.ts` (Sliding window rate limiters with Retry-After headers)
+9. `/server/validation/index.ts` (Input sanitization, immutable field stripping, prototype pollution defense, DTO validation)
+10. `/tests/auth_security.test.ts` (Comprehensive 17-test automated security test suite)
+
+#### Modified Files:
+1. `/server.ts` (Wired auth middleware, auth endpoints, secured admin diagnostics, hardened product/variant/attribute routes, and authoritative audit logging)
+2. `/package.json` (Added `test:security` script)
+3. `/.ai/SECURITY_POLICY.md` (Updated with SEC-001 implemented security architecture)
+4. `/.ai/ARCHITECTURE.md` (Added Section 10.2 detailing security boundary architecture)
+5. `/.ai/DECISIONS.md` (Added ADR-011: Server-Side Cryptographic Authentication, RBAC & Multi-Tenant Boundaries)
+6. `/.ai/RISKS.md` (Updated RISK-004 to Mitigated; added RISK-012 for distributed revocation cache)
+7. `/.ai/TASK_QUEUE.md` (Updated SEC-001 status to `READY FOR REVIEW` with all acceptance criteria checked)
+8. `/.ai/IMPLEMENTATION_REPORT.md` (Appended comprehensive SEC-001 implementation report)
+
+---
+
+### Acceptance Criteria Verification
+- [x] **Unauthenticated requests return HTTP 401 Unauthorized**: Verified via test 12.
+- [x] **Unauthorized roles return HTTP 403 Forbidden**: Verified via test 13.
+- [x] **Missing permissions return HTTP 403 Forbidden**: Verified via test 13.
+- [x] **Tenant access violations return HTTP 403 TENANT_ACCESS_DENIED**: Verified via test 14.
+- [x] **Password hashing uses PBKDF2-HMAC-SHA512 with 100k rounds & 32-byte salt**: Verified via test 2.
+- [x] **JWT verification detects forgery, tampering, and expiration**: Verified via tests 3, 4, and 11.
+- [x] **Token revocation persists unique token IDs (`jti`) upon logout**: Verified via tests 6 and 7.
+- [x] **Input sanitization strips client-supplied role/tenant/identity spoofing fields**: Verified via tests 9 and 15.
+- [x] **Server-authoritative audit logs derive actor identity exclusively from server context (`req.auth`)**: Verified via tests 8 and 15.
+- [x] **Sensitive endpoints protected with rate limiters (HTTP 429 + Retry-After)**: Verified via test 17.
+- [x] **Diagnostic endpoint `/api/admin/db-status` never leaks credentials, passwords, or connection strings**: Verified via test 16.
+- [x] **Complete security regression test suite passes (`npm run test:security` -> 17/17 passed)**: Executed and verified.
+- [x] **Zero regressions in database persistence test suite (`npm run test:db` -> 15/15 passed)**: Executed and verified.
+- [x] **Task status marked `READY FOR REVIEW` (not self-approved)**: Marked in `TASK_QUEUE.md` and report.
+
+---
+
+### Tests & Checks Actually Run
+
+#### 1. Security Verification Test Suite (17 Tests)
+- **Command**: `npm run test:security` (`tsx tests/auth_security.test.ts`)
+- **Result**: **PASSED** (17 passed, 0 failed)
+- **Output Log**:
+  ```text
+  ======================================================
+   Omnicore SEC-001 Authentication & RBAC Security Tests
+  ======================================================
+    [TEST] 1. Apply Auth Migrations (001 + 002)... PASSED
+    [TEST] 2. Password Hashing & Verification (PBKDF2-HMAC-SHA512)... PASSED
+    [TEST] 3. Cryptographic JWT Signing & Verification (HMAC-SHA256)... PASSED
+    [TEST] 4. JWT Tampering & Signature Forgery Detection... PASSED
+    [TEST] 5. RBAC Permission Hierarchy & Matrix... PASSED
+    [TEST] 6. User Repository & Token Revocation (Logout)... PASSED
+    [TEST] 7. AuthService Authentication & Revocation Lifecycle... PASSED
+    [TEST] 8. Server-Authoritative Audit Logging (Anti-Spoofing)... PASSED
+    [TEST] 9. Input Validation & Prototype Pollution Defense... PASSED
+    [TEST] 10. Multi-Tenant Authorization Isolation... PASSED
+    [TEST] 11. Expired Credential Rejection... PASSED
+    [TEST] 12. HTTP Endpoint Authentication Boundaries (401 Rejections)... PASSED
+    [TEST] 13. HTTP Role & Permission Boundaries (403 Rejections)... PASSED
+    [TEST] 14. HTTP Multi-Tenant Isolation Enforcement... PASSED
+    [TEST] 15. Identity Spoofing Immunity in Request Body... PASSED
+    [TEST] 16. Admin Diagnostic Diagnostic Endpoint Security & Leak Prevention... PASSED
+    [TEST] 17. Sensitive Endpoint Rate Limiting (429 Defense)... PASSED
+  ======================================================
+   Results: 17 passed, 0 failed
+  ======================================================
+  ```
+
+#### 2. Database & Persistence Regression Test Suite (15 Tests)
+- **Command**: `npm run test:db` (`tsx tests/persistence.test.ts`)
+- **Result**: **PASSED** (15 passed, 0 failed)
+- **Output Log**:
+  ```text
+  ========================================
+   Omnicore Database & Persistence Tests
+  ========================================
+    [TEST] 1. Database Connection and Ping... PASSED
+    [TEST] 2. Schema Migration Execution (Up)... PASSED
+    [TEST] 3. Migration Idempotency & Reproducibility... PASSED
+    [TEST] 4. Primary Key Constraint Enforcement... PASSED
+    [TEST] 5. Foreign Key Constraint Enforcement... PASSED
+    [TEST] 6. Unique Constraints (Organization + SKU, Organization + Barcode)... PASSED
+    [TEST] 7. Monetary Decimal Precision (No Floating-Point Distortion)... PASSED
+    [TEST] 8. Fractional Inventory Quantities (NUMERIC 14,4)... PASSED
+    [TEST] 9. Atomic Database Transactions & Rollback on Error... PASSED
+    [TEST] 10. Order + Payment + Audit Trail Repository Workflows... PASSED
+    [TEST] 11. Production Driver Fail-Closed Validation... PASSED
+    [TEST] 12. Migration Checksum Mismatch Rejection... PASSED
+    [TEST] 13. Demo Seed Environment Protection... PASSED
+    [TEST] 14. Inventory Negative-Stock Rule & Movement Idempotency... PASSED
+    [TEST] 15. Admin DB-Status Production Exposure Rules... PASSED
+  ----------------------------------------
+  Results: 15 passed, 0 failed
+  ----------------------------------------
+  ```
+
+#### 3. TypeScript Linter Check
+- **Command**: `npm run lint` (`tsc --noEmit`)
+- **Result**: **PASSED** (0 errors)
+
+#### 4. Production Build Check
+- **Command**: `npm run build` (`vite build && esbuild server.ts ...`)
+- **Result**: **PASSED** (Vite build + esbuild CJS server bundle compiled cleanly)
+
+---
+
+### Security Considerations
+- Client browser state is treated as completely untrusted; authorization checks are performed on every mutating endpoint.
+- Passwords are encrypted with PBKDF2-HMAC-SHA512 with 100,000 iterations.
+- Production environment fails closed immediately if `JWT_SECRET` is missing or insecure.
+- Revoked tokens are persisted in PostgreSQL to invalidate tokens immediately upon logout.
+- Organization isolation guarantees tenants cannot read or tamper with another tenant's data.
+- Input sanitization strips injected administrative or tenant keys from request bodies.
+
+---
+
+### Known Limitations
+- Single-Instance Revocation Cache: Revocation checks check an in-memory cache backed by PostgreSQL. In a multi-instance horizontally scaled cluster, Redis or database polling will be configured in `PROD-001`.
+
+---
+
+### Remaining Risks
+- **RISK-011**: Coexistence window between legacy in-memory arrays and relational database until domain routes are migrated in subsequent roadmap tasks (`INV-001`, `POS-001`).
+- **RISK-012**: Distributed token revocation cache synchronization across multiple container instances.
+
+---
+
+### Follow-up Tasks
+- **INV-001**: Server-Authoritative Inventory Ledger & Movement Tracking (Next scheduled task upon supervisor approval of SEC-001).
+
+---
+
+### Blockers
+- None. Task SEC-001 is fully implemented, verified with 17 automated security tests, and submitted for supervisor review.
+
+

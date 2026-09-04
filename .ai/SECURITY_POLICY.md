@@ -92,3 +92,36 @@ All software engineers and implementation agents must adhere strictly to the pri
    - Immediately report the finding in `.ai/RISKS.md` and escalate to the supervisor.
    - Open a prioritized task in `.ai/TASK_QUEUE.md` under the `SEC-` prefix.
 2. Security fixes must include positive-path and negative-path tests demonstrating both authorized access and rejection of unauthorized exploits.
+
+---
+
+## 4. Implemented Security Architecture (SEC-001)
+
+### 4.1 Authentication Architecture
+- **Password Security**: Uses cryptographic PBKDF2 with HMAC-SHA512, 100,000 iterations, 32-byte cryptographically secure salts, and timing-safe comparison (`crypto.timingSafeEqual`) to resist brute-force, rainbow-table, and timing attacks.
+- **Session Tokens**: Authoritative RFC 7519 HMAC-SHA256 (HS256) JSON Web Tokens. Production environments fail closed if `JWT_SECRET` is missing, default, or under 32 characters.
+- **Revocation & Logout**: Token revocation is enforced via unique `jti` identifiers stored in the authoritative database (`revoked_tokens` table) and checked upon every verified request.
+
+### 4.2 Authorization Architecture & RBAC
+- **Role Hierarchy**: 6 standardized system roles (`super_admin`, `store_manager`, `cashier`, `inventory_clerk`, `accountant`, `viewer`).
+- **Granular Permissions**: 25+ fine-grained permissions spanning POS checkout, returns, inventory transfers/adjustments, product catalog management, user administration, reports, and system diagnostics.
+- **Enforcement Middlewares**:
+  - `requireAuth()`: Rejects unauthenticated traffic (HTTP 401).
+  - `requirePermission(...)`: Enforces fine-grained capability checks (HTTP 403).
+  - `requireRole(...)`: Enforces role-based boundaries (HTTP 403).
+
+### 4.3 Multi-Tenant Isolation Model
+- **Boundary Verification**: `requireTenantAccess()` middleware inspects route params, query arguments, and request bodies. Rejects any attempt by a tenant to read or mutate resources of a different organization with HTTP 403 `TENANT_ACCESS_DENIED`.
+- **Supervisory Exemption**: Only `super_admin` holds cross-tenant authorization for system-level diagnostics and support.
+
+### 4.4 Request Body Sanitization & Anti-Spoofing
+- **Strip Forbidden Identity Keys**: `sanitizeClientBody` actively strips client-supplied identity overrides (`userId`, `role`, `roles`, `isAdmin`, `organizationId`, `permissions`, `actorId`, etc.) before domain handlers process payloads.
+- **Authoritative Audit Trails**: Audit log actor identity (`actorId`, `actorRole`, `organizationId`) is strictly retrieved from the cryptographically verified `req.auth` context, completely ignoring any request-body claims.
+
+### 4.5 Rate Limiting & Sensitive Endpoint Protection
+- **Rate Limiters**: Configured sliding-window rate limiters for authentication (`authRateLimiter`: 10 req/min), administrative operations (`adminRateLimiter`: 20 req/min), and general API traffic.
+- **Privileged Diagnostic Endpoint**: `/api/admin/db-status` requires `requireAuth()`, `requirePermission(PERMISSIONS.ADMIN_DIAGNOSTICS)`, and rate limiting, and sanitizes its output to ensure credentials, passwords, or connection strings are never exposed.
+
+### 4.6 Transitional Limitations
+- **Single-Instance In-Memory Token Blacklist Cache**: The local in-memory revoked tokens cache accelerates token verification; in distributed multi-instance deployment, this cache will transition to Redis or direct PostgreSQL read replication.
+

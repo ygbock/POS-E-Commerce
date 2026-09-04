@@ -1,4 +1,5 @@
 import { Product, ProductVariant, CatalogAttribute } from '../types';
+import { authClient } from './authClient';
 
 export interface ProductListResponse {
   success: boolean;
@@ -101,7 +102,7 @@ class ProductService {
   async createProduct(product: Partial<Product>): Promise<{ success: boolean; message: string; data: Product }> {
     const res = await fetch(`${this.baseUrl}/products`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authClient.getAuthHeaders(),
       body: JSON.stringify(product),
     });
     if (!res.ok) {
@@ -117,7 +118,7 @@ class ProductService {
   async updateProduct(id: string, product: Partial<Product>): Promise<{ success: boolean; message: string; data: Product }> {
     const res = await fetch(`${this.baseUrl}/products/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authClient.getAuthHeaders(),
       body: JSON.stringify(product),
     });
     if (!res.ok) {
@@ -133,6 +134,7 @@ class ProductService {
   async deleteProduct(id: string): Promise<{ success: boolean; message: string; deletedId: string }> {
     const res = await fetch(`${this.baseUrl}/products/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+      headers: authClient.getAuthHeaders(),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -147,7 +149,7 @@ class ProductService {
   async createVariant(productId: string, variant: Partial<ProductVariant>): Promise<{ success: boolean; message: string; data: ProductVariant }> {
     const res = await fetch(`${this.baseUrl}/products/${encodeURIComponent(productId)}/variants`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authClient.getAuthHeaders(),
       body: JSON.stringify(variant),
     });
     if (!res.ok) {
@@ -163,7 +165,7 @@ class ProductService {
   async updateVariant(productId: string, variantId: string, variant: Partial<ProductVariant>): Promise<{ success: boolean; message: string; data: ProductVariant }> {
     const res = await fetch(`${this.baseUrl}/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authClient.getAuthHeaders(),
       body: JSON.stringify(variant),
     });
     if (!res.ok) {
@@ -179,6 +181,7 @@ class ProductService {
   async deleteVariant(productId: string, variantId: string): Promise<{ success: boolean; message: string; deletedVariantId: string }> {
     const res = await fetch(`${this.baseUrl}/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`, {
       method: 'DELETE',
+      headers: authClient.getAuthHeaders(),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -191,7 +194,9 @@ class ProductService {
    * SKU and Barcode lookup for POS & Inventory scanners
    */
   async lookupSkuOrBarcode(skuOrBarcode: string): Promise<SkuLookupResponse> {
-    const res = await fetch(`${this.baseUrl}/skus/lookup/${encodeURIComponent(skuOrBarcode)}`);
+    const res = await fetch(`${this.baseUrl}/skus/lookup/${encodeURIComponent(skuOrBarcode)}`, {
+      headers: authClient.getAuthHeaders(),
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'SKU not found' }));
       return { success: false, found: false, error: err.error || 'SKU not found' };
@@ -203,7 +208,9 @@ class ProductService {
    * Fetch catalog attributes master list
    */
   async getAttributes(): Promise<{ success: boolean; count: number; data: CatalogAttribute[] }> {
-    const res = await fetch(`${this.baseUrl}/attributes`);
+    const res = await fetch(`${this.baseUrl}/attributes`, {
+      headers: authClient.getAuthHeaders(),
+    });
     if (!res.ok) {
       throw new Error('Failed to fetch attributes');
     }
@@ -216,7 +223,7 @@ class ProductService {
   async createAttribute(attribute: Partial<CatalogAttribute>): Promise<{ success: boolean; message: string; data: CatalogAttribute }> {
     const res = await fetch(`${this.baseUrl}/attributes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authClient.getAuthHeaders(),
       body: JSON.stringify(attribute),
     });
     if (!res.ok) {
@@ -232,7 +239,7 @@ class ProductService {
   async updateAttribute(id: string, attribute: Partial<CatalogAttribute>): Promise<{ success: boolean; message: string; data: CatalogAttribute }> {
     const res = await fetch(`${this.baseUrl}/attributes/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authClient.getAuthHeaders(),
       body: JSON.stringify(attribute),
     });
     if (!res.ok) {
@@ -248,6 +255,7 @@ class ProductService {
   async deleteAttribute(id: string): Promise<{ success: boolean; message: string; deletedId: string }> {
     const res = await fetch(`${this.baseUrl}/attributes/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+      headers: authClient.getAuthHeaders(),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -260,7 +268,9 @@ class ProductService {
    * Get single source of truth sync status
    */
   async getSyncStatus(): Promise<SyncStatusResponse> {
-    const res = await fetch(`${this.baseUrl}/catalog/sync-status`);
+    const res = await fetch(`${this.baseUrl}/catalog/sync-status`, {
+      headers: authClient.getAuthHeaders(),
+    });
     if (!res.ok) {
       throw new Error('Failed to fetch sync status');
     }
@@ -273,7 +283,7 @@ class ProductService {
   async forceSync(action?: string, target?: string): Promise<{ success: boolean; message: string }> {
     const res = await fetch(`${this.baseUrl}/catalog/sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authClient.getAuthHeaders(),
       body: JSON.stringify({ action, target }),
     });
     if (!res.ok) {

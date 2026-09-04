@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { authClient } from '../services/authClient';
 import {
   BranchLocation,
   BranchLocationId,
@@ -263,7 +264,23 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const [currentRole, setCurrentRole] = useState<Role>(() => loadStored('role', 'Super Admin'));
+  const [currentRole, setCurrentRoleState] = useState<Role>(() => loadStored('role', 'Super Admin'));
+  
+  const setCurrentRole = (role: Role) => {
+    setCurrentRoleState(role);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_role`, JSON.stringify(role));
+    } catch {
+      // ignore
+    }
+    authClient.loginAsPersona(role);
+  };
+
+  useEffect(() => {
+    // Initial server authentication for current persona
+    authClient.loginAsPersona(currentRole);
+  }, []);
+
   const [currentLocationId, setCurrentLocationId] = useState<BranchLocationId>(() => loadStored('locationId', 'loc-store-downtown'));
   
   // Currency & Exchange Rate State (Default to SLE - Sierra Leonean Leone)

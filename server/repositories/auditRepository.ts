@@ -1,21 +1,20 @@
 import { DatabaseClient, getDatabaseClient } from '../db/client';
+import { AuthContext } from '../middleware/auth';
 
 /**
- * Audit Event Record
+ * Audit Event Record (SEC-001)
  * 
- * TRANSITIONAL ACTOR IDENTITY NOTE:
- * - Under DATA-001, actor_id, actor_name, and actor_role reflect the caller's reported identity.
- * - SECURITY NOTICE: Unauthenticated client role strings are NOT trusted security boundaries.
- * - Under SEC-001, actor_id will be authoritatively derived by server-side authentication
- *   middleware from validated session tokens / cryptographic claims, and actor_role will
- *   reflect the server-verified RBAC assignment.
+ * Server-Authoritative Identity:
+ * - Under SEC-001, actor_id, actor_name, and actor_role are derived by server-side
+ *   authentication middleware from validated session tokens / cryptographic claims.
+ * - Client-supplied identity fields are stripped and never trusted.
  */
 export interface AuditEventRecord {
   id: string;
   organization_id?: string;
-  actor_id?: string | null; // Authoritative user ID (to be enforced by SEC-001)
+  actor_id?: string | null; // Authoritative user ID enforced by SEC-001
   actor_name: string;
-  actor_role: string;       // Transitional until SEC-001 binds verified role
+  actor_role: string;       // Authoritatively bound role from SEC-001
   action: string;
   entity_type: string;
   entity_id: string;
@@ -39,8 +38,42 @@ export class AuditRepository {
     return client || this.defaultClient;
   }
 
-  async recordEvent(event: AuditEventRecord, client?: DatabaseClient): Promise<AuditEventRecord> {
+  /**
+   * Authoritatively record an audit event bound to a verified AuthContext.
+   */
+  async recordAuthorizedEvent(
+    arg1: any,
+    arg2: any,
+    client?: DatabaseClient
+  ): Promise<AuditEventRecord> {
+    // Support either (event, auth) or (auth, event)
+    const auth: AuthContext = (arg1 && arg1.userId) ? arg1 : arg2;
+    const event = (arg1 && arg1.userId) ? arg2 : arg1;
+
+    return this.recordEvent(
+      {
+        id: event.id,
+        action: event.action,
+        entity_type: event.entity_type || event.entityType,
+        entity_id: event.entity_id || event.entityId,
+        location_id: event.location_id || event.locationId || auth.locationId || null,
+        before_state: event.before_state || event.beforeState,
+        after_state: event.after_state || event.afterState,
+        metadata: event.metadata || event.details || {},
+        ip_address: event.ip_address || event.ipAddress || null,
+        severity: event.severity || 'Info',
+        organization_id: auth.organizationId,
+        actor_id: auth.userId,
+        actor_name: auth.email || auth.userId,
+        actor_role: auth.role,
+      },
+      client
+    );
+  }
+
+  async recordEvent(event: Partial<AuditEventRecord> & { action: string; entity_type?: string; entity_id?: string }, client?: DatabaseClient): Promise<AuditEventRecord> {
     const db = this.getClient(client);
+    const eventId = event.id || `aud_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const res = await db.query<AuditEventRecord>(
       `INSERT INTO audit_events (
         id, organization_id, actor_id, actor_name, actor_role, action,
@@ -49,14 +82,14 @@ export class AuditRepository {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
-        event.id,
+        eventId,
         event.organization_id || 'org_default',
         event.actor_id || null,
-        event.actor_name,
-        event.actor_role,
+        event.actor_name || 'System',
+        event.actor_role || 'System',
         event.action,
-        event.entity_type,
-        event.entity_id,
+        event.entity_type || 'system',
+        event.entity_id || 'system',
         event.location_id || null,
         event.before_state ? JSON.stringify(event.before_state) : null,
         event.after_state ? JSON.stringify(event.after_state) : null,

@@ -18,6 +18,7 @@
 - [ADR-008: POS Checkout Must Become Server-Authoritative and Transactional](#adr-008-pos-checkout-must-become-server-authoritative-and-transactional)
 - [ADR-009: Incremental, Task-Driven Engineering Lifecycle](#adr-009-incremental-task-driven-engineering-lifecycle)
 - [ADR-010: Relational PostgreSQL Schema & Dual-Driver Persistence Layer](#adr-010-relational-postgresql-schema--dual-driver-persistence-layer)
+- [ADR-011: Server-Side Cryptographic Authentication, RBAC & Multi-Tenant Boundaries](#adr-011-server-side-cryptographic-authentication-rbac--multi-tenant-boundaries)
 
 ---
 
@@ -125,4 +126,26 @@
 - **Consequences**:
   - Development and testing run instantly with embedded PGlite, while production enforces strict, uncompromised PostgreSQL ACID semantics.
   - Zero application downtime during migration: legacy endpoints coexist safely while authoritative database repositories are established.
+
+---
+
+### ADR-011: Server-Side Cryptographic Authentication, RBAC & Multi-Tenant Boundaries
+- **Date**: 2026-09-04
+- **Status**: `IMPLEMENTED (PENDING REVIEW)`
+- **Task Association**: `SEC-001`
+- **Context**: The Omnicore prototype historically relied on client-side React role checks, non-authoritative localStorage variables, and unvalidated request bodies. In retail and commerce systems, client-asserted identity or roles expose the system to unauthorized privilege escalation, cross-tenant data leakage, and fraudulent price or stock overrides.
+- **Decision**:
+  1. **Zero-Trust Client Boundary**: Client browsers are strictly untrusted execution environments. UI controls are for display only. Every mutation is independently authorized on the server.
+  2. **Cryptographic Credential Verification**: Passwords are saved as cryptographic hashes using PBKDF2 with HMAC-SHA512 (100,000 rounds, 32-byte salt, constant-time verification).
+  3. **Authoritative JWT Tokens**: RFC 7519 HMAC-SHA256 (HS256) session tokens issued and verified server-side. In production, fails closed if `JWT_SECRET` is missing, default, or under 32 characters.
+  4. **Database-Backed Revocation**: User logout and session invalidation persist revoked token identifiers (`jti`) in the `revoked_tokens` PostgreSQL table, supplemented by an in-memory verification cache.
+  5. **Granular Role-Based Access Control (RBAC)**: 6 defined system roles (`super_admin`, `store_manager`, `cashier`, `inventory_clerk`, `accountant`, `viewer`) mapped to 25+ granular permissions.
+  6. **Multi-Tenant Isolation**: `requireTenantAccess` middleware enforces strict organization boundaries. Tenants cannot view or modify resources outside their authorized `organizationId`. Only `super_admin` possesses cross-tenant supervisory access.
+  7. **Request Body Sanitization & Anti-Spoofing**: `sanitizeClientBody` actively strips client-supplied identity overrides (`userId`, `role`, `roles`, `isAdmin`, `organizationId`, `permissions`, `actorId`). Server-authoritative audit logs derive actor identity exclusively from `req.auth`.
+  8. **Rate Limiting Protection**: Sliding-window rate limiters defend authentication routes (`authRateLimiter`), administrative routes (`adminRateLimiter`), and sensitive catalog mutations against automated brute-force attacks.
+- **Consequences**:
+  - The application establishes a tamper-proof security perimeter.
+  - Anonymous and unauthorized callers are decisively rejected (HTTP 401 and HTTP 403).
+  - Diagnostic endpoints (/api/admin/db-status) require administrative credentials and never expose credentials or internal connection strings.
+
 

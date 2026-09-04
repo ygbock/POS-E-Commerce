@@ -15,7 +15,7 @@ ARCH-001 (APPROVED)
      ↓
 DATA-001 (READY FOR REVIEW)
      ↓
-SEC-001 (NOT STARTED)
+SEC-001 (READY FOR REVIEW)
      ↓
 INV-001 (NOT STARTED)
      ↓
@@ -108,19 +108,35 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 4: SEC-001 — Server-Side Authentication & RBAC Boundaries
-- **Status**: `NOT STARTED`
-- **Objective**: Implement secure server-side user authentication and role-based access control (RBAC) middleware.
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Establish a secure server-side authentication and authorization boundary for the POS + E-Commerce platform.
 - **Scope**:
-  - Implement token verification middleware (JWT / Session token).
-  - Define user roles (`Admin`, `StoreManager`, `Cashier`, `WarehouseStaff`, `Accountant`, `Customer`).
-  - Protect all `/api/*` endpoints with authentication and permission checks.
+  - Authentication verification & token handling (cryptographically signed HMAC-SHA256 JWT/tokens).
+  - Request identity extraction & AuthContext (`userId`, `organizationId`, `roles`, `permissions`, `locationId`).
+  - Server-side authorization middleware (`requireAuth`, `requirePermission`, `requireRole`, `requireTenantAccess`).
+  - Tenant/org isolation enforcement across resources and repositories.
+  - Role and permission matrix covering all roles and granular permissions.
+  - Protection of privileged endpoints (`/api/admin/db-status`, `/api/products` mutations, `/api/catalog/sync`, etc.).
+  - Centralized rate limiting on sensitive endpoints (`/api/auth/login`, administrative endpoints).
+  - Server-authoritative audit actor identity foundation.
+  - Runtime input validation schemas for security-sensitive boundaries.
+  - Security regression and verification test suite (`npm run test:security`).
 - **Dependencies**: `DATA-001`.
 - **Acceptance Criteria**:
-  - Unauthenticated requests to protected endpoints return HTTP 401 Unauthorized.
-  - Unauthorized roles return HTTP 403 Forbidden.
-  - Client state role indicators synchronised with verified server token payload.
-- **Security Requirements**: No trust in client-asserted role; cryptographic signature verification on tokens.
-- **Validation Requirements**: Positive and negative authentication unit tests for each role.
+  - [x] Unauthenticated requests to protected endpoints return HTTP 401 Unauthorized.
+  - [x] Unauthorized roles return HTTP 403 Forbidden.
+  - [x] Missing permissions return HTTP 403 Forbidden with required permission details.
+  - [x] Tenant access violation returns HTTP 403 TENANT_ACCESS_DENIED.
+  - [x] Password hashing using PBKDF2-HMAC-SHA512 (100,000 iterations, 32-byte salt).
+  - [x] JWT verification fails closed if expired, signature forged, or secret insecure.
+  - [x] Token revocation persists unique token IDs (`jti`) upon logout.
+  - [x] Input sanitization strips client-supplied role/tenant/identity spoofing fields.
+  - [x] Server-authoritative audit logs derive actor identity exclusively from server context (`req.auth`).
+  - [x] Sensitive endpoints (`/api/admin/db-status`, `/api/catalog/sync`, `/api/auth/login`) protected with rate limiters.
+  - [x] Diagnostic endpoint `/api/admin/db-status` never leaks credentials, passwords, or connection strings.
+  - [x] Complete security regression test suite passes (`npm run test:security` -> 17/17 passed).
+- **Security Requirements**: No trust in client-asserted role; cryptographic signature verification on tokens. Zero-trust client execution boundary.
+- **Validation Requirements**: Comprehensive automated security test suite (`npm run test:security`) covering all 17 security scenarios.
 
 ---
 

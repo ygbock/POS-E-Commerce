@@ -270,6 +270,55 @@ CommerceContext / localStorage
 
 ---
 
+## 10.2 Authentication & Security Boundary Architecture (SEC-001)
+
+Following the persistence baseline (DATA-001), SEC-001 establishes an authoritative server-side security boundary preventing client-side spoofing of identity, roles, and tenant data.
+
+### 1. Cryptographic Authentication & Token Lifecycle
+- **Password Hashing**: PBKDF2 with HMAC-SHA512 (100,000 rounds, 32-byte salt, constant-time verification).
+- **Session Tokens**: RFC 7519 HMAC-SHA256 (HS256) JWTs signed server-side using high-entropy `JWT_SECRET`.
+- **Authoritative Token Revocation**: Database-backed `revoked_tokens` table tracks revoked JWT identifiers (`jti`) upon logout, supported by an in-memory verification cache for sub-millisecond lookups.
+
+### 2. Standardized Middleware Chain
+All incoming requests pass through a strictly ordered defensive middleware pipeline:
+```text
+Client HTTP Request (with Authorization: Bearer <token>)
+  │
+  ▼
+1. Rate Limiting Middleware (authRateLimiter / adminRateLimiter / generalRateLimiter)
+  │ (Rejects abusive traffic with HTTP 429 Too Many Requests + Retry-After header)
+  ▼
+2. createAuthenticateMiddleware()
+  │ (Cryptographically validates signature, expiration, and revocation status; attaches req.auth)
+  ▼
+3. requireAuth()
+  │ (Rejects missing or invalid credentials with HTTP 401 Unauthorized)
+  ▼
+4. requirePermission(...) / requireRole(...)
+  │ (Rejects callers lacking required permissions or roles with HTTP 403 Forbidden)
+  ▼
+5. requireTenantAccess()
+  │ (Enforces organizationId boundary; prevents cross-tenant access with HTTP 403 TENANT_ACCESS_DENIED)
+  ▼
+6. sanitizeClientBody() / validateBody(...)
+  │ (Strips client-supplied role/tenant/userId keys to guarantee anti-spoofing)
+  ▼
+7. Service & Repository Layer (Authoritative business logic & PostgreSQL execution)
+  │ (Audit logs record authoritative req.auth.userId, req.auth.role, req.auth.organizationId)
+  ▼
+HTTP Response (Safe sanitized JSON; no credentials or stack traces leaked)
+```
+
+### 3. Server-Authoritative Audit Model
+Audit trails (`audit_logs` table and synchronization audit log) record:
+- `actorId`: Authoritatively retrieved from `req.auth.userId`.
+- `actorRole`: Authoritatively retrieved from `req.auth.role`.
+- `organizationId`: Authoritatively retrieved from `req.auth.organizationId`.
+Any client-supplied `userId`, `role`, `roles`, `isAdmin`, or `actorId` in request bodies is discarded before reaching business or auditing logic.
+
+
+---
+
 ## 11. Migration Roadmap
 
 To transition from the current state to the target architecture without breaking user workflows, changes will be executed incrementally:

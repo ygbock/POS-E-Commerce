@@ -5,6 +5,21 @@ import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_BRANDS } from './src/data
 import { Product, ProductVariant, CatalogAttribute } from './src/types/index.ts';
 import { getDatabaseClient } from './server/db/client.ts';
 import { runMigrations, getAppliedMigrations } from './server/db/migrator.ts';
+import { AuthService } from './server/services/authService.ts';
+import {
+  createAuthenticateMiddleware,
+  requireAuth,
+  requirePermission,
+  requireTenantAccess,
+} from './server/middleware/auth.ts';
+import { authRateLimiter, adminRateLimiter } from './server/middleware/rateLimiter.ts';
+import {
+  validateLoginPayload,
+  validateProductPayload,
+  validateBody,
+  sanitizeClientBody,
+} from './server/validation/index.ts';
+import { PERMISSIONS } from './server/auth/roles.ts';
 
 // Master Data Store (In-Memory Single Source of Truth for Product Service API)
 let masterProductsStore: Product[] = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
@@ -71,6 +86,9 @@ let syncAuditLogs: Array<{
   target: string;
   affectedModules: string[];
   status: 'SYNCED' | 'PENDING' | 'RECONCILED';
+  actorId?: string;
+  actorRole?: string;
+  organizationId?: string;
 }> = [
   {
     id: 'sync-101',
@@ -96,8 +114,11 @@ async function startServer() {
     error: null as string | null,
   };
 
+  let authService: AuthService;
+
   try {
     const db = getDatabaseClient();
+    authService = new AuthService(db);
     const ping = await db.query('SELECT 1 as val');
     if (ping.rows.length > 0) {
       dbStatus.connected = true;
@@ -107,10 +128,13 @@ async function startServer() {
       const applied = await getAppliedMigrations(db);
       dbStatus.migrationsApplied = Array.from(applied);
       dbStatus.version = Array.from(applied).pop() || '000';
+      // Seed default system users for role-based authentication (SEC-001)
+      await authService.seedDefaultUsers();
       console.log(`[Omnicore DB] Connected (${dbStatus.engine}). Active schema migrations: ${Array.from(applied).join(', ')}`);
     }
   } catch (dbErr: any) {
     dbStatus.error = dbErr.message || 'Database initialization error';
+    authService = new AuthService();
     if (isProd) {
       console.error('[Omnicore DB Fatal] Production PostgreSQL startup failed:', dbStatus.error);
       throw new Error(`[Omnicore DB Fatal] Production PostgreSQL startup failed: ${dbStatus.error}`);
@@ -121,11 +145,53 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // Central Cryptographic Authentication Extraction (SEC-001)
+  app.use('/api', createAuthenticateMiddleware(authService));
+
   // Request Logging Middleware for API Health Audit
   app.use('/api', (req, res, next) => {
     res.setHeader('X-Product-Service-Version', 'v2.4-Enterprise');
     res.setHeader('X-Catalog-Source-Of-Truth', 'Active');
     next();
+  });
+
+  // ------------------------------------------------------------------
+  // AUTHENTICATION & IDENTITY ENDPOINTS (SEC-001)
+  // ------------------------------------------------------------------
+  app.post('/api/auth/login', authRateLimiter, validateBody(validateLoginPayload), async (req: Request, res: Response) => {
+    try {
+      const result = await authService.login(req.body);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (err: any) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: err.message || 'Authentication failed',
+        },
+      });
+    }
+  });
+
+  app.get('/api/auth/me', requireAuth(), (req: Request, res: Response) => {
+    res.json({
+      success: true,
+      data: req.auth,
+    });
+  });
+
+  app.post('/api/auth/logout', requireAuth(), async (req: Request, res: Response) => {
+    const token = req.headers.authorization?.replace('Bearer ', '').trim();
+    if (token) {
+      await authService.logout(token);
+    }
+    res.json({
+      success: true,
+      message: 'Session successfully revoked',
+    });
   });
 
   // ------------------------------------------------------------------
@@ -185,27 +251,30 @@ async function startServer() {
     });
   });
 
-  app.get('/api/admin/db-status', (req: Request, res: Response) => {
-    // SEC-001 has not yet established authenticated admin RBAC:
-    // Do not expose unauthenticated diagnostic endpoint in production
-    if (isProd) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. Admin diagnostic endpoints are disabled in production pending authenticated RBAC (SEC-001).',
+  // Authenticated Admin Diagnostic Endpoint (SEC-001)
+  app.get(
+    '/api/admin/db-status',
+    adminRateLimiter,
+    requireAuth(),
+    requirePermission(PERMISSIONS.ADMIN_DIAGNOSTICS),
+    (req: Request, res: Response) => {
+      res.json({
+        success: true,
+        data: {
+          connected: dbStatus.connected,
+          engine: dbStatus.engine,
+          schemaVersion: dbStatus.version,
+          migrationsApplied: dbStatus.migrationsApplied,
+          error: dbStatus.error,
+          caller: {
+            userId: req.auth?.userId,
+            role: req.auth?.role,
+            organizationId: req.auth?.organizationId,
+          },
+        },
       });
     }
-
-    res.json({
-      success: true,
-      data: {
-        connected: dbStatus.connected,
-        engine: dbStatus.engine,
-        schemaVersion: dbStatus.version,
-        migrationsApplied: dbStatus.migrationsApplied,
-        error: dbStatus.error,
-      },
-    });
-  });
+  );
 
   app.get('/api/catalog/sync-status', (req: Request, res: Response) => {
     const totalVariants = masterProductsStore.reduce((sum, p) => sum + (p.variants?.length || 0), 0);
@@ -229,22 +298,32 @@ async function startServer() {
     });
   });
 
-  app.post('/api/catalog/sync', (req: Request, res: Response) => {
-    const logEntry = {
-      id: `sync-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      action: req.body.action || 'CATALOG_FORCE_SYNC',
-      target: req.body.target || 'All Modules',
-      affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
-      status: 'SYNCED' as const,
-    };
-    syncAuditLogs.push(logEntry);
-    res.json({
-      success: true,
-      message: 'Master product catalog successfully synchronized across POS, E-Commerce, and Inventory modules.',
-      auditLog: logEntry,
-    });
-  });
+  app.post(
+    '/api/catalog/sync',
+    adminRateLimiter,
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const logEntry = {
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: req.body.action || 'CATALOG_FORCE_SYNC',
+        target: req.body.target || 'All Modules',
+        affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
+        status: 'SYNCED' as const,
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      };
+      syncAuditLogs.push(logEntry);
+      res.json({
+        success: true,
+        message: 'Master product catalog successfully synchronized across POS, E-Commerce, and Inventory modules.',
+        auditLog: logEntry,
+      });
+    }
+  );
 
   // ------------------------------------------------------------------
   // 2. MASTER PRODUCTS CRUD API
@@ -310,121 +389,150 @@ async function startServer() {
   });
 
   // POST /api/products - Create new product
-  app.post('/api/products', (req: Request, res: Response) => {
-    const body = req.body;
-    if (!body.name) {
-      return res.status(400).json({ success: false, error: 'Product name is required' });
-    }
+  app.post(
+    '/api/products',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_CREATE),
+    requireTenantAccess(),
+    validateBody(validateProductPayload),
+    (req: Request, res: Response) => {
+      const body = req.body;
+      if (!body.name) {
+        return res.status(400).json({ success: false, error: 'Product name is required' });
+      }
 
-    const id = body.id || `prod-${Date.now().toString().slice(-6)}`;
-    const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const id = body.id || `prod-${Date.now().toString().slice(-6)}`;
+      const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-    const newProduct: Product = {
-      id,
-      name: body.name,
-      slug,
-      brand: body.brand || 'Generic',
-      category: body.category || 'Electronics',
-      subcategory: body.subcategory || 'General',
-      description: body.description || '',
-      shortDescription: body.shortDescription || body.name,
-      unit: body.unit || 'pcs',
-      productType: body.productType || 'standard',
-      status: body.status || 'active',
-      channels: body.channels || { pos: true, ecommerce: true, wholesale: false },
-      taxRate: body.taxRate ?? 10,
-      rating: body.rating || 5.0,
-      reviewCount: body.reviewCount || 0,
-      tags: body.tags || [],
-      images: body.images || ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80'],
-      variants: body.variants && body.variants.length > 0 ? body.variants : [
-        {
-          id: `var-${id}-default`,
-          sku: body.sku || `SKU-${id.toUpperCase()}`,
-          barcode: body.barcode || `8809${Math.floor(10000000 + Math.random() * 90000000)}`,
-          name: 'Default Variant',
-          attributes: { Standard: 'Default' },
-          costPrice: body.costPrice || 50,
-          retailPrice: body.retailPrice || 100,
-          wholesalePrice: body.wholesalePrice || 80,
-          memberPrice: body.memberPrice || 90,
-          minSellingPrice: body.minSellingPrice || 70,
-          stockByLocation: body.stockByLocation || {
-            'loc-main-wh': 50,
-            'loc-store-downtown': 25,
-            'loc-branch-north': 15,
-            'loc-dist-center': 100,
+      const newProduct: Product = {
+        id,
+        name: body.name,
+        slug,
+        brand: body.brand || 'Generic',
+        category: body.category || 'Electronics',
+        subcategory: body.subcategory || 'General',
+        description: body.description || '',
+        shortDescription: body.shortDescription || body.name,
+        unit: body.unit || 'pcs',
+        productType: body.productType || 'standard',
+        status: body.status || 'active',
+        channels: body.channels || { pos: true, ecommerce: true, wholesale: false },
+        taxRate: body.taxRate ?? 10,
+        rating: body.rating || 5.0,
+        reviewCount: body.reviewCount || 0,
+        tags: body.tags || [],
+        images: body.images || ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80'],
+        variants: body.variants && body.variants.length > 0 ? body.variants : [
+          {
+            id: `var-${id}-default`,
+            sku: body.sku || `SKU-${id.toUpperCase()}`,
+            barcode: body.barcode || `8809${Math.floor(10000000 + Math.random() * 90000000)}`,
+            name: 'Default Variant',
+            attributes: { Standard: 'Default' },
+            costPrice: body.costPrice || 50,
+            retailPrice: body.retailPrice || 100,
+            wholesalePrice: body.wholesalePrice || 80,
+            memberPrice: body.memberPrice || 90,
+            minSellingPrice: body.minSellingPrice || 70,
+            stockByLocation: body.stockByLocation || {
+              'loc-main-wh': 50,
+              'loc-store-downtown': 25,
+              'loc-branch-north': 15,
+              'loc-dist-center': 100,
+            },
+            lowStockThreshold: body.lowStockThreshold || 10,
           },
-          lowStockThreshold: body.lowStockThreshold || 10,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
-    masterProductsStore.unshift(newProduct);
+      masterProductsStore.unshift(newProduct);
 
-    syncAuditLogs.push({
-      id: `sync-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      action: 'CREATE_PRODUCT',
-      target: `Product: ${newProduct.name} (${newProduct.id})`,
-      affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
-      status: 'SYNCED',
-    });
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'CREATE_PRODUCT',
+        target: `Product: ${newProduct.name} (${newProduct.id})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
 
-    res.status(201).json({ success: true, message: 'Product created successfully in Master Catalog', data: newProduct });
-  });
+      res.status(201).json({ success: true, message: 'Product created successfully in Master Catalog', data: newProduct });
+    }
+  );
 
   // PUT /api/products/:id - Update product
-  app.put('/api/products/:id', (req: Request, res: Response) => {
-    const index = masterProductsStore.findIndex(p => p.id === req.params.id);
-    if (index === -1) {
-      return res.status(404).json({ success: false, error: 'Product not found in master catalog' });
+  app.put(
+    '/api/products/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
+    requireTenantAccess(),
+    validateBody((b: any) => validateProductPayload(b, true)),
+    (req: Request, res: Response) => {
+      const index = masterProductsStore.findIndex(p => p.id === req.params.id);
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Product not found in master catalog' });
+      }
+
+      const existing = masterProductsStore[index];
+      const updated: Product = {
+        ...existing,
+        ...req.body,
+        id: existing.id, // Immutable ID
+        updatedAt: new Date().toISOString(),
+      };
+
+      masterProductsStore[index] = updated;
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'UPDATE_PRODUCT',
+        target: `Product: ${updated.name} (${updated.id})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.json({ success: true, message: 'Master Product updated successfully', data: updated });
     }
-
-    const existing = masterProductsStore[index];
-    const updated: Product = {
-      ...existing,
-      ...req.body,
-      id: existing.id, // Immutable ID
-      updatedAt: new Date().toISOString(),
-    };
-
-    masterProductsStore[index] = updated;
-
-    syncAuditLogs.push({
-      id: `sync-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      action: 'UPDATE_PRODUCT',
-      target: `Product: ${updated.name} (${updated.id})`,
-      affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
-      status: 'SYNCED',
-    });
-
-    res.json({ success: true, message: 'Master Product updated successfully', data: updated });
-  });
+  );
 
   // DELETE /api/products/:id - Delete product
-  app.delete('/api/products/:id', (req: Request, res: Response) => {
-    const index = masterProductsStore.findIndex(p => p.id === req.params.id);
-    if (index === -1) {
-      return res.status(404).json({ success: false, error: 'Product not found' });
+  app.delete(
+    '/api/products/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_DELETE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const index = masterProductsStore.findIndex(p => p.id === req.params.id);
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Product not found' });
+      }
+
+      const removed = masterProductsStore.splice(index, 1)[0];
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'DELETE_PRODUCT',
+        target: `Product: ${removed.name} (${removed.id})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.json({ success: true, message: 'Product deleted from Master Catalog', deletedId: req.params.id });
     }
-
-    const removed = masterProductsStore.splice(index, 1)[0];
-
-    syncAuditLogs.push({
-      id: `sync-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      action: 'DELETE_PRODUCT',
-      target: `Product: ${removed.name} (${removed.id})`,
-      affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
-      status: 'SYNCED',
-    });
-
-    res.json({ success: true, message: 'Product deleted from Master Catalog', deletedId: req.params.id });
-  });
+  );
 
   // ------------------------------------------------------------------
   // 3. VARIANTS & SKU MANAGEMENT CRUD API
@@ -440,86 +548,132 @@ async function startServer() {
   });
 
   // POST /api/products/:productId/variants - Add new variant
-  app.post('/api/products/:productId/variants', (req: Request, res: Response) => {
-    const product = masterProductsStore.find(p => p.id === req.params.productId);
-    if (!product) {
-      return res.status(404).json({ success: false, error: 'Product not found' });
+  app.post(
+    '/api/products/:productId/variants',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_CREATE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const product = masterProductsStore.find(p => p.id === req.params.productId);
+      if (!product) {
+        return res.status(404).json({ success: false, error: 'Product not found' });
+      }
+
+      const body = sanitizeClientBody(req.body);
+      const variantId = (body as any).id || `var-${Date.now().toString().slice(-6)}`;
+      const newVariant: ProductVariant = {
+        id: variantId,
+        sku: (body as any).sku || `SKU-${product.brand.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+        barcode: (body as any).barcode || `8809${Math.floor(10000000 + Math.random() * 90000000)}`,
+        name: (body as any).name || 'New Variant',
+        attributes: (body as any).attributes || {},
+        costPrice: Number((body as any).costPrice) || 50,
+        retailPrice: Number((body as any).retailPrice) || 100,
+        wholesalePrice: Number((body as any).wholesalePrice) || 80,
+        memberPrice: Number((body as any).memberPrice) || 90,
+        minSellingPrice: Number((body as any).minSellingPrice) || 70,
+        stockByLocation: (body as any).stockByLocation || { 'loc-main-wh': 20, 'loc-store-downtown': 10 },
+        lowStockThreshold: Number((body as any).lowStockThreshold) || 5,
+        image: (body as any).image,
+      };
+
+      product.variants.push(newVariant);
+      product.updatedAt = new Date().toISOString();
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'CREATE_VARIANT',
+        target: `SKU: ${newVariant.sku} (${product.name})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.status(201).json({ success: true, message: 'Variant SKU created', data: newVariant });
     }
-
-    const body = req.body;
-    const variantId = body.id || `var-${Date.now().toString().slice(-6)}`;
-    const newVariant: ProductVariant = {
-      id: variantId,
-      sku: body.sku || `SKU-${product.brand.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-      barcode: body.barcode || `8809${Math.floor(10000000 + Math.random() * 90000000)}`,
-      name: body.name || 'New Variant',
-      attributes: body.attributes || {},
-      costPrice: body.costPrice || 50,
-      retailPrice: body.retailPrice || 100,
-      wholesalePrice: body.wholesalePrice || 80,
-      memberPrice: body.memberPrice || 90,
-      minSellingPrice: body.minSellingPrice || 70,
-      stockByLocation: body.stockByLocation || { 'loc-main-wh': 20, 'loc-store-downtown': 10 },
-      lowStockThreshold: body.lowStockThreshold || 5,
-      image: body.image,
-    };
-
-    product.variants.push(newVariant);
-    product.updatedAt = new Date().toISOString();
-
-    syncAuditLogs.push({
-      id: `sync-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      action: 'CREATE_VARIANT',
-      target: `SKU: ${newVariant.sku} (${product.name})`,
-      affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
-      status: 'SYNCED',
-    });
-
-    res.status(201).json({ success: true, message: 'Variant SKU created', data: newVariant });
-  });
+  );
 
   // PUT /api/products/:productId/variants/:variantId - Update variant
-  app.put('/api/products/:productId/variants/:variantId', (req: Request, res: Response) => {
-    const product = masterProductsStore.find(p => p.id === req.params.productId);
-    if (!product) {
-      return res.status(404).json({ success: false, error: 'Product not found' });
+  app.put(
+    '/api/products/:productId/variants/:variantId',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const product = masterProductsStore.find(p => p.id === req.params.productId);
+      if (!product) {
+        return res.status(404).json({ success: false, error: 'Product not found' });
+      }
+
+      const varIndex = product.variants.findIndex(v => v.id === req.params.variantId);
+      if (varIndex === -1) {
+        return res.status(404).json({ success: false, error: 'Variant not found' });
+      }
+
+      const existing = product.variants[varIndex];
+      const sanitizedBody = sanitizeClientBody(req.body);
+      const updated = { ...existing, ...sanitizedBody, id: existing.id };
+      product.variants[varIndex] = updated;
+      product.updatedAt = new Date().toISOString();
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'UPDATE_VARIANT',
+        target: `SKU: ${updated.sku} (${product.name})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.json({ success: true, message: 'Variant SKU updated', data: updated });
     }
-
-    const varIndex = product.variants.findIndex(v => v.id === req.params.variantId);
-    if (varIndex === -1) {
-      return res.status(404).json({ success: false, error: 'Variant not found' });
-    }
-
-    const existing = product.variants[varIndex];
-    const updated = { ...existing, ...req.body, id: existing.id };
-    product.variants[varIndex] = updated;
-    product.updatedAt = new Date().toISOString();
-
-    res.json({ success: true, message: 'Variant SKU updated', data: updated });
-  });
+  );
 
   // DELETE /api/products/:productId/variants/:variantId - Delete variant
-  app.delete('/api/products/:productId/variants/:variantId', (req: Request, res: Response) => {
-    const product = masterProductsStore.find(p => p.id === req.params.productId);
-    if (!product) {
-      return res.status(404).json({ success: false, error: 'Product not found' });
+  app.delete(
+    '/api/products/:productId/variants/:variantId',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_DELETE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const product = masterProductsStore.find(p => p.id === req.params.productId);
+      if (!product) {
+        return res.status(404).json({ success: false, error: 'Product not found' });
+      }
+
+      if (product.variants.length <= 1) {
+        return res.status(400).json({ success: false, error: 'Cannot delete the only variant of a master product' });
+      }
+
+      const varIndex = product.variants.findIndex(v => v.id === req.params.variantId);
+      if (varIndex === -1) {
+        return res.status(404).json({ success: false, error: 'Variant not found' });
+      }
+
+      const removed = product.variants.splice(varIndex, 1)[0];
+      product.updatedAt = new Date().toISOString();
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'DELETE_VARIANT',
+        target: `SKU: ${removed.sku} (${product.name})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront', 'Multi-Branch Inventory'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.json({ success: true, message: 'Variant SKU removed', deletedVariantId: removed.id });
     }
-
-    if (product.variants.length <= 1) {
-      return res.status(400).json({ success: false, error: 'Cannot delete the only variant of a master product' });
-    }
-
-    const varIndex = product.variants.findIndex(v => v.id === req.params.variantId);
-    if (varIndex === -1) {
-      return res.status(404).json({ success: false, error: 'Variant not found' });
-    }
-
-    const removed = product.variants.splice(varIndex, 1)[0];
-    product.updatedAt = new Date().toISOString();
-
-    res.json({ success: true, message: 'Variant SKU removed', deletedVariantId: removed.id });
-  });
+  );
 
   // GET /api/skus/lookup/:sku - Unified SKU / Barcode scanner lookup
   app.get('/api/skus/lookup/:sku', (req: Request, res: Response) => {
@@ -565,51 +719,108 @@ async function startServer() {
   });
 
   // POST /api/attributes - Create new attribute
-  app.post('/api/attributes', (req: Request, res: Response) => {
-    const body = req.body;
-    if (!body.name) {
-      return res.status(400).json({ success: false, error: 'Attribute name is required' });
+  app.post(
+    '/api/attributes',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_CREATE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const sanitizedBody = sanitizeClientBody(req.body);
+      if (!(sanitizedBody as any).name) {
+        return res.status(400).json({ success: false, error: 'Attribute name is required' });
+      }
+
+      const id = (sanitizedBody as any).id || `attr-${Date.now().toString().slice(-6)}`;
+      const newAttr: CatalogAttribute = {
+        id,
+        name: (sanitizedBody as any).name,
+        code: (sanitizedBody as any).code || (sanitizedBody as any).name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        type: (sanitizedBody as any).type || 'select',
+        options: (sanitizedBody as any).options || [],
+        required: (sanitizedBody as any).required || false,
+        description: (sanitizedBody as any).description || '',
+        usageCount: 0,
+      };
+
+      masterAttributesStore.push(newAttr);
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'CREATE_ATTRIBUTE',
+        target: `Attr: ${newAttr.name} (${newAttr.code})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.status(201).json({ success: true, message: 'Catalog Attribute created', data: newAttr });
     }
-
-    const id = body.id || `attr-${Date.now().toString().slice(-6)}`;
-    const newAttr: CatalogAttribute = {
-      id,
-      name: body.name,
-      code: body.code || body.name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
-      type: body.type || 'select',
-      options: body.options || [],
-      required: body.required || false,
-      description: body.description || '',
-      usageCount: 0,
-    };
-
-    masterAttributesStore.push(newAttr);
-    res.status(201).json({ success: true, message: 'Catalog Attribute created', data: newAttr });
-  });
+  );
 
   // PUT /api/attributes/:id - Update attribute options
-  app.put('/api/attributes/:id', (req: Request, res: Response) => {
-    const index = masterAttributesStore.findIndex(a => a.id === req.params.id);
-    if (index === -1) {
-      return res.status(404).json({ success: false, error: 'Attribute not found' });
+  app.put(
+    '/api/attributes/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const index = masterAttributesStore.findIndex(a => a.id === req.params.id);
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Attribute not found' });
+      }
+
+      const sanitizedBody = sanitizeClientBody(req.body);
+      const updated = { ...masterAttributesStore[index], ...sanitizedBody, id: masterAttributesStore[index].id };
+      masterAttributesStore[index] = updated;
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'UPDATE_ATTRIBUTE',
+        target: `Attr: ${updated.name} (${updated.id})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.json({ success: true, message: 'Attribute updated', data: updated });
     }
-
-    const updated = { ...masterAttributesStore[index], ...req.body, id: masterAttributesStore[index].id };
-    masterAttributesStore[index] = updated;
-
-    res.json({ success: true, message: 'Attribute updated', data: updated });
-  });
+  );
 
   // DELETE /api/attributes/:id - Remove attribute
-  app.delete('/api/attributes/:id', (req: Request, res: Response) => {
-    const index = masterAttributesStore.findIndex(a => a.id === req.params.id);
-    if (index === -1) {
-      return res.status(404).json({ success: false, error: 'Attribute not found' });
-    }
+  app.delete(
+    '/api/attributes/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PRODUCTS_DELETE),
+    requireTenantAccess(),
+    (req: Request, res: Response) => {
+      const index = masterAttributesStore.findIndex(a => a.id === req.params.id);
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Attribute not found' });
+      }
 
-    masterAttributesStore.splice(index, 1);
-    res.json({ success: true, message: 'Attribute removed', deletedId: req.params.id });
-  });
+      const removed = masterAttributesStore.splice(index, 1)[0];
+
+      syncAuditLogs.push({
+        id: `sync-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        action: 'DELETE_ATTRIBUTE',
+        target: `Attr: ${removed.name} (${removed.id})`,
+        affectedModules: ['POS Terminal', 'E-commerce Storefront'],
+        status: 'SYNCED',
+        actorId: req.auth!.userId,
+        actorRole: req.auth!.role,
+        organizationId: req.auth!.organizationId,
+      });
+
+      res.json({ success: true, message: 'Attribute removed', deletedId: req.params.id });
+    }
+  );
 
   // ------------------------------------------------------------------
   // 5. MASTER CATEGORIES & BRANDS METADATA ENDPOINTS
