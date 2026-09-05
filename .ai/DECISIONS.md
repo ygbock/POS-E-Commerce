@@ -143,6 +143,8 @@
   6. **Multi-Tenant Isolation**: `requireTenantAccess` middleware enforces strict organization boundaries. Tenants cannot view or modify resources outside their authorized `organizationId`. Only `super_admin` possesses cross-tenant supervisory access.
   7. **Request Body Sanitization & Anti-Spoofing**: `sanitizeClientBody` actively strips client-supplied identity overrides (`userId`, `role`, `roles`, `isAdmin`, `organizationId`, `permissions`, `actorId`). Server-authoritative audit logs derive actor identity exclusively from `req.auth`.
   8. **Rate Limiting Protection**: Sliding-window rate limiters defend authentication routes (`authRateLimiter`), administrative routes (`adminRateLimiter`), and sensitive catalog mutations against automated brute-force attacks.
+  9. **Defensive Error Sanitization**: Centralized error middleware ensures internal server errors (HTTP 500) never leak database credentials, connection strings, or stack traces.
+  10. **Real HTTP Integration Verification**: All security controls are verified via real HTTP server calls in `tests/auth_security.test.ts` (18 automated tests) verifying authentic network boundaries.
 - **Consequences**:
   - The application establishes a tamper-proof security perimeter.
   - Anonymous and unauthorized callers are decisively rejected (HTTP 401 and HTTP 403).

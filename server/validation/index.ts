@@ -46,7 +46,15 @@ const FORBIDDEN_CLIENT_KEYS = [
 ];
 
 const DANGEROUS_PROTO_KEYS = ['__proto__', 'constructor', 'prototype'];
-const IMMUTABLE_RECORD_KEYS = ['id', 'created_at', 'updated_at', 'createdAt', 'updatedAt'];
+const IMMUTABLE_RECORD_KEYS = [
+  'id',
+  'created_at',
+  'updated_at',
+  'createdAt',
+  'updatedAt',
+  'organization_id',
+  'organizationId',
+];
 
 export function stripImmutableFields<T extends Record<string, any>>(obj: T): Partial<T> {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;

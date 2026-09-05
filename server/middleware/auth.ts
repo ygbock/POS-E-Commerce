@@ -188,7 +188,7 @@ export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => stri
 
     const targetOrgId = getOrgIdFromRequest
       ? getOrgIdFromRequest(req)
-      : (req.params.orgId || req.params.organizationId || req.query.orgId || req.query.organizationId || (req.body && (req.body.organization_id || req.body.organizationId)));
+      : (req.params.orgId || req.params.organizationId || (req.query && (req.query.orgId || req.query.organizationId)) as string);
 
     // If request explicitly targets a different organization, forbid it
     if (targetOrgId && targetOrgId !== req.auth.organizationId) {

@@ -10,11 +10,14 @@ import { UserRole, getPermissionsForRole } from './roles';
 
 export interface TokenClaims {
   sub: string;            // User ID
+  userId?: string;        // User ID alias
   email: string;          // User Email
   orgId: string;          // Organization ID (Tenant Isolation Boundary)
+  organizationId?: string;// Organization ID alias
   role: UserRole;         // Server-authoritative role
   permissions: string[];  // Resolved permissions
   locId?: string | null;  // Branch location ID
+  locationId?: string | null;
   jti: string;            // Unique token identifier for revocation
   iat: number;            // Issued at (epoch seconds)
   exp: number;            // Expiration (epoch seconds)
@@ -73,7 +76,7 @@ function base64UrlDecode(str: string): string {
 export function signToken(
   params: {
     userId: string;
-    email: string;
+    email?: string;
     organizationId: string;
     role: UserRole;
     permissions?: string[];
@@ -85,6 +88,7 @@ export function signToken(
   const secret = customSecret || getJwtSecret();
   const now = Math.floor(Date.now() / 1000);
   const expiry = now + (params.expiresInSeconds || parseInt(process.env.JWT_EXPIRY || '86400', 10));
+  const email = params.email || `${params.userId}@omnicore.local`;
 
   const permissions = params.permissions && params.permissions.length > 0
     ? params.permissions
@@ -97,11 +101,14 @@ export function signToken(
 
   const payload: TokenClaims = {
     sub: params.userId,
+    userId: params.userId,
     email: params.email,
     orgId: params.organizationId,
+    organizationId: params.organizationId,
     role: params.role,
     permissions,
     locId: params.locationId || null,
+    locationId: params.locationId || null,
     jti: `tok_${crypto.randomBytes(16).toString('hex')}`,
     iat: now,
     exp: expiry,

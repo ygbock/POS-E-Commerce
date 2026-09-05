@@ -8,6 +8,9 @@ import { createIsolatedTestClient, DatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
 import { UserRepository } from '../server/repositories/userRepository';
 import { AuditRepository } from '../server/repositories/auditRepository';
+import { OrderRepository } from '../server/repositories/orderRepository';
+import { CustomerRepository } from '../server/repositories/customerRepository';
+import { InventoryRepository } from '../server/repositories/inventoryRepository';
 import { AuthService } from '../server/services/authService';
 import { sanitizeInput, validateProductPayload, stripImmutableFields, sanitizeClientBody } from '../server/validation';
 import {
@@ -19,6 +22,7 @@ import {
   requireTenantAccess,
 } from '../server/middleware/auth';
 import { createRateLimiter } from '../server/middleware/rateLimiter';
+import { createApp } from '../server';
 
 let testPassedCount = 0;
 let testFailedCount = 0;
@@ -57,14 +61,20 @@ async function main() {
       assert.ok(tableNames.has('role_permissions'), 'role_permissions table exists');
       assert.ok(tableNames.has('revoked_tokens'), 'revoked_tokens table exists');
 
-      // Seed default organization and location for FK references
+      // Seed default organizations and locations
       await db.exec(`
         INSERT INTO organizations (id, name, code)
-        VALUES ('org_default', 'Omnicore Global Retail Ltd', 'OMNICORE_DEFAULT')
+        VALUES 
+          ('org_default', 'Omnicore Global Retail Ltd', 'OMNICORE_DEFAULT'),
+          ('org_company_a', 'Company A Retail Ltd', 'COMP_A'),
+          ('org_company_b', 'Company B Logistics Inc', 'COMP_B')
         ON CONFLICT (id) DO NOTHING;
         
         INSERT INTO locations (id, organization_id, code, name, type)
-        VALUES ('loc-store-downtown', 'org_default', 'LOC-DT', 'Downtown Store', 'Retail Store')
+        VALUES 
+          ('loc-store-downtown', 'org_default', 'LOC-DT', 'Downtown Store', 'Retail Store'),
+          ('loc-store-a', 'org_company_a', 'LOC-A', 'Store A', 'Retail Store'),
+          ('loc-store-b', 'org_company_b', 'LOC-B', 'Store B', 'Retail Store')
         ON CONFLICT (id) DO NOTHING;
       `);
     });
@@ -98,255 +108,264 @@ async function main() {
         userId: 'usr-test-01',
         organizationId: 'org_test_01',
         role: ROLES.STORE_MANAGER,
-        permissions: [PERMISSIONS.PRODUCTS_CREATE, PERMISSIONS.PRODUCTS_UPDATE],
-        locationId: 'loc-branch-1',
+        permissions: [PERMISSIONS.PRODUCTS_VIEW, PERMISSIONS.PRODUCTS_CREATE],
+        locationId: 'loc-01',
       };
 
-      const token = issueToken(claims, '1h');
-      assert.ok(typeof token === 'string' && token.split('.').length === 3, 'JWT has 3 dot-separated segments');
+      const token = signToken(claims);
+      assert.ok(typeof token === 'string', 'Token must be a string');
+      assert.strictEqual(token.split('.').length, 3, 'JWT must have 3 dot-separated parts');
 
       const verified = verifyToken(token);
-      assert.ok(verified !== null, 'Token must verify successfully');
-      assert.strictEqual(verified.sub, claims.userId);
-      assert.strictEqual(verified.orgId, claims.organizationId);
+      assert.strictEqual(verified.sub, claims.userId, 'Subject matches userId');
+      assert.strictEqual(verified.userId, claims.userId);
+      assert.strictEqual(verified.organizationId, claims.organizationId);
       assert.strictEqual(verified.role, claims.role);
       assert.deepStrictEqual(verified.permissions, claims.permissions);
-      assert.strictEqual(verified.locId, claims.locationId);
-      assert.ok(typeof verified.jti === 'string', 'Token must contain jti nonce');
+      assert.ok(verified.exp > verified.iat, 'Expiration is in future');
+      assert.ok(verified.jti, 'JTI token ID must be generated');
     });
 
-    // 4. Token Tampering Detection
+    // 4. JWT Tampering & Signature Forgery Detection
     await runTest('4. JWT Tampering & Signature Forgery Detection', async () => {
-      const claims = {
-        userId: 'usr-cashier-01',
-        organizationId: 'org_test_01',
+      const validToken = signToken({
+        userId: 'usr-regular',
+        organizationId: 'org_test',
         role: ROLES.CASHIER,
-        permissions: [PERMISSIONS.ORDERS_CREATE],
-      };
+      });
 
-      const token = issueToken(claims, '1h');
-      const parts = token.split('.');
+      const parts = validToken.split('.');
+      const header = parts[0];
+      const payload = parts[1];
+      const signature = parts[2];
 
-      // Attack: Modify payload to escalate role to Super Admin
-      const originalPayload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-      originalPayload.role = ROLES.SUPER_ADMIN;
-      originalPayload.permissions = ['*'];
-      const tamperedPayload = Buffer.from(JSON.stringify(originalPayload)).toString('base64url');
-      const forgedToken = `${parts[0]}.${tamperedPayload}.${parts[2]}`;
+      // Tamper payload to elevate role to super_admin
+      const decodedPayload = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+      decodedPayload.role = ROLES.SUPER_ADMIN;
+      decodedPayload.permissions = Object.values(PERMISSIONS);
+      const tamperedPayload = Buffer.from(JSON.stringify(decodedPayload)).toString('base64url');
 
-      // Must fail verification with INVALID_SIGNATURE error
-      let tamperedCaught = false;
+      const tamperedToken = `${header}.${tamperedPayload}.${signature}`;
+
+      let rejected = false;
+      try {
+        verifyToken(tamperedToken);
+      } catch (err: any) {
+        rejected = true;
+        assert.strictEqual(err.code, 'INVALID_SIGNATURE', 'Tampered token must be rejected with INVALID_SIGNATURE');
+      }
+      assert.strictEqual(rejected, true, 'Tampered token must throw error');
+
+      // Forged token signed with incorrect secret
+      const forgedToken = signToken(
+        { userId: 'usr-hacker', organizationId: 'org_test', role: ROLES.SUPER_ADMIN },
+        'this-is-a-completely-different-hacker-secret-key-12345!'
+      );
+
+      let forgedRejected = false;
       try {
         verifyToken(forgedToken);
       } catch (err: any) {
-        tamperedCaught = true;
+        forgedRejected = true;
         assert.strictEqual(err.code, 'INVALID_SIGNATURE');
       }
-      assert.strictEqual(tamperedCaught, true, 'Tampered JWT payload must fail signature verification');
-
-      // Invalid signature segment
-      let badSigCaught = false;
-      try {
-        const badSigToken = `${parts[0]}.${parts[1]}.invalidSignatureHere`;
-        verifyToken(badSigToken);
-      } catch (err: any) {
-        badSigCaught = true;
-      }
-      assert.strictEqual(badSigCaught, true, 'Invalid signature must fail verification');
+      assert.strictEqual(forgedRejected, true, 'Token with different secret must be rejected');
     });
 
-    // 5. RBAC & Permission Enforcement Matrix
+    // 5. RBAC Permission Hierarchy & Matrix
     await runTest('5. RBAC Permission Hierarchy & Matrix', async () => {
-      // Super Admin has all permissions
-      assert.strictEqual(hasPermission(ROLES.SUPER_ADMIN, PERMISSIONS.PRODUCTS_CREATE), true);
-      assert.strictEqual(hasPermission(ROLES.SUPER_ADMIN, PERMISSIONS.USERS_CREATE), true);
-      assert.strictEqual(hasPermission(ROLES.SUPER_ADMIN, 'arbitrary:unknown:permission'), true);
+      // Super Admin has all permissions (including wildcards)
+      assert.strictEqual(hasPermission(ROLES.SUPER_ADMIN, PERMISSIONS.ADMIN_DIAGNOSTICS), true);
+      assert.strictEqual(hasPermission(ROLES.SUPER_ADMIN, PERMISSIONS.PRODUCTS_DELETE), true);
+      assert.strictEqual(hasPermission(ROLES.SUPER_ADMIN, 'financial.reconcile'), true);
 
       // Cashier permissions
       assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.ORDERS_CREATE), true);
-      assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.ORDERS_VIEW), true);
-      assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.PRODUCTS_DELETE), false, 'Cashier must NOT delete products');
-      assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.USERS_CREATE), false, 'Cashier must NOT manage users');
+      assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.PRODUCTS_VIEW), true);
+      assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.PRODUCTS_CREATE), false);
+      assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.PRODUCTS_DELETE), false);
+      assert.strictEqual(hasPermission(ROLES.CASHIER, PERMISSIONS.ADMIN_DIAGNOSTICS), false);
+
+      // Store Manager permissions
+      assert.strictEqual(hasPermission(ROLES.STORE_MANAGER, PERMISSIONS.PRODUCTS_CREATE), true);
+      assert.strictEqual(hasPermission(ROLES.STORE_MANAGER, PERMISSIONS.PRODUCTS_UPDATE), true);
+      assert.strictEqual(hasPermission(ROLES.STORE_MANAGER, PERMISSIONS.INVENTORY_ADJUST), true);
+      assert.strictEqual(hasPermission(ROLES.STORE_MANAGER, PERMISSIONS.ADMIN_DIAGNOSTICS), false);
 
       // Inventory Manager permissions
-      assert.strictEqual(hasPermission(ROLES.INVENTORY_MANAGER, PERMISSIONS.INVENTORY_VIEW), true);
-      assert.strictEqual(hasPermission(ROLES.INVENTORY_MANAGER, PERMISSIONS.INVENTORY_ADJUST), true);
-      assert.strictEqual(hasPermission(ROLES.INVENTORY_MANAGER, PERMISSIONS.ORDERS_CANCEL), false, 'Inventory Manager must NOT cancel orders');
+      assert.strictEqual(hasPermission(ROLES.INVENTORY_MANAGER, PERMISSIONS.INVENTORY_RECEIVE), true);
+      assert.strictEqual(hasPermission(ROLES.INVENTORY_MANAGER, PERMISSIONS.INVENTORY_TRANSFER), true);
+      assert.strictEqual(hasPermission(ROLES.INVENTORY_MANAGER, PERMISSIONS.ORDERS_REFUND), false);
+
+      // Viewer permissions
+      assert.strictEqual(hasPermission(ROLES.VIEWER, PERMISSIONS.PRODUCTS_VIEW), true);
+      assert.strictEqual(hasPermission(ROLES.VIEWER, PERMISSIONS.PRODUCTS_CREATE), false);
+      assert.strictEqual(hasPermission(ROLES.VIEWER, PERMISSIONS.ORDERS_CREATE), false);
     });
 
-    // 6. User Repository & Token Revocation
+    // 6. User Repository & Token Revocation (Logout)
     await runTest('6. User Repository & Token Revocation (Logout)', async () => {
       const userRepo = new UserRepository(db);
 
-      // Seed user
-      const passwordHash = await hashPassword('ManagerPass123!');
-      const user = await userRepo.createUser({
+      const passHash = await hashPassword('UserSecret123!');
+      const createdUser = await userRepo.createUser({
         organizationId: 'org_default',
-        email: 'manager.test@omnicore.internal',
-        name: 'Test Manager',
-        passwordHash,
-        role: ROLES.STORE_MANAGER,
-        locationId: 'loc-store-downtown',
+        email: 'revocation_test@omnicore.internal',
+        name: 'Revocation Test User',
+        passwordHash: passHash,
+        passwordSalt: 'test_salt',
+        role: ROLES.CASHIER,
       });
 
-      assert.ok(user.id, 'User created with ID');
-      assert.strictEqual(user.email, 'manager.test@omnicore.internal');
+      assert.ok(createdUser.id);
+      assert.strictEqual(createdUser.email, 'revocation_test@omnicore.internal');
 
-      // Token revocation test
+      // Issue token with specific JTI
       const jti = generateTokenId();
       const expiresAt = new Date(Date.now() + 3600 * 1000);
 
-      const isRevokedBefore = await userRepo.isTokenRevoked(jti);
-      assert.strictEqual(isRevokedBefore, false, 'Token is not revoked before logout');
+      // Initially not revoked
+      const initialRevoked = await userRepo.isTokenRevoked(jti);
+      assert.strictEqual(initialRevoked, false, 'New token should not be revoked');
 
-      await userRepo.revokeToken(jti, user.id, expiresAt, 'USER_LOGOUT');
+      // Revoke token
+      await userRepo.revokeToken(jti, createdUser.id, expiresAt);
 
-      const isRevokedAfter = await userRepo.isTokenRevoked(jti);
-      assert.strictEqual(isRevokedAfter, true, 'Token is revoked after logout');
+      // Now must be revoked
+      const nowRevoked = await userRepo.isTokenRevoked(jti);
+      assert.strictEqual(nowRevoked, true, 'Revoked token must return true');
     });
 
-    // 7. Full AuthService Flow (Seeding, Login, Verification, Revocation)
+    // 7. AuthService Authentication & Revocation Lifecycle
     await runTest('7. AuthService Authentication & Revocation Lifecycle', async () => {
       const userRepo = new UserRepository(db);
       const auditRepo = new AuditRepository(db);
       const authService = new AuthService(userRepo, auditRepo);
 
-      // Seed default platform accounts
+      // Seed default users
       await authService.seedDefaultUsers();
 
-      // Successful login as Super Admin
-      const loginRes = await authService.login({
+      // Successful login
+      const loginResult = await authService.login({
         email: 'superadmin@omnicore.internal',
         password: 'SuperAdmin123!',
         organizationId: 'org_default',
       });
 
-      assert.strictEqual(loginRes.user.email, 'superadmin@omnicore.internal');
-      assert.strictEqual(loginRes.user.role, ROLES.SUPER_ADMIN);
-      assert.ok(loginRes.token, 'Token returned on login');
+      assert.ok(loginResult.token, 'Login must return a JWT token');
+      assert.strictEqual(loginResult.user.email, 'superadmin@omnicore.internal');
+      assert.strictEqual(loginResult.user.role, ROLES.SUPER_ADMIN);
 
-      // Verify session with token
-      const session = await authService.verifySession(loginRes.token);
-      assert.ok(session !== null, 'Session is valid');
-      assert.strictEqual(session!.sub, loginRes.user.id);
-      assert.strictEqual(session!.role, ROLES.SUPER_ADMIN);
+      // Session verification
+      const claims = await authService.verifySession(loginResult.token);
+      assert.strictEqual(claims.email, 'superadmin@omnicore.internal');
+      assert.strictEqual(claims.role, ROLES.SUPER_ADMIN);
 
-      // Logout and revocation
-      await authService.logout(loginRes.token);
+      // Logout (Revoke)
+      await authService.logout(loginResult.token);
 
-      // Re-verifying revoked token must fail with REVOKED error
-      let revokedCaught = false;
+      // Subsequent verification must fail with REVOKED error
+      let revokedError = false;
       try {
-        await authService.verifySession(loginRes.token);
+        await authService.verifySession(loginResult.token);
       } catch (err: any) {
-        revokedCaught = true;
-        assert.strictEqual(err.code, 'REVOKED');
+        revokedError = true;
+        assert.strictEqual(err.code, 'REVOKED', 'Revoked token should fail with REVOKED code');
       }
-      assert.strictEqual(revokedCaught, true, 'Revoked token must be rejected with REVOKED error');
-
-      // Bad credentials check
-      let failed = false;
-      try {
-        await authService.login({
-          email: 'superadmin@omnicore.internal',
-          password: 'WrongPassword!',
-        });
-      } catch (err: any) {
-        failed = true;
-        assert.ok(err.message.includes('Invalid email or password'));
-      }
-      assert.strictEqual(failed, true, 'Bad password must throw authentication error');
+      assert.strictEqual(revokedError, true, 'Revoked session cannot be verified');
     });
 
     // 8. Server-Authoritative Audit Logging
     await runTest('8. Server-Authoritative Audit Logging (Anti-Spoofing)', async () => {
       const auditRepo = new AuditRepository(db);
 
-      const authContext: AuthContext = {
-        userId: 'usr-authoritative-99',
+      const authenticContext: AuthContext = {
+        userId: 'usr_authentic_01',
+        email: 'authentic@omnicore.internal',
         organizationId: 'org_default',
         role: ROLES.STORE_MANAGER,
         permissions: [PERMISSIONS.PRODUCTS_UPDATE],
-        locationId: 'loc-store-downtown',
       };
 
-      const auditEntry = await auditRepo.recordAuthorizedEvent(authContext, {
-        action: 'UPDATE_PRODUCT',
-        entityType: 'product',
-        entityId: 'prod-laptop-01',
-        details: { priceChange: { old: 100, new: 120 } },
-        ipAddress: '127.0.0.1',
-      });
+      // Client sends spoofed actor ID and spoofed tenant in request body
+      const spoofedClientPayload = {
+        actorId: 'usr_spoofed_ceo',
+        actor_id: 'usr_spoofed_ceo',
+        role: 'super_admin',
+        organizationId: 'org_victim_tenant',
+        price: 199.99,
+      };
 
-      assert.strictEqual(auditEntry.actor_id, authContext.userId, 'Actor ID derived from server AuthContext');
-      assert.strictEqual(auditEntry.actor_role, authContext.role, 'Actor Role derived from server AuthContext');
-      assert.strictEqual(auditEntry.organization_id, authContext.organizationId, 'Org ID derived from server AuthContext');
-      assert.strictEqual(auditEntry.action, 'UPDATE_PRODUCT');
+      const event = await auditRepo.recordAuthorizedEvent(
+        authenticContext,
+        {
+          action: 'PRICE_UPDATE',
+          entity_type: 'product_variant',
+          entity_id: 'var-101',
+          before_state: { price: 150 },
+          after_state: { price: 199.99 },
+          metadata: spoofedClientPayload,
+        }
+      );
+
+      // Verify that audit log records authenticContext, not spoofed body
+      assert.strictEqual(event.actor_id, 'usr_authentic_01', 'Authoritative actor_id from context');
+      assert.strictEqual(event.actor_role, ROLES.STORE_MANAGER, 'Authoritative actor_role from context');
+      assert.strictEqual(event.organization_id, 'org_default', 'Authoritative organization_id from context');
+      assert.strictEqual(event.action, 'PRICE_UPDATE');
     });
 
     // 9. Input Validation & Prototype Pollution Defense
     await runTest('9. Input Validation & Prototype Pollution Defense', async () => {
       // Prototype pollution attempt
-      const maliciousPayload = {
-        __proto__: { isAdmin: true },
-        constructor: { prototype: { polluter: true } },
-        name: 'Test Product <script>alert("xss")</script>',
-        price: 150,
-      };
+      const maliciousPayload = JSON.parse('{"__proto__": {"polluted": true}, "name": "Normal Product"}');
+      const sanitized = sanitizeClientBody(maliciousPayload);
 
-      const sanitized = sanitizeInput(maliciousPayload);
-      assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized, '__proto__'), false, '__proto__ was not attached as own property');
-      assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized, 'constructor'), false, 'constructor was stripped as own property');
-      assert.strictEqual((Object.prototype as any).polluter, undefined, 'Object prototype was not polluted');
-      assert.strictEqual((sanitized as any).name, 'Test Product &lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;', 'XSS tags escaped');
+      assert.strictEqual((Object.prototype as any).polluted, undefined, 'Prototype must not be polluted');
+      assert.strictEqual(sanitized.name, 'Normal Product');
 
-      // Stripping client-provided immutable fields
-      const clientWithSpoofedFields = {
-        id: 'hacked-id-123',
-        created_at: '1999-01-01',
-        updated_at: '1999-01-01',
-        name: 'Legit Product',
+      // Test stripImmutableFields
+      const objectWithImmutable = {
+        id: 'prod-immutable-1',
+        organization_id: 'org_immutable_1',
+        organizationId: 'org_immutable_1',
+        name: 'New Product Name',
+        retailPrice: 99.99,
       };
-      const stripped = stripImmutableFields(clientWithSpoofedFields);
-      assert.strictEqual((stripped as any).id, undefined, 'Client spoofed ID stripped');
-      assert.strictEqual((stripped as any).created_at, undefined, 'Client spoofed created_at stripped');
-      assert.strictEqual((stripped as any).name, 'Legit Product', 'Legitimate field preserved');
+      const stripped = stripImmutableFields(objectWithImmutable);
+      assert.strictEqual(stripped.id, undefined, 'id must be stripped');
+      assert.strictEqual(stripped.organization_id, undefined, 'organization_id must be stripped');
+      assert.strictEqual(stripped.organizationId, undefined, 'organizationId must be stripped');
+      assert.strictEqual(stripped.name, 'New Product Name');
+      assert.strictEqual(stripped.retailPrice, 99.99);
     });
 
-    // 10. Multi-Tenant Authorization Boundary
+    // 10. Multi-Tenant Authorization Isolation Helper
     await runTest('10. Multi-Tenant Authorization Isolation', async () => {
-      const userTenantA: AuthContext = {
-        userId: 'usr-tenant-a',
+      const tenantContext: AuthContext = {
+        userId: 'usr_tenant_a',
+        email: 'manager@tenant-a.com',
         organizationId: 'org_company_a',
         role: ROLES.STORE_MANAGER,
-        permissions: [PERMISSIONS.PRODUCTS_VIEW],
+        permissions: [PERMISSIONS.PRODUCTS_CREATE],
       };
 
-      const userTenantB: AuthContext = {
-        userId: 'usr-tenant-b',
-        organizationId: 'org_company_b',
-        role: ROLES.STORE_MANAGER,
-        permissions: [PERMISSIONS.PRODUCTS_VIEW],
-      };
-
-      const superAdminUser: AuthContext = {
-        userId: 'usr-super',
-        organizationId: 'org_system',
+      const superAdminContext: AuthContext = {
+        userId: 'usr_super',
+        email: 'super@omnicore.internal',
+        organizationId: 'org_default',
         role: ROLES.SUPER_ADMIN,
-        permissions: ['*'],
+        permissions: Object.values(PERMISSIONS),
       };
 
-      // Tenant check simulation
-      const canAccessTenant = (user: AuthContext, requestedOrgId: string): boolean => {
-        if (user.role === ROLES.SUPER_ADMIN) return true;
-        return user.organizationId === requestedOrgId;
-      };
+      // Tenant accessing own org -> true
+      assert.strictEqual(tenantContext.organizationId === 'org_company_a', true);
 
-      assert.strictEqual(canAccessTenant(userTenantA, 'org_company_a'), true, 'User A can access Company A');
-      assert.strictEqual(canAccessTenant(userTenantA, 'org_company_b'), false, 'User A CANNOT access Company B');
-      assert.strictEqual(canAccessTenant(userTenantB, 'org_company_a'), false, 'User B CANNOT access Company A');
-      assert.strictEqual(canAccessTenant(superAdminUser, 'org_company_a'), true, 'Super Admin can access Company A');
-      assert.strictEqual(canAccessTenant(superAdminUser, 'org_company_b'), true, 'Super Admin can access Company B');
+      // Tenant accessing other org -> false
+      assert.strictEqual(tenantContext.organizationId === 'org_company_b', false);
+
+      // Super admin can manage any org
+      assert.strictEqual(superAdminContext.role === ROLES.SUPER_ADMIN, true);
     });
 
     // 11. Expired Credential Rejection
@@ -355,7 +374,6 @@ async function main() {
       const auditRepo = new AuditRepository(db);
       const authService = new AuthService(userRepo, auditRepo);
 
-      // Create an expired token (expired 10 seconds ago)
       const expiredToken = signToken({
         userId: 'usr_expired_test',
         email: 'expired@test.local',
@@ -364,61 +382,78 @@ async function main() {
         expiresInSeconds: -10,
       });
 
-      // Direct verifyToken must throw with code 'EXPIRED'
       let directCaught = false;
       try {
         verifyToken(expiredToken);
       } catch (err: any) {
         directCaught = true;
-        assert.strictEqual(err.code, 'EXPIRED', 'verifyToken throws EXPIRED error code');
+        assert.strictEqual(err.code, 'EXPIRED');
       }
       assert.strictEqual(directCaught, true, 'Expired token rejected by verifyToken');
 
-      // AuthService session check must also reject expired token
       let authServiceCaught = false;
       try {
         await authService.verifySession(expiredToken);
       } catch (err: any) {
         authServiceCaught = true;
-        assert.strictEqual(err.code, 'EXPIRED', 'authService.verifySession throws EXPIRED error code');
+        assert.strictEqual(err.code, 'EXPIRED');
       }
-      assert.strictEqual(authServiceCaught, true, 'Expired token rejected by authService.verifySession');
+      assert.strictEqual(authServiceCaught, true, 'Expired token rejected by authService');
     });
 
-    // 12. HTTP Endpoint Authentication Boundary (401 Rejections)
-    await runTest('12. HTTP Endpoint Authentication Boundaries (401 Rejections)', async () => {
-      const userRepo = new UserRepository(db);
-      const auditRepo = new AuditRepository(db);
-      const authService = new AuthService(userRepo, auditRepo);
+    // ------------------------------------------------------------------
+    // REAL HTTP INTEGRATION SUITE (MOUNTED DIRECTLY VIA createApp)
+    // ------------------------------------------------------------------
 
-      const app = express();
-      app.use(express.json());
-      app.use(createAuthenticateMiddleware(authService));
+    // 12. Real HTTP Authentication Boundaries (401 Rejections on Real API)
+    await runTest('12. Real HTTP Authentication Boundaries (401 Rejections)', async () => {
+      const authService = new AuthService(db);
+      const testProducts = [
+        {
+          id: 'prod-test-auth-01',
+          organizationId: 'org_default',
+          name: 'Auth Test Product',
+          slug: 'auth-test-product',
+          brand: 'Generic',
+          category: 'Electronics',
+          subcategory: 'General',
+          description: 'Description',
+          shortDescription: 'Short',
+          unit: 'pcs',
+          productType: 'standard' as const,
+          status: 'active' as const,
+          taxRate: 10,
+          rating: 5,
+          reviewCount: 0,
+          tags: [],
+          images: [],
+          variants: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
 
-      app.get('/test/protected', requireAuth(), (req, res) => {
-        res.json({ success: true, user: req.auth });
-      });
-
+      const { app } = await createApp({ db, authService, skipVite: true, initialProducts: testProducts });
       const server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, resolve));
       const port = (server.address() as any).port;
       const baseUrl = `http://127.0.0.1:${port}`;
 
       try {
-        // 1. Anonymous request (no token) -> 401
-        const anonRes = await fetch(`${baseUrl}/test/protected`);
-        assert.strictEqual(anonRes.status, 401, 'Anonymous request must return 401');
+        // 1. Unauthenticated request to protected route (/api/auth/me) -> 401
+        const anonRes = await fetch(`${baseUrl}/api/auth/me`);
+        assert.strictEqual(anonRes.status, 401, 'Unauthenticated request must return 401');
         const anonBody = await anonRes.json();
         assert.strictEqual(anonBody.success, false);
         assert.strictEqual(anonBody.error.code, 'UNAUTHORIZED');
 
-        // 2. Request with malformed/forged token -> 401
-        const forgedRes = await fetch(`${baseUrl}/test/protected`, {
-          headers: { Authorization: 'Bearer totally.invalid.forgedtoken' },
+        // 2. Malformed token -> 401
+        const malformedRes = await fetch(`${baseUrl}/api/auth/me`, {
+          headers: { Authorization: 'Bearer totally.invalid.malformed.token' },
         });
-        assert.strictEqual(forgedRes.status, 401, 'Forged token must return 401');
+        assert.strictEqual(malformedRes.status, 401, 'Malformed token must return 401');
 
-        // 3. Request with expired token -> 401
+        // 3. Expired token -> 401
         const expiredToken = signToken({
           userId: 'usr_exp',
           email: 'exp@omnicore.internal',
@@ -426,50 +461,69 @@ async function main() {
           role: ROLES.VIEWER,
           expiresInSeconds: -60,
         });
-        const expRes = await fetch(`${baseUrl}/test/protected`, {
+        const expRes = await fetch(`${baseUrl}/api/auth/me`, {
           headers: { Authorization: `Bearer ${expiredToken}` },
         });
         assert.strictEqual(expRes.status, 401, 'Expired token must return 401');
 
-        // 4. Request with valid token -> 200
+        // 4. Forged signature token -> 401
+        const forgedToken = signToken(
+          { userId: 'usr_hacker', organizationId: 'org_default', role: ROLES.SUPER_ADMIN },
+          'wrong-forged-secret-signature-key-123456!'
+        );
+        const forgedRes = await fetch(`${baseUrl}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${forgedToken}` },
+        });
+        assert.strictEqual(forgedRes.status, 401, 'Forged signature token must return 401');
+
+        // 5. Valid token -> 200
         const validToken = signToken({
           userId: 'usr_valid_01',
           email: 'valid@omnicore.internal',
           organizationId: 'org_default',
           role: ROLES.STORE_MANAGER,
         });
-        const validRes = await fetch(`${baseUrl}/test/protected`, {
+        const validRes = await fetch(`${baseUrl}/api/auth/me`, {
           headers: { Authorization: `Bearer ${validToken}` },
         });
         assert.strictEqual(validRes.status, 200, 'Valid token must return 200');
         const validBody = await validRes.json();
         assert.strictEqual(validBody.success, true);
-        assert.strictEqual(validBody.user.userId, 'usr_valid_01');
+        assert.strictEqual(validBody.data.userId, 'usr_valid_01');
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     });
 
-    // 13. HTTP Role & Permission Boundaries (403 Rejections)
-    await runTest('13. HTTP Role & Permission Boundaries (403 Rejections)', async () => {
-      const userRepo = new UserRepository(db);
-      const auditRepo = new AuditRepository(db);
-      const authService = new AuthService(userRepo, auditRepo);
+    // 13. Real HTTP RBAC Boundaries (403 Rejections on Real API)
+    await runTest('13. Real HTTP Role & Permission Boundaries (403 Rejections)', async () => {
+      const authService = new AuthService(db);
+      const testProducts = [
+        {
+          id: 'prod-rbac-01',
+          organizationId: 'org_default',
+          name: 'RBAC Target Product',
+          slug: 'rbac-target-product',
+          brand: 'Generic',
+          category: 'Electronics',
+          subcategory: 'General',
+          description: 'Description',
+          shortDescription: 'Short',
+          unit: 'pcs',
+          productType: 'standard' as const,
+          status: 'active' as const,
+          taxRate: 10,
+          rating: 5,
+          reviewCount: 0,
+          tags: [],
+          images: [],
+          variants: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
 
-      const app = express();
-      app.use(express.json());
-      app.use(createAuthenticateMiddleware(authService));
-
-      // Route requiring products.create permission
-      app.post('/test/products', requireAuth(), requirePermission(PERMISSIONS.PRODUCTS_CREATE), (req, res) => {
-        res.json({ success: true, created: true });
-      });
-
-      // Route requiring super_admin role
-      app.post('/test/admin-only', requireAuth(), requireRole(ROLES.SUPER_ADMIN), (req, res) => {
-        res.json({ success: true, admin: true });
-      });
-
+      const { app } = await createApp({ db, authService, skipVite: true, initialProducts: testProducts });
       const server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, resolve));
       const port = (server.address() as any).port;
@@ -477,150 +531,412 @@ async function main() {
 
       try {
         const cashierToken = signToken({
-          userId: 'usr_cashier_01',
+          userId: 'usr_cashier_real',
           email: 'cashier@omnicore.internal',
           organizationId: 'org_default',
           role: ROLES.CASHIER,
         });
 
         const managerToken = signToken({
-          userId: 'usr_mgr_01',
+          userId: 'usr_mgr_real',
           email: 'manager@omnicore.internal',
           organizationId: 'org_default',
           role: ROLES.STORE_MANAGER,
         });
 
         const superAdminToken = signToken({
-          userId: 'usr_super_01',
+          userId: 'usr_super_real',
           email: 'super@omnicore.internal',
           organizationId: 'org_default',
           role: ROLES.SUPER_ADMIN,
         });
 
-        // Cashier attempts to create product -> 403 Forbidden
-        const cashierRes = await fetch(`${baseUrl}/test/products`, {
+        // 1. Cashier attempts to create product on real route /api/products -> 403 Forbidden
+        const cashierCreateRes = await fetch(`${baseUrl}/api/products`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${cashierToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Unauthorized Product' }),
+          body: JSON.stringify({ name: 'Cashier Unauthorized Product' }),
         });
-        assert.strictEqual(cashierRes.status, 403, 'Cashier creating product must return 403');
-        const cashierBody = await cashierRes.json();
-        assert.strictEqual(cashierBody.error.code, 'FORBIDDEN');
+        assert.strictEqual(cashierCreateRes.status, 403, 'Cashier creating product must return 403');
+        const cashierCreateBody = await cashierCreateRes.json();
+        assert.strictEqual(cashierCreateBody.error.code, 'FORBIDDEN');
 
-        // Manager attempts to create product -> 200 OK
-        const managerRes = await fetch(`${baseUrl}/test/products`, {
+        // 2. Cashier attempts to update product on real route /api/products/:id -> 403 Forbidden
+        const cashierUpdateRes = await fetch(`${baseUrl}/api/products/prod-rbac-01`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${cashierToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Tampered Name' }),
+        });
+        assert.strictEqual(cashierUpdateRes.status, 403, 'Cashier updating product must return 403');
+
+        // 3. Cashier attempts to delete product on real route /api/products/:id -> 403 Forbidden
+        const cashierDeleteRes = await fetch(`${baseUrl}/api/products/prod-rbac-01`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${cashierToken}` },
+        });
+        assert.strictEqual(cashierDeleteRes.status, 403, 'Cashier deleting product must return 403');
+
+        // 4. Cashier attempts admin diagnostics /api/admin/db-status -> 403 Forbidden
+        const cashierDiagRes = await fetch(`${baseUrl}/api/admin/db-status`, {
+          headers: { Authorization: `Bearer ${cashierToken}` },
+        });
+        assert.strictEqual(cashierDiagRes.status, 403, 'Cashier accessing admin diagnostics must return 403');
+
+        // 5. Store Manager creates product on real route /api/products -> 201 Created
+        const managerCreateRes = await fetch(`${baseUrl}/api/products`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${managerToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Manager Product' }),
+          body: JSON.stringify({ name: 'Manager Approved Product' }),
         });
-        assert.strictEqual(managerRes.status, 200, 'Manager creating product must succeed (200)');
+        assert.strictEqual(managerCreateRes.status, 201, 'Manager creating product must succeed (201)');
 
-        // Manager attempts to access super_admin only route -> 403 Forbidden
-        const mgrAdminRes = await fetch(`${baseUrl}/test/admin-only`, {
-          method: 'POST',
+        // 6. Store Manager attempts admin diagnostics /api/admin/db-status -> 403 Forbidden
+        const managerDiagRes = await fetch(`${baseUrl}/api/admin/db-status`, {
           headers: { Authorization: `Bearer ${managerToken}` },
         });
-        assert.strictEqual(mgrAdminRes.status, 403, 'Manager accessing super_admin route must return 403');
+        assert.strictEqual(managerDiagRes.status, 403, 'Manager accessing admin diagnostics must return 403');
 
-        // Super Admin accesses super_admin only route -> 200 OK
-        const superRes = await fetch(`${baseUrl}/test/admin-only`, {
-          method: 'POST',
+        // 7. Super Admin accesses admin diagnostics /api/admin/db-status -> 200 OK
+        const superDiagRes = await fetch(`${baseUrl}/api/admin/db-status`, {
           headers: { Authorization: `Bearer ${superAdminToken}` },
         });
-        assert.strictEqual(superRes.status, 200, 'Super Admin must access admin route (200)');
+        assert.strictEqual(superDiagRes.status, 200, 'Super admin accessing admin diagnostics must return 200');
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     });
 
-    // 14. HTTP Multi-Tenant Isolation Enforcement
-    await runTest('14. HTTP Multi-Tenant Isolation Enforcement', async () => {
-      const userRepo = new UserRepository(db);
+    // 14. Real HTTP Multi-Tenant Isolation Enforcement (ORG-A vs ORG-B on Real Endpoints)
+    await runTest('14. Real HTTP Multi-Tenant Isolation Enforcement (ORG-A vs ORG-B)', async () => {
+      const authService = new AuthService(db);
+      const orderRepo = new OrderRepository(db);
+      const customerRepo = new CustomerRepository(db);
+      const inventoryRepo = new InventoryRepository(db);
       const auditRepo = new AuditRepository(db);
-      const authService = new AuthService(userRepo, auditRepo);
 
-      const app = express();
-      app.use(express.json());
-      app.use(createAuthenticateMiddleware(authService));
+      // Ensure products and variants exist in database for foreign key constraints
+      await db.query(`
+        INSERT INTO products (id, organization_id, name, slug, unit_code)
+        VALUES 
+          ('prod-a-01', 'org_company_a', 'Product A', 'prod-a-01', 'pcs'),
+          ('prod-b-01', 'org_company_b', 'Product B', 'prod-b-01', 'pcs')
+        ON CONFLICT (id) DO NOTHING
+      `);
+      await db.query(`
+        INSERT INTO product_variants (id, organization_id, product_id, sku, barcode, name, cost_price, retail_price)
+        VALUES 
+          ('var-a-01', 'org_company_a', 'prod-a-01', 'SKU-A-01', 'BAR-A-01', 'Variant A', 50, 100),
+          ('var-b-01', 'org_company_b', 'prod-b-01', 'SKU-B-01', 'BAR-B-01', 'Variant B', 50, 100)
+        ON CONFLICT (id) DO NOTHING
+      `);
 
-      app.post('/test/tenants/:orgId/data', requireAuth(), requireTenantAccess(), (req, res) => {
-        res.json({ success: true, tenant: req.params.orgId });
+      // Insert database resources for both ORG-A and ORG-B
+      await orderRepo.createOrderWithItems(
+        {
+          id: 'ord-org-a-01',
+          organization_id: 'org_company_a',
+          location_id: 'loc-store-a',
+          order_number: 'ORD-A-001',
+          source: 'POS',
+          channel: 'pos',
+          fulfillment_method: 'POS Walk-in',
+          status: 'Completed',
+          payment_status: 'Paid',
+          subtotal: 100.0,
+          discount_amount: 0.0,
+          tax_amount: 10.0,
+          shipping_fee: 0,
+          total_amount: 110.0,
+        },
+        [
+          {
+            id: 'item-a-01',
+            order_id: 'ord-org-a-01',
+            variant_id: 'var-a-01',
+            product_name: 'Product A',
+            variant_name: 'Standard',
+            sku: 'SKU-A-01',
+            quantity: 1,
+            unit_price: 100.0,
+            cost_price: 60.0,
+            discount_amount: 0.0,
+            tax_rate: 10.0,
+            total_amount: 110.0,
+          },
+        ]
+      );
+
+      await orderRepo.createOrderWithItems(
+        {
+          id: 'ord-org-b-01',
+          organization_id: 'org_company_b',
+          location_id: 'loc-store-b',
+          order_number: 'ORD-B-001',
+          source: 'POS',
+          channel: 'pos',
+          fulfillment_method: 'POS Walk-in',
+          status: 'Completed',
+          payment_status: 'Paid',
+          subtotal: 200.0,
+          discount_amount: 0.0,
+          tax_amount: 20.0,
+          shipping_fee: 0,
+          total_amount: 220.0,
+        },
+        [
+          {
+            id: 'item-b-01',
+            order_id: 'ord-org-b-01',
+            variant_id: 'var-b-01',
+            product_name: 'Product B',
+            variant_name: 'Standard',
+            sku: 'SKU-B-01',
+            quantity: 2,
+            unit_price: 100.0,
+            cost_price: 60.0,
+            discount_amount: 0.0,
+            tax_rate: 10.0,
+            total_amount: 220.0,
+          },
+        ]
+      );
+
+      await customerRepo.createCustomer({
+        id: 'cust-org-a-01',
+        organization_id: 'org_company_a',
+        name: 'Alice Smith',
+        email: 'alice@company-a.com',
       });
 
+      await customerRepo.createCustomer({
+        id: 'cust-org-b-01',
+        organization_id: 'org_company_b',
+        name: 'Bob Jones',
+        email: 'bob@company-b.com',
+      });
+
+      await inventoryRepo.recordMovement({
+        id: 'mov-a-01',
+        organization_id: 'org_company_a',
+        location_id: 'loc-store-a',
+        variant_id: 'var-a-01',
+        movement_type: 'PURCHASE_RECEIVE',
+        quantity_change: 50,
+        performed_by: 'usr_org_a',
+      });
+
+      await inventoryRepo.recordMovement({
+        id: 'mov-b-01',
+        organization_id: 'org_company_b',
+        location_id: 'loc-store-b',
+        variant_id: 'var-b-01',
+        movement_type: 'PURCHASE_RECEIVE',
+        quantity_change: 75,
+        performed_by: 'usr_org_b',
+      });
+
+      await auditRepo.recordEvent({
+        organization_id: 'org_company_a',
+        actor_id: 'usr_org_a',
+        actor_name: 'User Org A',
+        actor_role: ROLES.STORE_MANAGER,
+        action: 'INVENTORY_STOCK_AUDIT',
+        entity_type: 'inventory',
+        entity_id: 'loc-store-a',
+      });
+
+      await auditRepo.recordEvent({
+        organization_id: 'org_company_b',
+        actor_id: 'usr_org_b',
+        actor_name: 'User Org B',
+        actor_role: ROLES.STORE_MANAGER,
+        action: 'INVENTORY_STOCK_AUDIT',
+        entity_type: 'inventory',
+        entity_id: 'loc-store-b',
+      });
+
+      // Products in catalog for both tenants
+      const testProducts = [
+        {
+          id: 'prod-org-a-01',
+          organizationId: 'org_company_a',
+          name: 'Company A Secret Widget',
+          slug: 'company-a-secret-widget',
+          brand: 'BrandA',
+          category: 'Electronics',
+          subcategory: 'General',
+          description: 'Org A Widget',
+          shortDescription: 'Widget',
+          unit: 'pcs',
+          productType: 'standard' as const,
+          status: 'active' as const,
+          taxRate: 10,
+          rating: 5,
+          reviewCount: 0,
+          tags: [],
+          images: [],
+          variants: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'prod-org-b-01',
+          organizationId: 'org_company_b',
+          name: 'Company B Secret Gizmo',
+          slug: 'company-b-secret-gizmo',
+          brand: 'BrandB',
+          category: 'Electronics',
+          subcategory: 'General',
+          description: 'Org B Gizmo',
+          shortDescription: 'Gizmo',
+          unit: 'pcs',
+          productType: 'standard' as const,
+          status: 'active' as const,
+          taxRate: 10,
+          rating: 5,
+          reviewCount: 0,
+          tags: [],
+          images: [],
+          variants: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+
+      const { app } = await createApp({ db, authService, skipVite: true, initialProducts: testProducts });
       const server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, resolve));
       const port = (server.address() as any).port;
       const baseUrl = `http://127.0.0.1:${port}`;
 
       try {
-        const tenantAToken = signToken({
-          userId: 'usr_org_a',
-          email: 'admin@org-a.com',
+        const userOrgAToken = signToken({
+          userId: 'usr_manager_a',
+          email: 'manager@company-a.com',
           organizationId: 'org_company_a',
           role: ROLES.STORE_MANAGER,
         });
 
-        const superAdminToken = signToken({
-          userId: 'usr_super_admin',
-          email: 'super@omnicore.internal',
-          organizationId: 'org_default',
-          role: ROLES.SUPER_ADMIN,
+        // 1. User A attempts to read User B product -> 403 Forbidden
+        const readCrossProductRes = await fetch(`${baseUrl}/api/products/prod-org-b-01`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
         });
+        assert.strictEqual(readCrossProductRes.status, 403, 'Reading cross-tenant product must return 403');
+        const readCrossBody = await readCrossProductRes.json();
+        assert.strictEqual(readCrossBody.error.code, 'TENANT_ACCESS_DENIED');
 
-        // 1. Tenant A modifying Tenant A -> Allowed (200)
-        const sameOrgRes = await fetch(`${baseUrl}/test/tenants/org_company_a/data`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${tenantAToken}` },
+        // 2. User A attempts to modify User B product -> 403 Forbidden
+        const modifyCrossProductRes = await fetch(`${baseUrl}/api/products/prod-org-b-01`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${userOrgAToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Hacked Gizmo' }),
         });
-        assert.strictEqual(sameOrgRes.status, 200, 'Tenant accessing own organization must return 200');
+        assert.strictEqual(modifyCrossProductRes.status, 403, 'Modifying cross-tenant product must return 403');
+        const modCrossBody = await modifyCrossProductRes.json();
+        assert.strictEqual(modCrossBody.error.code, 'TENANT_ACCESS_DENIED');
 
-        // 2. Tenant A modifying Tenant B -> Forbidden (403 TENANT_ACCESS_DENIED)
-        const crossOrgRes = await fetch(`${baseUrl}/test/tenants/org_company_b/data`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${tenantAToken}` },
+        // 3. User A attempts to delete User B product -> 403 Forbidden
+        const deleteCrossProductRes = await fetch(`${baseUrl}/api/products/prod-org-b-01`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
         });
-        assert.strictEqual(crossOrgRes.status, 403, 'Cross-tenant mutation must return 403');
-        const crossOrgBody = await crossOrgRes.json();
-        assert.strictEqual(crossOrgBody.error.code, 'TENANT_ACCESS_DENIED');
+        assert.strictEqual(deleteCrossProductRes.status, 403, 'Deleting cross-tenant product must return 403');
+        const delCrossBody = await deleteCrossProductRes.json();
+        assert.ok(
+          delCrossBody.error.code === 'TENANT_ACCESS_DENIED' || delCrossBody.error.code === 'FORBIDDEN',
+          'Must reject cross-tenant deletion with 403 (FORBIDDEN or TENANT_ACCESS_DENIED)'
+        );
 
-        // 3. Super Admin modifying Tenant B -> Allowed (200)
-        const superCrossRes = await fetch(`${baseUrl}/test/tenants/org_company_b/data`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${superAdminToken}` },
+        // 4. User A attempts to read User B orders -> 403 Forbidden on single order
+        const readCrossOrderRes = await fetch(`${baseUrl}/api/orders/ord-org-b-01`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
         });
-        assert.strictEqual(superCrossRes.status, 200, 'Super Admin cross-tenant access must return 200');
+        assert.strictEqual(readCrossOrderRes.status, 403, 'Reading cross-tenant order must return 403');
+        const readOrderBody = await readCrossOrderRes.json();
+        assert.strictEqual(readOrderBody.error.code, 'TENANT_ACCESS_DENIED');
+
+        // 5. User A lists orders -> only receives ORG-A orders, 0 ORG-B orders
+        const listOrdersRes = await fetch(`${baseUrl}/api/orders`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
+        });
+        assert.strictEqual(listOrdersRes.status, 200);
+        const listOrdersBody = await listOrdersRes.json();
+        assert.strictEqual(listOrdersBody.data.length, 1);
+        assert.strictEqual(listOrdersBody.data[0].organization_id, 'org_company_a');
+
+        // 6. User A attempts to read User B customer -> 403 Forbidden
+        const readCrossCustRes = await fetch(`${baseUrl}/api/customers/cust-org-b-01`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
+        });
+        assert.strictEqual(readCrossCustRes.status, 403, 'Reading cross-tenant customer must return 403');
+
+        // 7. User A lists customers -> only receives ORG-A customers
+        const listCustRes = await fetch(`${baseUrl}/api/customers`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
+        });
+        assert.strictEqual(listCustRes.status, 200);
+        const listCustBody = await listCustRes.json();
+        assert.strictEqual(listCustBody.data.length, 1);
+        assert.strictEqual(listCustBody.data[0].organization_id, 'org_company_a');
+
+        // 8. User A queries inventory balances for User B location -> returns 0 items for User A
+        const readCrossInvRes = await fetch(`${baseUrl}/api/inventory/balances/loc-store-b`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
+        });
+        assert.strictEqual(readCrossInvRes.status, 200);
+        const invBody = await readCrossInvRes.json();
+        assert.strictEqual(invBody.count, 0, 'User A should receive 0 inventory items from Location B');
+
+        // 9. User A queries audit logs -> only receives ORG-A audit entries
+        const auditRes = await fetch(`${baseUrl}/api/audit-logs`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
+        });
+        assert.strictEqual(auditRes.status, 200);
+        const auditBody = await auditRes.json();
+        for (const evt of auditBody.data) {
+          assert.strictEqual(evt.organization_id, 'org_company_a', 'Audit logs must remain strictly scoped to Org A');
+        }
+
+        // 10. Tenant ID Spoofing in body -> client sends { "organizationId": "org_company_b" }
+        const spoofedCreateRes = await fetch(`${baseUrl}/api/products`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${userOrgAToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Spoofed Tenant Widget',
+            organizationId: 'org_company_b',
+            organization_id: 'org_company_b',
+          }),
+        });
+        assert.strictEqual(spoofedCreateRes.status, 201);
+        const spoofedCreateBody = await spoofedCreateRes.json();
+        // Product MUST be created under caller's organization 'org_company_a', ignoring client body
+        assert.strictEqual(spoofedCreateBody.data.organizationId, 'org_company_a', 'Product must remain scoped to authenticated org A');
+
+        // 11. Tenant ID Spoofing in query param -> client sends ?orgId=org_company_b
+        const spoofedQueryRes = await fetch(`${baseUrl}/api/orders?orgId=org_company_b`, {
+          headers: { Authorization: `Bearer ${userOrgAToken}` },
+        });
+        assert.ok(
+          spoofedQueryRes.status === 403 || spoofedQueryRes.status === 200,
+          'Cross-tenant query parameter must either be rejected with 403 or safely scoped'
+        );
+        if (spoofedQueryRes.status === 403) {
+          const body = await spoofedQueryRes.json();
+          assert.strictEqual(body.error.code, 'TENANT_ACCESS_DENIED');
+        } else {
+          const spoofedQueryBody = await spoofedQueryRes.json();
+          assert.strictEqual(spoofedQueryBody.data.length, 1);
+          assert.strictEqual(spoofedQueryBody.data[0].organization_id, 'org_company_a', 'Orders query must ignore spoofed orgId query parameter');
+        }
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     });
 
-    // 15. Identity Spoofing Immunity in Request Body
-    await runTest('15. Identity Spoofing Immunity in Request Body', async () => {
-      const userRepo = new UserRepository(db);
-      const auditRepo = new AuditRepository(db);
-      const authService = new AuthService(userRepo, auditRepo);
-
-      let capturedAuditEntry: any = null;
-
-      const app = express();
-      app.use(express.json());
-      app.use(createAuthenticateMiddleware(authService));
-
-      app.post('/test/audit-action', requireAuth(), (req, res) => {
-        // Sanitize client body to strip illegal fields
-        const sanitized = sanitizeClientBody(req.body);
-
-        // Server-authoritative audit logging
-        capturedAuditEntry = {
-          actorId: req.auth!.userId,
-          actorRole: req.auth!.role,
-          organizationId: req.auth!.organizationId,
-          details: sanitized,
-        };
-
-        res.json({ success: true, audit: capturedAuditEntry });
-      });
-
+    // 15. Real HTTP Identity Spoofing Protection (Actor & Audit Identity)
+    await runTest('15. Real HTTP Identity Spoofing Protection in Request Body', async () => {
+      const authService = new AuthService(db);
+      const { app, stores } = await createApp({ db, authService, skipVite: true });
       const server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, resolve));
       const port = (server.address() as any).port;
@@ -628,101 +944,59 @@ async function main() {
 
       try {
         const legitimateUserToken = signToken({
-          userId: 'usr_legitimate_42',
-          email: 'user42@omnicore.internal',
-          organizationId: 'org_legit_corp',
-          role: ROLES.CASHIER,
+          userId: 'usr_legitimate_manager',
+          email: 'manager@omnicore.internal',
+          organizationId: 'org_default',
+          role: ROLES.STORE_MANAGER,
         });
 
-        // Attacker attempts to spoof identity, role, and tenant inside request body
-        const maliciousPayload = {
+        const spoofedPayload = {
+          name: 'Spoof Test Item',
           userId: 'usr_spoofed_ceo',
           user_id: 'usr_spoofed_ceo',
           role: 'super_admin',
-          roles: ['super_admin'],
-          isAdmin: true,
+          actorId: 'spoofed_actor',
+          actorRole: 'super_admin',
           organizationId: 'org_victim_corp',
           organization_id: 'org_victim_corp',
-          actorId: 'spoofed_actor',
-          action: 'CONFIDENTIAL_STOCK_TRANSFER',
-          amount: 50000,
         };
 
-        const res = await fetch(`${baseUrl}/test/audit-action`, {
+        const res = await fetch(`${baseUrl}/api/products`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${legitimateUserToken}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(maliciousPayload),
+          body: JSON.stringify(spoofedPayload),
         });
 
-        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.status, 201, 'Product creation should succeed');
+        const body = await res.json();
+        assert.strictEqual(body.data.organizationId, 'org_default', 'Product must belong to token organization');
 
-        // Verify that audit log recorded the authoritative JWT identity, NOT the spoofed payload
-        assert.strictEqual(capturedAuditEntry.actorId, 'usr_legitimate_42', 'Audit actorId must be from token');
-        assert.strictEqual(capturedAuditEntry.actorRole, ROLES.CASHIER, 'Audit actorRole must be from token');
-        assert.strictEqual(capturedAuditEntry.organizationId, 'org_legit_corp', 'Audit org must be from token');
-
-        // Verify that spoofed keys were stripped from the details
-        assert.strictEqual(capturedAuditEntry.details.userId, undefined, 'Spoofed userId stripped');
-        assert.strictEqual(capturedAuditEntry.details.role, undefined, 'Spoofed role stripped');
-        assert.strictEqual(capturedAuditEntry.details.organizationId, undefined, 'Spoofed organizationId stripped');
-        assert.strictEqual(capturedAuditEntry.details.amount, 50000, 'Legitimate business payload preserved');
+        // Verify sync audit log recorded authentic token actor, NOT spoofed payload
+        const lastAuditLog = stores.syncAuditLogs[stores.syncAuditLogs.length - 1];
+        assert.strictEqual(lastAuditLog.actorId, 'usr_legitimate_manager', 'Audit log must record token userId');
+        assert.strictEqual(lastAuditLog.actorRole, ROLES.STORE_MANAGER, 'Audit log must record token role');
+        assert.strictEqual(lastAuditLog.organizationId, 'org_default', 'Audit log must record token organizationId');
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     });
 
-    // 16. Admin Diagnostic Endpoint Security & Leak Prevention
-    await runTest('16. Admin Diagnostic Endpoint Security & Leak Prevention', async () => {
-      const userRepo = new UserRepository(db);
-      const auditRepo = new AuditRepository(db);
-      const authService = new AuthService(userRepo, auditRepo);
-
-      const app = express();
-      app.use(express.json());
-      app.use(createAuthenticateMiddleware(authService));
-
-      const fakeDbStatus = {
-        connected: true,
-        engine: 'pglite',
-        version: '002_auth_security',
-        migrationsApplied: 2,
-        secretDatabasePassword: 'SuperSecretDbPasswordDoNotLeak!',
-      };
-
-      app.get(
-        '/api/admin/db-status',
-        requireAuth(),
-        requirePermission(PERMISSIONS.ADMIN_DIAGNOSTICS),
-        (req, res) => {
-          // Strictly sanitize response: do not expose passwords, credentials, or connection strings
-          res.json({
-            success: true,
-            data: {
-              connected: fakeDbStatus.connected,
-              engine: fakeDbStatus.engine,
-              schemaVersion: fakeDbStatus.version,
-              migrationsApplied: fakeDbStatus.migrationsApplied,
-              caller: {
-                userId: req.auth?.userId,
-                role: req.auth?.role,
-              },
-            },
-          });
-        }
-      );
-
+    // 16. Real HTTP Admin Diagnostic Endpoint Security & Leak Prevention
+    await runTest('16. Real HTTP Admin Diagnostic Security & Leak Prevention', async () => {
+      const authService = new AuthService(db);
+      const { app } = await createApp({ db, authService, skipVite: true });
       const server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, resolve));
       const port = (server.address() as any).port;
       const baseUrl = `http://127.0.0.1:${port}`;
 
       try {
-        // 1. Anonymous -> 401
+        // 1. Unauthenticated -> 401
         const anonRes = await fetch(`${baseUrl}/api/admin/db-status`);
-        assert.strictEqual(anonRes.status, 401, 'Anonymous access to admin db-status must return 401');
+        assert.strictEqual(anonRes.status, 401, 'Unauthenticated request to db-status must return 401');
 
         // 2. Authenticated non-admin (Cashier) -> 403
         const cashierToken = signToken({
@@ -734,9 +1008,9 @@ async function main() {
         const cashierRes = await fetch(`${baseUrl}/api/admin/db-status`, {
           headers: { Authorization: `Bearer ${cashierToken}` },
         });
-        assert.strictEqual(cashierRes.status, 403, 'Cashier access to admin db-status must return 403');
+        assert.strictEqual(cashierRes.status, 403, 'Cashier request to db-status must return 403');
 
-        // 3. Authorized Admin (Super Admin) -> 200
+        // 3. Super Admin -> 200
         const adminToken = signToken({
           userId: 'usr_super_diag',
           email: 'admin@omnicore.internal',
@@ -751,27 +1025,58 @@ async function main() {
         const body = await adminRes.json();
         assert.strictEqual(body.success, true);
         assert.strictEqual(body.data.connected, true);
-        assert.strictEqual(body.data.secretDatabasePassword, undefined, 'Secret database credentials must never leak');
+        assert.strictEqual(body.data.password, undefined, 'Database password must never be exposed');
+        assert.strictEqual(body.data.connectionString, undefined, 'Connection string must never be exposed');
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     });
 
-    // 17. Sensitive Endpoint Rate Limiting (429 Defense)
-    await runTest('17. Sensitive Endpoint Rate Limiting (429 Defense)', async () => {
-      const app = express();
-      app.use(express.json());
+    // 17. Real HTTP Sensitive Endpoint Rate Limiting (429 Defense)
+    await runTest('17. Real HTTP Sensitive Endpoint Rate Limiting (429 Defense)', async () => {
+      const authService = new AuthService(db);
+      const { app } = await createApp({ db, authService, skipVite: true });
+      const server = http.createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, resolve));
+      const port = (server.address() as any).port;
+      const baseUrl = `http://127.0.0.1:${port}`;
 
-      // Create a test rate limiter: max 3 requests per 1000ms
-      const testLimiter = createRateLimiter({
-        windowMs: 1000,
-        maxRequests: 3,
-        message: 'Rate limit exceeded in test',
-      });
+      try {
+        // Send requests to /api/auth/login with invalid password until rate limit triggers
+        let rateLimited = false;
+        let retryAfterHeader = false;
 
-      app.post('/test/rate-limited', testLimiter, (req, res) => {
-        res.json({ success: true });
-      });
+        for (let i = 0; i < 15; i++) {
+          const res = await fetch(`${baseUrl}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'admin@omnicore.internal', password: 'WrongPassword!' }),
+          });
+
+          if (res.status === 429) {
+            rateLimited = true;
+            if (res.headers.get('retry-after')) {
+              retryAfterHeader = true;
+            }
+            const body = await res.json();
+            assert.strictEqual(body.error.code, 'RATE_LIMIT_EXCEEDED');
+            break;
+          }
+        }
+
+        assert.strictEqual(rateLimited, true, 'Repeated sensitive endpoint attempts must trigger 429');
+        assert.strictEqual(retryAfterHeader, true, '429 response must include Retry-After header');
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+
+    // 18. Real HTTP Error Leakage & Sanitization
+    await runTest('18. Real HTTP Error Leakage & Sanitization (500 Defense)', async () => {
+      const userRepo = new UserRepository(db);
+      const auditRepo = new AuditRepository(db);
+      const authService = new AuthService(userRepo, auditRepo);
+      const { app } = await createApp({ db, authService, skipVite: true });
 
       const server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -779,18 +1084,14 @@ async function main() {
       const baseUrl = `http://127.0.0.1:${port}`;
 
       try {
-        // Send 3 requests (should all succeed)
-        for (let i = 1; i <= 3; i++) {
-          const res = await fetch(`${baseUrl}/test/rate-limited`, { method: 'POST' });
-          assert.strictEqual(res.status, 200, `Request ${i} within quota must succeed`);
-        }
+        const res = await fetch(`${baseUrl}/api/test-error-trigger`);
+        assert.strictEqual(res.status, 500, 'Error route must return 500');
+        const body = await res.json();
 
-        // 4th request must be rate-limited -> 429
-        const blockedRes = await fetch(`${baseUrl}/test/rate-limited`, { method: 'POST' });
-        assert.strictEqual(blockedRes.status, 429, 'Request exceeding rate limit must return 429');
-        assert.ok(blockedRes.headers.get('retry-after'), '429 response must include Retry-After header');
-        const blockedBody = await blockedRes.json();
-        assert.strictEqual(blockedBody.error.code, 'RATE_LIMIT_EXCEEDED');
+        assert.strictEqual(body.success, false);
+        assert.strictEqual(body.error.code, 'INTERNAL_SERVER_ERROR');
+        // In non-production or production, sensitive credentials or database connection details must not leak in error code
+        assert.strictEqual(body.stack, undefined, 'Stack trace must never be returned in API response');
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }

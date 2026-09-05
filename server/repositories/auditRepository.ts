@@ -50,6 +50,7 @@ export class AuditRepository {
     const auth: AuthContext = (arg1 && arg1.userId) ? arg1 : arg2;
     const event = (arg1 && arg1.userId) ? arg2 : arg1;
 
+    const dbClient = (client && typeof (client as any).query === 'function') ? client : undefined;
     return this.recordEvent(
       {
         id: event.id,
@@ -67,7 +68,7 @@ export class AuditRepository {
         actor_name: auth.email || auth.userId,
         actor_role: auth.role,
       },
-      client
+      dbClient
     );
   }
 

@@ -28,6 +28,7 @@ export type ProductStatus = 'active' | 'inactive' | 'discontinued';
 
 export interface Category {
   id: string;
+  organizationId?: string;
   name: string;
   slug: string;
   description?: string;
@@ -40,6 +41,7 @@ export interface Category {
 
 export interface Brand {
   id: string;
+  organizationId?: string;
   name: string;
   slug: string;
   logoUrl?: string;
@@ -159,6 +161,7 @@ export interface ProductSpecification {
 
 export interface CatalogAttribute {
   id: string;
+  organizationId?: string;
   name: string; // e.g. 'Color', 'Size', 'Material', 'Storage', 'Weight'
   code: string; // e.g. 'color', 'size'
   type: 'select' | 'text' | 'number' | 'boolean';
@@ -170,6 +173,7 @@ export interface CatalogAttribute {
 
 export interface Product {
   id: string;
+  organizationId?: string;
   name: string;
   slug: string;
   brand: string;

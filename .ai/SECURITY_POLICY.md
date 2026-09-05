@@ -122,6 +122,19 @@ All software engineers and implementation agents must adhere strictly to the pri
 - **Rate Limiters**: Configured sliding-window rate limiters for authentication (`authRateLimiter`: 10 req/min), administrative operations (`adminRateLimiter`: 20 req/min), and general API traffic.
 - **Privileged Diagnostic Endpoint**: `/api/admin/db-status` requires `requireAuth()`, `requirePermission(PERMISSIONS.ADMIN_DIAGNOSTICS)`, and rate limiting, and sanitizes its output to ensure credentials, passwords, or connection strings are never exposed.
 
-### 4.6 Transitional Limitations
+### 4.6 Centralized Error Sanitization & Leak Prevention
+- **Defensive Error Handling**: The centralized Express error handler intercepts all unhandled errors on `/api/*`.
+- **Zero Information Leakage**: 500-level internal server errors are strictly sanitized. Database connection strings, database credentials, internal hostnames, and stack traces are suppressed from responses, returning generic error codes (`INTERNAL_ERROR`).
+- **Client Error Differentiation**: 4xx-level validation errors return clear, structured JSON error objects without revealing server internals.
+
+### 4.7 API Surface Classification & Security Matrix
+Every `/api/*` endpoint is classified into one of five authorization tiers:
+1. **PUBLIC**: Unauthenticated access permitted (e.g. `/api/health`, `/api/ready`, `/api/auth/login`, catalog reading for default tenant). Sensitive endpoints (login/PIN) are rate-limited.
+2. **AUTHENTICATED**: Valid cryptographically verified JWT required (e.g. `/api/auth/me`, `/api/auth/logout`, `/api/roles/permissions`).
+3. **PERMISSION-PROTECTED**: Explicit permission token claim required in addition to valid authentication (e.g. `products.create`, `orders.view`, `customers.view`).
+4. **ADMIN/PRIVILEGED**: Restricted to administrative or supervisory roles with high-risk permissions (e.g. `/api/admin/db-status`, `/api/products/:id` DELETE).
+5. **INTERNAL**: Restricted exclusively to non-production development/test harnesses; disabled or blocked in production.
+
+### 4.8 Transitional Limitations
 - **Single-Instance In-Memory Token Blacklist Cache**: The local in-memory revoked tokens cache accelerates token verification; in distributed multi-instance deployment, this cache will transition to Redis or direct PostgreSQL read replication.
 
