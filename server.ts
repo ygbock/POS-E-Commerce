@@ -11,6 +11,7 @@ import { OrderRepository } from './server/repositories/orderRepository.ts';
 import { CustomerRepository } from './server/repositories/customerRepository.ts';
 import { InventoryRepository } from './server/repositories/inventoryRepository.ts';
 import { AuditRepository } from './server/repositories/auditRepository.ts';
+import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
 import {
   createAuthenticateMiddleware,
   requireAuth,
@@ -1218,29 +1219,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
-  // Inventory Balances (Read boundary with location ownership validation)
-  app.get(
-    '/api/inventory/balances/:locationId',
-    requireAuth(),
-    requirePermission(PERMISSIONS.INVENTORY_VIEW),
-    requireTenantAccess(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const callerOrg = req.auth!.organizationId;
-
-        // Scoped strictly at the repository query level
-        const balances = await inventoryRepo.listBalancesByLocation(
-          req.params.locationId,
-          isSuperAdmin ? undefined : callerOrg
-        );
-
-        res.json({ success: true, count: balances.length, data: balances });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
+  // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
+  app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
 
   // Orders Query (Tenant-scoped)
   app.get(
