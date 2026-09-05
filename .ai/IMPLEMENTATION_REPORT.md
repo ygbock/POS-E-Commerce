@@ -598,7 +598,7 @@ Establish an uncompromised server-side authentication, authorization, and securi
 
 #### 1. Security Verification Test Suite (18 Tests)
 - **Command**: `npm run test:security` (`tsx tests/auth_security.test.ts`)
-- **Result**: **PASSED** (18 passed, 0 failed)
+- **Result**: **PASSED** (22 passed, 0 failed)
 - **Output Log**:
   ```text
   ======================================================
@@ -607,7 +607,7 @@ Establish an uncompromised server-side authentication, authorization, and securi
     [TEST] 1. Apply Auth Migrations (001 + 002)... PASSED
     [TEST] 2. Password Hashing & Verification (PBKDF2-HMAC-SHA512)... PASSED
     [TEST] 3. Cryptographic JWT Signing & Verification (HMAC-SHA256)... PASSED
-    [TEST] 4. JWT Tampering & Signature Forgery Detection... PASSED
+    [TEST] 4. JWT Verification Comprehensive Edge Cases & Cryptographic Validation... PASSED
     [TEST] 5. RBAC Permission Hierarchy & Matrix... PASSED
     [TEST] 6. User Repository & Token Revocation (Logout)... PASSED
     [TEST] 7. AuthService Authentication & Revocation Lifecycle... PASSED
@@ -622,8 +622,12 @@ Establish an uncompromised server-side authentication, authorization, and securi
     [TEST] 16. Real HTTP Admin Diagnostic Security & Leak Prevention... PASSED
     [TEST] 17. Real HTTP Sensitive Endpoint Rate Limiting (429 Defense)... PASSED
     [TEST] 18. Real HTTP Error Leakage & Sanitization (500 Defense)... PASSED
+    [TEST] 19. Production Startup Credential Seeding Rejection... PASSED
+    [TEST] 20. Real HTTP Health & Ready Sanitization (Simulated DB Outage)... PASSED
+    [TEST] 21. Real HTTP Authentication Error Sanitization... PASSED
+    [TEST] 22. Deep Resource-Level Multi-Tenant Isolation & Repository Boundary Enforcement... PASSED
   ======================================================
-   Results: 18 passed, 0 failed
+   Results: 22 passed, 0 failed
   ======================================================
   ```
 
@@ -662,6 +666,32 @@ Establish an uncompromised server-side authentication, authorization, and securi
 #### 4. Production Build Check
 - **Command**: `npm run build` (`vite build && esbuild server.ts ...`)
 - **Result**: **PASSED** (Vite build + esbuild CJS server bundle compiled cleanly)
+
+---
+
+### SEC-001 Remediation Summary & Verifications
+
+1. **Production Credential Seeding Removal**:
+   - Guarded `seedDefaultUsers` in `server/services/authService.ts` to strictly prohibit execution if `NODE_ENV === 'production'`. Throws a fatal `Error` preventing server bootstrap.
+   - Verified that server startup never executes default user or password seeding in production mode.
+   - Tested under Test 19 (`Production Startup Credential Seeding Rejection`).
+
+2. **Live Health & Readiness Probing with Failure Sanitization**:
+   - Refactored `/api/health` and `/api/ready` in `server.ts` to perform live database probe queries (`SELECT 1`).
+   - On database outage or failure, `/api/ready` returns HTTP 503 with structured, sanitized output (`status: 'unready'`, `ready: false`, `database.connected: false`).
+   - Zero internal stack traces or connection strings are leaked to the caller.
+   - Tested under Test 20 (`Real HTTP Health & Ready Sanitization (Simulated DB Outage)`).
+
+3. **Authentication Error Sanitization**:
+   - Centralized authentication middleware rejects invalid or expired tokens with uniform generic messages (`UNAUTHORIZED: Authentication required.`).
+   - Suppressed cryptographic signature details, token segments, and internal errors from HTTP response bodies.
+   - Tested under Test 21 (`Real HTTP Authentication Error Sanitization`).
+
+4. **Deep Resource-Level Multi-Tenant Isolation**:
+   - Enforced caller tenant pinning across all resource creation and query endpoints.
+   - Attempted cross-tenant query injection or body override is either rejected with HTTP 403 `TENANT_ACCESS_DENIED` or strictly pinned to caller tenant (`req.auth.organizationId`).
+   - Repositories enforce tenant-scoped filters (`organization_id = $1`).
+   - Tested under Test 22 (`Deep Resource-Level Multi-Tenant Isolation & Repository Boundary Enforcement`).
 
 ---
 

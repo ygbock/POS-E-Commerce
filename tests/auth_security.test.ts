@@ -1,4 +1,5 @@
 import assert from 'assert';
+import crypto from 'crypto';
 import http from 'http';
 import express from 'express';
 import { hashPassword, verifyPassword } from '../server/auth/password';
@@ -126,8 +127,8 @@ async function main() {
       assert.ok(verified.jti, 'JTI token ID must be generated');
     });
 
-    // 4. JWT Tampering & Signature Forgery Detection
-    await runTest('4. JWT Tampering & Signature Forgery Detection', async () => {
+    // 4. JWT Cryptographic Verification Edge Cases & Tampering Detection
+    await runTest('4. JWT Verification Comprehensive Edge Cases & Cryptographic Validation', async () => {
       const validToken = signToken({
         userId: 'usr-regular',
         organizationId: 'org_test',
@@ -139,37 +140,180 @@ async function main() {
       const payload = parts[1];
       const signature = parts[2];
 
-      // Tamper payload to elevate role to super_admin
+      // 1. Valid token succeeds
+      const verified = verifyToken(validToken);
+      assert.strictEqual(verified.sub, 'usr-regular');
+      assert.strictEqual(verified.orgId, 'org_test');
+      assert.strictEqual(verified.role, ROLES.CASHIER);
+
+      // 2. Tampered payload -> INVALID_SIGNATURE
       const decodedPayload = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
       decodedPayload.role = ROLES.SUPER_ADMIN;
       decodedPayload.permissions = Object.values(PERMISSIONS);
       const tamperedPayload = Buffer.from(JSON.stringify(decodedPayload)).toString('base64url');
+      const tamperedPayloadToken = `${header}.${tamperedPayload}.${signature}`;
 
-      const tamperedToken = `${header}.${tamperedPayload}.${signature}`;
-
-      let rejected = false;
-      try {
-        verifyToken(tamperedToken);
-      } catch (err: any) {
-        rejected = true;
-        assert.strictEqual(err.code, 'INVALID_SIGNATURE', 'Tampered token must be rejected with INVALID_SIGNATURE');
-      }
-      assert.strictEqual(rejected, true, 'Tampered token must throw error');
-
-      // Forged token signed with incorrect secret
-      const forgedToken = signToken(
-        { userId: 'usr-hacker', organizationId: 'org_test', role: ROLES.SUPER_ADMIN },
-        'this-is-a-completely-different-hacker-secret-key-12345!'
+      assert.throws(
+        () => verifyToken(tamperedPayloadToken),
+        (err: any) => err.code === 'INVALID_SIGNATURE',
+        'Tampered payload must fail signature verification'
       );
 
-      let forgedRejected = false;
+      // 3. Tampered header -> INVALID_SIGNATURE
+      const decodedHeader = JSON.parse(Buffer.from(header, 'base64url').toString('utf8'));
+      decodedHeader.custom = 'injected';
+      const tamperedHeader = Buffer.from(JSON.stringify(decodedHeader)).toString('base64url');
+      const tamperedHeaderToken = `${tamperedHeader}.${payload}.${signature}`;
+
+      assert.throws(
+        () => verifyToken(tamperedHeaderToken),
+        (err: any) => err.code === 'INVALID_SIGNATURE',
+        'Tampered header must fail signature verification'
+      );
+
+      // 4. Invalid signature -> INVALID_SIGNATURE
+      const badSigToken = `${header}.${payload}.${signature.slice(0, -4)}XXXX`;
+      assert.throws(
+        () => verifyToken(badSigToken),
+        (err: any) => err.code === 'INVALID_SIGNATURE',
+        'Invalid signature must fail verification'
+      );
+
+      // 5. Forged signature signed with wrong secret -> INVALID_SIGNATURE
+      const forgedToken = signToken(
+        { userId: 'usr-hacker', organizationId: 'org_test', role: ROLES.SUPER_ADMIN },
+        'wrong-secret-key-forgery-attempt-32-chars!'
+      );
+      assert.throws(
+        () => verifyToken(forgedToken),
+        (err: any) => err.code === 'INVALID_SIGNATURE',
+        'Token signed with different secret must be rejected'
+      );
+
+      // 6. Wrong algorithm (e.g. alg: "none" or "RS256") -> MALFORMED
+      const algNoneHeader = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+      const algNoneToken = `${algNoneHeader}.${payload}.${signature}`;
+      assert.throws(
+        () => verifyToken(algNoneToken),
+        (err: any) => err.code === 'MALFORMED',
+        'Unsupported algorithm (none) must be rejected'
+      );
+
+      const algRsHeader = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+      const algRsToken = `${algRsHeader}.${payload}.${signature}`;
+      assert.throws(
+        () => verifyToken(algRsToken),
+        (err: any) => err.code === 'MALFORMED',
+        'Unsupported algorithm (RS256) must be rejected'
+      );
+
+      // 7. Missing sub -> MALFORMED
+      const noSubPayload = Buffer.from(JSON.stringify({
+        orgId: 'org_test',
+        role: ROLES.CASHIER,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })).toString('base64url');
+      const noSubToken = `${header}.${noSubPayload}.${signature}`;
+      assert.throws(
+        () => verifyToken(noSubToken),
+        (err: any) => err.code === 'MALFORMED' || err.code === 'INVALID_SIGNATURE',
+        'Missing sub claim must be rejected'
+      );
+
+      // 8. Missing organization -> MALFORMED
+      const noOrgPayload = Buffer.from(JSON.stringify({
+        sub: 'usr-regular',
+        role: ROLES.CASHIER,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })).toString('base64url');
+      const noOrgToken = `${header}.${noOrgPayload}.${signature}`;
+      assert.throws(
+        () => verifyToken(noOrgToken),
+        (err: any) => err.code === 'MALFORMED' || err.code === 'INVALID_SIGNATURE',
+        'Missing organization claim must be rejected'
+      );
+
+      // 9. Missing role -> MALFORMED
+      const noRolePayload = Buffer.from(JSON.stringify({
+        sub: 'usr-regular',
+        orgId: 'org_test',
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })).toString('base64url');
+      const noRoleToken = `${header}.${noRolePayload}.${signature}`;
+      assert.throws(
+        () => verifyToken(noRoleToken),
+        (err: any) => err.code === 'MALFORMED' || err.code === 'INVALID_SIGNATURE',
+        'Missing role claim must be rejected'
+      );
+
+      // 10. Expired token -> EXPIRED
+      const expiredToken = signToken({
+        userId: 'usr_exp',
+        organizationId: 'org_test',
+        role: ROLES.CASHIER,
+        expiresInSeconds: -300,
+      });
+      assert.throws(
+        () => verifyToken(expiredToken),
+        (err: any) => err.code === 'EXPIRED',
+        'Expired token must be rejected with EXPIRED'
+      );
+
+      // 11. Future iat (clock skew beyond 60s) -> MALFORMED
+      const secret = 'omnicore-dev-local-jwt-insecure-secret-key-32-chars-min';
+      const futurePayload = Buffer.from(JSON.stringify({
+        sub: 'usr_future',
+        orgId: 'org_test',
+        role: ROLES.CASHIER,
+        iat: Math.floor(Date.now() / 1000) + 3600,
+        exp: Math.floor(Date.now() / 1000) + 7200,
+      })).toString('base64url');
+      const futureSigInput = `${header}.${futurePayload}`;
+      const futureSig = crypto
+        .createHmac('sha256', secret)
+        .update(futureSigInput)
+        .digest('base64url');
+      const futureToken = `${futureSigInput}.${futureSig}`;
+
+      assert.throws(
+        () => verifyToken(futureToken, secret),
+        (err: any) => err.code === 'MALFORMED',
+        'Token issued in future must be rejected'
+      );
+
+      // 12. Malformed token formats (not 3 parts, garbage) -> MALFORMED
+      assert.throws(() => verifyToken('not-a-token'), (err: any) => err.code === 'MALFORMED');
+      assert.throws(() => verifyToken('part1.part2'), (err: any) => err.code === 'MALFORMED');
+      assert.throws(() => verifyToken('part1.part2.part3.part4'), (err: any) => err.code === 'MALFORMED');
+      assert.throws(() => verifyToken(''), (err: any) => err.code === 'MALFORMED');
+
+      // 13. Production missing JWT secret -> CONFIG_ERROR
+      const origEnv = process.env.NODE_ENV;
+      const origSecret = process.env.JWT_SECRET;
       try {
-        verifyToken(forgedToken);
-      } catch (err: any) {
-        forgedRejected = true;
-        assert.strictEqual(err.code, 'INVALID_SIGNATURE');
+        process.env.NODE_ENV = 'production';
+        delete process.env.JWT_SECRET;
+        assert.throws(
+          () => verifyToken(validToken),
+          (err: any) => err.code === 'CONFIG_ERROR',
+          'Production with missing JWT_SECRET must fail with CONFIG_ERROR'
+        );
+
+        // 14. Production weak JWT secret -> CONFIG_ERROR
+        process.env.JWT_SECRET = 'weak-dev-key';
+        assert.throws(
+          () => verifyToken(validToken),
+          (err: any) => err.code === 'CONFIG_ERROR',
+          'Production with weak JWT_SECRET must fail with CONFIG_ERROR'
+        );
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origSecret) process.env.JWT_SECRET = origSecret;
+        else delete process.env.JWT_SECRET;
       }
-      assert.strictEqual(forgedRejected, true, 'Token with different secret must be rejected');
     });
 
     // 5. RBAC Permission Hierarchy & Matrix
@@ -1092,6 +1236,376 @@ async function main() {
         assert.strictEqual(body.error.code, 'INTERNAL_SERVER_ERROR');
         // In non-production or production, sensitive credentials or database connection details must not leak in error code
         assert.strictEqual(body.stack, undefined, 'Stack trace must never be returned in API response');
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+
+    // 19. Production Startup Credential Seeding Protection
+    await runTest('19. Production Startup Credential Seeding Rejection', async () => {
+      const authService = new AuthService(db);
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalDevSeed = process.env.ENABLE_DEV_SEED;
+
+      try {
+        // Force production environment
+        process.env.NODE_ENV = 'production';
+        process.env.ENABLE_DEV_SEED = 'false';
+
+        // Direct call to seedDefaultUsers() must strictly throw
+        await assert.rejects(
+          async () => {
+            await authService.seedDefaultUsers();
+          },
+          (err: any) => {
+            return (
+              err.message &&
+              err.message.includes('CRITICAL SECURITY VIOLATION: seedDefaultUsers() must NEVER execute in production')
+            );
+          },
+          'seedDefaultUsers must throw fatal error in production'
+        );
+
+        // Even if ENABLE_DEV_SEED=true is erroneously set, NODE_ENV=production must still block it
+        process.env.ENABLE_DEV_SEED = 'true';
+        await assert.rejects(
+          async () => {
+            await authService.seedDefaultUsers();
+          },
+          (err: any) => {
+            return (
+              err.message &&
+              err.message.includes('CRITICAL SECURITY VIOLATION: seedDefaultUsers() must NEVER execute in production')
+            );
+          },
+          'seedDefaultUsers must throw even if ENABLE_DEV_SEED=true when NODE_ENV=production'
+        );
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+        process.env.ENABLE_DEV_SEED = originalDevSeed;
+      }
+    });
+
+    // 20. Real HTTP Health & Ready Endpoint Sanitization (Simulated DB Outage)
+    await runTest('20. Real HTTP Health & Ready Sanitization (Simulated DB Outage)', async () => {
+      // Create a mock DB client that fails query with an internal error containing sensitive connection info
+      const failingDb: any = {
+        query: async () => {
+          throw new Error('connection to server at "pg-internal-cluster.private:5432" failed: FATAL: password authentication failed for user "db_superuser_secret"');
+        },
+        exec: async () => {},
+        transaction: async () => {},
+        close: async () => {},
+        isEmbedded: () => false,
+      };
+
+      const failingAuthService = new AuthService(failingDb);
+      const { app } = await createApp({ db: failingDb, authService: failingAuthService, skipVite: true });
+      const server = http.createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, resolve));
+      const port = (server.address() as any).port;
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      try {
+        // Test /api/health
+        const healthRes = await fetch(`${baseUrl}/api/health`);
+        assert.strictEqual(healthRes.status, 503, 'Failing DB on health check must return 503');
+        const healthBody = await healthRes.json();
+        assert.strictEqual(healthBody.status, 'unhealthy');
+        assert.strictEqual(healthBody.ready, false);
+        assert.strictEqual(healthBody.database.connected, false);
+
+        const healthRaw = JSON.stringify(healthBody);
+        assert.strictEqual(healthRaw.includes('pg-internal-cluster'), false, 'Internal hostname must not leak');
+        assert.strictEqual(healthRaw.includes('db_superuser_secret'), false, 'Credentials must not leak');
+        assert.strictEqual(healthRaw.includes('FATAL'), false, 'Raw database error must not leak');
+        assert.strictEqual(healthRaw.includes('password'), false, 'Password string must not leak');
+
+        // Test /api/ready
+        const readyRes = await fetch(`${baseUrl}/api/ready`);
+        assert.strictEqual(readyRes.status, 503, 'Failing DB on ready check must return 503');
+        const readyBody = await readyRes.json();
+        assert.strictEqual(readyBody.status, 'unready');
+        assert.strictEqual(readyBody.ready, false);
+        assert.strictEqual(readyBody.database.connected, false);
+
+        const readyRaw = JSON.stringify(readyBody);
+        assert.strictEqual(readyRaw.includes('pg-internal-cluster'), false, 'Internal hostname must not leak');
+        assert.strictEqual(readyRaw.includes('db_superuser_secret'), false, 'Credentials must not leak');
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+
+    // 21. Real HTTP Authentication Error Sanitization (Generic Safe 401s)
+    await runTest('21. Real HTTP Authentication Error Sanitization', async () => {
+      const authService = new AuthService(db);
+      const { app } = await createApp({ db, authService, skipVite: true });
+      const server = http.createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, resolve));
+      const port = (server.address() as any).port;
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      try {
+        // 1. Unauthenticated request
+        const resAnon = await fetch(`${baseUrl}/api/auth/me`);
+        assert.strictEqual(resAnon.status, 401);
+        const bodyAnon = await resAnon.json();
+        assert.deepStrictEqual(bodyAnon, {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required.',
+          },
+        });
+
+        // 2. Expired token request
+        const expiredToken = signToken({
+          userId: 'usr_anon_test',
+          organizationId: 'org_default',
+          role: ROLES.VIEWER,
+          expiresInSeconds: -100,
+        });
+        const resExpired = await fetch(`${baseUrl}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${expiredToken}` },
+        });
+        assert.strictEqual(resExpired.status, 401);
+        const bodyExpired = await resExpired.json();
+        assert.deepStrictEqual(bodyExpired, {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required.',
+          },
+        });
+
+        // 3. Malformed token request
+        const resMalformed = await fetch(`${baseUrl}/api/auth/me`, {
+          headers: { Authorization: 'Bearer gibberish.token.format' },
+        });
+        assert.strictEqual(resMalformed.status, 401);
+        const bodyMalformed = await resMalformed.json();
+        assert.deepStrictEqual(bodyMalformed, {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required.',
+          },
+        });
+
+        // Verify no sensitive token internals or stack traces in any 401
+        for (const b of [bodyAnon, bodyExpired, bodyMalformed] as any[]) {
+          assert.strictEqual(b.stack, undefined);
+          assert.strictEqual(b.internal, undefined);
+          assert.strictEqual(b.token, undefined);
+        }
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+
+    // 22. Deep Resource-Level Multi-Tenant Isolation & Repository Boundary Enforcement
+    await runTest('22. Deep Resource-Level Multi-Tenant Isolation & Repository Boundary Enforcement', async () => {
+      const orderRepo = new OrderRepository(db);
+      const customerRepo = new CustomerRepository(db);
+      const inventoryRepo = new InventoryRepository(db);
+      const userRepo = new UserRepository(db);
+      const authService = new AuthService(db);
+
+      const { app } = await createApp({ db, authService, skipVite: true });
+      const server = http.createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, resolve));
+      const port = (server.address() as any).port;
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      try {
+        // Ensure tenant organizations exist in DB
+        await db.query(`
+          INSERT INTO organizations (id, name, code, is_active)
+          VALUES 
+            ('org_company_a', 'Company A Ltd', 'ORG_A', TRUE),
+            ('org_company_b', 'Company B Ltd', 'ORG_B', TRUE)
+          ON CONFLICT (id) DO NOTHING
+        `);
+
+        // Seed tenant-specific orders and customers in DB
+        const { order: ordA } = await orderRepo.createOrderWithItems(
+          {
+            id: 'ord-iso-a-01',
+            organization_id: 'org_company_a',
+            location_id: 'loc-store-a',
+            order_number: 'ORD-A-ISO-01',
+            source: 'POS',
+            channel: 'pos',
+            fulfillment_method: 'POS Walk-in',
+            subtotal: 100,
+            discount_amount: 0,
+            tax_amount: 10,
+            shipping_fee: 0,
+            total_amount: 110,
+            payment_status: 'Paid',
+            status: 'Completed',
+          },
+          []
+        );
+
+        const { order: ordB } = await orderRepo.createOrderWithItems(
+          {
+            id: 'ord-iso-b-01',
+            organization_id: 'org_company_b',
+            location_id: 'loc-store-b',
+            order_number: 'ORD-B-ISO-01',
+            source: 'POS',
+            channel: 'pos',
+            fulfillment_method: 'POS Walk-in',
+            subtotal: 200,
+            discount_amount: 0,
+            tax_amount: 20,
+            shipping_fee: 0,
+            total_amount: 220,
+            payment_status: 'Paid',
+            status: 'Completed',
+          },
+          []
+        );
+
+        const custA = await customerRepo.createCustomer({
+          id: 'cust-iso-a-01',
+          organization_id: 'org_company_a',
+          name: 'Alice CompanyA',
+          email: 'alice@company-a.com',
+        });
+
+        const custB = await customerRepo.createCustomer({
+          id: 'cust-iso-b-01',
+          organization_id: 'org_company_b',
+          name: 'Bob CompanyB',
+          email: 'bob@company-b.com',
+        });
+
+        const tokenTenantA = signToken({
+          userId: 'usr_tenant_a_runner',
+          email: 'runner@tenant-a.com',
+          organizationId: 'org_company_a',
+          role: ROLES.STORE_MANAGER,
+        });
+
+        const tokenSuperAdmin = signToken({
+          userId: 'usr_super_runner',
+          email: 'super@omnicore.internal',
+          organizationId: 'org_default',
+          role: ROLES.SUPER_ADMIN,
+        });
+
+        // 1. Tenant A tries to read Tenant B Order -> 403 TENANT_ACCESS_DENIED
+        const crossOrderRes = await fetch(`${baseUrl}/api/orders/${ordB.id}`, {
+          headers: { Authorization: `Bearer ${tokenTenantA}` },
+        });
+        assert.strictEqual(crossOrderRes.status, 403, 'Accessing cross-tenant order must return 403');
+        const crossOrderBody = await crossOrderRes.json();
+        assert.strictEqual(crossOrderBody.error.code, 'TENANT_ACCESS_DENIED');
+
+        // 2. Tenant A reads own order -> 200 OK
+        const ownOrderRes = await fetch(`${baseUrl}/api/orders/${ordA.id}`, {
+          headers: { Authorization: `Bearer ${tokenTenantA}` },
+        });
+        assert.strictEqual(ownOrderRes.status, 200);
+        const ownOrderBody = await ownOrderRes.json();
+        assert.strictEqual(ownOrderBody.data.order.id, ordA.id);
+
+        // 3. Super Admin reads Tenant B order -> 200 OK
+        const superOrderRes = await fetch(`${baseUrl}/api/orders/${ordB.id}`, {
+          headers: { Authorization: `Bearer ${tokenSuperAdmin}` },
+        });
+        assert.strictEqual(superOrderRes.status, 200, 'Super admin can view order across tenants');
+
+        // 4. Tenant A tries to read Tenant B Customer -> 403 TENANT_ACCESS_DENIED
+        const crossCustRes = await fetch(`${baseUrl}/api/customers/${custB.id}`, {
+          headers: { Authorization: `Bearer ${tokenTenantA}` },
+        });
+        assert.strictEqual(crossCustRes.status, 403, 'Accessing cross-tenant customer must return 403');
+        const crossCustBody = await crossCustRes.json();
+        assert.strictEqual(crossCustBody.error.code, 'TENANT_ACCESS_DENIED');
+
+        // 5. Tenant A reads own customer -> 200 OK
+        const ownCustRes = await fetch(`${baseUrl}/api/customers/${custA.id}`, {
+          headers: { Authorization: `Bearer ${tokenTenantA}` },
+        });
+        assert.strictEqual(ownCustRes.status, 200);
+
+        // 6. Super Admin reads Tenant B Customer -> 200 OK
+        const superCustRes = await fetch(`${baseUrl}/api/customers/${custB.id}`, {
+          headers: { Authorization: `Bearer ${tokenSuperAdmin}` },
+        });
+        assert.strictEqual(superCustRes.status, 200);
+
+        const tokenTenantAdminA = signToken({
+          userId: 'usr_tenant_a_admin',
+          email: 'admin@tenant-a.com',
+          organizationId: 'org_company_a',
+          role: ROLES.ADMIN,
+        });
+
+        // 7. Store manager attempting to create a user gets 403 Forbidden (RBAC)
+        const unauthCreateUserRes = await fetch(`${baseUrl}/api/users`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tokenTenantA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: 'Unauthorized User',
+            email: 'unauth@tenant-a.com',
+            password: 'UnauthUser123!',
+            role: ROLES.CASHIER,
+          }),
+        });
+        assert.strictEqual(unauthCreateUserRes.status, 403, 'Store manager lacking USERS_CREATE must receive 403');
+
+        // 8. Tenant A Admin attempts to create a user specifying organizationId: "org_company_b" -> Pinned to org_company_a
+        const createUserRes = await fetch(`${baseUrl}/api/users`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tokenTenantAdminA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: 'Injected User',
+            email: 'injected@tenant-b.com',
+            password: 'InjectedUser123!',
+            role: ROLES.CASHIER,
+            organizationId: 'org_company_b',
+          }),
+        });
+        assert.strictEqual(createUserRes.status, 201);
+        const createdUserBody = await createUserRes.json();
+        assert.strictEqual(
+          createdUserBody.data.organizationId,
+          'org_company_a',
+          'Non-super-admin user creation must strictly pin user to caller organizationId'
+        );
+
+        // 9. Tenant A Admin requests /api/users with ?orgId=org_company_b -> 403 TENANT_ACCESS_DENIED
+        const crossListUsersRes = await fetch(`${baseUrl}/api/users?orgId=org_company_b`, {
+          headers: { Authorization: `Bearer ${tokenTenantAdminA}` },
+        });
+        assert.strictEqual(crossListUsersRes.status, 403, 'Cross-tenant query parameter must be rejected with 403');
+        const crossListBody = await crossListUsersRes.json();
+        assert.strictEqual(crossListBody.error.code, 'TENANT_ACCESS_DENIED');
+
+        // 10. Tenant A Admin requests /api/users (own tenant) -> 200 OK with only org_company_a users
+        const ownListUsersRes = await fetch(`${baseUrl}/api/users`, {
+          headers: { Authorization: `Bearer ${tokenTenantAdminA}` },
+        });
+        assert.strictEqual(ownListUsersRes.status, 200);
+        const ownListUsersBody = await ownListUsersRes.json();
+        for (const u of ownListUsersBody.data) {
+          assert.strictEqual(
+            u.organizationId,
+            'org_company_a',
+            'Returned users must belong only to caller tenant'
+          );
+        }
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }

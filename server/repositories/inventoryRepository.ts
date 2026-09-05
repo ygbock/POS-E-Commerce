@@ -58,34 +58,55 @@ export class InventoryRepository {
   async getBalance(
     locationId: string,
     variantId: string,
+    orgIdOrClient?: string | DatabaseClient,
     client?: DatabaseClient
   ): Promise<InventoryBalanceRecord | null> {
-    const db = this.getClient(client);
-    const res = await db.query<InventoryBalanceRecord>(
-      `SELECT id, organization_id, location_id, variant_id,
-              on_hand::float, reserved::float, available::float,
-              created_at, updated_at
-       FROM inventory_balances
-       WHERE location_id = $1 AND variant_id = $2`,
-      [locationId, variantId]
-    );
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const activeClient = typeof orgIdOrClient !== 'string' ? (orgIdOrClient as DatabaseClient) : client;
+    const db = this.getClient(activeClient);
+
+    const querySql = orgId
+      ? `SELECT id, organization_id, location_id, variant_id,
+                on_hand::float, reserved::float, available::float,
+                created_at, updated_at
+         FROM inventory_balances
+         WHERE location_id = $1 AND variant_id = $2 AND organization_id = $3`
+      : `SELECT id, organization_id, location_id, variant_id,
+                on_hand::float, reserved::float, available::float,
+                created_at, updated_at
+         FROM inventory_balances
+         WHERE location_id = $1 AND variant_id = $2`;
+
+    const params = orgId ? [locationId, variantId, orgId] : [locationId, variantId];
+    const res = await db.query<InventoryBalanceRecord>(querySql, params);
     return res.rows[0] || null;
   }
 
   async listBalancesByLocation(
     locationId: string,
+    orgIdOrClient?: string | DatabaseClient,
     client?: DatabaseClient
   ): Promise<InventoryBalanceRecord[]> {
-    const db = this.getClient(client);
-    const res = await db.query<InventoryBalanceRecord>(
-      `SELECT id, organization_id, location_id, variant_id,
-              on_hand::float, reserved::float, available::float,
-              created_at, updated_at
-       FROM inventory_balances
-       WHERE location_id = $1
-       ORDER BY updated_at DESC`,
-      [locationId]
-    );
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const activeClient = typeof orgIdOrClient !== 'string' ? (orgIdOrClient as DatabaseClient) : client;
+    const db = this.getClient(activeClient);
+
+    const querySql = orgId
+      ? `SELECT id, organization_id, location_id, variant_id,
+                on_hand::float, reserved::float, available::float,
+                created_at, updated_at
+         FROM inventory_balances
+         WHERE location_id = $1 AND organization_id = $2
+         ORDER BY updated_at DESC`
+      : `SELECT id, organization_id, location_id, variant_id,
+                on_hand::float, reserved::float, available::float,
+                created_at, updated_at
+         FROM inventory_balances
+         WHERE location_id = $1
+         ORDER BY updated_at DESC`;
+
+    const params = orgId ? [locationId, orgId] : [locationId];
+    const res = await db.query<InventoryBalanceRecord>(querySql, params);
     return res.rows;
   }
 

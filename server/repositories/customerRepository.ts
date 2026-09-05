@@ -42,15 +42,27 @@ export class CustomerRepository {
     return res.rows;
   }
 
-  async findCustomerById(id: string, client?: DatabaseClient): Promise<CustomerRecord | null> {
-    const db = this.getClient(client);
-    const res = await db.query<CustomerRecord>(
-      `SELECT id, organization_id, name, email, phone, tier,
-              loyalty_points, store_credit_balance::float, credit_limit::float,
-              customer_group, notes, registered_at, created_at, updated_at
-       FROM customers WHERE id = $1`,
-      [id]
-    );
+  async findCustomerById(
+    id: string,
+    orgIdOrClient?: string | DatabaseClient,
+    client?: DatabaseClient
+  ): Promise<CustomerRecord | null> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const activeClient = typeof orgIdOrClient !== 'string' ? (orgIdOrClient as DatabaseClient) : client;
+    const db = this.getClient(activeClient);
+
+    const querySql = orgId
+      ? `SELECT id, organization_id, name, email, phone, tier,
+                loyalty_points, store_credit_balance::float, credit_limit::float,
+                customer_group, notes, registered_at, created_at, updated_at
+         FROM customers WHERE id = $1 AND organization_id = $2`
+      : `SELECT id, organization_id, name, email, phone, tier,
+                loyalty_points, store_credit_balance::float, credit_limit::float,
+                customer_group, notes, registered_at, created_at, updated_at
+         FROM customers WHERE id = $1`;
+
+    const params = orgId ? [id, orgId] : [id];
+    const res = await db.query<CustomerRecord>(querySql, params);
     return res.rows[0] || null;
   }
 

@@ -138,3 +138,21 @@ Every `/api/*` endpoint is classified into one of five authorization tiers:
 ### 4.8 Transitional Limitations
 - **Single-Instance In-Memory Token Blacklist Cache**: The local in-memory revoked tokens cache accelerates token verification; in distributed multi-instance deployment, this cache will transition to Redis or direct PostgreSQL read replication.
 
+### 4.9 Production Credential Seed Isolation & Protection
+- **No Automatic Credential Seeding in Production**: Development and test user accounts with default or known passwords must never be seeded automatically upon production startup.
+- **Fail-Closed Production Guard**: `AuthService.seedDefaultUsers()` and server initialization explicitly evaluate `NODE_ENV === 'production'` or `isProd`. Any attempt to execute default credential seeding in production throws a fatal error and terminates execution immediately. Production user provisioning must occur exclusively via authorized administrative invitation flows.
+
+### 4.10 Health & Readiness Live Probing & Leak Prevention
+- **Live Readiness Probes**: `/api/ready` and `/api/health` execute a live query (`SELECT 1`) to verify database responsiveness rather than relying on a static initialization flag.
+- **Outage Sanitization**: During a database outage or degraded state, `/api/ready` returns HTTP 503 with a structured, non-leaking JSON payload (`status: 'unready'`, `ready: false`, `database.connected: false`).
+- **Zero Internal Leakage**: Error messages, stack traces, database usernames, and connection parameters are strictly excluded from all public probe responses.
+
+### 4.11 Authentication Error Sanitization
+- **Generic 401 Rejections**: Failed authentication attempts (missing token, expired token, signature mismatch, malformed header) return a sanitized, uniform HTTP 401 Unauthorized response (`UNAUTHORIZED: Authentication required.`).
+- **Suppression of Token & Cryptographic Internals**: Internal token verification details (such as cryptographic signature algorithms, token payload internals, or stack traces) are logged strictly to server-side diagnostic logs and never returned in client HTTP responses.
+
+### 4.12 Deep Resource-Level Multi-Tenant Isolation
+- **Caller-Scoped Operations**: All resource queries, updates, and creations must be explicitly scoped using the authenticated caller's tenant identifier (`req.auth.organizationId`).
+- **Request Body & Query Pinning**: Request body claims or query parameters targeting another organization are either rejected with HTTP 403 `TENANT_ACCESS_DENIED` or strictly overridden with the caller's authorized tenant identifier.
+- **Repository-Level Parameter Enforcement**: Domain repositories (`OrderRepository`, `CustomerRepository`, `InventoryRepository`, `UserRepository`) enforce `organizationId` parameterization in all primary database queries. Cross-tenant access is restricted solely to users possessing the `super_admin` role.
+

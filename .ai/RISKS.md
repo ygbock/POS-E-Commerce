@@ -110,4 +110,12 @@
 - **Vulnerability**: In horizontally scaled multi-container clusters, immediate cross-node invalidation requires either Redis pub/sub or direct DB check fallback.
 - **Planned Mitigation**: Multi-instance Redis cache or central Postgres validation in `PROD-001`.
 
+---
+
+### RISK-013: Process-Local Rate Limiting Limitation
+- **Description**: The rate-limiting middleware introduced in SEC-001 maintains sliding-window hit counters in an in-process JavaScript `Map`.
+- **Vulnerability**: It protects only a single process instance from brute-force authentication attacks and resource exhaustion. In multi-instance or horizontally auto-scaled environments (e.g., multiple Cloud Run container instances or Kubernetes pods behind an ingress load balancer), rate limit counters are not synchronized across instances. Attackers distributing requests across nodes could exceed intended operational rate thresholds.
+- **Planned Mitigation**: Implement an external shared rate-limiting store (Redis, Valkey, or Cloud Armor / WAF rate limiting) in `PROD-001` or a dedicated infrastructure task before deploying horizontally scaled multi-instance clusters.
+
+
 

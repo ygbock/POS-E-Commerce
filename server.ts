@@ -25,7 +25,7 @@ import {
   sanitizeClientBody,
 } from './server/validation/index.ts';
 import { hashPassword } from './server/auth/password.ts';
-import { PERMISSIONS, ROLE_PERMISSIONS } from './server/auth/roles.ts';
+import { PERMISSIONS, ROLE_PERMISSIONS, VALID_ROLES } from './server/auth/roles.ts';
 
 export interface CreateAppOptions {
   db?: DatabaseClient;
@@ -53,14 +53,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   if (options.db) {
     db = options.db;
     authService = options.authService || new AuthService(db);
-    dbStatus.connected = true;
-    dbStatus.engine = db.isEmbedded() ? 'embedded-pglite' : 'postgresql';
     try {
-      const applied = await getAppliedMigrations(db);
-      dbStatus.migrationsApplied = Array.from(applied);
-      dbStatus.version = Array.from(applied).pop() || '000';
-    } catch {
-      // Migrations may be handled externally by caller
+      await db.query('SELECT 1 as val');
+      dbStatus.connected = true;
+      dbStatus.engine = db.isEmbedded() ? 'embedded-pglite' : 'postgresql';
+      try {
+        const applied = await getAppliedMigrations(db);
+        dbStatus.migrationsApplied = Array.from(applied);
+        dbStatus.version = Array.from(applied).pop() || '000';
+      } catch {
+        // Migrations may be handled externally by caller
+      }
+    } catch (err: any) {
+      dbStatus.connected = false;
+      dbStatus.error = err.message || 'Database connection error';
     }
   } else {
     try {
@@ -74,7 +80,11 @@ export async function createApp(options: CreateAppOptions = {}) {
         const applied = await getAppliedMigrations(db);
         dbStatus.migrationsApplied = Array.from(applied);
         dbStatus.version = Array.from(applied).pop() || '000';
-        await authService.seedDefaultUsers();
+        // Development/test seed ONLY when explicitly enabled and NEVER in production
+        if (!isProd && process.env.ENABLE_DEV_SEED === 'true') {
+          await authService.seedDefaultUsers();
+          console.log('[Omnicore DB] Dev/test users seeded (ENABLE_DEV_SEED=true).');
+        }
         console.log(`[Omnicore DB] Connected (${dbStatus.engine}). Schema: ${dbStatus.version}`);
       }
     } catch (dbErr: any) {
@@ -259,8 +269,21 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ------------------------------------------------------------------
   // 2. SYSTEM HEALTH & DIAGNOSTICS ENDPOINTS
   // ------------------------------------------------------------------
-  app.get('/api/health', (req: Request, res: Response) => {
-    if (isProd && !dbStatus.connected) {
+  app.get('/api/health', async (req: Request, res: Response) => {
+    let isDbHealthy = false;
+    try {
+      if (dbStatus.connected) {
+        await db.query('SELECT 1 as val');
+        isDbHealthy = true;
+      }
+    } catch (err: any) {
+      isDbHealthy = false;
+      dbStatus.connected = false;
+      dbStatus.error = err.message || 'Database ping error';
+      console.error('[Omnicore Health Check] Database connection failure:', dbStatus.error);
+    }
+
+    if (!isDbHealthy) {
       return res.status(503).json({
         status: 'unhealthy',
         ready: false,
@@ -270,21 +293,19 @@ export async function createApp(options: CreateAppOptions = {}) {
         timestamp: new Date().toISOString(),
         database: {
           connected: false,
-          engine: dbStatus.engine,
-          error: dbStatus.error || 'Production PostgreSQL unavailable',
         },
       });
     }
 
     res.json({
-      status: dbStatus.connected ? 'ok' : 'degraded',
-      ready: dbStatus.connected,
+      status: 'ok',
+      ready: true,
       service: 'Centralized Product Service',
       version: '2.4.0',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       database: {
-        connected: dbStatus.connected,
+        connected: true,
         engine: dbStatus.engine,
         schemaVersion: dbStatus.version,
         migrationsCount: dbStatus.migrationsApplied.length,
@@ -292,12 +313,27 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   });
 
-  app.get('/api/ready', (req: Request, res: Response) => {
-    if (!dbStatus.connected) {
+  app.get('/api/ready', async (req: Request, res: Response) => {
+    let isDbHealthy = false;
+    try {
+      if (dbStatus.connected) {
+        await db.query('SELECT 1 as val');
+        isDbHealthy = true;
+      }
+    } catch (err: any) {
+      isDbHealthy = false;
+      dbStatus.connected = false;
+      dbStatus.error = err.message || 'Database ping error';
+      console.error('[Omnicore Ready Check] Database unavailable:', dbStatus.error);
+    }
+
+    if (!isDbHealthy) {
       return res.status(503).json({
         ready: false,
         status: 'unready',
-        error: dbStatus.error || 'Database unavailable',
+        database: {
+          connected: false,
+        },
       });
     }
     res.json({
@@ -1158,16 +1194,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const balances = await inventoryRepo.listBalancesByLocation(req.params.locationId);
         const isSuperAdmin = req.auth!.role === 'super_admin';
         const callerOrg = req.auth!.organizationId;
 
-        // Scoped strictly to caller's tenant
-        const filtered = isSuperAdmin
-          ? balances
-          : balances.filter((b) => b.organization_id === callerOrg);
+        // Scoped strictly at the repository query level
+        const balances = await inventoryRepo.listBalancesByLocation(
+          req.params.locationId,
+          isSuperAdmin ? undefined : callerOrg
+        );
 
-        res.json({ success: true, count: filtered.length, data: filtered });
+        res.json({ success: true, count: balances.length, data: balances });
       } catch (err) {
         next(err);
       }
@@ -1183,7 +1219,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && req.query.orgId ? (req.query.orgId as string) : req.auth!.organizationId;
+        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
 
         const orders = await orderRepo.listOrders({ orgId, limit: 50 });
         res.json({ success: true, count: orders.length, data: orders });
@@ -1199,20 +1235,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     requirePermission(PERMISSIONS.ORDERS_VIEW),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const order = await orderRepo.findOrderById(req.params.id);
-        if (!order) {
-          return res.status(404).json({ success: false, error: 'Order not found' });
-        }
-
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        if (!isSuperAdmin && order.order.organization_id !== req.auth!.organizationId) {
-          return res.status(403).json({
-            success: false,
-            error: {
-              code: 'TENANT_ACCESS_DENIED',
-              message: 'Cross-tenant order access forbidden.',
-            },
-          });
+        const callerOrg = req.auth!.organizationId;
+
+        // Scoped directly at repository level
+        const order = await orderRepo.findOrderById(
+          req.params.id,
+          isSuperAdmin ? undefined : callerOrg
+        );
+
+        if (!order) {
+          // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
+          const anyOrder = await orderRepo.findOrderById(req.params.id);
+          if (anyOrder && anyOrder.order.organization_id !== callerOrg) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'TENANT_ACCESS_DENIED',
+                message: 'Cross-tenant order access forbidden.',
+              },
+            });
+          }
+          return res.status(404).json({ success: false, error: 'Order not found' });
         }
 
         res.json({ success: true, data: order });
@@ -1231,7 +1275,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && req.query.orgId ? (req.query.orgId as string) : req.auth!.organizationId;
+        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
 
         const customers = await customerRepo.listCustomers(orgId);
         res.json({ success: true, count: customers.length, data: customers });
@@ -1247,20 +1291,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     requirePermission(PERMISSIONS.CUSTOMERS_VIEW),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const customer = await customerRepo.findCustomerById(req.params.id);
-        if (!customer) {
-          return res.status(404).json({ success: false, error: 'Customer not found' });
-        }
-
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        if (!isSuperAdmin && customer.organization_id !== req.auth!.organizationId) {
-          return res.status(403).json({
-            success: false,
-            error: {
-              code: 'TENANT_ACCESS_DENIED',
-              message: 'Cross-tenant customer access forbidden.',
-            },
-          });
+        const callerOrg = req.auth!.organizationId;
+
+        // Scoped directly at repository level
+        const customer = await customerRepo.findCustomerById(
+          req.params.id,
+          isSuperAdmin ? undefined : callerOrg
+        );
+
+        if (!customer) {
+          // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
+          const anyCustomer = await customerRepo.findCustomerById(req.params.id);
+          if (anyCustomer && anyCustomer.organization_id !== callerOrg) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'TENANT_ACCESS_DENIED',
+                message: 'Cross-tenant customer access forbidden.',
+              },
+            });
+          }
+          return res.status(404).json({ success: false, error: 'Customer not found' });
         }
 
         res.json({ success: true, data: customer });
@@ -1279,7 +1331,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && req.query.orgId ? (req.query.orgId as string) : req.auth!.organizationId;
+        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
 
         const users = await userRepo.listByOrg(orgId);
         const sanitized = users.map((u) => ({
@@ -1307,20 +1359,27 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const body = sanitizeClientBody(req.body) as any;
-        if (!body.email || !body.name || !body.password || !body.role) {
+        const { email, name, password, role, locationId, organizationId } = req.body || {};
+        if (!email || !name || !password || !role) {
           return res.status(400).json({ success: false, error: 'Missing required user fields' });
         }
 
-        const { hash, salt } = hashPassword(body.password);
+        if (!VALID_ROLES.includes(role)) {
+          return res.status(400).json({ success: false, error: `Invalid role: ${role}` });
+        }
+
+        const isSuperAdmin = req.auth!.role === 'super_admin';
+        const targetOrgId = isSuperAdmin && organizationId ? organizationId : req.auth!.organizationId;
+
+        const { hash, salt } = hashPassword(password);
         const created = await userRepo.createUser({
-          organizationId: req.auth!.organizationId,
-          email: body.email,
-          name: body.name,
+          organizationId: targetOrgId,
+          email: String(email).trim(),
+          name: String(name).trim(),
           passwordHash: hash,
           passwordSalt: salt,
-          role: body.role,
-          locationId: body.locationId,
+          role,
+          locationId: locationId || undefined,
         });
 
         res.status(201).json({

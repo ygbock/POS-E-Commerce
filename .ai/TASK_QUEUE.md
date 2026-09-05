@@ -120,6 +120,10 @@ PROD-001 (NOT STARTED)
   - Centralized rate limiting on sensitive endpoints (`/api/auth/login`, administrative endpoints).
   - Server-authoritative audit actor identity foundation.
   - Runtime input validation schemas for security-sensitive boundaries.
+  - Production credential seed guard preventing startup default credential generation.
+  - Live health and readiness probes with failure sanitization.
+  - Authentication error sanitization.
+  - Deep resource-level multi-tenant isolation and repository boundary enforcement.
   - Security regression and verification test suite (`npm run test:security`).
 - **Dependencies**: `DATA-001`.
 - **Acceptance Criteria**:
@@ -134,9 +138,13 @@ PROD-001 (NOT STARTED)
   - [x] Server-authoritative audit logs derive actor identity exclusively from server context (`req.auth`).
   - [x] Sensitive endpoints (`/api/admin/db-status`, `/api/catalog/sync`, `/api/auth/login`) protected with rate limiters.
   - [x] Diagnostic endpoint `/api/admin/db-status` never leaks credentials, passwords, or connection strings.
-  - [x] Complete security regression test suite passes (`npm run test:security` -> 18/18 passed).
-- **Security Requirements**: No trust in client-asserted role; cryptographic signature verification on tokens. Zero-trust client execution boundary.
-- **Validation Requirements**: Comprehensive automated security test suite (`npm run test:security`) covering all 18 security scenarios.
+  - [x] Production startup credential seeding rejected with fatal error; zero default accounts seeded in production.
+  - [x] Live health and ready probes sanitize database outages (503 status, clean payload, no stack traces).
+  - [x] Authentication error messages sanitized (generic UNAUTHORIZED, no internal token/cryptographic leak).
+  - [x] Deep resource-level multi-tenant isolation enforced at both repository and HTTP controller boundaries.
+  - [x] Complete security regression test suite passes (`npm run test:security` -> 22/22 passed).
+- **Security Requirements**: No trust in client-asserted role; cryptographic signature verification on tokens. Zero-trust client execution boundary. Production fail-closed environment protection.
+- **Validation Requirements**: Comprehensive automated security test suite (`npm run test:security`) covering all 22 security scenarios.
 - **Supervisor Hold**: Awaiting human supervisor review and approval before proceeding to `INV-001`. Do NOT start `INV-001` until approved.
 
 ---

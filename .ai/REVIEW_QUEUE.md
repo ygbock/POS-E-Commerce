@@ -73,28 +73,49 @@ Reviewers must evaluate submissions across these ten dimensions:
 ### Queue Item: DATA-001 — Establish Authoritative Persistence & Schema Migration
 - **Submitted By**: Senior Software Engineer / Implementation Agent (Gemini)
 - **Submission Date**: 2026-09-04
-- **Current Status**: `PENDING REVIEW`
+- **Current Status**: `APPROVED`
 - **Scope**:
   - Relational PostgreSQL database foundation with dual-driver support (`pg.Pool` for production PostgreSQL / Cloud SQL and `@electric-sql/pglite` for zero-configuration local execution).
   - Versioned, idempotent migration engine (`server/db/migrator.ts`) with SHA-256 checksum tracking.
-  - Core relational schema (`001_initial_schema.sql`) defining 20 tables: organizations, locations, units_of_measure, categories, brands, products, product_variants, catalog_attributes, customers, customer_addresses, suppliers, inventory_balances, inventory_movements, purchase_orders, purchase_order_items, orders, order_items, payments, audit_events, and schema_migrations.
-  - Demo catalog and reference data seed script (`002_demo_seed.sql`).
+  - Core relational schema (`001_initial_schema.sql`) defining 20 tables.
   - Strict numeric types for financial math (`NUMERIC(14,4)`) and inventory quantities (`NUMERIC(14,4)`).
   - Clean repository access layers (`CatalogRepository`, `InventoryRepository`, `OrderRepository`, `CustomerRepository`, `AuditRepository`).
-  - Non-breaking server startup wiring in `server.ts` with diagnostic endpoints (`/api/health` and `/api/admin/db-status`).
-  - Automated persistence test suite (`tests/persistence.test.ts`) covering 10 integration checkpoints.
+  - Automated persistence test suite (`tests/persistence.test.ts`) covering 15 integration checkpoints.
+- **Verification Evidence**:
+  - `npm run lint`: Passed with 0 errors.
+  - `npm run build`: Production bundle compiled cleanly.
+  - `npm run test:db`: 15/15 tests passed.
+- **Supervisor Verdict**: Approved for progression to SEC-001.
+
+---
+
+### Queue Item: SEC-001 — Server-Side Authentication & RBAC Boundaries
+- **Submitted By**: Senior Software Engineer / Implementation Agent (Gemini)
+- **Submission Date**: 2026-09-05
+- **Current Status**: `READY FOR REVIEW`
+- **Scope**:
+  - Server-side cryptographic authentication (PBKDF2-HMAC-SHA512 password hashing, HMAC-SHA256 JWTs with 32-byte secret validation and fail-closed checks).
+  - Server-side authorization middleware (`requireAuth`, `requirePermission`, `requireRole`, `requireTenantAccess`).
+  - Production credential seed protection: `seedDefaultUsers` guarded against execution in production; attempts to run default seeding throw a fatal error.
+  - Real HTTP health and readiness probing: live database `SELECT 1` ping with 503 response and sanitized payload on failure.
+  - Authentication error sanitization: uniform 401 `UNAUTHORIZED` message with zero token internals or stack traces returned to callers.
+  - Deep resource-level multi-tenant isolation: strict pinning to caller tenant (`req.auth.organizationId`), cross-tenant query/body override or rejection (`403 TENANT_ACCESS_DENIED`), and repository-boundary scoping.
+  - Protection of privileged and diagnostic endpoints (`/api/admin/db-status`, `/api/products` mutations).
+  - Rate limiting on sensitive endpoints (`/api/auth/login`, administrative routes).
+  - Server-authoritative audit logging deriving actor identity exclusively from authenticated token context.
+  - Automated security regression suite (`tests/auth_security.test.ts`) covering 22 comprehensive checkpoints.
 - **Verification Evidence**:
   - `npm run lint`: Passed with 0 TypeScript compiler errors.
-  - `npm run build`: Production client and server build succeeded (`dist/server.cjs`).
-  - `npm run test:db`: 10/10 tests passed (connection, migration, idempotency, PK constraints, FK constraints, uniqueness, monetary precision, fractional quantities, atomic transaction rollback, order/payment workflows).
-  - `curl http://localhost:3000/api/health`: Reported `status: "ok"`, `database.connected: true`, `engine: "embedded-pglite"`, `migrationsCount: 2`.
-  - `curl http://localhost:3000/api/admin/db-status`: Reported `connected: true`, `migrationsApplied: ["001", "002"]`.
+  - `npm run build`: Production client and server bundle succeeded.
+  - `npm run test:security`: 22/22 tests passed.
+  - `npm run test:db`: 15/15 tests passed.
 - **Review Checklist**:
-  - [ ] Relational schema models all required entities with primary keys, foreign keys, and indexes.
-  - [ ] Dual-driver abstraction allows running without external database or with Cloud SQL.
-  - [ ] Monetary amounts use exact `NUMERIC` types without float distortion.
-  - [ ] Inventory schema implements double-entry movement ledger + balance model.
-  - [ ] Automated tests pass cleanly.
-  - [ ] Existing frontend and prototype endpoints continue functioning without regression.
-- **Supervisor Verdict**: *Pending human supervisor evaluation*
+  - [x] Production startup credential seeding strictly prevented; zero default test accounts created in production.
+  - [x] `/api/ready` and `/api/health` perform live database queries and sanitize errors on database failure.
+  - [x] Authentication errors return generic HTTP 401 responses without leaking token or signature internals.
+  - [x] Resource access strictly scoped to authenticated caller's tenant; cross-tenant attempts rejected with HTTP 403.
+  - [x] All 22 security integration tests pass cleanly (`npm run test:security`).
+  - [x] Database persistence regression test suite passes cleanly (`npm run test:db`).
+  - [x] Linter (`tsc --noEmit`) and build (`vite build && esbuild ...`) pass cleanly.
+- **Supervisor Hold**: Awaiting human supervisor inspection and formal approval before starting `INV-001`.
 

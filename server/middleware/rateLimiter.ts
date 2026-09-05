@@ -3,8 +3,16 @@ import { Request, Response, NextFunction } from 'express';
 /**
  * Rate Limiting Middleware (SEC-001)
  * 
- * Sliding-window in-memory rate limiting for security-sensitive endpoints
- * (authentication, administrative diagnostics, and password operations).
+ * TRANSITIONAL PROCESS-LOCAL IMPLEMENTATION:
+ * This sliding-window rate limiter maintains state in a local in-process JavaScript Map.
+ * It provides basic brute-force and resource exhaustion mitigation on a single container instance.
+ * 
+ * ARCHITECTURAL LIMITATION & PRODUCTION WARNING:
+ * - This implementation is PROCESS-LOCAL and DOES NOT provide distributed rate limiting.
+ * - In horizontally scaled or multi-instance deployments (e.g. multiple Cloud Run containers or
+ *   Kubernetes pods behind a load balancer), rate limit counters are not shared across instances.
+ * - Production multi-instance architecture requires an external shared store (e.g., Redis or Valkey)
+ *   to maintain synchronized sliding window counters across replicas (tracked as RISK-013).
  */
 
 interface RateLimitRecord {

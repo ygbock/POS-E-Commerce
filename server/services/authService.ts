@@ -117,9 +117,15 @@ export class AuthService {
 
   /**
    * Seed standard system users if they do not already exist.
-   * Ensures development and tests have valid credentials immediately.
+   * Ensures development and tests have valid credentials immediately when explicitly enabled.
+   * STRICTLY FORBIDDEN IN PRODUCTION.
    */
   async seedDefaultUsers(): Promise<void> {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      throw new Error('[Omnicore Security Fatal] CRITICAL SECURITY VIOLATION: seedDefaultUsers() must NEVER execute in production environment.');
+    }
+
     const orgDefault = 'org_default';
 
     // Ensure organizations exist

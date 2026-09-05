@@ -80,11 +80,15 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
 export function requireAuth() {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
+      // Detailed token verification errors remain strictly server-side
+      if (req.authError && process.env.NODE_ENV !== 'production') {
+        console.debug('[Auth Middleware Debug]', req.authError);
+      }
       return res.status(401).json({
         success: false,
         error: {
           code: 'UNAUTHORIZED',
-          message: req.authError || 'Authentication required. Please provide a valid Bearer token.',
+          message: 'Authentication required.',
         },
       });
     }
@@ -104,7 +108,7 @@ export function requirePermission(...requiredPermissions: string[]) {
         success: false,
         error: {
           code: 'UNAUTHORIZED',
-          message: 'Authentication required prior to authorization check.',
+          message: 'Authentication required.',
         },
       });
     }
@@ -139,7 +143,7 @@ export function requireRole(...allowedRoles: UserRole[]) {
         success: false,
         error: {
           code: 'UNAUTHORIZED',
-          message: 'Authentication required prior to role check.',
+          message: 'Authentication required.',
         },
       });
     }
@@ -176,7 +180,7 @@ export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => stri
         success: false,
         error: {
           code: 'UNAUTHORIZED',
-          message: 'Authentication required for tenant isolation verification.',
+          message: 'Authentication required.',
         },
       });
     }

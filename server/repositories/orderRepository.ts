@@ -187,18 +187,33 @@ export class OrderRepository {
     });
   }
 
-  async findOrderById(id: string, client?: DatabaseClient): Promise<{ order: OrderRecord; items: OrderItemRecord[] } | null> {
-    const db = this.getClient(client);
-    const orderRes = await db.query<OrderRecord>(
-      `SELECT id, organization_id, location_id, customer_id, order_number,
-              source, channel, fulfillment_method,
-              subtotal::float, discount_amount::float, discount_code,
-              tax_amount::float, shipping_fee::float, total_amount::float, total_cost_amount::float,
-              payment_status, status, cashier_name, tracking_number, carrier_name, notes,
-              created_at, updated_at
-       FROM orders WHERE id = $1`,
-      [id]
-    );
+  async findOrderById(
+    id: string,
+    orgIdOrClient?: string | DatabaseClient,
+    client?: DatabaseClient
+  ): Promise<{ order: OrderRecord; items: OrderItemRecord[] } | null> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const activeClient = typeof orgIdOrClient !== 'string' ? (orgIdOrClient as DatabaseClient) : client;
+    const db = this.getClient(activeClient);
+
+    const querySql = orgId
+      ? `SELECT id, organization_id, location_id, customer_id, order_number,
+                source, channel, fulfillment_method,
+                subtotal::float, discount_amount::float, discount_code,
+                tax_amount::float, shipping_fee::float, total_amount::float, total_cost_amount::float,
+                payment_status, status, cashier_name, tracking_number, carrier_name, notes,
+                created_at, updated_at
+         FROM orders WHERE id = $1 AND organization_id = $2`
+      : `SELECT id, organization_id, location_id, customer_id, order_number,
+                source, channel, fulfillment_method,
+                subtotal::float, discount_amount::float, discount_code,
+                tax_amount::float, shipping_fee::float, total_amount::float, total_cost_amount::float,
+                payment_status, status, cashier_name, tracking_number, carrier_name, notes,
+                created_at, updated_at
+         FROM orders WHERE id = $1`;
+
+    const params = orgId ? [id, orgId] : [id];
+    const orderRes = await db.query<OrderRecord>(querySql, params);
 
     if (orderRes.rows.length === 0) {
       return null;
