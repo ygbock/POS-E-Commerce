@@ -12,6 +12,7 @@
     "lint": "tsc --noEmit",
     "db:migrate": "tsx server/db/migrator.ts",
     "db:seed": "tsx server/db/migrator.ts --with-seed",
+    "seed:dev": "tsx server/db/seeds/dev_seed.ts",
     "test:db": "tsx tests/persistence.test.ts",
     "test:auth": "tsx tests/auth_security.test.ts",
     "test:security": "tsx tests/auth_security.test.ts",

@@ -108,9 +108,14 @@ export class CatalogRepository {
     return res.rows;
   }
 
-  async findCategoryById(id: string, client?: DatabaseClient): Promise<CategoryRecord | null> {
-    const db = this.getClient(client);
-    const res = await db.query<CategoryRecord>('SELECT * FROM categories WHERE id = $1', [id]);
+  async findCategoryById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<CategoryRecord | null> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
+    const query = orgId
+      ? 'SELECT * FROM categories WHERE id = $1 AND organization_id = $2'
+      : 'SELECT * FROM categories WHERE id = $1';
+    const params = orgId ? [id, orgId] : [id];
+    const res = await db.query<CategoryRecord>(query, params);
     return res.rows[0] || null;
   }
 
@@ -147,6 +152,17 @@ export class CatalogRepository {
       [orgId]
     );
     return res.rows;
+  }
+
+  async findBrandById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<BrandRecord | null> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
+    const query = orgId
+      ? 'SELECT * FROM brands WHERE id = $1 AND organization_id = $2'
+      : 'SELECT * FROM brands WHERE id = $1';
+    const params = orgId ? [id, orgId] : [id];
+    const res = await db.query<BrandRecord>(query, params);
+    return res.rows[0] || null;
   }
 
   async createBrand(data: BrandRecord, client?: DatabaseClient): Promise<BrandRecord> {
@@ -220,9 +236,14 @@ export class CatalogRepository {
     return res.rows;
   }
 
-  async findProductById(id: string, client?: DatabaseClient): Promise<ProductRecord | null> {
-    const db = this.getClient(client);
-    const res = await db.query<ProductRecord>('SELECT * FROM products WHERE id = $1', [id]);
+  async findProductById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<ProductRecord | null> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
+    const query = orgId
+      ? 'SELECT * FROM products WHERE id = $1 AND organization_id = $2'
+      : 'SELECT * FROM products WHERE id = $1';
+    const params = orgId ? [id, orgId] : [id];
+    const res = await db.query<ProductRecord>(query, params);
     return res.rows[0] || null;
   }
 
@@ -328,12 +349,14 @@ export class CatalogRepository {
     });
   }
 
-  async findVariantsByProductId(productId: string, client?: DatabaseClient): Promise<ProductVariantRecord[]> {
-    const db = this.getClient(client);
-    const res = await db.query<ProductVariantRecord>(
-      'SELECT * FROM product_variants WHERE product_id = $1 ORDER BY name ASC',
-      [productId]
-    );
+  async findVariantsByProductId(productId: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<ProductVariantRecord[]> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
+    const query = orgId
+      ? 'SELECT * FROM product_variants WHERE product_id = $1 AND organization_id = $2 ORDER BY name ASC'
+      : 'SELECT * FROM product_variants WHERE product_id = $1 ORDER BY name ASC';
+    const params = orgId ? [productId, orgId] : [productId];
+    const res = await db.query<ProductVariantRecord>(query, params);
     return res.rows;
   }
 

@@ -121,9 +121,8 @@ export class AuthService {
    * STRICTLY FORBIDDEN IN PRODUCTION.
    */
   async seedDefaultUsers(): Promise<void> {
-    const isProd = process.env.NODE_ENV === 'production';
-    if (isProd) {
-      throw new Error('[Omnicore Security Fatal] CRITICAL SECURITY VIOLATION: seedDefaultUsers() must NEVER execute in production environment.');
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('CRITICAL SECURITY VIOLATION: seedDefaultUsers() must NEVER execute in production');
     }
 
     const orgDefault = 'org_default';

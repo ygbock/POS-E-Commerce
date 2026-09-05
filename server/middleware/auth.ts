@@ -23,7 +23,6 @@ declare global {
   namespace Express {
     interface Request {
       auth?: AuthContext;
-      authError?: string;
     }
   }
 }
@@ -65,9 +64,9 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
         jti: claims.jti,
       };
       next();
-    } catch (err: any) {
-      req.authError = err.message || 'Token verification failed';
-      // Do not halt here; requireAuth() will enforce rejection if endpoint requires it
+    } catch {
+      // Failed authentication: leave req.auth undefined.
+      // Internal error details are NOT stored on request or leaked to clients.
       next();
     }
   };
@@ -80,10 +79,6 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
 export function requireAuth() {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
-      // Detailed token verification errors remain strictly server-side
-      if (req.authError && process.env.NODE_ENV !== 'production') {
-        console.debug('[Auth Middleware Debug]', req.authError);
-      }
       return res.status(401).json({
         success: false,
         error: {
@@ -192,7 +187,9 @@ export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => stri
 
     const targetOrgId = getOrgIdFromRequest
       ? getOrgIdFromRequest(req)
-      : (req.params.orgId || req.params.organizationId || (req.query && (req.query.orgId || req.query.organizationId)) as string);
+      : (req.params.orgId ||
+         req.params.organizationId ||
+         (req.query && (req.query.orgId || req.query.organizationId))) as string;
 
     // If request explicitly targets a different organization, forbid it
     if (targetOrgId && targetOrgId !== req.auth.organizationId) {

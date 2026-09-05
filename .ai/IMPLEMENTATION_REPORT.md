@@ -689,9 +689,14 @@ Establish an uncompromised server-side authentication, authorization, and securi
 
 4. **Deep Resource-Level Multi-Tenant Isolation**:
    - Enforced caller tenant pinning across all resource creation and query endpoints.
-   - Attempted cross-tenant query injection or body override is either rejected with HTTP 403 `TENANT_ACCESS_DENIED` or strictly pinned to caller tenant (`req.auth.organizationId`).
-   - Repositories enforce tenant-scoped filters (`organization_id = $1`).
-   - Tested under Test 22 (`Deep Resource-Level Multi-Tenant Isolation & Repository Boundary Enforcement`).
+   - Attempted cross-tenant query injection is rejected with HTTP 403 `TENANT_ACCESS_DENIED`, while body overrides are strictly ignored and pinned to the caller's authenticated tenant (`req.auth.organizationId`).
+   - Repositories (`CatalogRepository`, `UserRepository`, `InventoryRepository`, `OrderRepository`) enforce tenant-scoped SQL filters (`organization_id = $1`).
+   - Tested under Test 14, Test 15, and Test 22 (`Deep Resource-Level Multi-Tenant Isolation & Repository Boundary Enforcement`).
+
+5. **Governance & Architectural Documentation Hardening (Rework #2)**:
+   - Updated `.ai/SECURITY_POLICY.md` with Section 4.13 documenting process-local sliding-window rate limiting constraints and the multi-instance Redis/WAF roadmap requirement (`PROD-001`).
+   - Added Section 4.14 codifying the decoupled standalone CLI dev seeding approach (`npm run seed:dev`) vs. the zero-seed production startup mandate.
+   - Updated `.ai/RISKS.md` with RISK-013 documenting the process-local rate limiting boundary.
 
 ---
 

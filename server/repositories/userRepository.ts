@@ -81,12 +81,14 @@ export class UserRepository {
     return res.rows[0] || null;
   }
 
-  async findById(id: string, client?: DatabaseClient): Promise<UserRecord | null> {
-    const db = this.getClient(client);
-    const res = await db.query<UserRecord>(
-      `SELECT * FROM users WHERE id = $1 LIMIT 1`,
-      [id]
-    );
+  async findById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<UserRecord | null> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
+    const query = orgId
+      ? `SELECT * FROM users WHERE id = $1 AND organization_id = $2 LIMIT 1`
+      : `SELECT * FROM users WHERE id = $1 LIMIT 1`;
+    const params = orgId ? [id, orgId] : [id];
+    const res = await db.query<UserRecord>(query, params);
     return res.rows[0] || null;
   }
 
@@ -99,9 +101,10 @@ export class UserRepository {
     return res.rows;
   }
 
-  async updateUser(id: string, updates: Partial<UserRecord>, client?: DatabaseClient): Promise<UserRecord | null> {
-    const db = this.getClient(client);
-    const existing = await this.findById(id, client);
+  async updateUser(id: string, updates: Partial<UserRecord>, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<UserRecord | null> {
+    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
+    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
+    const existing = await this.findById(id, orgId, db);
     if (!existing) return null;
 
     const merged = {
@@ -113,27 +116,33 @@ export class UserRepository {
       password_salt: updates.password_salt ?? existing.password_salt,
     };
 
-    const res = await db.query<UserRecord>(
-      `UPDATE users SET
-        name = $1,
-        role = $2,
-        location_id = $3,
-        is_active = $4,
-        password_hash = $5,
-        password_salt = $6,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $7
-      RETURNING *`,
-      [
-        merged.name,
-        merged.role,
-        merged.location_id,
-        merged.is_active,
-        merged.password_hash,
-        merged.password_salt,
-        id,
-      ]
-    );
+    const query = orgId
+      ? `UPDATE users SET
+          name = $1,
+          role = $2,
+          location_id = $3,
+          is_active = $4,
+          password_hash = $5,
+          password_salt = $6,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $7 AND organization_id = $8
+        RETURNING *`
+      : `UPDATE users SET
+          name = $1,
+          role = $2,
+          location_id = $3,
+          is_active = $4,
+          password_hash = $5,
+          password_salt = $6,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $7
+        RETURNING *`;
+
+    const params = orgId
+      ? [merged.name, merged.role, merged.location_id, merged.is_active, merged.password_hash, merged.password_salt, id, orgId]
+      : [merged.name, merged.role, merged.location_id, merged.is_active, merged.password_hash, merged.password_salt, id];
+
+    const res = await db.query<UserRecord>(query, params);
     return res.rows[0] || null;
   }
 

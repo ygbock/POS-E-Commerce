@@ -80,11 +80,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         const applied = await getAppliedMigrations(db);
         dbStatus.migrationsApplied = Array.from(applied);
         dbStatus.version = Array.from(applied).pop() || '000';
-        // Development/test seed ONLY when explicitly enabled and NEVER in production
-        if (!isProd && process.env.ENABLE_DEV_SEED === 'true') {
-          await authService.seedDefaultUsers();
-          console.log('[Omnicore DB] Dev/test users seeded (ENABLE_DEV_SEED=true).');
-        }
+        // Production/server startup is decoupled from fixture seeding. Fixture seeding lives exclusively in CLI seed scripts.
         console.log(`[Omnicore DB] Connected (${dbStatus.engine}). Schema: ${dbStatus.version}`);
       }
     } catch (dbErr: any) {
@@ -236,12 +232,12 @@ export async function createApp(options: CreateAppOptions = {}) {
           success: true,
           data: result,
         });
-      } catch (err: any) {
+      } catch {
         res.status(401).json({
           success: false,
           error: {
             code: 'INVALID_CREDENTIALS',
-            message: err.message || 'Authentication failed',
+            message: 'Invalid email or password.',
           },
         });
       }
@@ -363,7 +359,8 @@ export async function createApp(options: CreateAppOptions = {}) {
           engine: dbStatus.engine,
           schemaVersion: dbStatus.version,
           migrationsApplied: dbStatus.migrationsApplied,
-          error: dbStatus.error,
+          hasError: Boolean(dbStatus.error),
+          error: dbStatus.error ? 'Database connectivity issue detected' : null,
           caller: {
             userId: req.auth?.userId,
             role: req.auth?.role,
@@ -1132,7 +1129,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   // 7. MASTER CATEGORIES & BRANDS ENDPOINTS
   // ------------------------------------------------------------------
   app.get('/api/categories', (req: Request, res: Response) => {
-    res.json({ success: true, data: masterCategoriesStore });
+    const callerOrg = req.auth ? req.auth.organizationId : 'org_default';
+    const isSuperAdmin = req.auth?.role === 'super_admin';
+    const filtered = isSuperAdmin
+      ? masterCategoriesStore
+      : masterCategoriesStore.filter(
+          (c) => (c.organizationId || 'org_default') === callerOrg || c.organizationId === 'org_default'
+        );
+    res.json({ success: true, count: filtered.length, data: filtered });
   });
 
   app.post(
@@ -1159,7 +1163,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
 
   app.get('/api/brands', (req: Request, res: Response) => {
-    res.json({ success: true, data: masterBrandsStore });
+    const callerOrg = req.auth ? req.auth.organizationId : 'org_default';
+    const isSuperAdmin = req.auth?.role === 'super_admin';
+    const filtered = isSuperAdmin
+      ? masterBrandsStore
+      : masterBrandsStore.filter(
+          (b) => (b.organizationId || 'org_default') === callerOrg || b.organizationId === 'org_default'
+        );
+    res.json({ success: true, count: filtered.length, data: filtered });
   });
 
   app.post(
@@ -1183,10 +1194,31 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
 
   // ------------------------------------------------------------------
-  // 8. DATA REPOSITORY BOUNDARIES (INVENTORY, ORDERS, CUSTOMERS, USERS)
+  // 8. DATA REPOSITORY BOUNDARIES (LOCATIONS, INVENTORY, ORDERS, CUSTOMERS, USERS)
   // ------------------------------------------------------------------
 
-  // Inventory Balances (Read boundary)
+  // Locations Query (Tenant-scoped at SQL boundary)
+  app.get(
+    '/api/locations',
+    requireAuth(),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const isSuperAdmin = req.auth!.role === 'super_admin';
+        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+
+        const result = await db.query(
+          'SELECT id, organization_id, code, name, type, address, phone, is_pos_enabled, is_active FROM locations WHERE organization_id = $1 ORDER BY name ASC',
+          [orgId]
+        );
+        res.json({ success: true, count: result.rows.length, data: result.rows });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Inventory Balances (Read boundary with location ownership validation)
   app.get(
     '/api/inventory/balances/:locationId',
     requireAuth(),
@@ -1420,13 +1452,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ------------------------------------------------------------------
   app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    // Strictly sanitize 500 internal errors: never leak database credentials, connection strings, or stack traces
+    // Strictly sanitize errors: never leak database credentials, connection strings, or stack traces
     const isClientError = status >= 400 && status < 500;
+    const rawMessage = err.message || (status === 500 ? 'Internal server error' : 'Request error');
+    const hasSensitivePattern = /password|secret|postgres:\/\/|token|private[_-]?key/i.test(rawMessage);
+
     const errorMessage = isClientError
-      ? err.message || 'Request error'
-      : isProd
-      ? 'An internal server error occurred'
-      : err.message || 'Internal server error';
+      ? (hasSensitivePattern ? 'Bad request parameters' : rawMessage)
+      : (isProd || hasSensitivePattern ? 'An internal server error occurred' : rawMessage);
 
     res.status(status).json({
       success: false,

@@ -154,5 +154,16 @@ Every `/api/*` endpoint is classified into one of five authorization tiers:
 ### 4.12 Deep Resource-Level Multi-Tenant Isolation
 - **Caller-Scoped Operations**: All resource queries, updates, and creations must be explicitly scoped using the authenticated caller's tenant identifier (`req.auth.organizationId`).
 - **Request Body & Query Pinning**: Request body claims or query parameters targeting another organization are either rejected with HTTP 403 `TENANT_ACCESS_DENIED` or strictly overridden with the caller's authorized tenant identifier.
-- **Repository-Level Parameter Enforcement**: Domain repositories (`OrderRepository`, `CustomerRepository`, `InventoryRepository`, `UserRepository`) enforce `organizationId` parameterization in all primary database queries. Cross-tenant access is restricted solely to users possessing the `super_admin` role.
+- **Repository-Level Parameter Enforcement**: Domain repositories (`OrderRepository`, `CustomerRepository`, `InventoryRepository`, `UserRepository`, `CatalogRepository`) enforce `organizationId` parameterization in all primary database queries. Cross-tenant access is restricted solely to users possessing the `super_admin` role.
+
+### 4.13 Process-Local Rate Limiting Limitations & Multi-Instance Architecture
+- **Process-Local Sliding-Window Scope**: The sliding-window rate limiters implemented in `server/middleware/auth.ts` (`authRateLimiter`, `adminRateLimiter`, and `generalRateLimiter`) store request timestamps in-memory within the Node.js process (`Map<string, number[]>`).
+- **Single-Container Security Boundary**: While this control successfully mitigates rapid brute-force credential stuffing and denial-of-service attempts within a single container instance, it is strictly process-local.
+- **Multi-Instance Cloud Run / Kubernetes Notice**: In distributed or auto-scaled multi-container deployments, rate-limiting state is not synchronized across instances without an external state store.
+- **Future Production Roadmap Requirement**: For multi-node production deployment (`PROD-001`), distributed rate limiting must be offloaded to an external shared datastore (such as Redis/Valkey) or an upstream reverse proxy / cloud load balancer (e.g., Cloud Armor / NGINX rate-limiting zones).
+
+### 4.14 Standalone CLI Development Seeding vs. Production Startup Zero-Seed Mandate
+- **Zero-Seed Production Startup**: Under no circumstances may application startup (`server.ts` or `createApp()`) invoke database seeding, create default organizations, create default users, or execute test fixtures.
+- **Decoupled Standalone CLI**: Development and local testing fixtures must be executed solely via dedicated, out-of-band CLI commands (`npm run seed:dev` / `server/db/seeds/dev_seed.ts`).
+- **Fail-Closed Runtime Defense**: `AuthService.seedDefaultUsers()` includes a hardcoded runtime guard: if `process.env.NODE_ENV === 'production'`, it throws an immediate fatal error (`CRITICAL SECURITY VIOLATION: seedDefaultUsers() must NEVER execute in production`). Production environments provision initial administrative credentials exclusively through secure out-of-band CLI or supervised administrative invitation.
 
