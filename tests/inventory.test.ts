@@ -37,7 +37,7 @@ async function runInventoryTests() {
   }
 
   // 1. Setup Database & Migrations
-  const db = getDatabaseClient({ preferEmbedded: true });
+  const db = getDatabaseClient({ forceNew: true });
   await db.query('SELECT 1');
   await runMigrations(db);
 
@@ -319,7 +319,7 @@ async function runInventoryTests() {
     assert.strictEqual(wOff.balance.on_hand, 160);
     assert.strictEqual(wOff.balance.damaged, 5);
     assert.strictEqual(wOff.balance.available, 150);
-    assert.strictEqual(wOff.movement.movement_type, 'WRITE_OFF_DAMAGE');
+    assert.strictEqual(wOff.movement.movement_type, 'DAMAGE_WRITE_OFF');
     assert.strictEqual(wOff.movement.quantity_change, -5);
 
     markPassed('4. Stock Quarantine (Damage/Expiry) & Write-Off Ledger');
@@ -489,13 +489,19 @@ async function runInventoryTests() {
       { var_a1: 18 },
       adminUserId
     );
-    assert.strictEqual(received.status, 'VARIANCE');
+    assert.strictEqual(received.status, 'COMPLETED');
 
-    // Check items for variance
+    // Check items for variance: variance = received - dispatched = 18 - 20 = -2
     const transferDetails = await transferService.getTransfer('org_inv_a', transfer.id);
     assert.strictEqual(transferDetails!.items[0].dispatched_quantity, 20);
     assert.strictEqual(transferDetails!.items[0].received_quantity, 18);
-    assert.strictEqual(transferDetails!.items[0].variance_quantity, 2);
+    assert.strictEqual(transferDetails!.items[0].variance_quantity, -2);
+
+    // Verify VARIANCE_RECORDED event in append-only event ledger
+    const events = await transferService.getTransferEvents('org_inv_a', transfer.id);
+    const varEvent = events.find((e) => e.event_type === 'VARIANCE_RECORDED');
+    assert.ok(varEvent, 'VARIANCE_RECORDED event must exist in ledger');
+    assert.strictEqual(varEvent!.quantity, -2);
 
     // Dest Store A on_hand increased by 18 (40 -> 58), in_transit is cleared to 0
     const storeBal = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
@@ -598,7 +604,7 @@ async function runInventoryTests() {
   // TEST 10: Real HTTP Endpoints & RBAC Permissions
   let server: http.Server | null = null;
   try {
-    const app = await createApp({ db, authService, skipVite: true });
+    const { app } = await createApp({ db, authService, skipVite: true });
     server = http.createServer(app);
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const port = (server.address() as any).port;
@@ -625,7 +631,7 @@ async function runInventoryTests() {
 
     // 10a. Query Balances via HTTP
     const balRes = await fetch(`${baseUrl}/api/inventory/balances/loc_wh_a`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { Authorization: `Bearer ${adminToken}`, Connection: 'close' },
     });
     assert.strictEqual(balRes.status, 200);
     const balBody = await balRes.json();
@@ -635,7 +641,7 @@ async function runInventoryTests() {
     // 10b. Unauthenticated request to /api/inventory/adjustments -> 401
     const unauthRes = await fetch(`${baseUrl}/api/inventory/adjustments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Connection: 'close' },
       body: JSON.stringify({
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
@@ -652,6 +658,7 @@ async function runInventoryTests() {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${cashierToken}`,
+        Connection: 'close',
       },
       body: JSON.stringify({
         source_location_id: 'loc_wh_a',
@@ -663,7 +670,7 @@ async function runInventoryTests() {
 
     // 10d. Cross-tenant balance query: Org B user queries Org A location -> returns 0 items
     const crossBalRes = await fetch(`${baseUrl}/api/inventory/balances/loc_wh_a`, {
-      headers: { Authorization: `Bearer ${orgBToken}` },
+      headers: { Authorization: `Bearer ${orgBToken}`, Connection: 'close' },
     });
     assert.strictEqual(crossBalRes.status, 200);
     const crossBalBody = await crossBalRes.json();
@@ -675,6 +682,7 @@ async function runInventoryTests() {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${orgBToken}`,
+        Connection: 'close',
       },
       body: JSON.stringify({
         location_id: 'loc_wh_a', // belongs to org A
@@ -692,6 +700,7 @@ async function runInventoryTests() {
     markFailed('10. Real HTTP Inventory Endpoints, RBAC Gates & Cross-Tenant Defense', err);
   } finally {
     if (server) {
+      (server as any).closeAllConnections?.();
       await new Promise<void>((resolve) => server!.close(() => resolve()));
     }
   }
@@ -700,9 +709,16 @@ async function runInventoryTests() {
   console.log(` Results: ${passed} passed, ${failed} failed`);
   console.log('======================================================');
 
+  try {
+    await db.close();
+  } catch (e) {
+    // ignore
+  }
+
   if (failed > 0) {
     process.exit(1);
   }
+  process.exit(0);
 }
 
 runInventoryTests().catch((err) => {

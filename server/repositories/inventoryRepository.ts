@@ -80,6 +80,25 @@ export class InventoryRepository {
     return res.rows[0] || null;
   }
 
+  async lockBalance(
+    organizationId: string,
+    locationId: string,
+    variantId: string,
+    client: DatabaseClient
+  ): Promise<InventoryBalanceRecord | null> {
+    const res = await client.query<InventoryBalanceRecord>(
+      `SELECT id, organization_id, location_id, variant_id,
+              on_hand::float, reserved::float, damaged::float, expired::float,
+              in_transit::float, available::float,
+              created_at, updated_at
+       FROM inventory_balances
+       WHERE location_id = $1 AND variant_id = $2 AND organization_id = $3
+       FOR UPDATE`,
+      [locationId, variantId, organizationId]
+    );
+    return res.rows[0] || null;
+  }
+
   async listBalancesByLocation(
     locationId: string,
     orgIdOrClient?: string | DatabaseClient,

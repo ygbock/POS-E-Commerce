@@ -511,7 +511,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
   );
 
   // ------------------------------------------------------------------
-  // 4. MULTI-LOCATION STOCK TRANSFERS
+  // 4. MULTI-LOCATION STOCK TRANSFERS (INV-001)
   // ------------------------------------------------------------------
   router.post(
     '/transfers',
@@ -521,7 +521,8 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       try {
         const orgId = req.auth!.organizationId;
         const actor = req.auth!.userId;
-        const { transfer_number, source_location_id, destination_location_id, items, notes } = req.body;
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
+        const { transfer_number, source_location_id, destination_location_id, status, items, notes } = req.body;
 
         if (!source_location_id || !destination_location_id || !items || !Array.isArray(items)) {
           return res.status(400).json({
@@ -535,7 +536,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
 
         const result = await transferService.createTransfer(
           orgId,
-          { transfer_number, source_location_id, destination_location_id, items, notes },
+          { transfer_number, source_location_id, destination_location_id, status, items, notes, idempotency_key: idempotencyKey },
           actor
         );
 
@@ -544,12 +545,12 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: result,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
+        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED') || err.message?.includes('LOCATION_ACCESS_DENIED') || err.message?.includes('VARIANT_ACCESS_DENIED');
         const status = isTenant ? 403 : 400;
         res.status(status).json({
           success: false,
           error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : 'INVENTORY_ERROR',
+            code: isTenant ? 'ACCESS_DENIED' : 'INVENTORY_ERROR',
             message: err.message,
           },
         });
@@ -623,6 +624,59 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     }
   );
 
+  router.get(
+    '/transfers/:id/events',
+    requireAuth(),
+    requirePermission(PERMISSIONS.INVENTORY_VIEW),
+    async (req: Request, res: Response) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        const events = await transferService.getTransferEvents(orgId, req.params.id);
+        res.json({
+          success: true,
+          count: events.length,
+          data: events,
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: 'INVENTORY_ERROR',
+            message: err.message,
+          },
+        });
+      }
+    }
+  );
+
+  router.post(
+    '/transfers/:id/request',
+    requireAuth(),
+    requirePermission(PERMISSIONS.INVENTORY_TRANSFER),
+    async (req: Request, res: Response) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        const actor = req.auth!.userId;
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
+        const updated = await transferService.requestTransfer(orgId, req.params.id, actor, idempotencyKey);
+        res.json({
+          success: true,
+          data: updated,
+        });
+      } catch (err: any) {
+        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
+        const status = isNotFound ? 404 : 400;
+        res.status(status).json({
+          success: false,
+          error: {
+            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
+            message: err.message,
+          },
+        });
+      }
+    }
+  );
+
   router.post(
     '/transfers/:id/approve',
     requireAuth(),
@@ -631,7 +685,37 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       try {
         const orgId = req.auth!.organizationId;
         const actor = req.auth!.userId;
-        const updated = await transferService.approveTransfer(orgId, req.params.id, actor);
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
+        const updated = await transferService.approveTransfer(orgId, req.params.id, actor, idempotencyKey);
+        res.json({
+          success: true,
+          data: updated,
+        });
+      } catch (err: any) {
+        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
+        const status = isNotFound ? 404 : 400;
+        res.status(status).json({
+          success: false,
+          error: {
+            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
+            message: err.message,
+          },
+        });
+      }
+    }
+  );
+
+  router.post(
+    '/transfers/:id/reject',
+    requireAuth(),
+    requirePermission(PERMISSIONS.INVENTORY_TRANSFER),
+    async (req: Request, res: Response) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        const actor = req.auth!.userId;
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
+        const { reason } = req.body;
+        const updated = await transferService.rejectTransfer(orgId, req.params.id, actor, reason, idempotencyKey);
         res.json({
           success: true,
           data: updated,
@@ -658,9 +742,10 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       try {
         const orgId = req.auth!.organizationId;
         const actor = req.auth!.userId;
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
         const { items } = req.body;
 
-        const updated = await transferService.dispatchTransfer(orgId, req.params.id, items, actor);
+        const updated = await transferService.dispatchTransfer(orgId, req.params.id, items, actor, idempotencyKey);
         res.json({
           success: true,
           data: updated,
@@ -688,7 +773,8 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       try {
         const orgId = req.auth!.organizationId;
         const actor = req.auth!.userId;
-        const { items } = req.body;
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
+        const { items, allowOverReceive } = req.body;
 
         if (!items || typeof items !== 'object') {
           return res.status(400).json({
@@ -700,7 +786,43 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           });
         }
 
-        const updated = await transferService.receiveTransfer(orgId, req.params.id, items, actor);
+        const updated = await transferService.receiveTransfer(
+          orgId,
+          req.params.id,
+          items,
+          actor,
+          idempotencyKey,
+          { allowOverReceive: Boolean(allowOverReceive) }
+        );
+        res.json({
+          success: true,
+          data: updated,
+        });
+      } catch (err: any) {
+        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
+        const status = isNotFound ? 404 : 400;
+        res.status(status).json({
+          success: false,
+          error: {
+            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
+            message: err.message,
+          },
+        });
+      }
+    }
+  );
+
+  router.post(
+    '/transfers/:id/cancel',
+    requireAuth(),
+    requirePermission(PERMISSIONS.INVENTORY_TRANSFER),
+    async (req: Request, res: Response) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        const actor = req.auth!.userId;
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
+        const { reason } = req.body;
+        const updated = await transferService.cancelTransfer(orgId, req.params.id, actor, reason, idempotencyKey);
         res.json({
           success: true,
           data: updated,

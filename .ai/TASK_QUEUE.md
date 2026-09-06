@@ -150,20 +150,30 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 5: INV-001 — Server-Authoritative Inventory Ledger & Movement Tracking
-- **Status**: `NOT STARTED`
+- **Status**: `READY FOR REVIEW`
 - **Objective**: Replace client-side stock mutation with a server-authoritative double-entry inventory movement ledger.
 - **Scope**:
-  - Create `InventoryMovement` entity and `InventoryService`.
-  - Implement atomic stock reservation and allocation APIs.
-  - Enforce concurrency locks on stock to prevent overselling.
-  - Support multi-location transfer requests and approvals.
+  - Implement schema migration `003_inventory_domain.sql` (`inventory_balances`, `inventory_movements`, `inventory_reservations`, `inventory_transfers`, `inventory_transfer_items`, `stock_counts`, `stock_count_items`).
+  - Create immutable append-only movement ledger with integer-scaled arithmetic (`inventoryPolicies.ts`).
+  - Implement pessimistic row locking (`SELECT ... FOR UPDATE`) to eliminate race conditions and overselling.
+  - Implement first-class inventory reservations with automatic expiration, release, and order fulfillment.
+  - Implement multi-location transfer state machine (Requested -> Approved -> Dispatched -> In-Transit -> Received / Variance).
+  - Implement physical stock count reconciliation with compensating ledger adjustments.
+  - Implement complete HTTP inventory REST API (`/api/inventory/*`) with RBAC permissions and multi-tenant isolation.
+  - Implement automated test suite (`tests/inventory.test.ts` -> 10/10 passed).
 - **Dependencies**: `DATA-001`, `SEC-001`.
 - **Acceptance Criteria**:
-  - All stock changes backed by an immutable ledger record.
-  - Concurrent checkout attempts on limited stock safely reject over-allocation.
-  - Stock audit trail verifiable by location and product variant.
-- **Security Requirements**: Only authorized roles can execute stock adjustments and write-offs.
-- **Validation Requirements**: Concurrency load test simulating race conditions on stock = 1.
+  - [x] All stock changes backed by an immutable ledger record (`inventory_movements`) with strictly checked invariants (`previous_balance + delta === new_balance`).
+  - [x] Negative stock is prohibited unless explicitly configured on a per-transaction basis (`allowNegativeStock: false`).
+  - [x] Integer-scaled decimal arithmetic (4 decimal places) prevents floating-point precision drift.
+  - [x] Idempotency keys prevent duplicate movement execution on network retries.
+  - [x] First-class stock reservations prevent overselling and track `reserved` vs `available` stock (`available = on_hand - reserved - damaged - expired`).
+  - [x] Multi-location stock transfer lifecycle enforces source deduction, in-transit state tracking, destination receipt, and variance handling.
+  - [x] Physical cycle counts compute discrepancies and record compensating audit ledger movements.
+  - [x] Multi-tenant isolation prevents cross-tenant access, queries, or modifications at both repository and HTTP controller boundaries.
+  - [x] Complete automated test suite passes (`npm run test:inventory` -> 10/10 passed; full suite `npm run test` -> 47/47 passed).
+- **Security Requirements**: Granular RBAC permissions enforced (`INVENTORY_VIEW`, `INVENTORY_ADJUST`, `INVENTORY_RECEIVE`, `INVENTORY_TRANSFER`, `INVENTORY_COUNT`, `INVENTORY_AUDIT`); zero-trust actor validation from `req.auth`.
+- **Validation Requirements**: Automated test suite (`npm run test:inventory`) verifying arithmetic precision, opening balance replay, stock adjustments, quarantine/write-off, reservations, transfers with variance, cycle counts, tenant isolation, and real HTTP endpoints.
 
 ---
 

@@ -90,6 +90,39 @@ export type TransferStatus =
   | 'CANCELLED'
   | 'VARIANCE';
 
+export type TransferEventType =
+  | 'CREATED'
+  | 'REQUESTED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'DISPATCHED'
+  | 'IN_TRANSIT'
+  | 'RECEIVED'
+  | 'VARIANCE_RECORDED'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export interface InventoryTransferEventRecord {
+  id: string;
+  organization_id: string;
+  transfer_id: string;
+  transfer_item_id?: string | null;
+  event_type: TransferEventType;
+  from_status?: TransferStatus | null;
+  to_status: TransferStatus;
+  quantity?: number | null;
+  actor_id: string;
+  source_location_id?: string | null;
+  destination_location_id?: string | null;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  idempotency_key?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, any> | string | null;
+  created_at?: string;
+}
+
 export interface InventoryTransferRecord {
   id: string;
   organization_id: string;
@@ -106,8 +139,10 @@ export interface InventoryTransferRecord {
   dispatched_at?: string | null;
   received_at?: string | null;
   completed_at?: string | null;
+  idempotency_key?: string | null;
   notes?: string | null;
   items?: InventoryTransferItemRecord[];
+  events?: InventoryTransferEventRecord[];
   created_at?: string;
   updated_at?: string;
 }
