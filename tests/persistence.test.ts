@@ -221,7 +221,7 @@ async function main() {
     // Test 9: Atomic Transactions and Rollback Safety
     await runTest('9. Atomic Database Transactions & Rollback on Error', async () => {
       const invRepo = new InventoryRepository(db);
-      const preBalance = await invRepo.getBalance('test_loc', 'var_unique_1');
+      const preBalance = await invRepo.getBalance('test_loc', 'var_unique_1', 'test_org');
       const startOnHand = preBalance?.on_hand ?? 0;
 
       let txThrew = false;
@@ -229,7 +229,7 @@ async function main() {
         await db.withTransaction(async (tx) => {
           // 1. Valid update inside transaction
           await tx.query(
-            `UPDATE inventory_balances SET on_hand = on_hand + 50 WHERE location_id = 'test_loc' AND variant_id = 'var_unique_1'`
+            `UPDATE inventory_balances SET on_hand = on_hand + 50 WHERE location_id = 'test_loc' AND variant_id = 'var_unique_1' AND organization_id = 'test_org'`
           );
 
           // 2. Intentional fatal error triggering rollback
@@ -244,7 +244,7 @@ async function main() {
       assert.ok(txThrew, 'Transaction threw expected error');
 
       // Verify that on_hand was rolled back and did not retain +50
-      const postBalance = await invRepo.getBalance('test_loc', 'var_unique_1');
+      const postBalance = await invRepo.getBalance('test_loc', 'var_unique_1', 'test_org');
       assert.strictEqual(postBalance?.on_hand, startOnHand, 'Balance must be unchanged after transaction rollback');
     });
 

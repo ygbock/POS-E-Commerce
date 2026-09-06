@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 import assert from 'node:assert';
 import { getDatabaseClient, DatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
@@ -55,23 +56,6 @@ async function runTransferTests() {
 
   // Setup: Seed organizations, locations, products, variants, opening stock
   try {
-    await db.exec(`
-      DELETE FROM stock_count_items;
-      DELETE FROM stock_counts;
-      DELETE FROM inventory_transfer_events;
-      DELETE FROM inventory_transfer_items;
-      DELETE FROM inventory_transfers;
-      DELETE FROM inventory_reservations;
-      DELETE FROM inventory_movements;
-      DELETE FROM inventory_balances;
-      DELETE FROM product_variants;
-      DELETE FROM products;
-      DELETE FROM units_of_measure;
-      DELETE FROM locations;
-      DELETE FROM users;
-      DELETE FROM organizations;
-    `);
-
     await db.exec(`
       INSERT INTO organizations (id, name, code, is_active) VALUES 
         ('org_transfer_a', 'Transfer Corp A', 'TR_ORG_A', TRUE),

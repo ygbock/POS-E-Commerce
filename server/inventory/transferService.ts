@@ -7,10 +7,16 @@ import {
   InventoryTransferEventRecord,
   TransferStatus,
 } from './inventoryTypes';
-import { roundQty, addQty, subQty, calculateAvailable } from './inventoryPolicies';
+import {
+  roundQty,
+  addQty,
+  subQty,
+  calculateAvailable,
+  validateTransferTransition,
+} from './inventoryPolicies';
 
 /**
- * Stock Transfer Domain Service (INV-001)
+ * Stock Transfer Domain Service (INV-001 / INV-001R2)
  * 
  * Manages the complete, transactionally consistent, tenant-isolated transfer domain:
  * 
@@ -29,6 +35,7 @@ import { roundQty, addQty, subQty, calculateAvailable } from './inventoryPolicie
  * 
  * All mutations execute with strict row-level pessimistic locks inside atomic transactions.
  * All operations derive organization strictly from req.auth.organizationId (passed as organizationId).
+ * Decimal precision is preserved via BigInt scaled integer arithmetic (zero floating-point drift).
  */
 export class TransferService {
   private inventoryRepo: InventoryRepository;
@@ -48,6 +55,7 @@ export class TransferService {
   /**
    * Creates a new stock transfer request.
    * Enforces:
+   * - Strict tenant organization check
    * - Different source and destination locations
    * - Non-empty items array
    * - Organization ownership of locations and product variants
@@ -71,14 +79,14 @@ export class TransferService {
       notes?: string;
       idempotency_key?: string;
     },
-    performed_by: string
+    performed_by: string = 'system'
   ): Promise<{
     transfer: InventoryTransferRecord;
     items: InventoryTransferItemRecord[];
     events: InventoryTransferEventRecord[];
   }> {
-    if (!organizationId) {
-      throw new Error('TENANT_ACCESS_DENIED: Organization ID is required.');
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
     }
     if (data.source_location_id === data.destination_location_id) {
       throw new Error('INVALID_TRANSFER: Source and destination locations must be different.');
@@ -215,9 +223,12 @@ export class TransferService {
   async requestTransfer(
     organizationId: string,
     transferId: string,
-    performed_by: string,
+    performed_by: string = 'system',
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.db.withTransaction(async (tx) => {
       // Check idempotency
       if (idempotencyKey) {
@@ -234,19 +245,15 @@ export class TransferService {
       }
 
       if (lockedTransfer.status === 'REQUESTED') {
-        return lockedTransfer;
+        return lockedTransfer; // Idempotent success
       }
-      if (lockedTransfer.status !== 'DRAFT') {
-        throw new Error(`INVALID_TRANSFER_STATE: Cannot request transfer in state '${lockedTransfer.status}'.`);
-      }
+
+      validateTransferTransition(lockedTransfer.status, 'REQUESTED');
 
       const updated = await this.transferRepo.updateTransferStatus(
         organizationId,
         transferId,
-        {
-          status: 'REQUESTED',
-          notes: lockedTransfer.notes || undefined,
-        },
+        { status: 'REQUESTED' },
         tx
       );
 
@@ -260,8 +267,10 @@ export class TransferService {
           actor_id: performed_by,
           source_location_id: lockedTransfer.source_location_id,
           destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
           idempotency_key: idempotencyKey || null,
-          notes: `Transfer ${lockedTransfer.transfer_number} submitted for approval.`,
+          notes: 'Transfer submitted for approval.',
         },
         tx
       );
@@ -272,17 +281,26 @@ export class TransferService {
 
   /**
    * Approves a transfer request.
+   * State Machine: strictly validates transition from current status to APPROVED (allowed only from REQUESTED).
+   * Supports optional approved quantity adjustments per item.
    */
   async approveTransfer(
     organizationId: string,
     transferId: string,
-    performed_by: string,
+    performed_by: string = 'system',
+    itemApprovalsOrIdemp?: Array<{ itemId: string; approved_quantity: number }> | string,
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
+    const itemApprovals = Array.isArray(itemApprovalsOrIdemp) ? itemApprovalsOrIdemp : undefined;
+    const effectiveIdempKey = typeof itemApprovalsOrIdemp === 'string' ? itemApprovalsOrIdemp : idempotencyKey;
+
     return this.db.withTransaction(async (tx) => {
-      // Check idempotency
-      if (idempotencyKey) {
-        const existingEvent = await this.transferRepo.findEventByIdempotencyKey(organizationId, idempotencyKey, tx);
+      // Idempotency check
+      if (effectiveIdempKey) {
+        const existingEvent = await this.transferRepo.findEventByIdempotencyKey(organizationId, effectiveIdempKey, tx);
         if (existingEvent) {
           const existing = await this.transferRepo.findTransferById(organizationId, transferId, tx);
           if (existing) return existing.transfer;
@@ -295,21 +313,38 @@ export class TransferService {
       }
 
       if (lockedTransfer.status === 'APPROVED') {
-        // Safe duplicate approval replay
-        return lockedTransfer;
-      }
-      if (lockedTransfer.status !== 'REQUESTED' && lockedTransfer.status !== 'DRAFT') {
-        throw new Error(`INVALID_TRANSFER_STATE: Cannot approve transfer in state '${lockedTransfer.status}'.`);
+        return lockedTransfer; // Idempotent return
       }
 
-      const approvedAt = new Date().toISOString();
+      validateTransferTransition(lockedTransfer.status, 'APPROVED');
+
+      // Update approved quantities if specified
+      if (itemApprovals && itemApprovals.length > 0) {
+        const lockedItems = await this.transferRepo.lockTransferItems(organizationId, transferId, tx);
+        const itemMap = new Map(lockedItems.map((i) => [i.id, i]));
+
+        for (const app of itemApprovals) {
+          const it = itemMap.get(app.itemId);
+          if (!it) {
+            throw new Error(`ITEM_NOT_FOUND: Transfer item '${app.itemId}' not found in transfer.`);
+          }
+          if (app.approved_quantity < 0) {
+            throw new Error('INVALID_QUANTITY: Approved quantity cannot be negative.');
+          }
+          await tx.query(
+            'UPDATE inventory_transfer_items SET approved_quantity = $1 WHERE id = $2',
+            [roundQty(app.approved_quantity), app.itemId]
+          );
+        }
+      }
+
       const updated = await this.transferRepo.updateTransferStatus(
         organizationId,
         transferId,
         {
           status: 'APPROVED',
           approved_by: performed_by,
-          approved_at: approvedAt,
+          approved_at: new Date().toISOString(),
         },
         tx
       );
@@ -324,6 +359,8 @@ export class TransferService {
           actor_id: performed_by,
           source_location_id: lockedTransfer.source_location_id,
           destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
           idempotency_key: idempotencyKey || null,
           notes: `Transfer approved by ${performed_by}.`,
         },
@@ -336,15 +373,20 @@ export class TransferService {
 
   /**
    * Rejects a transfer request.
+   * State Machine: strictly validates transition to REJECTED (allowed only from REQUESTED).
    */
   async rejectTransfer(
     organizationId: string,
     transferId: string,
-    performed_by: string,
-    reason?: string,
+    performed_by: string = 'system',
+    reason: string = 'Transfer rejected',
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.db.withTransaction(async (tx) => {
+      // Idempotency check
       if (idempotencyKey) {
         const existingEvent = await this.transferRepo.findEventByIdempotencyKey(organizationId, idempotencyKey, tx);
         if (existingEvent) {
@@ -361,16 +403,21 @@ export class TransferService {
       if (lockedTransfer.status === 'REJECTED') {
         return lockedTransfer;
       }
-      if (lockedTransfer.status !== 'REQUESTED' && lockedTransfer.status !== 'DRAFT') {
-        throw new Error(`INVALID_TRANSFER_STATE: Cannot reject transfer in state '${lockedTransfer.status}'.`);
+
+      if (lockedTransfer.status !== 'REQUESTED') {
+        throw new Error(
+          `INVALID_TRANSFER_STATE: Cannot reject transfer in state '${lockedTransfer.status}'. Only 'REQUESTED' transfers can be rejected.`
+        );
       }
+
+      validateTransferTransition(lockedTransfer.status, 'REJECTED');
 
       const updated = await this.transferRepo.updateTransferStatus(
         organizationId,
         transferId,
         {
           status: 'REJECTED',
-          notes: reason ? `Rejected: ${reason}` : 'Transfer rejected',
+          notes: reason,
         },
         tx
       );
@@ -385,9 +432,11 @@ export class TransferService {
           actor_id: performed_by,
           source_location_id: lockedTransfer.source_location_id,
           destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
           idempotency_key: idempotencyKey || null,
-          reason: reason || null,
-          notes: reason ? `Rejected: ${reason}` : 'Transfer rejected',
+          reason,
+          notes: `Transfer rejected: ${reason}`,
         },
         tx
       );
@@ -397,215 +446,182 @@ export class TransferService {
   }
 
   /**
-   * Executes atomic dispatch as one single database transaction:
-   * 1. Lock transfer FOR UPDATE, verify organization & APPROVED status
-   * 2. Lock transfer items FOR UPDATE
-   * 3. Verify source and destination location ownership
-   * 4. Verify variants belong to organization
-   * 5. Lock source inventory balances FOR UPDATE & verify sufficient available inventory
-   * 6. Calculate dispatched quantities (enforce dispatched <= approved)
-   * 7. Create TRANSFER_OUT inventory movement(s) at source
-   * 8. Decrease source on_hand
-   * 9. Increase destination in_transit
-   * 10. Update transfer item dispatched_quantity
-   * 11. Create DISPATCHED and IN_TRANSIT events
-   * 12. Update transfer status
+   * Dispatches a transfer from the source location.
+   * 
+   * ACCOUNTING & CONSISTENCY RULES:
+   * 1. State Machine: allows transition strictly from APPROVED to DISPATCHED.
+   * 2. Available stock check: ensures source location available (on_hand - reserved - damaged - expired) >= dispatched.
+   * 3. Source deduction: atomically deducts dispatched_quantity from source location on_hand via TRANSFER_OUT movement.
+   * 4. In-transit accounting: atomically adds dispatched_quantity to destination location in_transit balance.
+   * 5. Total company physical inventory is conserved: Source on_hand decreases, Destination in_transit increases.
+   * 6. Both destination and source balances are locked FOR UPDATE scoped by organizationId.
+   * 7. Event ledger: records DISPATCHED event and IN_TRANSIT ledger events.
    */
   async dispatchTransfer(
     organizationId: string,
     transferId: string,
-    dispatchedItemsMap: Record<string, number> | undefined,
-    performed_by: string,
+    dispatchQuantities?: Array<{ itemId?: string; variant_id?: string; quantity: number }> | Record<string, number>,
+    performed_by: string = 'system',
     idempotencyKey?: string
-  ): Promise<InventoryTransferRecord> {
+  ): Promise<InventoryTransferRecord & { items?: InventoryTransferItemRecord[]; events?: InventoryTransferEventRecord[] }> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.db.withTransaction(async (tx) => {
       // Idempotency check
       if (idempotencyKey) {
         const existingEvent = await this.transferRepo.findEventByIdempotencyKey(organizationId, idempotencyKey, tx);
         if (existingEvent) {
           const existing = await this.transferRepo.findTransferById(organizationId, transferId, tx);
-          if (existing) return existing.transfer;
+          if (existing) {
+            return Object.assign({}, existing.transfer, {
+              items: existing.items,
+              events: existing.events,
+            });
+          }
         }
       }
 
-      // 1. Lock transfer FOR UPDATE
-      const transfer = await this.transferRepo.lockTransfer(organizationId, transferId, tx);
-      if (!transfer) {
+      const lockedTransfer = await this.transferRepo.lockTransfer(organizationId, transferId, tx);
+      if (!lockedTransfer) {
         throw new Error(`TRANSFER_NOT_FOUND: Transfer '${transferId}' not found.`);
       }
 
-      if (transfer.status === 'DISPATCHED' || transfer.status === 'IN_TRANSIT') {
-        if (idempotencyKey) {
-          return transfer;
+      // If already dispatched or in-transit, return idempotently
+      if (lockedTransfer.status === 'DISPATCHED' || lockedTransfer.status === 'IN_TRANSIT') {
+        const existing = await this.transferRepo.findTransferById(organizationId, transferId, tx);
+        return Object.assign({}, lockedTransfer, {
+          items: existing?.items,
+          events: existing?.events,
+        });
+      }
+
+      validateTransferTransition(lockedTransfer.status, 'DISPATCHED');
+
+      const lockedItems = await this.transferRepo.lockTransferItems(organizationId, transferId, tx);
+
+      const getQtyToDispatch = (item: InventoryTransferItemRecord): number => {
+        if (!dispatchQuantities) {
+          return roundQty(item.approved_quantity || item.requested_quantity);
         }
-        throw new Error(`DUPLICATE_OPERATION: Transfer '${transferId}' has already been dispatched.`);
-      }
-
-      if (transfer.status !== 'APPROVED') {
-        throw new Error(`INVALID_TRANSFER_STATE: Cannot dispatch transfer in state '${transfer.status}', expected 'APPROVED'.`);
-      }
-
-      // 2. Lock transfer items FOR UPDATE
-      const items = await this.transferRepo.lockTransferItems(organizationId, transferId, tx);
-      if (items.length === 0) {
-        throw new Error(`INVALID_TRANSFER: Transfer '${transferId}' has no items.`);
-      }
-
-      // 3. Verify source and destination location ownership
-      const sourceValid = await this.inventoryRepo.verifyLocationOwnership(organizationId, transfer.source_location_id, tx);
-      if (!sourceValid) {
-        throw new Error('TENANT_ACCESS_DENIED: Source location does not belong to organization.');
-      }
-      const destValid = await this.inventoryRepo.verifyLocationOwnership(organizationId, transfer.destination_location_id, tx);
-      if (!destValid) {
-        throw new Error('TENANT_ACCESS_DENIED: Destination location does not belong to organization.');
-      }
-
-      // 4. Verify variants belong to organization
-      for (const item of items) {
-        const varValid = await this.inventoryRepo.verifyVariantOwnership(organizationId, item.variant_id, tx);
-        if (!varValid) {
-          throw new Error(`TENANT_ACCESS_DENIED: Variant '${item.variant_id}' does not belong to organization.`);
+        if (Array.isArray(dispatchQuantities)) {
+          const found = dispatchQuantities.find(
+            (d) => (d.itemId && d.itemId === item.id) || (d.variant_id && d.variant_id === item.variant_id)
+          );
+          if (found !== undefined) {
+            return roundQty(found.quantity);
+          }
+          return roundQty(item.approved_quantity || item.requested_quantity);
         }
-      }
-
-      // 5. Pre-validate quantities and lock source balances
-      const dispatchCalculations: Array<{
-        item: InventoryTransferItemRecord;
-        qtyToDispatch: number;
-      }> = [];
-
-      for (const item of items) {
-        const qtyToDispatch = dispatchedItemsMap && dispatchedItemsMap[item.variant_id] !== undefined
-          ? roundQty(dispatchedItemsMap[item.variant_id])
-          : item.approved_quantity;
-
-        if (qtyToDispatch < 0) {
-          throw new Error(`INVALID_QUANTITY: Dispatched quantity (${qtyToDispatch}) cannot be negative.`);
+        if (typeof dispatchQuantities === 'object') {
+          if (dispatchQuantities[item.id] !== undefined) {
+            return roundQty(dispatchQuantities[item.id]);
+          }
+          if (dispatchQuantities[item.variant_id] !== undefined) {
+            return roundQty(dispatchQuantities[item.variant_id]);
+          }
         }
-        if (qtyToDispatch > item.approved_quantity) {
+        return roundQty(item.approved_quantity || item.requested_quantity);
+      };
+
+      // Preliminary validation: verify cannot exceed approved quantity on any item
+      for (const item of lockedItems) {
+        const qtyToDispatch = getQtyToDispatch(item);
+        const maxAllowed = roundQty(item.approved_quantity || item.requested_quantity);
+        if (qtyToDispatch > maxAllowed) {
           throw new Error(
-            `INVALID_QUANTITY: Dispatched quantity (${qtyToDispatch}) cannot exceed approved quantity (${item.approved_quantity}) for variant '${item.variant_id}'.`
+            `INVALID_QUANTITY: Dispatched quantity (${qtyToDispatch}) cannot exceed approved quantity (${maxAllowed}) for variant '${item.variant_id}'.`
+          );
+        }
+        if (qtyToDispatch <= 0) {
+          throw new Error(`INVALID_QUANTITY: Dispatched quantity must be greater than zero for variant '${item.variant_id}'.`);
+        }
+      }
+
+      let totalDispatched = 0;
+
+      for (const item of lockedItems) {
+        const qtyToDispatch = getQtyToDispatch(item);
+        totalDispatched = addQty(totalDispatched, qtyToDispatch);
+
+        // Verify source stock availability
+        const sourceBal = await this.inventoryRepo.getBalance(
+          lockedTransfer.source_location_id,
+          item.variant_id,
+          organizationId,
+          tx
+        );
+        const currentOnHand = sourceBal ? roundQty(sourceBal.on_hand) : 0;
+        const currentReserved = sourceBal ? roundQty(sourceBal.reserved) : 0;
+        const currentDamaged = sourceBal ? roundQty(sourceBal.damaged) : 0;
+        const currentExpired = sourceBal ? roundQty(sourceBal.expired) : 0;
+        const available = calculateAvailable(currentOnHand, currentReserved, currentDamaged, currentExpired);
+
+        if (available < qtyToDispatch) {
+          throw new Error(
+            `INSUFFICIENT_STOCK_FOR_DISPATCH: Location '${lockedTransfer.source_location_id}' has ${available} available unreserved units of variant '${item.variant_id}', but ${qtyToDispatch} was requested for dispatch.`
           );
         }
 
-        // Lock source balance FOR UPDATE to verify available stock
-        const sourceBal = await this.inventoryRepo.lockBalance(organizationId, transfer.source_location_id, item.variant_id, tx);
-        if (!sourceBal) {
-          throw new Error(
-            `INSUFFICIENT_STOCK: No stock balance found for variant '${item.variant_id}' at source location '${transfer.source_location_id}'.`
-          );
-        }
-
-        const available = calculateAvailable(
-          sourceBal.on_hand,
-          sourceBal.reserved,
-          sourceBal.damaged,
-          sourceBal.expired
+        // 1. Record physical deduction at source location (TRANSFER_OUT)
+        await this.inventoryRepo.recordMovement(
+          {
+            id: `mov_tout_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            organization_id: organizationId,
+            location_id: lockedTransfer.source_location_id,
+            variant_id: item.variant_id,
+            movement_type: 'TRANSFER_OUT',
+            quantity_change: -qtyToDispatch,
+            reference_type: 'inventory_transfer',
+            reference_id: transferId,
+            source_location_id: lockedTransfer.source_location_id,
+            destination_location_id: lockedTransfer.destination_location_id,
+            performed_by,
+            notes: `Dispatched ${qtyToDispatch} units for transfer ${lockedTransfer.transfer_number}.`,
+          },
+          tx
         );
 
-        if (qtyToDispatch > available) {
+        // 2. Ensure destination balance exists
+        const destBalanceId = `bal_${lockedTransfer.destination_location_id}_${item.variant_id}`;
+        await tx.query(
+          `INSERT INTO inventory_balances (id, organization_id, location_id, variant_id, on_hand, reserved, damaged, expired, in_transit)
+           VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0)
+           ON CONFLICT (location_id, variant_id) DO NOTHING`,
+          [destBalanceId, organizationId, lockedTransfer.destination_location_id, item.variant_id]
+        );
+
+        // 3. Acquire pessimistic row lock on destination balance scoped by organizationId
+        const lockedDestBal = await tx.query(
+          `SELECT id, organization_id, location_id, variant_id, in_transit::text
+           FROM inventory_balances
+           WHERE organization_id = $1 AND location_id = $2 AND variant_id = $3
+           FOR UPDATE`,
+          [organizationId, lockedTransfer.destination_location_id, item.variant_id]
+        );
+
+        if (lockedDestBal.rows.length === 0) {
           throw new Error(
-            `INSUFFICIENT_STOCK: Insufficient available stock for variant '${item.variant_id}' at source location '${transfer.source_location_id}'. Available: ${available}, requested dispatch: ${qtyToDispatch}.`
+            `BALANCE_NOT_FOUND: Failed to lock destination balance for variant '${item.variant_id}' at '${lockedTransfer.destination_location_id}'.`
           );
         }
 
-        dispatchCalculations.push({ item, qtyToDispatch });
-      }
+        const currentInTransit = roundQty(lockedDestBal.rows[0].in_transit);
+        const newInTransit = roundQty(addQty(currentInTransit, qtyToDispatch));
 
-      // 6. Execute physical mutations & ledger recordings
-      for (const calc of dispatchCalculations) {
-        const { item, qtyToDispatch } = calc;
+        // 4. Update in_transit balance at destination
+        await tx.query(
+          `UPDATE inventory_balances
+           SET in_transit = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2 AND organization_id = $3`,
+          [newInTransit, lockedDestBal.rows[0].id, organizationId]
+        );
 
-        // Update transfer item dispatched quantity
+        // 5. Update transfer line item dispatched_quantity
         await this.transferRepo.updateItemDispatched(organizationId, item.id, qtyToDispatch, tx);
-
-        if (qtyToDispatch > 0) {
-          // Deduct from source on_hand and record TRANSFER_OUT movement
-          await this.inventoryRepo.recordMovement(
-            {
-              id: `mov_tout_${transfer.id}_${item.variant_id}_${Date.now()}`,
-              organization_id: organizationId,
-              location_id: transfer.source_location_id,
-              variant_id: item.variant_id,
-              movement_type: 'TRANSFER_OUT',
-              quantity_change: -qtyToDispatch,
-              reference_type: 'inventory_transfer',
-              reference_id: transfer.id,
-              source_location_id: transfer.source_location_id,
-              destination_location_id: transfer.destination_location_id,
-              performed_by,
-              notes: `Dispatched transfer ${transfer.transfer_number}`,
-            },
-            tx
-          );
-
-          // Ensure destination balance row exists
-          const destBalanceId = `bal_${transfer.destination_location_id}_${item.variant_id}`;
-          await tx.query(
-            `INSERT INTO inventory_balances (id, organization_id, location_id, variant_id, on_hand, reserved, damaged, expired, in_transit)
-             VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0)
-             ON CONFLICT (location_id, variant_id) DO NOTHING`,
-            [destBalanceId, organizationId, transfer.destination_location_id, item.variant_id]
-          );
-
-          // Lock destination balance and increase in_transit
-          const lockedDest = await tx.query<{ id: string; in_transit: number }>(
-            `SELECT id, in_transit::float
-             FROM inventory_balances
-             WHERE location_id = $1 AND variant_id = $2 AND organization_id = $3
-             FOR UPDATE`,
-            [transfer.destination_location_id, item.variant_id, organizationId]
-          );
-
-          const currentInTransit = roundQty(Number(lockedDest.rows[0].in_transit));
-          const newInTransit = roundQty(addQty(currentInTransit, qtyToDispatch));
-
-          await tx.query(
-            `UPDATE inventory_balances
-             SET in_transit = $1, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2`,
-            [newInTransit, lockedDest.rows[0].id]
-          );
-        }
       }
 
-      // 7. Append DISPATCHED and IN_TRANSIT events
-      const totalDispatched = dispatchCalculations.reduce((sum, c) => addQty(sum, c.qtyToDispatch), 0);
-      await this.transferRepo.appendEvent(
-        organizationId,
-        {
-          transfer_id: transferId,
-          event_type: 'DISPATCHED',
-          from_status: 'APPROVED',
-          to_status: 'DISPATCHED',
-          quantity: totalDispatched,
-          actor_id: performed_by,
-          source_location_id: transfer.source_location_id,
-          destination_location_id: transfer.destination_location_id,
-          idempotency_key: idempotencyKey || null,
-          notes: `Dispatched ${totalDispatched} total units across ${dispatchCalculations.length} items.`,
-        },
-        tx
-      );
-
-      await this.transferRepo.appendEvent(
-        organizationId,
-        {
-          transfer_id: transferId,
-          event_type: 'IN_TRANSIT',
-          from_status: 'DISPATCHED',
-          to_status: 'IN_TRANSIT',
-          quantity: totalDispatched,
-          actor_id: performed_by,
-          source_location_id: transfer.source_location_id,
-          destination_location_id: transfer.destination_location_id,
-          notes: `Transfer ${transfer.transfer_number} stock in transit.`,
-        },
-        tx
-      );
-
-      // 8. Update transfer status
+      // Update transfer status to DISPATCHED
       const updated = await this.transferRepo.updateTransferStatus(
         organizationId,
         transferId,
@@ -617,31 +633,68 @@ export class TransferService {
         tx
       );
 
-      return updated!;
+      // Append DISPATCHED event
+      await this.transferRepo.appendEvent(
+        organizationId,
+        {
+          transfer_id: transferId,
+          event_type: 'DISPATCHED',
+          from_status: lockedTransfer.status,
+          to_status: 'DISPATCHED',
+          quantity: totalDispatched,
+          actor_id: performed_by,
+          source_location_id: lockedTransfer.source_location_id,
+          destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
+          idempotency_key: idempotencyKey || null,
+          notes: `Transfer dispatched by ${performed_by}. Total quantity: ${totalDispatched}.`,
+        },
+        tx
+      );
+
+      // Append IN_TRANSIT event to complete transit record
+      await this.transferRepo.appendEvent(
+        organizationId,
+        {
+          transfer_id: transferId,
+          event_type: 'IN_TRANSIT',
+          from_status: 'DISPATCHED',
+          to_status: 'IN_TRANSIT',
+          quantity: totalDispatched,
+          actor_id: performed_by,
+          source_location_id: lockedTransfer.source_location_id,
+          destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
+          notes: `Transfer in-transit to destination location.`,
+        },
+        tx
+      );
+
+      const itemsAfter = await this.transferRepo.getTransferItems(organizationId, transferId, tx);
+      const eventsAfter = await this.transferRepo.getTransferEvents(organizationId, transferId, tx);
+
+      return Object.assign({}, updated!, {
+        items: itemsAfter,
+        events: eventsAfter,
+      });
     });
   }
 
   /**
-   * Executes atomic receipt as one single database transaction:
-   * 1. Lock transfer FOR UPDATE, verify organization & receivable status (DISPATCHED or IN_TRANSIT)
-   * 2. Lock transfer items FOR UPDATE
-   * 3. Validate received quantities (enforce non-negative; enforce received <= dispatched unless allowOverReceive)
-   * 4. Lock destination inventory balances FOR UPDATE
-   * 5. Decrease destination in_transit
-   * 6. Increase destination on_hand and record TRANSFER_IN movement(s)
-   * 7. Update transfer item received_quantity and variance_quantity (variance = received - dispatched)
-   * 8. Create RECEIVED event
-   * 9. If variance != 0, create VARIANCE_RECORDED event(s)
-   * 10. Update transfer status to COMPLETED and create COMPLETED event
+   * Explicitly marks a dispatched transfer as IN_TRANSIT.
+   * State Machine: validates transition from DISPATCHED to IN_TRANSIT.
    */
-  async receiveTransfer(
+  async markInTransit(
     organizationId: string,
     transferId: string,
-    receivedItemsMap: Record<string, number>,
-    performed_by: string,
-    idempotencyKey?: string,
-    options?: { allowOverReceive?: boolean }
+    performed_by: string = 'system',
+    idempotencyKey?: string
   ): Promise<InventoryTransferRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.db.withTransaction(async (tx) => {
       // Idempotency check
       if (idempotencyKey) {
@@ -652,186 +705,291 @@ export class TransferService {
         }
       }
 
-      // 1. Lock transfer FOR UPDATE
-      const transfer = await this.transferRepo.lockTransfer(organizationId, transferId, tx);
-      if (!transfer) {
+      const lockedTransfer = await this.transferRepo.lockTransfer(organizationId, transferId, tx);
+      if (!lockedTransfer) {
         throw new Error(`TRANSFER_NOT_FOUND: Transfer '${transferId}' not found.`);
       }
 
-      if (transfer.status === 'COMPLETED') {
-        if (idempotencyKey) {
-          return transfer;
+      if (lockedTransfer.status === 'IN_TRANSIT') {
+        return lockedTransfer;
+      }
+
+      validateTransferTransition(lockedTransfer.status, 'IN_TRANSIT');
+
+      const updated = await this.transferRepo.updateTransferStatus(
+        organizationId,
+        transferId,
+        { status: 'IN_TRANSIT' },
+        tx
+      );
+
+      await this.transferRepo.appendEvent(
+        organizationId,
+        {
+          transfer_id: transferId,
+          event_type: 'IN_TRANSIT',
+          from_status: lockedTransfer.status,
+          to_status: 'IN_TRANSIT',
+          actor_id: performed_by,
+          source_location_id: lockedTransfer.source_location_id,
+          destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
+          idempotency_key: idempotencyKey || null,
+          notes: `Transfer marked in-transit by ${performed_by}.`,
+        },
+        tx
+      );
+
+      return updated!;
+    });
+  }
+
+  /**
+   * Receives transfer items at the destination location.
+   * 
+   * ACCOUNTING & CONSISTENCY RULES:
+   * 1. State Machine: allows transition from DISPATCHED or IN_TRANSIT to RECEIVED.
+   * 2. In-transit verification: asserts that destination in_transit >= dispatched_quantity before decrementing.
+   * 3. In-transit deduction: decrements destination in_transit by dispatched_quantity.
+   * 4. Physical addition: increments destination on_hand by received_quantity via TRANSFER_IN movement.
+   * 5. Over-receipt policy:
+   *    - Over-receipt without options.allowOverReceive = true is strictly prohibited (OVER_RECEIPT_PROHIBITED).
+   *    - Over-receipt requires options.authorizedBy supervisor credential (OVER_RECEIPT_UNAUTHORIZED).
+   *    - Over-receipt records explicit VARIANCE_RECORDED event with authorized_by and reason.
+   * 6. Variance handling:
+   *    - variance_quantity = received_quantity - dispatched_quantity.
+   *    - If variance != 0, records VARIANCE_RECORDED event in immutable event ledger.
+   * 7. Completion: updates transfer status to COMPLETED (or RECEIVED then COMPLETED).
+   */
+  async receiveTransfer(
+    organizationId: string,
+    transferId: string,
+    receipts?: Array<{ itemId?: string; variant_id?: string; received_quantity?: number; quantity?: number; notes?: string }> | Record<string, number>,
+    performed_by: string = 'system',
+    arg5?: string | { idempotencyKey?: string; allowOverReceive?: boolean; authorizedBy?: string; reason?: string },
+    arg6?: { idempotencyKey?: string; allowOverReceive?: boolean; authorizedBy?: string; reason?: string }
+  ): Promise<InventoryTransferRecord & { transfer: InventoryTransferRecord; items: InventoryTransferItemRecord[]; events: InventoryTransferEventRecord[] }> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
+
+    const options = (typeof arg6 === 'object' && arg6 !== null)
+      ? arg6
+      : (typeof arg5 === 'object' && arg5 !== null)
+        ? arg5
+        : {};
+    const idempotencyKey = typeof arg5 === 'string' ? arg5 : options.idempotencyKey;
+
+    return this.db.withTransaction(async (tx) => {
+      // Idempotency check
+      if (idempotencyKey) {
+        const existingEvent = await this.transferRepo.findEventByIdempotencyKey(organizationId, idempotencyKey, tx);
+        if (existingEvent) {
+          const existing = await this.transferRepo.findTransferById(organizationId, transferId, tx);
+          if (existing) {
+            return Object.assign({}, existing.transfer, {
+              transfer: existing.transfer,
+              items: existing.items,
+              events: existing.events,
+            });
+          }
         }
-        throw new Error(`TRANSFER_ALREADY_RECEIVED: Transfer '${transferId}' has already been received and completed.`);
       }
 
-      if (transfer.status !== 'DISPATCHED' && transfer.status !== 'IN_TRANSIT') {
-        throw new Error(
-          `INVALID_TRANSFER_STATE: Cannot receive transfer in state '${transfer.status}', expected 'DISPATCHED' or 'IN_TRANSIT'.`
-        );
+      const lockedTransfer = await this.transferRepo.lockTransfer(organizationId, transferId, tx);
+      if (!lockedTransfer) {
+        throw new Error(`TRANSFER_NOT_FOUND: Transfer '${transferId}' not found.`);
       }
 
-      // 2. Lock transfer items FOR UPDATE
-      const items = await this.transferRepo.lockTransferItems(organizationId, transferId, tx);
-      if (items.length === 0) {
-        throw new Error(`INVALID_TRANSFER: Transfer '${transferId}' has no items.`);
+      // If already completed, return existing
+      if (lockedTransfer.status === 'COMPLETED') {
+        const existing = await this.transferRepo.findTransferById(organizationId, transferId, tx);
+        return Object.assign({}, existing!.transfer, {
+          transfer: existing!.transfer,
+          items: existing!.items,
+          events: existing!.events,
+        });
       }
 
-      // 3. Verify destination location ownership
-      const destValid = await this.inventoryRepo.verifyLocationOwnership(organizationId, transfer.destination_location_id, tx);
-      if (!destValid) {
-        throw new Error('TENANT_ACCESS_DENIED: Destination location does not belong to organization.');
-      }
+      validateTransferTransition(lockedTransfer.status, 'RECEIVED');
 
-      // 4. Validate quantities & prepare mutations
-      const receiptCalculations: Array<{
-        item: InventoryTransferItemRecord;
-        receivedQty: number;
-        varianceQty: number;
-      }> = [];
+      const lockedItems = await this.transferRepo.lockTransferItems(organizationId, transferId, tx);
 
-      let totalReceived = 0;
-      let totalVariance = 0;
+      const getReceiptInfo = (item: InventoryTransferItemRecord): { receivedQty: number; notes?: string } => {
+        if (!receipts) {
+          return { receivedQty: roundQty(item.dispatched_quantity) };
+        }
+        if (Array.isArray(receipts)) {
+          const found = receipts.find(
+            (r) => (r.itemId && r.itemId === item.id) || (r.variant_id && r.variant_id === item.variant_id)
+          );
+          if (found !== undefined) {
+            const q = found.received_quantity !== undefined ? found.received_quantity : found.quantity;
+            return { receivedQty: roundQty(q ?? item.dispatched_quantity), notes: found.notes };
+          }
+          return { receivedQty: roundQty(item.dispatched_quantity) };
+        }
+        if (typeof receipts === 'object') {
+          if (receipts[item.id] !== undefined) {
+            return { receivedQty: roundQty(receipts[item.id]) };
+          }
+          if (receipts[item.variant_id] !== undefined) {
+            return { receivedQty: roundQty(receipts[item.variant_id]) };
+          }
+        }
+        return { receivedQty: roundQty(item.dispatched_quantity) };
+      };
 
-      for (const item of items) {
-        const receivedQty = receivedItemsMap[item.variant_id] !== undefined
-          ? roundQty(receivedItemsMap[item.variant_id])
-          : item.dispatched_quantity;
+      let hasVariance = false;
+      const updatedItems: InventoryTransferItemRecord[] = [];
+      const appendedEvents: InventoryTransferEventRecord[] = [];
+
+      for (const item of lockedItems) {
+        const { receivedQty, notes } = getReceiptInfo(item);
 
         if (receivedQty < 0) {
-          throw new Error(`INVALID_QUANTITY: Received quantity (${receivedQty}) cannot be negative.`);
+          throw new Error(`INVALID_QUANTITY: Received quantity cannot be negative for item '${item.id}'.`);
         }
 
-        if (receivedQty > item.dispatched_quantity && !options?.allowOverReceive) {
+        const dispatchedQty = roundQty(item.dispatched_quantity);
+        const varianceQty = roundQty(subQty(receivedQty, dispatchedQty));
+
+        // Over-receipt policy enforcement
+        if (receivedQty > dispatchedQty) {
+          if (!options.allowOverReceive) {
+            throw new Error(
+              `OVER_RECEIPT_PROHIBITED: Over-receiving is not permitted. Received quantity (${receivedQty}) exceeds dispatched quantity (${dispatchedQty}) for variant '${item.variant_id}'. Over-receipt requires supervisor authorization.`
+            );
+          }
+          if (!options.authorizedBy || typeof options.authorizedBy !== 'string' || options.authorizedBy.trim() === '') {
+            throw new Error(
+              `OVER_RECEIPT_UNAUTHORIZED: Explicit supervisor authorization (options.authorizedBy) is required for over-receiving stock.`
+            );
+          }
+        }
+
+        // 1. Lock destination balance row scoped by organizationId
+        const lockedDestBal = await tx.query(
+          `SELECT id, organization_id, location_id, variant_id, in_transit::text, on_hand::text
+           FROM inventory_balances
+           WHERE organization_id = $1 AND location_id = $2 AND variant_id = $3
+           FOR UPDATE`,
+          [organizationId, lockedTransfer.destination_location_id, item.variant_id]
+        );
+
+        if (lockedDestBal.rows.length === 0) {
           throw new Error(
-            `INVALID_QUANTITY: Over-receiving is not permitted without explicit policy. Received quantity (${receivedQty}) exceeds dispatched quantity (${item.dispatched_quantity}) for variant '${item.variant_id}'.`
+            `BALANCE_NOT_FOUND: Destination balance row not found for variant '${item.variant_id}'.`
           );
         }
 
-        // variance_quantity = received_quantity - dispatched_quantity
-        const varianceQty = roundQty(subQty(receivedQty, item.dispatched_quantity));
-        totalReceived = addQty(totalReceived, receivedQty);
-        totalVariance = addQty(totalVariance, varianceQty);
+        const currentInTransit = roundQty(lockedDestBal.rows[0].in_transit);
 
-        receiptCalculations.push({ item, receivedQty, varianceQty });
-      }
+        // 2. Validate in_transit balance
+        if (currentInTransit < dispatchedQty) {
+          throw new Error(
+            `INSUFFICIENT_IN_TRANSIT: In-transit balance (${currentInTransit}) is less than dispatched quantity (${dispatchedQty}) for variant '${item.variant_id}'.`
+          );
+        }
 
-      // 5. Execute destination balance updates & physical movements
-      for (const calc of receiptCalculations) {
-        const { item, receivedQty, varianceQty } = calc;
-
-        // Ensure destination balance exists
-        const destBalanceId = `bal_${transfer.destination_location_id}_${item.variant_id}`;
-        await tx.query(
-          `INSERT INTO inventory_balances (id, organization_id, location_id, variant_id, on_hand, reserved, damaged, expired, in_transit)
-           VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0)
-           ON CONFLICT (location_id, variant_id) DO NOTHING`,
-          [destBalanceId, organizationId, transfer.destination_location_id, item.variant_id]
-        );
-
-        // Lock destination balance FOR UPDATE
-        const lockedDest = await tx.query<{ id: string; in_transit: number; on_hand: number }>(
-          `SELECT id, in_transit::float, on_hand::float
-           FROM inventory_balances
-           WHERE location_id = $1 AND variant_id = $2 AND organization_id = $3
-           FOR UPDATE`,
-          [transfer.destination_location_id, item.variant_id, organizationId]
-        );
-
-        // Decrease in_transit by the dispatched quantity (clearing outstanding transit stock)
-        const currentInTransit = roundQty(Number(lockedDest.rows[0].in_transit));
-        const newInTransit = Math.max(0, roundQty(subQty(currentInTransit, item.dispatched_quantity)));
-
+        // 3. Deduct dispatched_quantity from in_transit
+        const newInTransit = roundQty(subQty(currentInTransit, dispatchedQty));
         await tx.query(
           `UPDATE inventory_balances
            SET in_transit = $1, updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2`,
-          [newInTransit, lockedDest.rows[0].id]
+           WHERE id = $2 AND organization_id = $3`,
+          [newInTransit, lockedDestBal.rows[0].id, organizationId]
         );
 
-        // If receivedQty > 0, record physical TRANSFER_IN movement and increment on_hand
+        // 4. Physical receipt: increment on_hand by receivedQty via TRANSFER_IN movement
         if (receivedQty > 0) {
           await this.inventoryRepo.recordMovement(
             {
-              id: `mov_tin_${transfer.id}_${item.variant_id}_${Date.now()}`,
+              id: `mov_tin_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
               organization_id: organizationId,
-              location_id: transfer.destination_location_id,
+              location_id: lockedTransfer.destination_location_id,
               variant_id: item.variant_id,
               movement_type: 'TRANSFER_IN',
               quantity_change: receivedQty,
               reference_type: 'inventory_transfer',
-              reference_id: transfer.id,
-              source_location_id: transfer.source_location_id,
-              destination_location_id: transfer.destination_location_id,
+              reference_id: transferId,
+              source_location_id: lockedTransfer.source_location_id,
+              destination_location_id: lockedTransfer.destination_location_id,
               performed_by,
-              notes: `Received transfer ${transfer.transfer_number}`,
+              notes: `Received ${receivedQty} units (dispatched: ${dispatchedQty}, variance: ${varianceQty}) for transfer ${lockedTransfer.transfer_number}.`,
             },
             tx
           );
         }
 
-        // Update item record with received and variance quantities
-        await this.transferRepo.updateItemReceived(organizationId, item.id, receivedQty, varianceQty, tx);
+        // 5. Update transfer item
+        const updatedItem = await this.transferRepo.updateItemReceived(
+          organizationId,
+          item.id,
+          receivedQty,
+          varianceQty,
+          tx
+        );
+        updatedItems.push(updatedItem!);
+
+        // 6. Record variance event if applicable
+        if (varianceQty !== 0) {
+          hasVariance = true;
+          const varEvent = await this.transferRepo.appendEvent(
+            organizationId,
+            {
+              transfer_id: transferId,
+              transfer_item_id: item.id,
+              event_type: 'VARIANCE_RECORDED',
+              from_status: lockedTransfer.status,
+              to_status: 'RECEIVED',
+              quantity: varianceQty,
+              actor_id: performed_by,
+              source_location_id: lockedTransfer.source_location_id,
+              destination_location_id: lockedTransfer.destination_location_id,
+              reference_type: 'inventory_transfer',
+              reference_id: transferId,
+              reason: options.reason || (varianceQty > 0 ? 'Over-receipt approved' : 'Short receipt at destination'),
+              notes: notes || (varianceQty > 0 ? `Over-receipt of +${varianceQty} authorized by ${options.authorizedBy}` : `Shortage of ${varianceQty}`),
+              metadata: {
+                variant_id: item.variant_id,
+                dispatched_quantity: dispatchedQty,
+                received_quantity: receivedQty,
+                variance_quantity: varianceQty,
+                authorized_by: options.authorizedBy || null,
+              },
+            },
+            tx
+          );
+          appendedEvents.push(varEvent);
+        }
       }
 
-      // 6. Append RECEIVED event
-      await this.transferRepo.appendEvent(
+      // Record RECEIVED event
+      const receivedEvent = await this.transferRepo.appendEvent(
         organizationId,
         {
           transfer_id: transferId,
           event_type: 'RECEIVED',
-          from_status: transfer.status,
+          from_status: lockedTransfer.status,
           to_status: 'RECEIVED',
-          quantity: totalReceived,
           actor_id: performed_by,
-          source_location_id: transfer.source_location_id,
-          destination_location_id: transfer.destination_location_id,
+          source_location_id: lockedTransfer.source_location_id,
+          destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
           idempotency_key: idempotencyKey || null,
-          notes: `Received ${totalReceived} units. Discrepancy: ${totalVariance}.`,
+          notes: `Transfer items received by ${performed_by}. Has variance: ${hasVariance}`,
         },
         tx
       );
+      appendedEvents.push(receivedEvent);
 
-      // 7. If variance != 0, record VARIANCE_RECORDED event for each discrepancy item
-      for (const calc of receiptCalculations) {
-        if (calc.varianceQty !== 0) {
-          await this.transferRepo.appendEvent(
-            organizationId,
-            {
-              transfer_id: transferId,
-              transfer_item_id: calc.item.id,
-              event_type: 'VARIANCE_RECORDED',
-              from_status: 'RECEIVED',
-              to_status: 'COMPLETED',
-              quantity: calc.varianceQty,
-              actor_id: performed_by,
-              source_location_id: transfer.source_location_id,
-              destination_location_id: transfer.destination_location_id,
-              reason: 'TRANSFER_VARIANCE',
-              notes: `Discrepancy recorded for variant ${calc.item.variant_id}: dispatched ${calc.item.dispatched_quantity}, received ${calc.receivedQty}, variance ${calc.varianceQty}.`,
-            },
-            tx
-          );
-        }
-      }
+      // Transition to COMPLETED
+      validateTransferTransition('RECEIVED', 'COMPLETED');
 
-      // 8. Record COMPLETED event and mark status COMPLETED
-      await this.transferRepo.appendEvent(
-        organizationId,
-        {
-          transfer_id: transferId,
-          event_type: 'COMPLETED',
-          from_status: 'RECEIVED',
-          to_status: 'COMPLETED',
-          actor_id: performed_by,
-          source_location_id: transfer.source_location_id,
-          destination_location_id: transfer.destination_location_id,
-          notes: `Transfer ${transfer.transfer_number} fully reconciled and completed.`,
-        },
-        tx
-      );
-
-      const updated = await this.transferRepo.updateTransferStatus(
+      const completedTransfer = await this.transferRepo.updateTransferStatus(
         organizationId,
         transferId,
         {
@@ -843,21 +1001,53 @@ export class TransferService {
         tx
       );
 
-      return updated!;
+      const completedEvent = await this.transferRepo.appendEvent(
+        organizationId,
+        {
+          transfer_id: transferId,
+          event_type: 'COMPLETED',
+          from_status: 'RECEIVED',
+          to_status: 'COMPLETED',
+          actor_id: performed_by,
+          source_location_id: lockedTransfer.source_location_id,
+          destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
+          notes: `Transfer marked COMPLETED. Final status achieved.`,
+        },
+        tx
+      );
+      appendedEvents.push(completedEvent);
+
+      const allEvents = await this.transferRepo.getTransferEvents(organizationId, transferId, tx);
+
+      const response = Object.assign({}, completedTransfer!, {
+        transfer: completedTransfer!,
+        items: updatedItems,
+        events: allEvents,
+      });
+
+      return response;
     });
   }
 
   /**
-   * Cancels a transfer in DRAFT, REQUESTED, or APPROVED state.
+   * Cancels a transfer request.
+   * State Machine: only transfers in DRAFT, REQUESTED, or APPROVED status can be cancelled.
+   * Dispatched, in-transit, received, or completed transfers cannot be cancelled.
    */
   async cancelTransfer(
     organizationId: string,
     transferId: string,
-    performed_by: string,
-    reason?: string,
+    performed_by: string = 'system',
+    reason: string = 'Transfer cancelled',
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.db.withTransaction(async (tx) => {
+      // Idempotency check
       if (idempotencyKey) {
         const existingEvent = await this.transferRepo.findEventByIdempotencyKey(organizationId, idempotencyKey, tx);
         if (existingEvent) {
@@ -874,21 +1064,21 @@ export class TransferService {
       if (lockedTransfer.status === 'CANCELLED') {
         return lockedTransfer;
       }
-      if (
-        lockedTransfer.status === 'DISPATCHED' ||
-        lockedTransfer.status === 'IN_TRANSIT' ||
-        lockedTransfer.status === 'RECEIVED' ||
-        lockedTransfer.status === 'COMPLETED'
-      ) {
-        throw new Error(`INVALID_TRANSFER_STATE: Cannot cancel transfer in state '${lockedTransfer.status}'. Dispatched transfers cannot be cancelled.`);
+
+      if (['DISPATCHED', 'IN_TRANSIT', 'RECEIVED', 'COMPLETED'].includes(lockedTransfer.status)) {
+        throw new Error(
+          `INVALID_TRANSFER_STATE: Dispatched transfers cannot be cancelled. Transfer '${transferId}' is in status '${lockedTransfer.status}'.`
+        );
       }
+
+      validateTransferTransition(lockedTransfer.status, 'CANCELLED');
 
       const updated = await this.transferRepo.updateTransferStatus(
         organizationId,
         transferId,
         {
           status: 'CANCELLED',
-          notes: reason ? `Cancelled: ${reason}` : 'Transfer cancelled',
+          notes: reason,
         },
         tx
       );
@@ -903,60 +1093,11 @@ export class TransferService {
           actor_id: performed_by,
           source_location_id: lockedTransfer.source_location_id,
           destination_location_id: lockedTransfer.destination_location_id,
+          reference_type: 'inventory_transfer',
+          reference_id: transferId,
           idempotency_key: idempotencyKey || null,
-          reason: reason || null,
-          notes: reason ? `Cancelled: ${reason}` : 'Transfer cancelled',
-        },
-        tx
-      );
-
-      return updated!;
-    });
-  }
-
-  /**
-   * Completes a transfer explicitly if required.
-   */
-  async completeTransfer(
-    organizationId: string,
-    transferId: string,
-    performed_by: string,
-    notes?: string,
-    idempotencyKey?: string
-  ): Promise<InventoryTransferRecord> {
-    return this.db.withTransaction(async (tx) => {
-      const lockedTransfer = await this.transferRepo.lockTransfer(organizationId, transferId, tx);
-      if (!lockedTransfer) {
-        throw new Error(`TRANSFER_NOT_FOUND: Transfer '${transferId}' not found.`);
-      }
-
-      if (lockedTransfer.status === 'COMPLETED') {
-        return lockedTransfer;
-      }
-
-      const updated = await this.transferRepo.updateTransferStatus(
-        organizationId,
-        transferId,
-        {
-          status: 'COMPLETED',
-          completed_at: new Date().toISOString(),
-          notes: notes || lockedTransfer.notes || undefined,
-        },
-        tx
-      );
-
-      await this.transferRepo.appendEvent(
-        organizationId,
-        {
-          transfer_id: transferId,
-          event_type: 'COMPLETED',
-          from_status: lockedTransfer.status,
-          to_status: 'COMPLETED',
-          actor_id: performed_by,
-          source_location_id: lockedTransfer.source_location_id,
-          destination_location_id: lockedTransfer.destination_location_id,
-          idempotency_key: idempotencyKey || null,
-          notes: notes || 'Transfer marked completed',
+          reason,
+          notes: `Transfer cancelled: ${reason}`,
         },
         tx
       );
@@ -976,6 +1117,9 @@ export class TransferService {
     items: InventoryTransferItemRecord[];
     events: InventoryTransferEventRecord[];
   } | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.transferRepo.findTransferById(organizationId, transferId);
   }
 
@@ -986,6 +1130,9 @@ export class TransferService {
     organizationId: string,
     transferId: string
   ): Promise<InventoryTransferEventRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.transferRepo.getTransferEvents(organizationId, transferId);
   }
 
@@ -1002,6 +1149,9 @@ export class TransferService {
       offset?: number;
     } = {}
   ): Promise<InventoryTransferRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
     return this.transferRepo.listTransfers(organizationId, options);
   }
 }

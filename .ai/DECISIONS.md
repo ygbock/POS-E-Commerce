@@ -150,4 +150,42 @@
   - Anonymous and unauthorized callers are decisively rejected (HTTP 401 and HTTP 403).
   - Diagnostic endpoints (/api/admin/db-status) require administrative credentials and never expose credentials or internal connection strings.
 
+---
+
+### ADR-012: Server-Authoritative Inventory Movement Ledger & Scaled Integer Arithmetic
+- **Date**: 2026-09-06
+- **Status**: `IMPLEMENTED (PENDING REVIEW)`
+- **Task Association**: `INV-001`
+- **Context**: Prior to INV-001, stock quantities were updated directly in client memory or via unvalidated mutations susceptible to floating-point drift, race conditions, overselling, and lack of historical accountability.
+- **Decision**:
+  1. **Immutable Movement Ledger**: All balance adjustments are backed by immutable rows in `inventory_movements` linked to `inventory_balances`. Direct balance updates without movements are prohibited.
+  2. **Fixed-Point Scaled Arithmetic**: Quantities are calculated using fixed-scale integer arithmetic (scale 10,000 for 4 decimal places) using JavaScript `BigInt` to prevent floating-point precision issues.
+  3. **Pessimistic Row Locking**: Inventory balance records are locked using `SELECT ... FOR UPDATE` within atomic database transactions (`withTransaction`) to eliminate concurrent overselling.
+  4. **Available Stock Invariant**: Available stock is strictly defined as `available = on_hand - reserved - damaged - expired`. Negative stock is prohibited unless explicitly configured.
+  5. **First-Class Reservations**: Reservations hold stock without balance deduction, supporting automatic expiry and order-fulfillment consumption.
+  6. **Reconciliation Movements**: Physical cycle counts compute discrepancies and record compensating audit movements.
+- **Consequences**:
+  - Full auditability of all inventory changes across all locations.
+  - Zero floating-point rounding errors on fractional inventory quantities.
+
+---
+
+### ADR-013: Stock Transfer Domain, Append-Only Event Ledger & Strict Tenant Isolation
+- **Date**: 2026-09-06
+- **Status**: `IMPLEMENTED (PENDING REVIEW)`
+- **Task Association**: `INV-001R2`
+- **Context**: Inter-location inventory transfers require strict state transitions, accurate in-transit accounting, variance recording on discrepancies, and multi-tenant isolation. Any fallback to default organizations (such as `org_default`) compromises tenant security.
+- **Decision**:
+  1. **Removal of All Tenant Fallbacks**: All repository and service methods in the inventory domain strictly require an explicit `organizationId` derived from `req.auth.organizationId`. Fallbacks to `org_default` are completely eliminated.
+  2. **Append-Only Transfer Event Ledger**: Every lifecycle transition (CREATED, REQUESTED, APPROVED, REJECTED, DISPATCHED, IN_TRANSIT, RECEIVED, VARIANCE_RECORDED, CANCELLED, COMPLETED) is recorded as an immutable event in `inventory_transfer_events`. Database triggers enforce that events cannot be updated or deleted.
+  3. **In-Transit Balance Accounting**: Dispatch atomically decrements source `on_hand` and increments destination `in_transit`. Receipt atomically decrements destination `in_transit` for all dispatched quantities and increments destination `on_hand` for actually received quantities.
+  4. **Variance Accounting**: Discrepancies (`variance = received - dispatched`) update `variance_quantity` and append a `VARIANCE_RECORDED` event to the ledger. Unreceived quantities are cleared from `in_transit` to prevent phantom floating stock.
+  5. **Over-Receipt Protection**: Receiving more than dispatched is blocked by default (`OVER_RECEIVE_NOT_ALLOWED`).
+  6. **Cancellation Guard**: Transfers in terminal states or already dispatched/in-transit cannot be cancelled.
+  7. **Idempotency Support**: Creation, dispatch, and receipt operations support organization-scoped idempotency keys to prevent duplicate execution on network retries.
+- **Consequences**:
+  - Complete, verifiable multi-location transfer accounting.
+  - Zero cross-tenant data leakage or operation execution.
+
+
 

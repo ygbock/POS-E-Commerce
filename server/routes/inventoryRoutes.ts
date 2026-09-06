@@ -27,11 +27,17 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     async (req: Request, res: Response) => {
       try {
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const callerOrg = req.auth!.organizationId;
-        const balances = await repo.listBalancesByLocation(
-          req.params.locationId,
-          isSuperAdmin ? undefined : callerOrg
-        );
+        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        if (!orgId) {
+          return res.status(400).json({
+            success: false,
+            error: {
+              code: 'TENANT_REQUIRED',
+              message: 'Organization ID is required.',
+            },
+          });
+        }
+        const balances = await repo.listBalancesByLocation(req.params.locationId, orgId);
         res.json({
           success: true,
           count: balances.length,
@@ -56,11 +62,20 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     async (req: Request, res: Response) => {
       try {
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const callerOrg = req.auth!.organizationId;
+        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        if (!orgId) {
+          return res.status(400).json({
+            success: false,
+            error: {
+              code: 'TENANT_REQUIRED',
+              message: 'Organization ID is required.',
+            },
+          });
+        }
         const balance = await repo.getBalance(
           req.params.locationId,
           req.params.variantId,
-          isSuperAdmin ? undefined : callerOrg
+          orgId
         );
         if (!balance) {
           return res.status(404).json({

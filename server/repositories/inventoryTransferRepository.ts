@@ -6,13 +6,52 @@ import {
   TransferStatus,
   TransferEventType,
 } from '../inventory/inventoryTypes';
+import { roundQty } from '../inventory/inventoryPolicies';
 
-/**
- * Inventory Transfer Repository (INV-001)
- * 
- * Manages multi-location stock transfer headers, transfer items, and immutable transfer events.
- * ALL authenticated methods strictly require organizationId to enforce tenant boundary isolation.
- */
+function mapTransferItemRow(row: any): InventoryTransferItemRecord {
+  return {
+    id: row.id,
+    transfer_id: row.transfer_id,
+    variant_id: row.variant_id,
+    requested_quantity: roundQty(row.requested_quantity),
+    approved_quantity:
+      row.approved_quantity !== null && row.approved_quantity !== undefined
+        ? roundQty(row.approved_quantity)
+        : null,
+    dispatched_quantity: roundQty(row.dispatched_quantity || 0),
+    received_quantity: roundQty(row.received_quantity || 0),
+    variance_quantity: roundQty(row.variance_quantity || 0),
+    notes: row.notes,
+    created_at: row.created_at,
+  };
+}
+
+function mapTransferEventRow(row: any): InventoryTransferEventRecord {
+  return {
+    id: row.id,
+    organization_id: row.organization_id,
+    transfer_id: row.transfer_id,
+    transfer_item_id: row.transfer_item_id,
+    event_type: row.event_type,
+    from_status: row.from_status,
+    to_status: row.to_status,
+    quantity:
+      row.quantity !== null && row.quantity !== undefined
+        ? roundQty(row.quantity)
+        : 0,
+    actor_id: row.actor_id,
+    source_location_id: row.source_location_id,
+    destination_location_id: row.destination_location_id,
+    reference_type: row.reference_type,
+    reference_id: row.reference_id,
+    idempotency_key: row.idempotency_key,
+    reason: row.reason,
+    notes: row.notes,
+    metadata: row.metadata,
+    created_at: row.created_at,
+  };
+}
+
 export class InventoryTransferRepository {
   private defaultClient: DatabaseClient;
 
@@ -25,7 +64,7 @@ export class InventoryTransferRepository {
   }
 
   /**
-   * Creates a stock transfer header with initial items inside an atomic transaction.
+   * Atomically creates a transfer record with its initial requested line items.
    */
   async createTransferWithItems(
     organizationId: string,
@@ -37,17 +76,20 @@ export class InventoryTransferRepository {
       status?: TransferStatus;
       requested_by: string;
       idempotency_key?: string | null;
-      notes?: string;
+      notes?: string | null;
     },
     items: Array<{
       id: string;
       variant_id: string;
       requested_quantity: number;
       approved_quantity?: number;
-      notes?: string;
+      notes?: string | null;
     }>,
     client?: DatabaseClient
   ): Promise<{ transfer: InventoryTransferRecord; items: InventoryTransferItemRecord[] }> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for createTransferWithItems.');
+    }
     const db = this.getClient(client);
 
     const execute = async (tx: DatabaseClient) => {
@@ -80,24 +122,24 @@ export class InventoryTransferRepository {
 
       // 2. Insert items
       for (const item of items) {
-        const itemRes = await tx.query<InventoryTransferItemRecord>(
+        const itemRes = await tx.query(
           `INSERT INTO inventory_transfer_items (
             id, transfer_id, variant_id, requested_quantity, approved_quantity, notes
           ) VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING id, transfer_id, variant_id,
-                    requested_quantity::float, approved_quantity::float,
-                    dispatched_quantity::float, received_quantity::float,
-                    variance_quantity::float, notes, created_at`,
+                    requested_quantity::text, approved_quantity::text,
+                    dispatched_quantity::text, received_quantity::text,
+                    variance_quantity::text, notes, created_at`,
           [
             item.id,
             transferData.id,
             item.variant_id,
-            item.requested_quantity,
-            item.approved_quantity !== undefined ? item.approved_quantity : item.requested_quantity,
+            roundQty(item.requested_quantity),
+            item.approved_quantity !== undefined ? roundQty(item.approved_quantity) : roundQty(item.requested_quantity),
             item.notes || null,
           ]
         );
-        createdItems.push(itemRes.rows[0]);
+        createdItems.push(mapTransferItemRow(itemRes.rows[0]));
       }
 
       return {
@@ -124,6 +166,9 @@ export class InventoryTransferRepository {
     items: InventoryTransferItemRecord[];
     events: InventoryTransferEventRecord[];
   } | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for findTransferById.');
+    }
     const db = this.getClient(client);
 
     const transferRes = await db.query<InventoryTransferRecord>(
@@ -141,20 +186,20 @@ export class InventoryTransferRepository {
       return null;
     }
 
-    const itemsRes = await db.query<InventoryTransferItemRecord>(
+    const itemsRes = await db.query(
       `SELECT id, transfer_id, variant_id,
-              requested_quantity::float, approved_quantity::float,
-              dispatched_quantity::float, received_quantity::float,
-              variance_quantity::float, notes, created_at
+              requested_quantity::text, approved_quantity::text,
+              dispatched_quantity::text, received_quantity::text,
+              variance_quantity::text, notes, created_at
        FROM inventory_transfer_items
        WHERE transfer_id = $1
        ORDER BY created_at ASC`,
       [transferId]
     );
 
-    const eventsRes = await db.query<InventoryTransferEventRecord>(
+    const eventsRes = await db.query(
       `SELECT id, organization_id, transfer_id, transfer_item_id, event_type,
-              from_status, to_status, quantity::float, actor_id, source_location_id,
+              from_status, to_status, quantity::text, actor_id, source_location_id,
               destination_location_id, reference_type, reference_id,
               idempotency_key, reason, notes, metadata, created_at
        FROM inventory_transfer_events
@@ -165,8 +210,8 @@ export class InventoryTransferRepository {
 
     return {
       transfer: transferRes.rows[0],
-      items: itemsRes.rows,
-      events: eventsRes.rows,
+      items: itemsRes.rows.map(mapTransferItemRow),
+      events: eventsRes.rows.map(mapTransferEventRow),
     };
   }
 
@@ -181,6 +226,9 @@ export class InventoryTransferRepository {
     transfer: InventoryTransferRecord;
     items: InventoryTransferItemRecord[];
   } | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for findTransferByIdempotencyKey.');
+    }
     const db = this.getClient(client);
 
     const transferRes = await db.query<InventoryTransferRecord>(
@@ -199,11 +247,11 @@ export class InventoryTransferRepository {
     }
 
     const transfer = transferRes.rows[0];
-    const itemsRes = await db.query<InventoryTransferItemRecord>(
+    const itemsRes = await db.query(
       `SELECT id, transfer_id, variant_id,
-              requested_quantity::float, approved_quantity::float,
-              dispatched_quantity::float, received_quantity::float,
-              variance_quantity::float, notes, created_at
+              requested_quantity::text, approved_quantity::text,
+              dispatched_quantity::text, received_quantity::text,
+              variance_quantity::text, notes, created_at
        FROM inventory_transfer_items
        WHERE transfer_id = $1
        ORDER BY created_at ASC`,
@@ -212,7 +260,7 @@ export class InventoryTransferRepository {
 
     return {
       transfer,
-      items: itemsRes.rows,
+      items: itemsRes.rows.map(mapTransferItemRow),
     };
   }
 
@@ -224,11 +272,14 @@ export class InventoryTransferRepository {
     idempotencyKey: string,
     client?: DatabaseClient
   ): Promise<InventoryTransferEventRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for findEventByIdempotencyKey.');
+    }
     const db = this.getClient(client);
 
-    const res = await db.query<InventoryTransferEventRecord>(
+    const res = await db.query(
       `SELECT id, organization_id, transfer_id, transfer_item_id, event_type,
-              from_status, to_status, quantity::float, actor_id, source_location_id,
+              from_status, to_status, quantity::text, actor_id, source_location_id,
               destination_location_id, reference_type, reference_id,
               idempotency_key, reason, notes, metadata, created_at
        FROM inventory_transfer_events
@@ -237,7 +288,8 @@ export class InventoryTransferRepository {
       [organizationId, idempotencyKey]
     );
 
-    return res.rows[0] || null;
+    if (!res.rows[0]) return null;
+    return mapTransferEventRow(res.rows[0]);
   }
 
   /**
@@ -248,6 +300,9 @@ export class InventoryTransferRepository {
     transferId: string,
     client: DatabaseClient
   ): Promise<InventoryTransferRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for lockTransfer.');
+    }
     const res = await client.query<InventoryTransferRecord>(
       `SELECT id, organization_id, transfer_number, source_location_id,
               destination_location_id, status, requested_by, approved_by,
@@ -271,11 +326,14 @@ export class InventoryTransferRepository {
     transferId: string,
     client: DatabaseClient
   ): Promise<InventoryTransferItemRecord[]> {
-    const res = await client.query<InventoryTransferItemRecord>(
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for lockTransferItems.');
+    }
+    const res = await client.query(
       `SELECT ti.id, ti.transfer_id, ti.variant_id,
-              ti.requested_quantity::float, ti.approved_quantity::float,
-              ti.dispatched_quantity::float, ti.received_quantity::float,
-              ti.variance_quantity::float, ti.notes, ti.created_at
+              ti.requested_quantity::text, ti.approved_quantity::text,
+              ti.dispatched_quantity::text, ti.received_quantity::text,
+              ti.variance_quantity::text, ti.notes, ti.created_at
        FROM inventory_transfer_items ti
        INNER JOIN inventory_transfers t ON t.id = ti.transfer_id
        WHERE ti.transfer_id = $1 AND t.organization_id = $2
@@ -284,7 +342,7 @@ export class InventoryTransferRepository {
       [transferId, organizationId]
     );
 
-    return res.rows;
+    return res.rows.map(mapTransferItemRow);
   }
 
   /**
@@ -301,6 +359,9 @@ export class InventoryTransferRepository {
     } = {},
     client?: DatabaseClient
   ): Promise<InventoryTransferRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for listTransfers.');
+    }
     const db = this.getClient(client);
     const conditions: string[] = ['organization_id = $1'];
     const params: any[] = [organizationId];
@@ -358,6 +419,9 @@ export class InventoryTransferRepository {
     },
     client?: DatabaseClient
   ): Promise<InventoryTransferRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for updateTransferStatus.');
+    }
     const db = this.getClient(client);
     const setParts: string[] = ['status = $1', 'updated_at = CURRENT_TIMESTAMP'];
     const params: any[] = [updates.status];
@@ -418,19 +482,23 @@ export class InventoryTransferRepository {
     dispatchedQty: number,
     client?: DatabaseClient
   ): Promise<InventoryTransferItemRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for updateItemDispatched.');
+    }
     const db = this.getClient(client);
-    const res = await db.query<InventoryTransferItemRecord>(
+    const res = await db.query(
       `UPDATE inventory_transfer_items
        SET dispatched_quantity = $1
        WHERE id = $2
          AND transfer_id IN (SELECT id FROM inventory_transfers WHERE organization_id = $3)
        RETURNING id, transfer_id, variant_id,
-                 requested_quantity::float, approved_quantity::float,
-                 dispatched_quantity::float, received_quantity::float,
-                 variance_quantity::float, notes, created_at`,
-      [dispatchedQty, itemId, organizationId]
+                 requested_quantity::text, approved_quantity::text,
+                 dispatched_quantity::text, received_quantity::text,
+                 variance_quantity::text, notes, created_at`,
+      [roundQty(dispatchedQty), itemId, organizationId]
     );
-    return res.rows[0] || null;
+    if (!res.rows[0]) return null;
+    return mapTransferItemRow(res.rows[0]);
   }
 
   /**
@@ -443,19 +511,23 @@ export class InventoryTransferRepository {
     varianceQty: number,
     client?: DatabaseClient
   ): Promise<InventoryTransferItemRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for updateItemReceived.');
+    }
     const db = this.getClient(client);
-    const res = await db.query<InventoryTransferItemRecord>(
+    const res = await db.query(
       `UPDATE inventory_transfer_items
        SET received_quantity = $1, variance_quantity = $2
        WHERE id = $3
          AND transfer_id IN (SELECT id FROM inventory_transfers WHERE organization_id = $4)
        RETURNING id, transfer_id, variant_id,
-                 requested_quantity::float, approved_quantity::float,
-                 dispatched_quantity::float, received_quantity::float,
-                 variance_quantity::float, notes, created_at`,
-      [receivedQty, varianceQty, itemId, organizationId]
+                 requested_quantity::text, approved_quantity::text,
+                 dispatched_quantity::text, received_quantity::text,
+                 variance_quantity::text, notes, created_at`,
+      [roundQty(receivedQty), roundQty(varianceQty), itemId, organizationId]
     );
-    return res.rows[0] || null;
+    if (!res.rows[0]) return null;
+    return mapTransferItemRow(res.rows[0]);
   }
 
   /**
@@ -484,6 +556,9 @@ export class InventoryTransferRepository {
     },
     client?: DatabaseClient
   ): Promise<InventoryTransferEventRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for appendEvent.');
+    }
     const db = this.getClient(client);
     const eventId = eventData.id || `trevt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const metaStr = eventData.metadata
@@ -492,7 +567,7 @@ export class InventoryTransferRepository {
         : JSON.stringify(eventData.metadata)
       : null;
 
-    const res = await db.query<InventoryTransferEventRecord>(
+    const res = await db.query(
       `INSERT INTO inventory_transfer_events (
         id, organization_id, transfer_id, transfer_item_id, event_type,
         from_status, to_status, quantity, actor_id, source_location_id,
@@ -500,7 +575,7 @@ export class InventoryTransferRepository {
         idempotency_key, reason, notes, metadata
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING id, organization_id, transfer_id, transfer_item_id, event_type,
-                from_status, to_status, quantity::float, actor_id, source_location_id,
+                from_status, to_status, quantity::text, actor_id, source_location_id,
                 destination_location_id, reference_type, reference_id,
                 idempotency_key, reason, notes, metadata, created_at`,
       [
@@ -511,7 +586,7 @@ export class InventoryTransferRepository {
         eventData.event_type,
         eventData.from_status || null,
         eventData.to_status,
-        eventData.quantity !== undefined ? eventData.quantity : 0,
+        eventData.quantity !== undefined ? roundQty(eventData.quantity) : 0,
         eventData.actor_id,
         eventData.source_location_id || null,
         eventData.destination_location_id || null,
@@ -524,7 +599,33 @@ export class InventoryTransferRepository {
       ]
     );
 
-    return res.rows[0];
+    return mapTransferEventRow(res.rows[0]);
+  }
+
+  /**
+   * Retrieves all items for a transfer.
+   */
+  async getTransferItems(
+    organizationId: string,
+    transferId: string,
+    client?: DatabaseClient
+  ): Promise<InventoryTransferItemRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for getTransferItems.');
+    }
+    const db = this.getClient(client);
+    const res = await db.query(
+      `SELECT ti.id, ti.transfer_id, ti.variant_id,
+              ti.requested_quantity::text, ti.approved_quantity::text,
+              ti.dispatched_quantity::text, ti.received_quantity::text,
+              ti.variance_quantity::text, ti.notes, ti.created_at
+       FROM inventory_transfer_items ti
+       INNER JOIN inventory_transfers t ON t.id = ti.transfer_id
+       WHERE ti.transfer_id = $1 AND t.organization_id = $2
+       ORDER BY ti.created_at ASC`,
+      [transferId, organizationId]
+    );
+    return res.rows.map(mapTransferItemRow);
   }
 
   /**
@@ -535,10 +636,13 @@ export class InventoryTransferRepository {
     transferId: string,
     client?: DatabaseClient
   ): Promise<InventoryTransferEventRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for getTransferEvents.');
+    }
     const db = this.getClient(client);
-    const res = await db.query<InventoryTransferEventRecord>(
+    const res = await db.query(
       `SELECT id, organization_id, transfer_id, transfer_item_id, event_type,
-              from_status, to_status, quantity::float, actor_id, source_location_id,
+              from_status, to_status, quantity::text, actor_id, source_location_id,
               destination_location_id, reference_type, reference_id,
               idempotency_key, reason, notes, metadata, created_at
        FROM inventory_transfer_events
@@ -546,6 +650,6 @@ export class InventoryTransferRepository {
        ORDER BY created_at ASC`,
       [transferId, organizationId]
     );
-    return res.rows;
+    return res.rows.map(mapTransferEventRow);
   }
 }

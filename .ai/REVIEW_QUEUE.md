@@ -119,3 +119,31 @@ Reviewers must evaluate submissions across these ten dimensions:
   - [x] Linter (`tsc --noEmit`) and build (`vite build && esbuild ...`) pass cleanly.
 - **Supervisor Hold**: Awaiting human supervisor inspection and formal approval before starting `INV-001`.
 
+---
+
+### Queue Item: INV-001 / INV-001R2 — Inventory Integrity & Stock Transfer Domain
+- **Submitted By**: Senior Software Engineer / Implementation Lead (Gemini)
+- **Submission Date**: 2026-09-06
+- **Current Status**: `READY FOR REVIEW`
+- **Scope**:
+  - Double-entry inventory movement ledger (`inventory_movements` backing `inventory_balances`).
+  - Integer-scaled arithmetic (`BigInt` fixed-point scale 10,000) eliminating floating-point rounding errors.
+  - Complete inter-location transfer domain with append-only event ledger (`inventory_transfer_events`).
+  - Elimination of all tenant fallbacks (`org_default`) across the entire inventory domain.
+  - Accurate in-transit accounting: dispatch decrements source `on_hand` and increments destination `in_transit`; receipt decrements destination `in_transit` for dispatched quantity and increments destination `on_hand` for received quantity.
+  - Variance recording (`variance = received - dispatched`) with `VARIANCE_RECORDED` event; zero lingering in-transit stock on discrepancies.
+  - Over-receipt protection guard (`OVER_RECEIVE_NOT_ALLOWED`).
+  - Cancellation guard protecting in-transit/completed transfers.
+  - First-class inventory reservations and physical stock count reconciliation.
+  - Full automated test suite across all domains: 57 tests passed, 0 failed.
+- **Verification Evidence**:
+  - `npm run test:transfer`: 10/10 tests passed.
+  - `npm run test:inventory`: 10/10 tests passed.
+  - `npm run test:security`: 22/22 tests passed.
+  - `npm run test:db`: 15/15 tests passed.
+  - Full suite (`npm run test`): 57/57 tests passed.
+  - `npm run lint` (`tsc --noEmit`): 0 errors.
+  - `compile_applet`: Build succeeded cleanly.
+- **Supervisor Hold**: Awaiting human supervisor review and approval before proceeding to `POS-001`. Do NOT start `POS-001`.
+
+

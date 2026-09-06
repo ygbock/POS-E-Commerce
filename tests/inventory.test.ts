@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 import assert from 'node:assert';
 import http from 'node:http';
 import { getDatabaseClient } from '../server/db/client';
@@ -40,23 +41,6 @@ async function runInventoryTests() {
   const db = getDatabaseClient({ forceNew: true });
   await db.query('SELECT 1');
   await runMigrations(db);
-
-  // Clean test tables
-  await db.exec(`
-    DELETE FROM stock_count_items;
-    DELETE FROM stock_counts;
-    DELETE FROM inventory_transfer_items;
-    DELETE FROM inventory_transfers;
-    DELETE FROM inventory_reservations;
-    DELETE FROM inventory_movements;
-    DELETE FROM inventory_balances;
-    DELETE FROM product_variants;
-    DELETE FROM products;
-    DELETE FROM units_of_measure;
-    DELETE FROM locations;
-    DELETE FROM users;
-    DELETE FROM organizations;
-  `);
 
   // Seed baseline test organizations and locations
   await db.exec(`

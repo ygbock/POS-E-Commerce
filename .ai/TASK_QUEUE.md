@@ -177,6 +177,33 @@ PROD-001 (NOT STARTED)
 
 ---
 
+### Task 5.1: INV-001R2 — Inventory Integrity Final Remediation
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `INV-001`
+- **Objective**: Final security, consistency, and correctness remediation of the inventory and stock transfer domain.
+- **Scope**:
+  - Remove all tenant fallbacks (`org_default`) across `server/inventory/`, `server/repositories/inventory*`, and `server/routes/inventory*`.
+  - Enforce explicit `organizationId` from `req.auth.organizationId` on all inventory operations; reject missing/empty org with `TENANT_REQUIRED` or `403 TENANT_ACCESS_DENIED`.
+  - Fix transfer dispatch/receipt accounting invariants: dispatch reduces source `on_hand` and increments destination `in_transit`; receipt decrements destination `in_transit` for dispatched quantity and increments destination `on_hand` for received quantity.
+  - Record discrepancies as `variance_quantity = received - dispatched` and log `VARIANCE_RECORDED` in immutable `inventory_transfer_events` ledger; ensure no lingering in-transit balance.
+  - Implement over-receipt protection guard (`OVER_RECEIVE_NOT_ALLOWED`).
+  - Implement cancellation guard preventing cancellation of dispatched, in-transit, or completed transfers.
+  - Enforce organization-scoped idempotency across create, dispatch, and receive.
+  - Complete multi-tenant boundary verification and automated transfer test suite (`tests/transfer.test.ts` -> 10/10 passed; full suite `npm run test` -> 57/57 passed).
+- **Dependencies**: `INV-001`.
+- **Acceptance Criteria**:
+  - [x] Zero occurrences of `org_default` or optional tenant fallbacks in the inventory domain.
+  - [x] In-transit balance accounting verified: dispatch moves stock to `in_transit`, receipt clears `in_transit`.
+  - [x] Discrepancies record variance quantity and append `VARIANCE_RECORDED` to ledger.
+  - [x] Over-receipt protection rejects attempts to receive more than dispatched.
+  - [x] Cancellation disallowed on transfers in transit or completed.
+  - [x] Idempotency keys prevent double dispatch/receipt.
+  - [x] Full test suite passes: `npm run test` (57/57 passed across persistence, security, inventory, and transfer suites).
+  - [x] Linter (`tsc --noEmit`) and build (`compile_applet`) pass cleanly.
+- **Supervisor Hold**: Awaiting human supervisor review and approval before proceeding to `POS-001`. Do NOT start `POS-001`.
+
+---
+
 ### Task 6: POS-001 — Server-Authoritative POS Checkout & Financial Calculation Engine
 - **Status**: `NOT STARTED`
 - **Objective**: Shift POS checkout, price calculations, tax lookups, and discount validations from the browser into transactional server API operations.

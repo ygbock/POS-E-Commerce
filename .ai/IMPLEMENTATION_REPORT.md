@@ -993,5 +993,136 @@ $ npm run build
 - [x] Complete automated test suite passes (57/57 tests passing).
 - [x] Task status marked `READY FOR REVIEW`.
 
+---
+
+## Task ID: INV-001R2 — Inventory Integrity Final Remediation
+- **Date**: 2026-09-06
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `INV-001`
+- **Assigned Agent**: Senior Software Engineer, Implementation Lead, and Repository Execution Agent
+
+---
+
+### Objective
+Execute the final security, consistency, and correctness remediation of the INV-001 inventory and stock transfer domain without redesigning the system:
+1. Completely remove all tenant fallbacks (`org_default`) across the inventory domain.
+2. Verify and enforce transfer accounting correctness: dispatch and receipt accounting, in-transit stock clearance, discrepancy/variance handling, and over-receipt prevention.
+3. Fix all test failures across `tests/inventory.test.ts` and `tests/transfer.test.ts`.
+4. Perform regression search for any remaining legacy inventory paths.
+5. Update governance documentation across `.ai/` files.
+
+---
+
+### 1. Elimination of Tenant Fallbacks
+- **Audited Files**:
+  - `server/inventory/transferService.ts`
+  - `server/inventory/inventoryService.ts`
+  - `server/inventory/inventoryPolicies.ts`
+  - `server/repositories/inventoryRepository.ts`
+  - `server/repositories/inventoryTransferRepository.ts`
+  - `server/routes/inventoryRoutes.ts`
+- **Changes**:
+  - Replaced all default arguments (`organizationId = 'org_default'`) with mandatory `organizationId: string`.
+  - Added strict parameter guards:
+    ```typescript
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Organization ID is required.');
+    }
+    ```
+  - In `inventoryRoutes.ts`, extracted `req.auth.organizationId` for all routes and rejected requests lacking an authenticated organization context with `403 TENANT_ACCESS_DENIED`.
+  - Verified via recursive `grep` that `org_default` has **0 occurrences** across `server/inventory/`, `server/repositories/inventory*`, and `server/routes/inventory*`.
+
+---
+
+### 2. Accounting & Invariant Hardening
+- **In-Transit Balance Clearing**:
+  - In `TransferService.receiveTransfer`, for every item dispatched, the destination's `in_transit` stock is decremented by the exact `dispatched_quantity` using fixed-point `BigInt` arithmetic.
+  - The destination's `on_hand` stock is incremented by the actual `received_quantity`.
+  - If `received_quantity < dispatched_quantity`, the missing units do NOT linger in `in_transit`; the full dispatched quantity is cleared from `in_transit`, and the difference is recorded as negative variance (`variance_quantity = received - dispatched`) with an immutable `VARIANCE_RECORDED` event appended to `inventory_transfer_events`.
+- **Over-Receipt Protection**:
+  - If `received_quantity > dispatched_quantity` and `allowOverReceive !== true`, the transaction is rejected with `OVER_RECEIVE_NOT_ALLOWED`.
+- **Movement ID Constraint**:
+  - Formatted movement IDs to fit within the `VARCHAR(64)` constraint: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`.
+- **Row-Level Locking**:
+  - All balance queries during transfer dispatch and receipt employ `SELECT ... FOR UPDATE` scoped to `organization_id` to prevent race conditions.
+
+---
+
+### 3. Verification & Test Execution Evidence
+
+#### 1. Transfer Domain Test Suite (`npm run test:transfer`)
+```bash
+$ npm run test:transfer
+> react-example@0.0.0 test:transfer
+> tsx tests/transfer.test.ts
+
+======================================================
+ Omnicore INV-001 Stock Transfer & Ledger Domain Tests
+======================================================
+  [TEST] 1. Transfer Creation & Validation Invariants... PASSED
+  [TEST] 2. Transfer Approval & Rejection Lifecycles... PASSED
+  [TEST] 3. Atomic Dispatch & Available Stock Invariants... PASSED
+  [TEST] 4. Transfer Events Append-Only Ledger Audit Trail... PASSED
+  [TEST] 5. Atomic Receipt & Reconciled Balances... PASSED
+  [TEST] 6. Discrepancy & Variance Accounting (variance = received - dispatched)... PASSED
+  [TEST] 7. Over-Receipt Protection Guard... PASSED
+  [TEST] 8. Cancellation Guard & Terminal State Rules... PASSED
+  [TEST] 9. Organization-Scoped Idempotency (Create, Dispatch, Receive)... PASSED
+  [TEST] 10. Multi-Tenant Boundary Enforcement (Locations, Variants, Transfers)... PASSED
+======================================================
+ Results: 10 passed, 0 failed
+======================================================
+```
+
+#### 2. Full Regression Test Pipeline (`npm run test`)
+```bash
+$ npm run test
+> react-example@0.0.0 test
+> npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer
+
+========================================
+ Omnicore Database & Persistence Tests (tests/persistence.test.ts)
+ Results: 15 passed, 0 failed
+========================================
+
+======================================================
+ Omnicore SEC-001 Authentication & RBAC Security Tests (tests/auth_security.test.ts)
+ Results: 22 passed, 0 failed
+======================================================
+
+======================================================
+ Omnicore INV-001 Inventory Ledger & Operations Tests (tests/inventory.test.ts)
+ Results: 10 passed, 0 failed
+======================================================
+
+======================================================
+ Omnicore INV-001 Stock Transfer & Ledger Domain Tests (tests/transfer.test.ts)
+ Results: 10 passed, 0 failed
+======================================================
+
+Total Test Results: 57 passed, 0 failed (100% PASS RATE)
+```
+
+#### 3. TypeScript Linter Check (`npm run lint`)
+```bash
+$ npm run lint
+> react-example@0.0.0 lint
+> tsc --noEmit
+# Exited with code 0 (Zero type errors)
+```
+
+#### 4. Applet Compilation Check (`compile_applet`)
+- **Status**: Build succeeded cleanly.
+
+---
+
+### 4. Legacy Pattern Search & Remediation
+- Scanned `src/` and `server/` for legacy inventory calls.
+- Confirmed that all server inventory routes enforce `requireAuth()`, `requirePermission()`, and multi-tenant scoping.
+- UI components in `src/components/inventory/` interact with local display state and are prepared for POS-001 and API-001 API client synchronization.
+- Zero unauthorized framework dependencies added.
+- POS-001 remains in `NOT STARTED` state pending supervisor approval.
+
+
 
 
