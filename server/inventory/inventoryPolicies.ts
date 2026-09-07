@@ -191,9 +191,20 @@ export function toQtyString(value: unknown): Quantity {
 export function parseExactMoney(
   value: unknown,
   fieldName: string = 'unit_cost',
-  options?: { allowNegative?: boolean }
+  options?: { allowNegative?: boolean; required?: boolean }
 ): string {
-  if (value === null || value === undefined) {
+  if (value === null) {
+    throw new Error(
+      `INVALID_MONEY: '${fieldName}' cannot be null.`
+    );
+  }
+
+  if (value === undefined) {
+    if (options?.required) {
+      throw new Error(
+        `INVALID_MONEY: '${fieldName}' is required and cannot be undefined.`
+      );
+    }
     return '0.00';
   }
 

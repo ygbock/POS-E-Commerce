@@ -7,7 +7,39 @@ import { ReservationService } from '../inventory/reservationService';
 import { TransferService } from '../inventory/transferService';
 import { StockCountService } from '../inventory/stockCountService';
 import { DatabaseClient } from '../db/client';
-import { parseExactQuantity } from '../inventory/inventoryPolicies';
+import { parseExactQuantity, parseExactMoney } from '../inventory/inventoryPolicies';
+
+/**
+ * Sanitizes error messages to prevent leaking SQL statements, database constraint details,
+ * file paths, stack traces, connection strings, credentials, or table names.
+ */
+export function sanitizeInventoryErrorMessage(rawMessage: string): string {
+  if (!rawMessage) return 'Unknown inventory error';
+
+  return rawMessage
+    // Credentials, passwords, keys, tokens
+    .replace(/(?:password|secret|key|token|bearer)\s*[:=]\s*["']?[^&;\s,}'"]+["']?/gi, '***')
+    // Connection strings
+    .replace(/(?:postgres|postgresql|mysql|sqlite|redis):\/\/[^\s"',;]+/gi, '[REDACTED_CONN_URI]')
+    // SQL comments
+    .replace(/--[^\n]*/g, '')
+    // Entire SQL statements & clauses
+    .replace(/\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b[\s\S]*?(?=(?:violates|error|at\s+|\n|$))/gi, '[REDACTED_SQL] ')
+    .replace(/\b(?:WHERE|FROM|JOIN|ORDER BY|GROUP BY|HAVING|LIMIT|OFFSET)\b[\s\S]*?(?=(?:violates|error|at\s+|\n|$))/gi, '[REDACTED_SQL] ')
+    // Database constraint & diagnostic details
+    .replace(/(?:duplicate key value violates unique constraint|violates foreign key constraint|violates not-null constraint|violates check constraint)[^\n;]*/gi, '[REDACTED_DB_CONSTRAINT]')
+    .replace(/(?:value too long for type character varying|syntax error at or near)[^\n;]*/gi, '[REDACTED_DB_SYNTAX]')
+    .replace(/\b(?:relation|table|column)\s+["'][a-zA-Z0-9_]+["']/gi, '[REDACTED_DB_SCHEMA]')
+    .replace(/\b(?:inventory_balances|inventory_movements|inventory_transfers|inventory_reservations|inventory_stock_counts|product_variants|products|organizations|users)\b/g, '[REDACTED_TABLE]')
+    // File paths
+    .replace(/(?:\/[a-zA-Z0-9_\-\.]+){2,}/g, '[REDACTED_PATH]')
+    .replace(/[a-zA-Z]:\\[a-zA-Z0-9_\-\.\\]+/g, '[REDACTED_PATH]')
+    // Stack traces
+    .replace(/\s+at\s+[^\n]+/g, '')
+    // Trace identifiers
+    .replace(/trace[-_]?id[:=]?\s*[a-zA-Z0-9_\-]+/gi, '[REDACTED_TRACE]')
+    .trim();
+}
 
 /**
  * Centralized error handler for Inventory HTTP Routes (INV-001R4)
@@ -15,16 +47,7 @@ import { parseExactQuantity } from '../inventory/inventoryPolicies';
  */
 export function handleInventoryRouteError(res: Response, err: any): Response {
   const msg: string = err?.message || 'Unknown inventory error';
-
-  const safeMessage = msg
-    .replace(/["']?(?:password|secret|key|token)["']?\s*[:=]\s*["']?[^&;\s,}'"]+["']?/gi, '$1=***')
-    .replace(/select\s+.*?\s+from/gi, '[REDACTED SQL]')
-    .replace(/insert\s+into/gi, '[REDACTED SQL]')
-    .replace(/update\s+.*?\s+set/gi, '[REDACTED SQL]')
-    .replace(/delete\s+from/gi, '[REDACTED SQL]')
-    .replace(/\/[a-zA-Z0-9_\-\/]+\/[a-zA-Z0-9_\-\.]+/g, '[REDACTED PATH]')
-    .replace(/value too long for type character varying.*/gi, '[REDACTED SQL]')
-    .replace(/duplicate key value violates unique constraint.*/gi, '[REDACTED SQL]');
+  const safeMessage = sanitizeInventoryErrorMessage(msg);
 
   if (
     msg.includes('TENANT_ACCESS_DENIED') ||
@@ -279,10 +302,11 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
         }
 
         const exactQty = parseExactQuantity(quantity, 'quantity', { allowNegative: false });
+        const exactUnitCost = unit_cost !== undefined ? parseExactMoney(unit_cost, 'unit_cost') : undefined;
 
         const result = await inventoryService.recordOpeningBalance(
           orgId,
-          { location_id, variant_id, quantity: exactQty, unit_cost, notes, idempotency_key },
+          { location_id, variant_id, quantity: exactQty, unit_cost: exactUnitCost, notes, idempotency_key },
           actor
         );
 
@@ -317,6 +341,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
         }
 
         const exactQtyChange = parseExactQuantity(quantity_change, 'quantity_change', { allowNegative: true });
+        const exactUnitCost = unit_cost !== undefined ? parseExactMoney(unit_cost, 'unit_cost') : undefined;
 
         const result = await inventoryService.recordAdjustment(
           orgId,
@@ -325,7 +350,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
             variant_id,
             quantity_change: exactQtyChange,
             reason,
-            unit_cost,
+            unit_cost: exactUnitCost,
             notes,
             idempotency_key,
             allowNegativeStock,

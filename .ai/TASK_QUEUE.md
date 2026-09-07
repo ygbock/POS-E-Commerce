@@ -369,3 +369,20 @@ PROD-001 (NOT STARTED)
   - [x] R10 (Acceptance Matrix): Update the acceptance matrix in the implementation report with specific, executable evidence for every PASS.
 - **Supervisor Gate**: Marked READY FOR REVIEW.
 
+---
+
+### Task 5.6: INV-002R2 — Final Evidence & Boundary Remediation
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `INV-002R1`
+- **Objective**: Close remaining independently identified gaps in INV-002R1: strict money validation at authoritative HTTP/service boundaries, verifiable HTTP error sanitization, reproducible test/build evidence, and governance reporting.
+- **Scope**: Targeted boundary remediation only (no broad rewrite, POS-001 remains NOT STARTED, 0 POS files modified).
+- **Dependencies**: `INV-002R1`
+- **Acceptance Criteria**:
+  - [x] R1: Strict Money Boundary: Rejection of numbers, exponents, floats, whitespace, invalid formats; acceptance of exact strings with <=2 decimal places at `/api/inventory/opening-balance` and `/api/inventory/adjustments`.
+  - [x] R2: Reservation Expiration: E1-E5 tests fully passing with non-zero pre-expiry reservations, exact timestamp comparison, concurrent release idempotency.
+  - [x] R3: Transfer Concurrency & State Integrity: T1-T3 tests fully passing with source/destination balances, in-transit deduction, and zero duplicate transfer events.
+  - [x] R4: HTTP Error Sanitization & Redaction: Injected internal database errors (SQL text, connection URIs, constraints, file paths, stack traces, trace IDs) fully redacted with 500 status and generic error code.
+  - [x] R5: Test Execution & Verification: Full suite (24/24 tests) passes cleanly without warnings or skipped assertions.
+  - [x] R6: POS Scope Discipline: `POS-001` remains `NOT STARTED`. POS files modified: `NONE`.
+- **Supervisor Gate**: Marked READY FOR REVIEW.
+

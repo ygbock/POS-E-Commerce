@@ -1305,226 +1305,374 @@ async function runInventoryTests() {
   }
 
   
-  // ==========================================
-  // R1: EXACT QUANTITY/MONEY BOUNDARY TESTS
-  // ==========================================
-  try {
-    const { app: rApp } = await createApp({ db, authService, skipVite: true });
-    const rServer = http.createServer(rApp);
-    await new Promise<void>((resolve) => rServer.listen(0, resolve));
-    const rPort = (rServer.address() as any).port;
-    const rBaseUrl = `http://127.0.0.1:${rPort}`;
-    (global as any).rServer = rServer;
-    (global as any).rBaseUrl = rBaseUrl;
+  const { app: rApp } = await createApp({ db, authService, skipVite: true });
+  server = http.createServer(rApp);
+  await new Promise<void>((resolve) => server!.listen(0, resolve));
+  const rPort = (server!.address() as any).port;
+  rBaseUrl = `http://127.0.0.1:${rPort}`;
 
+  // =========================================================================
+  // TEST 21 / R1: EXACT QUANTITY & STRICT MONEY BOUNDARY (HTTP ENDPOINT LEVEL)
+  // =========================================================================
+  try {
     const r1Token = (await authService.login({
       organizationId: 'org_inv_a',
       email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
-    // Quantity invalid (number instead of string)
-    const resNum = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
-      body: JSON.stringify({
-        location_id: 'loc_wh_a',
-        variant_id: 'var_a1',
-        quantity: 10,
-        unit_cost: "10.00"
-      })
-    });
-    assert.strictEqual(resNum.status, 400, 'HTTP quantity validation should reject numeric 10');
-    
-    const resFloat = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
-      body: JSON.stringify({
-        location_id: 'loc_wh_a',
-        variant_id: 'var_a1',
-        quantity: 10.5,
-        unit_cost: "10.00"
-      })
-    });
-    assert.strictEqual(resFloat.status, 400, 'HTTP quantity validation should reject numeric 10.5');
+    // 1. Numeric quantity on /opening-balance must be rejected (integer and float)
+    for (const badQty of [10, 10.5]) {
+      const res = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity: badQty,
+          unit_cost: "10.00"
+        })
+      });
+      assert.strictEqual(res.status, 400, `HTTP quantity validation must reject numeric ${badQty}`);
+      const body = await res.json();
+      assert.ok(body.error.message.includes('must be supplied as a decimal string'), 'Should require decimal string for quantity');
+    }
 
-    // unit_cost invalid (number instead of string)
-    const resCostNum = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
-      body: JSON.stringify({
-        location_id: 'loc_wh_a',
-        variant_id: 'var_a1',
-        quantity: "10.0000",
-        unit_cost: 10
-      })
-    });
-    assert.strictEqual(resCostNum.status, 400, 'HTTP unit_cost validation should reject numeric 10');
-    const costError = await resCostNum.json();
-    assert.ok(costError.error.message.includes('must be supplied as a decimal string'), 'Should explicitly complain about decimal string for money');
+    // 2. Numeric quantity_change on /adjustments must be rejected
+    for (const badQty of [5, 5.25]) {
+      const res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity_change: badQty,
+          reason: 'Test adjustment',
+          unit_cost: "10.00"
+        })
+      });
+      assert.strictEqual(res.status, 400, `HTTP adjustments quantity validation must reject numeric ${badQty}`);
+    }
 
-    // Valid string acceptance
-    const resValid = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
-      body: JSON.stringify({
-        location_id: 'loc_wh_a',
-        variant_id: 'var_a1',
-        quantity: "10.5000",
-        unit_cost: "12.50",
-        idempotency_key: 'r1-test-key-1'
-      })
-    });
-    assert.strictEqual(resValid.status, 201, 'HTTP should accept string 10.5000 and 12.50');
+    // 3. Strict money validation: Rejected inputs on /opening-balance
+    const rejectedMoneyInputs: Array<{ desc: string; val: any }> = [
+      { desc: 'numeric 12', val: 12 },
+      { desc: 'numeric 12.5', val: 12.5 },
+      { desc: 'numeric NaN', val: NaN },
+      { desc: 'string NaN', val: "NaN" },
+      { desc: 'numeric Infinity', val: Infinity },
+      { desc: 'string Infinity', val: "Infinity" },
+      { desc: 'numeric 1e309', val: 1e309 },
+      { desc: 'string 1e309', val: "1e309" },
+      { desc: 'boolean true', val: true },
+      { desc: 'null', val: null },
+      { desc: 'object', val: { amount: 12 } },
+      { desc: 'array', val: [12.5] },
+      { desc: 'excess precision 12.345', val: "12.345" },
+    ];
 
-    markPassed('R1. Exact Quantity/Money Boundary Rejects Numeric Inputs (API Boundary)');
+    for (const item of rejectedMoneyInputs) {
+      const res = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity: "1.0000",
+          unit_cost: item.val
+        })
+      });
+      assert.strictEqual(res.status, 400, `HTTP unit_cost validation must reject ${item.desc}`);
+      const body = await res.json();
+      assert.strictEqual(body.success, false);
+      assert.ok(
+        body.error.message.includes('unit_cost') || body.error.code === 'VALIDATION_ERROR' || body.error.code === 'INVALID_MONEY',
+        `Error response for ${item.desc} must identify money validation error`
+      );
+    }
+
+    // 4. Strict money validation: Rejected inputs on /adjustments
+    for (const item of rejectedMoneyInputs.slice(0, 5)) {
+      const res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity_change: "1.0000",
+          reason: 'Test strict money on adjustments',
+          unit_cost: item.val
+        })
+      });
+      assert.strictEqual(res.status, 400, `HTTP adjustments unit_cost validation must reject ${item.desc}`);
+    }
+
+    // 5. Accepted decimal strings on /opening-balance: "12", "12.5", "12.50"
+    const acceptedMoneyStrings = ["12", "12.5", "12.50"];
+    for (let idx = 0; idx < acceptedMoneyStrings.length; idx++) {
+      const moneyStr = acceptedMoneyStrings[idx];
+      const res = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity: "2.0000",
+          unit_cost: moneyStr,
+          idempotency_key: `r1_accept_open_${idx}_${Date.now()}`
+        })
+      });
+      assert.strictEqual(res.status, 201, `HTTP opening-balance must accept valid decimal string '${moneyStr}'`);
+      const body = await res.json();
+      assert.strictEqual(body.success, true);
+    }
+
+    // 6. Accepted decimal strings on /adjustments: "12", "12.5", "12.50"
+    for (let idx = 0; idx < acceptedMoneyStrings.length; idx++) {
+      const moneyStr = acceptedMoneyStrings[idx];
+      const res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity_change: "1.0000",
+          reason: `Test valid money string '${moneyStr}'`,
+          unit_cost: moneyStr,
+          idempotency_key: `r1_accept_adj_${idx}_${Date.now()}`
+        })
+      });
+      assert.strictEqual(res.status, 200, `HTTP adjustments must accept valid decimal string '${moneyStr}'`);
+      const body = await res.json();
+      assert.strictEqual(body.success, true);
+    }
+
+    markPassed('R1. Strict Money & Exact Quantity Boundary (HTTP Endpoint Level)');
   } catch (err) {
-    markFailed('R1. Exact Quantity/Money Boundary Rejects Numeric Inputs (API Boundary)', err);
+    markFailed('R1. Strict Money & Exact Quantity Boundary (HTTP Endpoint Level)', err);
   }
 
-  // ==========================================
-  // R2: RESERVATION EXPIRATION ACCEPTANCE (E1-E5)
-  // ==========================================
+  // =========================================================================
+  // TEST 22 / R2: RESERVATION EXPIRATION & CONCURRENCY RACES (E1-E5)
+  // =========================================================================
   try {
-    // Create new variant and opening balance for clean R2
-    const varR2Id = 'var_r2';
+    const varR2Id = 'var_r2_spec';
+    await db.query(
+      `INSERT INTO product_variants (id, organization_id, product_id, sku, barcode, name) VALUES ($1, 'org_inv_a', 'prod_a1', 'SKU-R2-SPEC', 'BAR-R2-SPEC', 'R2 Spec Variant') ON CONFLICT (id) DO NOTHING`,
+      [varR2Id]
+    );
     await inventoryService.recordOpeningBalance('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '100', unit_cost: '10.00'
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '100.0000', unit_cost: '10.00'
     }, 'usr_inv_admin_a');
 
     const preBal = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
     const preRes = parseFloat(preBal?.reserved || '0');
-    
-    // Create one expired (E1) and one future (E2)
+    const preAvail = parseFloat(preBal?.available || '100');
+    const preOnHand = parseFloat(preBal?.on_hand || '100');
+
+    // E1 & E2: Expired reservation (past expires_at) vs Active non-expired reservation (future expires_at)
     const resExpired = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '2', reference_type: 'ORDER', reference_id: 'R2-E1',
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '2.0000', reference_type: 'ORDER', reference_id: 'R2-E1',
       expires_at: new Date(Date.now() - 60000).toISOString()
     }, 'usr_inv_admin_a');
     
     const resFuture = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '3', reference_type: 'ORDER', reference_id: 'R2-E2',
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '3.0000', reference_type: 'ORDER', reference_id: 'R2-E2',
       expires_at: new Date(Date.now() + 60000).toISOString()
     }, 'usr_inv_admin_a');
 
     const balAfterCreate = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    assert.strictEqual(parseFloat(balAfterCreate!.reserved) - preRes, 5, 'Reserved should increase by 5');
+    assert.strictEqual(parseFloat(balAfterCreate!.reserved) - preRes, 5, 'Reserved should increase by exactly 5');
 
-    // Run expiration (E1 & E2)
+    // Run expiration engine: E1 must expire, E2 must remain unchanged
     const expire1 = await reservationService.expireStaleReservations('org_inv_a');
-    assert.ok(expire1.reservationIds.includes(resExpired.id), 'E1: Expired reservation should be processed');
-    assert.ok(!expire1.reservationIds.includes(resFuture.id), 'E2: Future reservation should NOT be processed');
+    assert.ok(expire1.reservationIds.includes(resExpired.id), 'E1: Expired reservation must be expired');
+    assert.ok(!expire1.reservationIds.includes(resFuture.id), 'E2: Future reservation must NOT be expired');
 
-    const balAfterExpire = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    assert.strictEqual(parseFloat(balAfterExpire!.reserved) - preRes, 3, 'E1: Reserved quantity should decrease strictly by expired amount (2)');
+    const balAfterExpire1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(parseFloat(balAfterExpire1!.reserved) - preRes, 3, 'E1: Reserved quantity should decrease strictly by 2.0000');
+    assert.strictEqual(parseFloat(balAfterExpire1!.available) - preAvail, -3, 'E1: Available should be preAvail - 3.0000');
 
-    // Run expiration again (E3)
+    // E3: Repeated expiration run: No duplicate release, idempotent
     const expire2 = await reservationService.expireStaleReservations('org_inv_a');
-    assert.ok(!expire2.reservationIds.includes(resExpired.id), 'E3: Should not re-expire');
+    assert.ok(!expire2.reservationIds.includes(resExpired.id), 'E3: Already expired reservation must not re-expire');
     const balAfterExpire2 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    assert.strictEqual(balAfterExpire2!.reserved, balAfterExpire!.reserved, 'E3: Reserved quantity should not change on repeated run');
+    assert.strictEqual(balAfterExpire2!.reserved, balAfterExpire1!.reserved, 'E3: Reserved quantity unchanged on repeat');
+    assert.strictEqual(balAfterExpire2!.available, balAfterExpire1!.available, 'E3: Available quantity unchanged on repeat');
 
-    // E4: Expiration vs Release
+    // E4: Expiration racing with manual release
     const resConflict = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1', reference_type: 'ORDER', reference_id: 'R2-E4',
-      expires_at: new Date(Date.now() - 1000).toISOString() // expired
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1.0000', reference_type: 'ORDER', reference_id: 'R2-E4',
+      expires_at: new Date(Date.now() - 1000).toISOString()
     }, 'usr_inv_admin_a');
     
     const balPreE4 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
     const preE4Res = parseFloat(balPreE4!.reserved);
+    const preE4OnHand = parseFloat(balPreE4!.on_hand);
+    const preE4Avail = parseFloat(balPreE4!.available);
 
-    // Race expiration and release
-    const p1 = reservationService.expireStaleReservations('org_inv_a');
-    const p2 = reservationService.releaseReservation('org_inv_a', resConflict.id, 'usr_inv_admin_a');
-    await Promise.allSettled([p1, p2]);
+    const [e4ExpireRes, e4ReleaseRes] = await Promise.allSettled([
+      reservationService.expireStaleReservations('org_inv_a'),
+      reservationService.releaseReservation('org_inv_a', resConflict.id, 'usr_inv_admin_a')
+    ]);
+
+    // Assert both operation results
+    assert.ok(e4ExpireRes.status === 'fulfilled' || e4ReleaseRes.status === 'fulfilled', 'E4: At least one operation must succeed');
+    const finalE4Reservation = await reservationService.getReservation('org_inv_a', resConflict.id);
+    assert.ok(['RELEASED', 'EXPIRED'].includes(finalE4Reservation!.status), 'E4: Final reservation status must be RELEASED or EXPIRED');
 
     const balPostE4 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    assert.strictEqual(parseFloat(balPostE4!.reserved), preE4Res - 1, 'E4: Reserved quantity restored exactly once');
+    const postE4Res = parseFloat(balPostE4!.reserved);
+    const postE4OnHand = parseFloat(balPostE4!.on_hand);
+    const postE4Avail = parseFloat(balPostE4!.available);
 
-    // E5: Expiration vs Fulfillment
+    assert.strictEqual(postE4Res, preE4Res - 1, 'E4: Reserved quantity restored exactly once');
+    assert.strictEqual(postE4OnHand, preE4OnHand, 'E4: On hand unchanged during release/expiration race');
+    assert.strictEqual(postE4Avail, preE4Avail + 1, 'E4: Available restored by exactly 1');
+    assert.ok(postE4Res >= 0, 'E4: Reserved quantity must never be negative');
+
+    // E5: Expiration racing with fulfillment
     const resFulfill = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1', reference_type: 'ORDER', reference_id: 'R2-E5',
-      expires_at: new Date(Date.now() - 1000).toISOString() // expired
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1.0000', reference_type: 'ORDER', reference_id: 'R2-E5',
+      expires_at: new Date(Date.now() - 1000).toISOString()
     }, 'usr_inv_admin_a');
     
     const balPreE5 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
     const preE5Res = parseFloat(balPreE5!.reserved);
     const preE5OnHand = parseFloat(balPreE5!.on_hand);
+    const preE5Avail = parseFloat(balPreE5!.available);
 
-    const f1 = reservationService.expireStaleReservations('org_inv_a');
-    const f2 = reservationService.fulfillReservation('org_inv_a', resFulfill.id, 'usr_inv_admin_a');
-    await Promise.allSettled([f1, f2]);
+    const [e5ExpireRes, e5FulfillRes] = await Promise.allSettled([
+      reservationService.expireStaleReservations('org_inv_a'),
+      reservationService.fulfillReservation('org_inv_a', resFulfill.id, 'usr_inv_admin_a')
+    ]);
+
+    // Assert both operation results
+    assert.ok(e5ExpireRes.status === 'fulfilled' || e5FulfillRes.status === 'fulfilled', 'E5: At least one operation must succeed');
+    const finalE5Reservation = await reservationService.getReservation('org_inv_a', resFulfill.id);
+    assert.ok(['FULFILLED', 'EXPIRED'].includes(finalE5Reservation!.status), 'E5: Final reservation status must be FULFILLED or EXPIRED');
 
     const balPostE5 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    const finalRes = await reservationService.getReservation('org_inv_a', resFulfill.id);
-    
-    if (finalRes!.status === 'FULFILLED') {
-      assert.strictEqual(parseFloat(balPostE5!.on_hand), preE5OnHand - 1, 'E5: Fulfilled won, on_hand decreases');
+    const postE5Res = parseFloat(balPostE5!.reserved);
+    const postE5OnHand = parseFloat(balPostE5!.on_hand);
+    const postE5Avail = parseFloat(balPostE5!.available);
+
+    if (finalE5Reservation!.status === 'FULFILLED') {
+      assert.strictEqual(postE5OnHand, preE5OnHand - 1, 'E5: If fulfilled, on_hand must decrease by 1');
+      assert.strictEqual(postE5Avail, preE5Avail, 'E5: If fulfilled, available is unchanged');
     } else {
-      assert.strictEqual(parseFloat(balPostE5!.on_hand), preE5OnHand, 'E5: Expired won, on_hand unchanged');
+      assert.strictEqual(postE5OnHand, preE5OnHand, 'E5: If expired, on_hand unchanged');
+      assert.strictEqual(postE5Avail, preE5Avail + 1, 'E5: If expired, available restored by 1');
     }
-    assert.strictEqual(parseFloat(balPostE5!.reserved), preE5Res - 1, 'E5: Reserved quantity restored exactly once');
+    assert.strictEqual(postE5Res, preE5Res - 1, 'E5: Reserved quantity restored exactly once');
+    assert.ok(postE5Res >= 0, 'E5: Reserved quantity must never be negative');
 
     markPassed('R2. Reservation Expiration Acceptance (E1-E5)');
   } catch (err) {
     markFailed('R2. Reservation Expiration Acceptance (E1-E5)', err);
   }
 
-  // ==========================================
-  // R3: TRANSFER CONCURRENCY EVIDENCE (T1-T3)
-  // ==========================================
+  // =========================================================================
+  // TEST 23 / R3: TRANSFER CONCURRENCY EVIDENCE (T1-T3)
+  // =========================================================================
   try {
     const getMovCount = async (transferId: string) => {
-      const res = await db.query('SELECT COUNT(*) as c FROM inventory_movements WHERE reference_type = $1 AND reference_id = $2', ['inventory_transfer', transferId]);
+      const res = await db.query(
+        'SELECT COUNT(*) as c FROM inventory_movements WHERE reference_type = $1 AND reference_id = $2',
+        ['inventory_transfer', transferId]
+      );
+      return parseInt(res.rows[0].c, 10);
+    };
+
+    const getEventCount = async (transferId: string) => {
+      const res = await db.query(
+        'SELECT COUNT(*) as c FROM inventory_transfer_events WHERE transfer_id = $1',
+        [transferId]
+      );
       return parseInt(res.rows[0].c, 10);
     };
 
     // T1: Concurrent Dispatch
-    const { transfer: t1, items: i1 } = await transferService.createTransfer('org_inv_a', {
+    const { transfer: t1 } = await transferService.createTransfer('org_inv_a', {
       transfer_number: 'TR-R3-T1', source_location_id: 'loc_wh_a', destination_location_id: 'loc_store_a',
-      items: [{ variant_id: 'var_a1', requested_quantity: '10' }]
+      items: [{ variant_id: 'var_a1', requested_quantity: '10.0000' }]
     }, 'usr_inv_admin_a');
     await transferService.approveTransfer('org_inv_a', t1.id, 'usr_inv_admin_a');
 
-    const balPreT1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
-    
-    const disp1 = transferService.dispatchTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
-    const disp2 = transferService.dispatchTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
-    await Promise.allSettled([disp1, disp2]);
+    const balPreT1Source = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+    const balPreT1Dest = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
+
+    const [dispResultA, dispResultB] = await Promise.allSettled([
+      transferService.dispatchTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a'),
+      transferService.dispatchTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a')
+    ]);
+
+    // Capture both operation results
+    assert.ok(dispResultA.status === 'fulfilled' || dispResultB.status === 'fulfilled', 'T1: Dispatch call must resolve safely');
+    assert.ok(dispResultA.status === 'fulfilled' && dispResultB.status === 'fulfilled', 'T1: Both concurrent calls safely handled (one executes, one idempotent replay)');
 
     const finalT1 = await transferService.getTransfer('org_inv_a', t1.id);
-    const balPostT1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+    const finalT1Item = finalT1!.items[0];
+    const balPostT1Source = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+    const balPostT1Dest = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
     
-    assert.strictEqual(finalT1!.transfer.status, 'DISPATCHED', 'T1: Final transfer state should be DISPATCHED');
-    assert.strictEqual(parseFloat(balPreT1!.on_hand) - parseFloat(balPostT1!.on_hand), 10, 'T1: Source inventory deducted exactly once');
+    // Assert all required states for T1
+    assert.strictEqual(finalT1!.transfer.status, 'DISPATCHED', 'T1: Final transfer state must be DISPATCHED');
+    assert.strictEqual(finalT1Item.dispatched_quantity, '10.0000', 'T1: Dispatched quantity must be 10.0000');
+    assert.strictEqual(finalT1Item.received_quantity, '0.0000', 'T1: Received quantity must be 0.0000');
+    assert.strictEqual(finalT1Item.variance_quantity, '0.0000', 'T1: Variance quantity must be 0.0000');
+    
+    // Inventory balances after dispatch
+    assert.strictEqual(parseFloat(balPreT1Source!.on_hand) - parseFloat(balPostT1Source!.on_hand), 10, 'T1: Source on_hand deducted by exactly 10');
+    assert.strictEqual(balPostT1Dest!.on_hand, balPreT1Dest?.on_hand || '0.0000', 'T1: Destination on_hand unchanged');
+    assert.strictEqual(parseFloat(balPostT1Dest!.in_transit), 10, 'T1: Destination in_transit must be exactly 10.0000');
     
     const t1Movs = await getMovCount(t1.id);
-    assert.strictEqual(t1Movs, 1, 'T1: Exactly 1 movement (TRANSFER_OUT) should be created');
+    assert.strictEqual(t1Movs, 1, 'T1: Exactly 1 movement (TRANSFER_OUT) created - no duplicated movements');
+    const t1DispatchedEvents = (await db.query(`SELECT * FROM inventory_transfer_events WHERE transfer_id = $1 AND event_type = 'DISPATCHED'`, [t1.id])).rows;
+    assert.strictEqual(t1DispatchedEvents.length, 1, 'T1: Exactly 1 DISPATCHED event created - no duplicate events');
 
     // T2: Concurrent Receive
-    const destPreT2 = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
-    
-    const rec1 = transferService.receiveTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
-    const rec2 = transferService.receiveTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
-    await Promise.allSettled([rec1, rec2]);
+    const [recResultA, recResultB] = await Promise.allSettled([
+      transferService.receiveTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a'),
+      transferService.receiveTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a')
+    ]);
+
+    // Capture both operation results
+    assert.ok(recResultA.status === 'fulfilled' || recResultB.status === 'fulfilled', 'T2: Receive call must resolve safely');
+    assert.ok(recResultA.status === 'fulfilled' && recResultB.status === 'fulfilled', 'T2: Both concurrent calls safely handled (one executes, one idempotent replay)');
 
     const finalT2 = await transferService.getTransfer('org_inv_a', t1.id);
-    const destPostT2 = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
-    
-    assert.strictEqual(finalT2!.transfer.status, 'COMPLETED', 'T2: Final transfer state should be COMPLETED');
-    assert.strictEqual(parseFloat(destPostT2!.on_hand) - parseFloat(destPreT2!.on_hand), 10, 'T2: Destination inventory incremented exactly once');
-    
+    const finalT2Item = finalT2!.items[0];
+    const balPostT2Dest = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
+    const balPostT2Source = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+
+    // Assert all required states for T2
+    assert.strictEqual(finalT2!.transfer.status, 'COMPLETED', 'T2: Final transfer state must be COMPLETED');
+    assert.strictEqual(finalT2Item.dispatched_quantity, '10.0000', 'T2: Dispatched quantity must be 10.0000');
+    assert.strictEqual(finalT2Item.received_quantity, '10.0000', 'T2: Received quantity must be 10.0000');
+    assert.strictEqual(finalT2Item.variance_quantity, '0.0000', 'T2: Variance quantity must be 0.0000');
+
+    // Inventory balances after receive
+    assert.strictEqual(balPostT2Source!.on_hand, balPostT1Source!.on_hand, 'T2: Source on_hand unchanged on receive');
+    assert.strictEqual(parseFloat(balPostT2Dest!.on_hand) - parseFloat(balPreT1Dest?.on_hand || '0'), 10, 'T2: Destination on_hand incremented by exactly 10');
+    assert.strictEqual(parseFloat(balPostT2Dest!.in_transit), 0, 'T2: Destination in_transit must be exactly 0.0000 - no lingering incorrect in_transit');
+
     const t2Movs = await getMovCount(t1.id);
-    assert.strictEqual(t2Movs, 2, 'T2: Exactly 2 movements (1 OUT, 1 IN) should exist');
+    assert.strictEqual(t2Movs, 2, 'T2: Exactly 2 movements total across lifecycle (1 OUT, 1 IN) - no duplicate movements');
+    const t2ReceivedEvents = (await db.query(`SELECT * FROM inventory_transfer_events WHERE transfer_id = $1 AND event_type = 'RECEIVED'`, [t1.id])).rows;
+    assert.strictEqual(t2ReceivedEvents.length, 1, 'T2: Exactly 1 RECEIVED event created - no duplicate events');
 
     // T3: Concurrent state transition (Approve vs Cancel)
     const { transfer: t3 } = await transferService.createTransfer('org_inv_a', {
       transfer_number: 'TR-R3-T3', source_location_id: 'loc_wh_a', destination_location_id: 'loc_store_a',
-      items: [{ variant_id: 'var_a1', requested_quantity: '1' }]
+      items: [{ variant_id: 'var_a1', requested_quantity: '1.0000' }]
     }, 'usr_inv_admin_a');
     
-    const st1 = transferService.approveTransfer('org_inv_a', t3.id, 'usr_inv_admin_a');
-    const st2 = transferService.cancelTransfer('org_inv_a', t3.id, 'usr_inv_admin_a', 'Race');
-    await Promise.allSettled([st1, st2]);
+    const [st1, st2] = await Promise.allSettled([
+      transferService.approveTransfer('org_inv_a', t3.id, 'usr_inv_admin_a'),
+      transferService.cancelTransfer('org_inv_a', t3.id, 'usr_inv_admin_a', 'Race')
+    ]);
 
     const finalT3 = await transferService.getTransfer('org_inv_a', t3.id);
     assert.ok(['APPROVED', 'CANCELLED'].includes(finalT3!.transfer.status), 'T3: Must end in a valid state (APPROVED or CANCELLED)');
@@ -1534,9 +1682,9 @@ async function runInventoryTests() {
     markFailed('R3. Transfer Concurrency & Inventory State Integrity (T1-T3)', err);
   }
 
-  // ==========================================
-  // R4: ERROR SANITIZATION TESTS
-  // ==========================================
+  // =========================================================================
+  // TEST 24 / R4: HTTP ERROR SANITIZATION & REDACTION (INTERNAL DB LEAK DEFENSE)
+  // =========================================================================
   try {
     const r4Token = (await authService.login({
       organizationId: 'org_inv_a',
@@ -1544,36 +1692,120 @@ async function runInventoryTests() {
       password: 'Password123!',
     })).token;
 
-    const rBaseUrl = (global as any).rBaseUrl;
+    // 1. Endpoint-level test with injected internal database exception containing sensitive material
+    const originalRecordOpeningBalance = InventoryService.prototype.recordOpeningBalance;
+    
+    InventoryService.prototype.recordOpeningBalance = async function() {
+      const sensitiveDbError = new Error(
+        `SELECT * FROM inventory_balances WHERE id = '123' -- postgresql://postgres:supersecret@localhost:5432/abacha_db ` +
+        `violates foreign key constraint "fk_inventory_balances_location" on table "inventory_balances" ` +
+        `at /app/applet/server/db/client.ts:42:15\n    at async DatabaseClient.query (trace-id: 9a8b7c6d5e)`
+      );
+      throw sensitiveDbError;
+    };
+
+    try {
+      // Test under default / non-production environment
+      const resInjected = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r4Token}` },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity: "10.0000",
+          unit_cost: "10.00"
+        })
+      });
+
+      assert.strictEqual(resInjected.status, 500, 'Injected DB error must yield 500');
+      const bodyInjected = await resInjected.json();
+      assert.strictEqual(bodyInjected.success, false);
+      assert.strictEqual(bodyInjected.error.code, 'INVENTORY_ERROR', 'Must return documented INVENTORY_ERROR code');
+
+      // Verify no sensitive material is exposed in response message
+      const errMsg = bodyInjected.error.message;
+      assert.ok(!errMsg.includes('SELECT'), 'Must not expose SQL query (SELECT)');
+      assert.ok(!errMsg.includes('WHERE'), 'Must not expose SQL query (WHERE)');
+      assert.ok(!errMsg.includes('postgresql://'), 'Must not expose connection URI');
+      assert.ok(!errMsg.includes('supersecret'), 'Must not expose credentials/passwords');
+      assert.ok(!errMsg.includes('foreign key constraint'), 'Must not expose DB constraint diagnostics');
+      assert.ok(!errMsg.includes('inventory_balances'), 'Must not expose internal table names');
+      assert.ok(!errMsg.includes('/app/applet'), 'Must not expose filesystem paths');
+      assert.ok(!errMsg.includes('at async'), 'Must not expose stack traces');
+      assert.ok(!errMsg.includes('trace-id'), 'Must not expose trace identifiers');
+
+      // Test under NODE_ENV === 'production'
+      const prevEnv = process.env.NODE_ENV;
+      const prevSecret = process.env.JWT_SECRET;
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'a-super-secure-production-jwt-signing-secret-64-bytes-token-key-2026';
+
+      // Obtain valid token signed with the production secret
+      const prodToken = (await authService.login({
+        organizationId: 'org_inv_a',
+        email: 'admin_a@abacha.test',
+        password: 'Password123!',
+      })).token;
+
+      try {
+        const resProd = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${prodToken}` },
+          body: JSON.stringify({
+            location_id: 'loc_wh_a',
+            variant_id: 'var_a1',
+            quantity: "10.0000",
+            unit_cost: "10.00"
+          })
+        });
+
+        assert.strictEqual(resProd.status, 500, 'Production DB error must yield 500');
+        const bodyProd = await resProd.json();
+        assert.strictEqual(bodyProd.error.code, 'INVENTORY_ERROR', 'Production must return canonical INVENTORY_ERROR');
+        assert.strictEqual(
+          bodyProd.error.message,
+          'An internal inventory processing error occurred.',
+          'Production error message must be generic and completely redacted'
+        );
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+        process.env.JWT_SECRET = prevSecret;
+      }
+    } finally {
+      // Always restore original service method
+      InventoryService.prototype.recordOpeningBalance = originalRecordOpeningBalance;
+    }
+
+    // 2. Real PostgreSQL constraint violation: massive string exceeding varchar(255)
+    const r4TokenStep2 = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@abacha.test',
+      password: 'Password123!',
+    })).token;
 
     const massiveString = 'A'.repeat(5000);
-    
-    // Simulate production environment to test error sanitization
-    
-
     const resCrash = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r4Token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r4TokenStep2}` },
       body: JSON.stringify({
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
         quantity: "10.0000",
         unit_cost: "10.00",
-        idempotency_key: massiveString // Will crash DB due to varchar(255)
+        idempotency_key: massiveString // Triggers DB error on varchar(255)
       })
     });
-    
-    
 
     const crashBody = await resCrash.json();
-    assert.strictEqual(resCrash.status, 500, 'Should return 500 for unhandled DB string truncation or similar');
-    assert.ok(!crashBody.error.message.includes('value too long'), 'DB error details must be sanitized');
-    assert.ok(!crashBody.error.message.includes('at async'), 'Stack trace must be sanitized');
+    assert.strictEqual(resCrash.status, 500, 'Should return 500 for unhandled DB string truncation');
     assert.strictEqual(crashBody.error.code, 'INVENTORY_ERROR', 'Must return INVENTORY_ERROR code');
+    assert.ok(!crashBody.error.message.includes('value too long'), 'DB constraint details must be sanitized');
+    assert.ok(!crashBody.error.message.includes('at async'), 'Stack trace must be sanitized');
+    assert.ok(!crashBody.error.message.includes('inventory_movements'), 'Internal table name must be sanitized');
 
-    markPassed('R4. HTTP Error Sanitization (Internal DB Leak Prevention)');
+    markPassed('R4. HTTP Error Sanitization & Redaction (Internal DB Leak Defense)');
   } catch (err) {
-    markFailed('R4. HTTP Error Sanitization (Internal DB Leak Prevention)', err);
+    markFailed('R4. HTTP Error Sanitization & Redaction (Internal DB Leak Defense)', err);
   }
 
 console.log(` Results: ${passed} passed, ${failed} failed`);
@@ -1581,9 +1813,9 @@ console.log(` Results: ${passed} passed, ${failed} failed`);
 
 
   try {
-    if ((global as any).rServer) {
-      (global as any).rServer.closeAllConnections?.();
-      await new Promise<void>((resolve) => (global as any).rServer.close(() => resolve()));
+    if (server) {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
     }
   } catch (e) { }
   try {

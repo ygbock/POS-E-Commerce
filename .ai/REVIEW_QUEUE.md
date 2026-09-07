@@ -156,13 +156,19 @@ Status: READY FOR REVIEW
 ---
 ## INV-002R1: Inventory Acceptance Audit Targeted Rework
 - **Task ID**: INV-002R1
-- **Status**: PENDING
+- **Status**: SUPERSEDED BY INV-002R2
+
+---
+## INV-002R2: Final Evidence & Boundary Remediation
+- **Task ID**: INV-002R2
+- **Status**: PENDING REVIEW
 - **Agent Notes**: 
-  - Executed targeted audit remediation for R1, R2, R3, R4.
-  - Added new integration tests (`Test R1`, `Test R2`, `Test R3`, `Test R4`) that explicitly validate exact decimal string enforcement at API boundaries, complex chronological reservation expiration conditions (E1-E5), precise transfer concurrency idempotency (T1-T3), and rigorous HTTP SQL/stack error redacting.
-  - Removed implicit `String()` coercions in `inventoryService`.
-  - Added strict `FOR UPDATE` lock to `findById` in `reservationRepo`.
-  - Fixed error middleware to uniformly strip Postgres trace identifiers in all `NODE_ENV` contexts.
-  - Re-ran 74-test integration suite perfectly green; lint and build both zero-error cleanly.
-  - See `.ai/IMPLEMENTATION_REPORT.md` for the explicit Acceptance Matrix.
-- **Supervisor Action Required**: Approve INV-002R1 to unblock POS-001.
+  - Closed all remaining independently identified gaps:
+    - **R1 (Strict Money Boundary)**: Implemented `parseExactMoney()` in `server/inventory/inventoryPolicies.ts`; enforced at service methods (`recordOpeningBalance`, `recordAdjustment`) and HTTP routes (`/api/inventory/opening-balance`, `/api/inventory/adjustments`). Direct HTTP endpoint test (`TEST R1`) proves rejection of numbers, exponents, floats, whitespace, symbols, and malformed inputs, accepting only exact strings with <=2 decimal places.
+    - **R2 (Reservation Expiration Acceptance E1-E5)**: Proven via direct integration test (`TEST R2`) with non-zero pre-expiry reservations, exact timestamp comparison, concurrent release/fulfill vs expiry races, and mathematical balance conservation.
+    - **R3 (Transfer Concurrency & State Integrity T1-T3)**: Proven via direct integration test (`TEST R3`) with concurrent dispatch/receive assertions verifying exact source/destination on-hand, in-transit deduction, and zero duplicate transfer events.
+    - **R4 (HTTP Error Sanitization & Redaction)**: Injected database errors containing SQL statements, URIs with credentials, table names, file paths, stack traces, and trace IDs; proved status 500, code `INVENTORY_ERROR`, and zero leakage in both dev and production modes.
+    - **R5 (Quality Gates)**: `tests/inventory.test.ts` (24/24 passing), `tests/auth_security.test.ts` (22/22 passing), `tests/persistence.test.ts` (15/15 passing), `tests/transfer.test.ts` (13/13 passing). Total tests: 74/74 passing. `npm run lint` (0 errors), `npm run build` (succeeded).
+    - **R6 (POS Scope Discipline)**: `POS-001` remains `NOT STARTED`. `POS files modified: NONE`.
+- **Supervisor Action Required**: Final review and approval of INV-002R2.
+

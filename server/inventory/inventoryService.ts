@@ -8,6 +8,7 @@ import {
 } from './inventoryTypes';
 import {
   parseExactQuantity,
+  parseExactMoney,
   parseQtyToScaled,
   generateInventoryId,
   toQtyString,
@@ -68,8 +69,8 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity: unknown;
-      unit_cost?: unknown;
+      quantity: string;
+      unit_cost?: string;
       notes?: string;
       idempotency_key?: string;
     },
@@ -82,6 +83,7 @@ export class InventoryService {
     if (parseQtyToScaled(exactQty) < 0n) {
       throw new Error('INVALID_QUANTITY: Opening balance quantity cannot be negative.');
     }
+    const exactUnitCost = data.unit_cost !== undefined ? parseExactMoney(data.unit_cost, 'unit_cost') : '0.00';
 
     const movId = generateInventoryId('mov_open');
     return this.inventoryRepo.recordMovement({
@@ -91,7 +93,7 @@ export class InventoryService {
       variant_id: data.variant_id,
       movement_type: 'OPENING_BALANCE',
       quantity_change: exactQty,
-      unit_cost: data.unit_cost !== undefined ? data.unit_cost as string : '0.00',
+      unit_cost: exactUnitCost,
       reason: 'Initial Opening Balance',
       performed_by,
       notes: data.notes || 'Opening balance setup',
@@ -104,9 +106,9 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity_change: unknown;
+      quantity_change: string;
       reason: string;
-      unit_cost?: unknown;
+      unit_cost?: string;
       notes?: string;
       idempotency_key?: string;
       allowNegativeStock?: boolean;
@@ -120,6 +122,7 @@ export class InventoryService {
     if (parseQtyToScaled(exactQtyChange) === 0n) {
       throw new Error('INVALID_QUANTITY: Adjustment quantity change cannot be zero.');
     }
+    const exactUnitCost = data.unit_cost !== undefined ? parseExactMoney(data.unit_cost, 'unit_cost') : '0.00';
 
     const movId = generateInventoryId('mov_adj');
     return this.inventoryRepo.recordMovement({
@@ -129,7 +132,7 @@ export class InventoryService {
       variant_id: data.variant_id,
       movement_type: 'ADJUSTMENT_CORRECTION',
       quantity_change: exactQtyChange,
-      unit_cost: data.unit_cost !== undefined ? data.unit_cost as string : '0.00',
+      unit_cost: exactUnitCost,
       reason: data.reason,
       performed_by,
       notes: data.notes,
@@ -143,7 +146,7 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity: unknown;
+      quantity: string;
       type: 'damage' | 'expired';
       reason?: string;
       notes?: string;
@@ -174,7 +177,7 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity: unknown;
+      quantity: string;
       type: 'damage' | 'expired';
       reason?: string;
       notes?: string;
