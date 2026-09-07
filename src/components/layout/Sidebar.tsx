@@ -186,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <aside
         id="main-app-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-slate-950/95 backdrop-blur-md text-slate-400 flex flex-col flex-shrink-0 select-none border-r border-slate-800/80 shadow-2xl transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:h-[calc(100vh-4rem)] lg:z-30 lg:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-slate-950/95 backdrop-blur-md text-slate-400 flex flex-col flex-shrink-0 select-none border-r border-slate-800/80 shadow-2xl transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:h-screen lg:z-30 lg:shadow-none ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         } ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
       >

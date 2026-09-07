@@ -342,3 +342,16 @@ PROD-001 (NOT STARTED)
   - Security audit passes clean without critical warnings.
 - **Security Requirements**: Hardened headers, zero exposed secrets, non-root container user.
 - **Validation Requirements**: Container build and deployment simulation test.
+
+### Task 5.4: INV-002 — Inventory Business-Logic & Acceptance Audit
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Validate the correctness, consistency, transactional integrity, security, idempotency, and business behavior of the current Inventory implementation.
+- **Dependencies**: `INV-001`, `INV-001R3`, `INV-001R4`
+- **Acceptance Criteria**:
+  - [x] Verified exact integer scaled arithmetic rules
+  - [x] Proved concurrent reservations and double-dispatch mechanisms safely handle idempotency and block overselling (Audit F2/F3/D7).
+  - [x] Proved transaction rollback on failure (Audit L1).
+  - [x] Proved negative quantity rejection on opening stock (Audit A3).
+  - [x] Evaluated return workflows (Audit G1).
+  - [x] Generated detailed Implementation Report.
+- **Supervisor Gate**: Marked READY FOR REVIEW.

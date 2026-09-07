@@ -43,29 +43,29 @@ const MainLayout: React.FC = () => {
 
   // When in Admin / POS / Back-Office mode, render the enterprise management layout
   return (
-    <div className="h-screen bg-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-hidden transition-colors">
-      {/* Top Admin Header */}
-      <Header
+    <div className="h-screen bg-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex font-sans selection:bg-blue-600 selection:text-white overflow-hidden transition-colors">
+      {/* Sticky & Responsive Drawer Navigation Sidebar */}
+      <Sidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenSearch={() => setIsSearchOpen(true)}
-        onToggleMobileSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
-        isMobileSidebarOpen={isMobileSidebarOpen}
+        setActiveTab={(tab) => {
+          setActiveTab(tab);
+          setIsMobileSidebarOpen(false);
+        }}
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
+        isMobileOpen={isMobileSidebarOpen}
+        setIsMobileOpen={setIsMobileSidebarOpen}
       />
 
-      {/* Main Container with Sticky Sidebar and Scrollable Content */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Sticky & Responsive Drawer Navigation Sidebar */}
-        <Sidebar
+      {/* Main Column Container */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Top Admin Header (Now scoped within the right column) */}
+        <Header
           activeTab={activeTab}
-          setActiveTab={(tab) => {
-            setActiveTab(tab);
-            setIsMobileSidebarOpen(false);
-          }}
-          isCollapsed={isSidebarCollapsed}
-          setIsCollapsed={setIsSidebarCollapsed}
-          isMobileOpen={isMobileSidebarOpen}
-          setIsMobileOpen={setIsMobileSidebarOpen}
+          setActiveTab={setActiveTab}
+          onOpenSearch={() => setIsSearchOpen(true)}
+          onToggleMobileSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
+          isMobileSidebarOpen={isMobileSidebarOpen}
         />
 
         {/* Content Viewport */}

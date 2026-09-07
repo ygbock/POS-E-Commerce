@@ -147,3 +147,7 @@ Reviewers must evaluate submissions across these ten dimensions:
 - **Supervisor Hold**: Awaiting human supervisor review and approval before proceeding to `POS-001`. Do NOT start `POS-001`.
 
 
+
+### INV-002
+Inventory Business-Logic & Acceptance Audit
+Status: READY FOR REVIEW
