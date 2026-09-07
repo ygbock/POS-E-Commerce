@@ -7,6 +7,7 @@ import { ReservationService } from '../inventory/reservationService';
 import { TransferService } from '../inventory/transferService';
 import { StockCountService } from '../inventory/stockCountService';
 import { DatabaseClient } from '../db/client';
+import { parseExactQuantity } from '../inventory/inventoryPolicies';
 
 export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: InventoryRepository): Router {
   const router = Router();
@@ -26,8 +27,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        const orgId = req.auth!.organizationId;
         if (!orgId) {
           return res.status(400).json({
             success: false,
@@ -59,10 +59,10 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     '/balances/:locationId/:variantId',
     requireAuth(),
     requirePermission(PERMISSIONS.INVENTORY_VIEW),
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        const orgId = req.auth!.organizationId;
         if (!orgId) {
           return res.status(400).json({
             success: false,
@@ -106,10 +106,10 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     '/movements',
     requireAuth(),
     requirePermission(PERMISSIONS.INVENTORY_VIEW),
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        const orgId = req.auth!.organizationId;
         const { locationId, variantId, movementType, limit, offset } = req.query;
         const movements = await inventoryService.listMovements(orgId, {
           locationId: locationId as string,
@@ -158,9 +158,11 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           });
         }
 
+        const exactQty = parseExactQuantity(quantity, 'quantity', { allowNegative: false });
+
         const result = await inventoryService.recordOpeningBalance(
           orgId,
-          { location_id, variant_id, quantity: Number(quantity), unit_cost, notes, idempotency_key },
+          { location_id, variant_id, quantity: exactQty, unit_cost, notes, idempotency_key },
           actor
         );
 
@@ -171,11 +173,12 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       } catch (err: any) {
         const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
         const isDup = err.message?.includes('DUPLICATE_MOVEMENT');
-        const status = isTenant ? 403 : isDup ? 409 : 400;
+        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
+        const status = isTenant ? 403 : isDup ? 409 : isValidation ? 400 : 400;
         res.status(status).json({
           success: false,
           error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isDup ? 'DUPLICATE_MOVEMENT' : 'INVENTORY_ERROR',
+            code: isTenant ? 'TENANT_ACCESS_DENIED' : isDup ? 'DUPLICATE_MOVEMENT' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
             message: err.message,
           },
         });
@@ -203,12 +206,14 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           });
         }
 
+        const exactQtyChange = parseExactQuantity(quantity_change, 'quantity_change', { allowNegative: true });
+
         const result = await inventoryService.recordAdjustment(
           orgId,
           {
             location_id,
             variant_id,
-            quantity_change: Number(quantity_change),
+            quantity_change: exactQtyChange,
             reason,
             unit_cost,
             notes,
@@ -226,11 +231,13 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
         const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
         const isInsufficient = err.message?.includes('INSUFFICIENT_STOCK');
         const isDup = err.message?.includes('DUPLICATE_MOVEMENT');
-        const status = isTenant ? 403 : isInsufficient ? 422 : isDup ? 409 : 400;
+        const isConflict = err.message?.includes('IDEMPOTENCY_CONFLICT');
+        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
+        const status = isTenant ? 403 : isInsufficient ? 422 : (isDup || isConflict) ? 409 : isValidation ? 400 : 400;
         res.status(status).json({
           success: false,
           error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : isDup ? 'DUPLICATE_MOVEMENT' : 'INVENTORY_ERROR',
+            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : (isDup || isConflict) ? 'IDEMPOTENCY_CONFLICT' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
             message: err.message,
           },
         });
@@ -258,9 +265,11 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           });
         }
 
+        const exactQty = parseExactQuantity(quantity, 'quantity', { allowNegative: false });
+
         const balance = await inventoryService.quarantineStock(
           orgId,
-          { location_id, variant_id, quantity: Number(quantity), type, reason, notes },
+          { location_id, variant_id, quantity: exactQty, type, reason, notes },
           actor
         );
 
@@ -271,11 +280,12 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       } catch (err: any) {
         const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
         const isInsufficient = err.message?.includes('INSUFFICIENT_AVAILABLE_STOCK');
-        const status = isTenant ? 403 : isInsufficient ? 422 : 400;
+        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
+        const status = isTenant ? 403 : isInsufficient ? 422 : isValidation ? 400 : 400;
         res.status(status).json({
           success: false,
           error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : 'INVENTORY_ERROR',
+            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
             message: err.message,
           },
         });
@@ -303,9 +313,11 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           });
         }
 
+        const exactQty = parseExactQuantity(quantity, 'quantity', { allowNegative: false });
+
         const result = await inventoryService.writeOffStock(
           orgId,
-          { location_id, variant_id, quantity: Number(quantity), type, reason, notes },
+          { location_id, variant_id, quantity: exactQty, type, reason, notes },
           actor
         );
 
@@ -316,11 +328,12 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       } catch (err: any) {
         const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
         const isInsufficient = err.message?.includes('INSUFFICIENT_QUARANTINED_STOCK');
-        const status = isTenant ? 403 : isInsufficient ? 422 : 400;
+        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
+        const status = isTenant ? 403 : isInsufficient ? 422 : isValidation ? 400 : 400;
         res.status(status).json({
           success: false,
           error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : 'INVENTORY_ERROR',
+            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
             message: err.message,
           },
         });
@@ -339,9 +352,10 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       try {
         const orgId = req.auth!.organizationId;
         const actor = req.auth!.userId;
+        const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
         const { location_id, variant_id, quantity, reference_type, reference_id, notes, expires_at } = req.body;
 
-        if (!location_id || !variant_id || !quantity || !reference_type || !reference_id) {
+        if (!location_id || !variant_id || quantity === undefined || !reference_type || !reference_id) {
           return res.status(400).json({
             success: false,
             error: {
@@ -351,9 +365,11 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           });
         }
 
+        const exactQty = parseExactQuantity(quantity, 'quantity', { allowNegative: false });
+
         const reservation = await reservationService.createReservation(
           orgId,
-          { location_id, variant_id, quantity: Number(quantity), reference_type, reference_id, notes, expires_at },
+          { location_id, variant_id, quantity: exactQty, reference_type, reference_id, notes, expires_at, idempotency_key: idempotencyKey },
           actor
         );
 
@@ -364,11 +380,13 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
       } catch (err: any) {
         const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
         const isInsufficient = err.message?.includes('INSUFFICIENT_STOCK');
-        const status = isTenant ? 403 : isInsufficient ? 422 : 400;
+        const isConflict = err.message?.includes('IDEMPOTENCY_CONFLICT') || err.message?.includes('DUPLICATE_RESERVATION');
+        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
+        const status = isTenant ? 403 : isInsufficient ? 422 : isConflict ? 409 : isValidation ? 400 : 400;
         res.status(status).json({
           success: false,
           error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : 'INVENTORY_ERROR',
+            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : isConflict ? 'IDEMPOTENCY_CONFLICT' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
             message: err.message,
           },
         });
@@ -518,6 +536,33 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           success: false,
           error: {
             code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
+            message: err.message,
+          },
+        });
+      }
+    }
+  );
+
+  router.post(
+    '/reservations/expire-stale',
+    requireAuth(),
+    requirePermission(PERMISSIONS.INVENTORY_ADJUST),
+    async (req: Request, res: Response) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        const result = await reservationService.expireStaleReservations(orgId);
+        res.json({
+          success: true,
+          data: {
+            ...result,
+            expired_count: result.expiredCount,
+          },
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: 'INVENTORY_ERROR',
             message: err.message,
           },
         });

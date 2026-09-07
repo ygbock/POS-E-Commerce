@@ -3,10 +3,25 @@ import {
   StockCountRecord,
   StockCountItemRecord,
   StockCountStatus,
+  Quantity,
 } from '../inventory/inventoryTypes';
+import { toQtyString, subQtyExact } from '../inventory/inventoryPolicies';
+
+function mapStockCountItemRow(row: any): StockCountItemRecord {
+  return {
+    id: row.id,
+    stock_count_id: row.stock_count_id,
+    variant_id: row.variant_id,
+    system_quantity: toQtyString(row.system_quantity),
+    counted_quantity: row.counted_quantity !== null && row.counted_quantity !== undefined ? toQtyString(row.counted_quantity) : null,
+    variance_quantity: row.variance_quantity !== null && row.variance_quantity !== undefined ? toQtyString(row.variance_quantity) : null,
+    notes: row.notes,
+    created_at: row.created_at,
+  };
+}
 
 /**
- * Stock Count Repository (INV-001)
+ * Stock Count Repository (INV-001 / INV-001R3)
  * 
  * Manages physical inventory counts, cycle counts, stocktake sessions, and counted item records.
  */
@@ -34,12 +49,15 @@ export class StockCountRepository {
     items: Array<{
       id: string;
       variant_id: string;
-      system_quantity: number;
-      counted_quantity?: number;
+      system_quantity: string | number;
+      counted_quantity?: string | number;
       notes?: string;
     }>,
     client?: DatabaseClient
   ): Promise<{ count: StockCountRecord; items: StockCountItemRecord[] }> {
+    if (!countData.organization_id || typeof countData.organization_id !== 'string' || countData.organization_id.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organization_id is mandatory for createStockCountWithItems.');
+    }
     const db = this.getClient(client);
 
     return db.withTransaction(async (tx) => {
@@ -67,24 +85,28 @@ export class StockCountRepository {
 
       // 2. Insert items
       for (const item of items) {
-        const itemRes = await tx.query<StockCountItemRecord>(
+        const sysQty = toQtyString(item.system_quantity);
+        const countedQty = item.counted_quantity !== undefined ? toQtyString(item.counted_quantity) : sysQty;
+        const varianceQty = subQtyExact(countedQty, sysQty);
+
+        const itemRes = await tx.query(
           `INSERT INTO stock_count_items (
             id, stock_count_id, variant_id, system_quantity, counted_quantity, variance_quantity, notes
           ) VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING id, stock_count_id, variant_id,
-                    system_quantity::float, counted_quantity::float,
-                    variance_quantity::float, notes, created_at`,
+                    system_quantity::text, counted_quantity::text,
+                    variance_quantity::text, notes, created_at`,
           [
             item.id,
             countData.id,
             item.variant_id,
-            item.system_quantity,
-            item.counted_quantity ?? item.system_quantity,
-            (item.counted_quantity ?? item.system_quantity) - item.system_quantity,
+            sysQty,
+            countedQty,
+            varianceQty,
             item.notes || null,
           ]
         );
-        createdItems.push(itemRes.rows[0]);
+        createdItems.push(mapStockCountItemRow(itemRes.rows[0]));
       }
 
       return {
@@ -96,33 +118,30 @@ export class StockCountRepository {
 
   async findStockCountById(
     id: string,
-    organizationId?: string,
+    organizationId: string,
     client?: DatabaseClient
   ): Promise<{ count: StockCountRecord; items: StockCountItemRecord[] } | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for findStockCountById.');
+    }
     const db = this.getClient(client);
 
-    const countQuery = organizationId
-      ? `SELECT id, organization_id, location_id, count_number, status,
-                created_by, submitted_by, approved_by, notes,
-                created_at, submitted_at, approved_at, updated_at
-         FROM stock_counts
-         WHERE id = $1 AND organization_id = $2`
-      : `SELECT id, organization_id, location_id, count_number, status,
-                created_by, submitted_by, approved_by, notes,
-                created_at, submitted_at, approved_at, updated_at
-         FROM stock_counts
-         WHERE id = $1`;
-
-    const countParams = organizationId ? [id, organizationId] : [id];
-    const countRes = await db.query<StockCountRecord>(countQuery, countParams);
+    const countRes = await db.query<StockCountRecord>(
+      `SELECT id, organization_id, location_id, count_number, status,
+              created_by, submitted_by, approved_by, notes,
+              created_at, submitted_at, approved_at, updated_at
+       FROM stock_counts
+       WHERE id = $1 AND organization_id = $2`,
+      [id, organizationId]
+    );
     if (countRes.rows.length === 0) {
       return null;
     }
 
-    const itemsRes = await db.query<StockCountItemRecord>(
+    const itemsRes = await db.query(
       `SELECT id, stock_count_id, variant_id,
-              system_quantity::float, counted_quantity::float,
-              variance_quantity::float, notes, created_at
+              system_quantity::text, counted_quantity::text,
+              variance_quantity::text, notes, created_at
        FROM stock_count_items
        WHERE stock_count_id = $1
        ORDER BY created_at ASC`,
@@ -131,28 +150,27 @@ export class StockCountRepository {
 
     return {
       count: countRes.rows[0],
-      items: itemsRes.rows,
+      items: itemsRes.rows.map(mapStockCountItemRow),
     };
   }
 
   async listStockCounts(
     options: {
-      organizationId?: string;
+      organizationId: string;
       locationId?: string;
       status?: StockCountStatus;
       limit?: number;
       offset?: number;
-    } = {},
+    },
     client?: DatabaseClient
   ): Promise<StockCountRecord[]> {
-    const db = this.getClient(client);
-    const conditions: string[] = [];
-    const params: any[] = [];
-
-    if (options.organizationId) {
-      params.push(options.organizationId);
-      conditions.push(`organization_id = $${params.length}`);
+    if (!options.organizationId || typeof options.organizationId !== 'string' || options.organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for listStockCounts.');
     }
+    const db = this.getClient(client);
+    const conditions: string[] = ['organization_id = $1'];
+    const params: any[] = [options.organizationId];
+
     if (options.locationId) {
       params.push(options.locationId);
       conditions.push(`location_id = $${params.length}`);
@@ -162,7 +180,7 @@ export class StockCountRepository {
       conditions.push(`status = $${params.length}`);
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
     const limit = options.limit || 50;
     const offset = options.offset || 0;
     params.push(limit, offset);
@@ -191,9 +209,12 @@ export class StockCountRepository {
       approved_at?: string;
       notes?: string;
     },
-    organizationId?: string,
+    organizationId: string,
     client?: DatabaseClient
   ): Promise<StockCountRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is required for updateStockCountStatus.');
+    }
     const db = this.getClient(client);
     const setParts: string[] = ['status = $1', 'updated_at = CURRENT_TIMESTAMP'];
     const params: any[] = [updates.status];
@@ -215,12 +236,8 @@ export class StockCountRepository {
       setParts.push(`notes = $${params.length}`);
     }
 
-    params.push(id);
-    let whereClause = `WHERE id = $${params.length}`;
-    if (organizationId) {
-      params.push(organizationId);
-      whereClause += ` AND organization_id = $${params.length}`;
-    }
+    params.push(id, organizationId);
+    const whereClause = `WHERE id = $${params.length - 1} AND organization_id = $${params.length}`;
 
     const query = `
       UPDATE stock_counts
@@ -237,22 +254,26 @@ export class StockCountRepository {
 
   async updateItemCount(
     itemId: string,
-    countedQty: number,
-    systemQty: number,
+    countedQty: string | number,
+    systemQty: string | number,
     notes?: string,
     client?: DatabaseClient
   ): Promise<StockCountItemRecord | null> {
     const db = this.getClient(client);
-    const varianceQty = countedQty - systemQty;
-    const res = await db.query<StockCountItemRecord>(
+    const countedStr = toQtyString(countedQty);
+    const systemStr = toQtyString(systemQty);
+    const varianceStr = subQtyExact(countedStr, systemStr);
+
+    const res = await db.query(
       `UPDATE stock_count_items
        SET counted_quantity = $1, variance_quantity = $2, notes = COALESCE($3, notes)
        WHERE id = $4
        RETURNING id, stock_count_id, variant_id,
-                 system_quantity::float, counted_quantity::float,
-                 variance_quantity::float, notes, created_at`,
-      [countedQty, varianceQty, notes || null, itemId]
+                 system_quantity::text, counted_quantity::text,
+                 variance_quantity::text, notes, created_at`,
+      [countedStr, varianceStr, notes || null, itemId]
     );
-    return res.rows[0] || null;
+    if (!res.rows[0]) return null;
+    return mapStockCountItemRow(res.rows[0]);
   }
 }

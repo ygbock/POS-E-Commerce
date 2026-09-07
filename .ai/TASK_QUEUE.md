@@ -178,7 +178,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 5.1: INV-001R2 — Inventory Integrity Final Remediation
-- **Status**: `READY FOR REVIEW`
+- **Status**: `NOT APPROVED (SUPERSEDED BY INV-001R3)`
 - **Parent Task**: `INV-001`
 - **Objective**: Final security, consistency, and correctness remediation of the inventory and stock transfer domain.
 - **Scope**:
@@ -191,21 +191,40 @@ PROD-001 (NOT STARTED)
   - Enforce organization-scoped idempotency across create, dispatch, and receive.
   - Complete multi-tenant boundary verification and automated transfer test suite (`tests/transfer.test.ts` -> 10/10 passed; full suite `npm run test` -> 57/57 passed).
 - **Dependencies**: `INV-001`.
+- **Supervisor Gate**: Superseded by INV-001R3.
+
+---
+
+### Task 5.2: INV-001R3 — Final Inventory Integrity Hardening
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `INV-001` / `INV-001R2`
+- **Objective**: Complete database-level event immutability, movement/reservation unique constraint idempotency, exact scaled decimal arithmetic across all inventory layers, complete elimination of HTTP tenant overrides, and stock transfer accounting invariants.
+- **Scope**:
+  - Database-Level Event Immutability: PostgreSQL triggers preventing UPDATE and DELETE on `inventory_transfer_events`, failing closed with `IMMUTABLE_RECORD` exception.
+  - Movement & Reservation Idempotency: PostgreSQL unique partial indexes `uq_inventory_movements_org_idempotency` and `uq_inventory_reservations_org_idempotency` on `(organization_id, idempotency_key)`. Concurrent calls handle unique violations, verify payload identity, allow safe replays, and return 409 for conflicts.
+  - Exact Decimal Arithmetic & WAC: Standardized 4-decimal integer-scaled arithmetic (scale 10,000) using `BigInt` across `inventoryPolicies.ts`. Exact weighted average cost calculation supporting integer, fractional quantities, fractional costs, repeated receipts, and rounding boundaries.
+  - HTTP Input Validation: Route handlers validate quantities with `parseExactQuantity()`, rejecting `NaN`, `Infinity`, `1e309`, non-numeric characters, and precision > 4 decimal places with HTTP 400 `VALIDATION_ERROR`.
+  - Strict HTTP Tenant Extraction: Removed all `?orgId=` / request-body tenant overrides; all inventory endpoints extract `organizationId` strictly from authenticated `req.auth.organizationId`.
+  - Transfer Concurrency & Conservation Invariants: Pessimistic row locking (`FOR UPDATE`) on dispatch and receipt; strict accounting invariants (`Dispatched = Received + Variance`).
+  - Legacy In-Memory Store Audit: Documented that `CommerceContext` and `offlineStore` are strictly client-side UI caches and non-authoritative buffers; server database ledger is the sole authority.
+  - Automated Tests: 14/14 inventory tests, 13/13 transfer tests, 15/15 db persistence tests, 22/22 security tests passing cleanly.
+- **Dependencies**: `INV-001`, `INV-001R2`.
 - **Acceptance Criteria**:
-  - [x] Zero occurrences of `org_default` or optional tenant fallbacks in the inventory domain.
-  - [x] In-transit balance accounting verified: dispatch moves stock to `in_transit`, receipt clears `in_transit`.
-  - [x] Discrepancies record variance quantity and append `VARIANCE_RECORDED` to ledger.
-  - [x] Over-receipt protection rejects attempts to receive more than dispatched.
-  - [x] Cancellation disallowed on transfers in transit or completed.
-  - [x] Idempotency keys prevent double dispatch/receipt.
-  - [x] Full test suite passes: `npm run test` (57/57 passed across persistence, security, inventory, and transfer suites).
-  - [x] Linter (`tsc --noEmit`) and build (`compile_applet`) pass cleanly.
-- **Supervisor Hold**: Awaiting human supervisor review and approval before proceeding to `POS-001`. Do NOT start `POS-001`.
+  - [x] PostgreSQL trigger `trg_immutable_transfer_events` rejects UPDATE and DELETE on `inventory_transfer_events`.
+  - [x] Database partial unique indexes enforce movement and reservation idempotency at the engine level.
+  - [x] Zero JavaScript floating-point calculations for authoritative inventory quantities; exact BigInt scaling used everywhere.
+  - [x] HTTP quantity validation stringently rejects non-numeric, overflow, and excess decimal inputs.
+  - [x] Ordinary inventory endpoints ignore or reject external tenant parameters, binding operations strictly to `req.auth.organizationId`.
+  - [x] Concurrent transfer dispatches and receipts are safely serialized with row locks.
+  - [x] In-memory store audit recorded in `.ai/DECISIONS.md`.
+  - [x] All 64 automated tests passing across all test suites.
+- **Supervisor Gate**: INV-001R3 is READY FOR REVIEW. POS-001 MUST remain NOT STARTED and MUST NOT be implemented until INV-001R3 passes independent supervisor review. Do NOT mark approved.
 
 ---
 
 ### Task 6: POS-001 — Server-Authoritative POS Checkout & Financial Calculation Engine
 - **Status**: `NOT STARTED`
+- **Supervisor Gate**: BLOCKED pending supervisor approval of INV-001R3. MUST remain NOT STARTED.
 - **Objective**: Shift POS checkout, price calculations, tax lookups, and discount validations from the browser into transactional server API operations.
 - **Scope**:
   - Implement `POST /api/pos/checkout` executing within an atomic database transaction.

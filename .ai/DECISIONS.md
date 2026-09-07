@@ -19,6 +19,10 @@
 - [ADR-009: Incremental, Task-Driven Engineering Lifecycle](#adr-009-incremental-task-driven-engineering-lifecycle)
 - [ADR-010: Relational PostgreSQL Schema & Dual-Driver Persistence Layer](#adr-010-relational-postgresql-schema--dual-driver-persistence-layer)
 - [ADR-011: Server-Side Cryptographic Authentication, RBAC & Multi-Tenant Boundaries](#adr-011-server-side-cryptographic-authentication-rbac--multi-tenant-boundaries)
+- [ADR-012: Server-Authoritative Inventory Movement Ledger & Scaled Integer Arithmetic](#adr-012-server-authoritative-inventory-movement-ledger--scaled-integer-arithmetic)
+- [ADR-013: Stock Transfer Domain, Append-Only Event Ledger & Strict Tenant Isolation](#adr-013-stock-transfer-domain-append-only-event-ledger--strict-tenant-isolation)
+- [ADR-014: Database-Level Event Immutability, Idempotency Unique Constraints & Exact Scaled Arithmetic (INV-001R3)](#adr-014-database-level-event-immutability-idempotency-unique-constraints--exact-scaled-arithmetic-inv-001r3)
+- [ADR-015: Legacy In-Memory State Audit & Server Ledger Sole Authority (INV-001R3)](#adr-015-legacy-in-memory-state-audit--server-ledger-sole-authority-inv-001r3)
 
 ---
 
@@ -186,6 +190,42 @@
 - **Consequences**:
   - Complete, verifiable multi-location transfer accounting.
   - Zero cross-tenant data leakage or operation execution.
+
+---
+
+### ADR-014: Database-Level Event Immutability, Idempotency Unique Constraints & Exact Scaled Arithmetic (INV-001R3)
+- **Date**: 2026-09-07
+- **Status**: `IMPLEMENTED (READY FOR REVIEW)`
+- **Task Association**: `INV-001R3`
+- **Context**: Supervisor review of INV-001R2 mandated hardening of database-level audit immutability, database-enforced idempotency, strict exact decimal arithmetic across all inventory layers, complete elimination of tenant override escape hatches, and strict transfer conservation invariants.
+- **Decision**:
+  1. **Database-Level Event Immutability**: Implemented PostgreSQL trigger `trg_immutable_transfer_events` firing `BEFORE UPDATE OR DELETE ON inventory_transfer_events` calling `prevent_transfer_event_modification()`. The trigger raises an explicit exception `IMMUTABLE_RECORD: inventory_transfer_events is an append-only audit ledger and cannot be modified or deleted.`, making tamper attempts physically impossible even from direct DB connections.
+  2. **Movement & Reservation Idempotency Constraints**: Added database-level unique partial index `uq_inventory_movements_org_idempotency` on `inventory_movements (organization_id, idempotency_key) WHERE idempotency_key IS NOT NULL` and `uq_inventory_reservations_org_idempotency` on `inventory_reservations (organization_id, idempotency_key) WHERE idempotency_key IS NOT NULL`. Concurrency conflicts catch DB duplicate key violations, verify payload identity, allow safe replays for identical payloads, and return HTTP 409 `IDEMPOTENCY_CONFLICT` for conflicting payloads.
+  3. **Strict Scaled Decimal Policy**: Standardized on fixed-scale integer arithmetic (10,000 scaling factor, 4 decimal places) using `BigInt` across all calculation modules (`addQty`, `subQty`, `mulQty`, `divQty`, `roundQty`, `calculateAvailable`, `calculateWeightedAverageCostExact`). Replaced all raw `Number()` conversions in HTTP route parsing with `parseExactQuantity()`, which stringently rejects `NaN`, `Infinity`, `1e309`, non-numeric characters, and precision exceeding 4 decimal places.
+  4. **Strict HTTP Tenant Boundary**: Removed all request-body and query-string tenant escape hatches (`?orgId=`, `?organization_id=`). All inventory endpoints source `organizationId` strictly from authenticated server context `req.auth.organizationId`.
+  5. **Stock Transfer Accounting Invariants**: Enforced strict conservation laws: `source on_hand` decreases by `dispatched_quantity`, intermediate `destination in_transit` increases by `dispatched_quantity`, and upon receipt `destination in_transit` decreases by `dispatched_quantity` while `destination on_hand` increases by `received_quantity`, with `variance_quantity = received - dispatched`. Both dispatch and receipt use pessimistic row locks (`FOR UPDATE`) to serialize concurrent callers safely.
+- **Consequences**:
+  - Immutability is physically guaranteed at the database engine level.
+  - Race conditions cannot bypass application-level idempotency checks.
+  - Floating-point distortion is mathematically eradicated from inventory calculations.
+  - Multi-tenant data segregation is enforced unconditionally.
+
+---
+
+### ADR-015: Legacy In-Memory State Audit & Server Ledger Sole Authority (INV-001R3)
+- **Date**: 2026-09-07
+- **Status**: `IMPLEMENTED (READY FOR REVIEW)`
+- **Task Association**: `INV-001R3`
+- **Context**: A comprehensive codebase audit was conducted to identify any lingering dependencies on legacy in-memory stores (`CommerceContext`, `offlineStore`, in-memory mock catalogs) and confirm that authoritative inventory mutations no longer depend on these stores.
+- **Decision**:
+  1. **Audit Results**:
+     - `CommerceContext.tsx`: Classified strictly as a **UI Client-Side Cache & Display Helper**. It manages optimistic cart UI and local display formatting. It is strictly non-authoritative.
+     - `offlineStore.ts`: Classified strictly as a **Non-Authoritative Offline-Draft Buffer**. It queues local drafts when connectivity is unavailable. No authoritative state or balance mutation occurs within `offlineStore`.
+     - In-memory mock catalogs: Used solely for fallback preview rendering when database connectivity is uninitialized.
+  2. **Authoritative Boundary**: The PostgreSQL database (`inventory_balances`, `inventory_movements`, `inventory_reservations`, `inventory_transfers`, `inventory_transfer_events`) and server services (`InventoryService`, `TransferService`, `ReservationService`, `StockCountService`) constitute the sole authoritative source of truth for stock quantities, valuation, movements, and reservations.
+- **Consequences**:
+  - Clear architectural boundaries between UI convenience state and trusted server ledger.
+  - All mutating inventory operations must route through server endpoints backed by transactional database operations.
 
 
 

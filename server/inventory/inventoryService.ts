@@ -6,10 +6,15 @@ import {
   InventoryMovementRecord,
   MovementType,
 } from './inventoryTypes';
-import { roundQty } from './inventoryPolicies';
+import {
+  parseExactQuantity,
+  parseQtyToScaled,
+  generateInventoryId,
+  toQtyString,
+} from './inventoryPolicies';
 
 /**
- * Inventory Domain Service (INV-001)
+ * Inventory Domain Service (INV-001 / INV-001R3)
  * 
  * Orchestrates business operations for balances, movements, opening balances,
  * manual adjustments, and damage/expiry quarantines and write-offs.
@@ -33,6 +38,9 @@ export class InventoryService {
     organizationId: string,
     locationId: string
   ): Promise<InventoryBalanceRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
     const isLocValid = await this.inventoryRepo.verifyLocationOwnership(organizationId, locationId);
     if (!isLocValid) {
       throw new Error(`TENANT_ACCESS_DENIED: Location '${locationId}' does not belong to organization.`);
@@ -45,6 +53,9 @@ export class InventoryService {
     locationId: string,
     variantId: string
   ): Promise<InventoryBalanceRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
     const isLocValid = await this.inventoryRepo.verifyLocationOwnership(organizationId, locationId);
     if (!isLocValid) {
       throw new Error(`TENANT_ACCESS_DENIED: Location '${locationId}' does not belong to organization.`);
@@ -57,26 +68,30 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity: number;
-      unit_cost?: number;
+      quantity: unknown;
+      unit_cost?: unknown;
       notes?: string;
       idempotency_key?: string;
     },
     performed_by: string
   ): Promise<{ balance: InventoryBalanceRecord; movement: InventoryMovementRecord }> {
-    if (data.quantity < 0) {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
+    const exactQty = parseExactQuantity(data.quantity, 'quantity');
+    if (parseQtyToScaled(exactQty) < 0n) {
       throw new Error('INVALID_QUANTITY: Opening balance quantity cannot be negative.');
     }
 
-    const movId = `mov_open_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const movId = generateInventoryId('mov_open');
     return this.inventoryRepo.recordMovement({
       id: movId,
       organization_id: organizationId,
       location_id: data.location_id,
       variant_id: data.variant_id,
       movement_type: 'OPENING_BALANCE',
-      quantity_change: roundQty(data.quantity),
-      unit_cost: data.unit_cost ?? 0,
+      quantity_change: exactQty,
+      unit_cost: data.unit_cost !== undefined ? String(data.unit_cost) : '0.00',
       reason: 'Initial Opening Balance',
       performed_by,
       notes: data.notes || 'Opening balance setup',
@@ -89,28 +104,32 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity_change: number;
+      quantity_change: unknown;
       reason: string;
-      unit_cost?: number;
+      unit_cost?: unknown;
       notes?: string;
       idempotency_key?: string;
       allowNegativeStock?: boolean;
     },
     performed_by: string
   ): Promise<{ balance: InventoryBalanceRecord; movement: InventoryMovementRecord }> {
-    if (data.quantity_change === 0) {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
+    const exactQtyChange = parseExactQuantity(data.quantity_change, 'quantity_change', { allowNegative: true });
+    if (parseQtyToScaled(exactQtyChange) === 0n) {
       throw new Error('INVALID_QUANTITY: Adjustment quantity change cannot be zero.');
     }
 
-    const movId = `mov_adj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const movId = generateInventoryId('mov_adj');
     return this.inventoryRepo.recordMovement({
       id: movId,
       organization_id: organizationId,
       location_id: data.location_id,
       variant_id: data.variant_id,
       movement_type: 'ADJUSTMENT_CORRECTION',
-      quantity_change: roundQty(data.quantity_change),
-      unit_cost: data.unit_cost ?? 0,
+      quantity_change: exactQtyChange,
+      unit_cost: data.unit_cost !== undefined ? String(data.unit_cost) : '0.00',
       reason: data.reason,
       performed_by,
       notes: data.notes,
@@ -124,21 +143,25 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity: number;
+      quantity: unknown;
       type: 'damage' | 'expired';
       reason?: string;
       notes?: string;
     },
     performed_by: string
   ): Promise<InventoryBalanceRecord> {
-    if (data.quantity <= 0) {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
+    const exactQty = parseExactQuantity(data.quantity, 'quantity');
+    if (parseQtyToScaled(exactQty) <= 0n) {
       throw new Error('INVALID_QUANTITY: Quarantine quantity must be positive.');
     }
     return this.inventoryRepo.quarantineStock({
       organization_id: organizationId,
       location_id: data.location_id,
       variant_id: data.variant_id,
-      quantity: roundQty(data.quantity),
+      quantity: exactQty,
       type: data.type,
       reason: data.reason,
       performed_by,
@@ -151,21 +174,25 @@ export class InventoryService {
     data: {
       location_id: string;
       variant_id: string;
-      quantity: number;
+      quantity: unknown;
       type: 'damage' | 'expired';
       reason?: string;
       notes?: string;
     },
     performed_by: string
   ): Promise<{ balance: InventoryBalanceRecord; movement: InventoryMovementRecord }> {
-    if (data.quantity <= 0) {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
+    const exactQty = parseExactQuantity(data.quantity, 'quantity');
+    if (parseQtyToScaled(exactQty) <= 0n) {
       throw new Error('INVALID_QUANTITY: Write-off quantity must be positive.');
     }
     return this.inventoryRepo.writeOffStock({
       organization_id: organizationId,
       location_id: data.location_id,
       variant_id: data.variant_id,
-      quantity: roundQty(data.quantity),
+      quantity: exactQty,
       type: data.type,
       reason: data.reason,
       performed_by,
@@ -183,6 +210,9 @@ export class InventoryService {
       offset?: number;
     } = {}
   ): Promise<InventoryMovementRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
     return this.movementRepo.listMovements({
       organizationId,
       ...options,

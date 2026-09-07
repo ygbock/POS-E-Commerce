@@ -283,12 +283,12 @@ async function runTransferTests() {
 
     // Verify stock at source Hub A: on_hand reduced from 200 to 175
     const hubBal = await inventoryService.getBalance(orgA, 'loc_tr_hub_a', 'var_tr_1');
-    assert.strictEqual(hubBal!.on_hand, 175);
+    assert.strictEqual(hubBal!.on_hand, '175.0000');
 
     // Verify stock at destination Retail A: in_transit increased to 25, on_hand remains 0
     const retailBal = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
-    assert.strictEqual(retailBal!.in_transit, 25);
-    assert.strictEqual(retailBal!.on_hand, 0);
+    assert.strictEqual(retailBal!.in_transit, '25.0000');
+    assert.strictEqual(retailBal!.on_hand, '0.0000');
 
     markPassed('3. Atomic Dispatch & Available Stock Invariants');
   } catch (err) {
@@ -311,7 +311,7 @@ async function runTransferTests() {
 
     // Check quantities and actor
     const dispEvent = events.find((e) => e.event_type === 'DISPATCHED');
-    assert.strictEqual(dispEvent!.quantity, 25);
+    assert.strictEqual(dispEvent!.quantity, '25.0000');
     assert.strictEqual(dispEvent!.actor_id, actorId);
     assert.strictEqual(dispEvent!.source_location_id, 'loc_tr_hub_a');
     assert.strictEqual(dispEvent!.destination_location_id, 'loc_tr_retail_a');
@@ -340,15 +340,15 @@ async function runTransferTests() {
     // on_hand credited (+25 -> 25)
     // available is 25
     const retailBal = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
-    assert.strictEqual(retailBal!.in_transit, 0);
-    assert.strictEqual(retailBal!.on_hand, 25);
-    assert.strictEqual(retailBal!.available, 25);
+    assert.strictEqual(retailBal!.in_transit, '0.0000');
+    assert.strictEqual(retailBal!.on_hand, '25.0000');
+    assert.strictEqual(retailBal!.available, '25.0000');
 
     // Verify item record
     const details = await transferService.getTransfer(orgA, approvedTransferId);
-    assert.strictEqual(details!.items[0].dispatched_quantity, 25);
-    assert.strictEqual(details!.items[0].received_quantity, 25);
-    assert.strictEqual(details!.items[0].variance_quantity, 0);
+    assert.strictEqual(details!.items[0].dispatched_quantity, '25.0000');
+    assert.strictEqual(details!.items[0].received_quantity, '25.0000');
+    assert.strictEqual(details!.items[0].variance_quantity, '0.0000');
 
     // Verify events: RECEIVED and COMPLETED
     const events = await transferService.getTransferEvents(orgA, approvedTransferId);
@@ -391,23 +391,23 @@ async function runTransferTests() {
 
     // Details check: variance = received - dispatched = 17 - 20 = -3
     const details = await transferService.getTransfer(orgA, transfer.id);
-    assert.strictEqual(details!.items[0].dispatched_quantity, 20);
-    assert.strictEqual(details!.items[0].received_quantity, 17);
-    assert.strictEqual(details!.items[0].variance_quantity, -3);
+    assert.strictEqual(details!.items[0].dispatched_quantity, '20.0000');
+    assert.strictEqual(details!.items[0].received_quantity, '17.0000');
+    assert.strictEqual(details!.items[0].variance_quantity, '-3.0000');
 
     // Balances check:
     // Destination Retail A:
     // on_hand increases from 25 by 17 -> 42
     // in_transit is completely cleared to 0 (the missing 3 units do NOT remain stuck in transit!)
     const retailBal = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
-    assert.strictEqual(retailBal!.in_transit, 0);
-    assert.strictEqual(retailBal!.on_hand, 42);
+    assert.strictEqual(retailBal!.in_transit, '0.0000');
+    assert.strictEqual(retailBal!.on_hand, '42.0000');
 
     // Events check: VARIANCE_RECORDED event in ledger with quantity = -3
     const events = await transferService.getTransferEvents(orgA, transfer.id);
     const varianceEvent = events.find((e) => e.event_type === 'VARIANCE_RECORDED');
     assert.ok(varianceEvent, 'VARIANCE_RECORDED event must be appended');
-    assert.strictEqual(varianceEvent!.quantity, -3);
+    assert.strictEqual(varianceEvent!.quantity, '-3.0000');
     assert.strictEqual(varianceEvent!.transfer_item_id, details!.items[0].id);
 
     markPassed('6. Discrepancy & Variance Accounting (variance = received - dispatched)');
@@ -537,7 +537,7 @@ async function runTransferTests() {
     // Verify stock was only deducted once!
     // Hub A var_tr_2 had 100 on hand initially. After 10 deducted, it must be 90 (not 80!)
     const balHub2 = await inventoryService.getBalance(orgA, 'loc_tr_hub_a', 'var_tr_2');
-    assert.strictEqual(balHub2!.on_hand, 90, 'Stock must only be deducted once upon replay');
+    assert.strictEqual(balHub2!.on_hand, '90.0000', 'Stock must only be deducted once upon replay');
 
     // 9c. Receive replay
     const receiveKey = `idemp_rec_${Date.now()}`;
@@ -547,7 +547,7 @@ async function runTransferTests() {
 
     // Verify stock at retail was only credited once (10 on hand, not 20)
     const balRetail2 = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_2');
-    assert.strictEqual(balRetail2!.on_hand, 10, 'Stock must only be credited once upon replay');
+    assert.strictEqual(balRetail2!.on_hand, '10.0000', 'Stock must only be credited once upon replay');
 
     markPassed('9. Organization-Scoped Idempotency (Create, Dispatch, Receive)');
   } catch (err) {
@@ -614,6 +614,201 @@ async function runTransferTests() {
     markPassed('10. Multi-Tenant Boundary Enforcement (Locations, Variants, Transfers)');
   } catch (err) {
     markFailed('10. Multi-Tenant Boundary Enforcement (Locations, Variants, Transfers)', err);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 11: Database-Level Event Immutability (INV-001R3 Section 1)
+  // -------------------------------------------------------------------------
+  try {
+    // 11a. Test INSERT succeeds
+    const insertRes = await db.query(
+      `INSERT INTO inventory_transfer_events (
+        id, organization_id, transfer_id, event_type, from_status, to_status,
+        quantity, actor_id, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [
+        'evt_immut_test_insert',
+        orgA,
+        approvedTransferId,
+        'DISPATCHED',
+        'APPROVED',
+        'DISPATCHED',
+        '10.0000',
+        actorId,
+        'Test initial insert event',
+      ]
+    );
+    assert.strictEqual(insertRes.rows.length, 1, 'INSERT on inventory_transfer_events must succeed');
+    const testEventId = insertRes.rows[0].id;
+
+    // 11b. Test UPDATE prevention trigger
+    await assert.rejects(
+      async () => {
+        await db.query(`UPDATE inventory_transfer_events SET notes = 'tampered' WHERE id = $1`, [testEventId]);
+      },
+      /IMMUTABLE_RECORD.*cannot be modified or deleted/,
+      'Database trigger must reject UPDATE on inventory_transfer_events'
+    );
+
+    // 11c. Test DELETE prevention trigger
+    await assert.rejects(
+      async () => {
+        await db.query(`DELETE FROM inventory_transfer_events WHERE id = $1`, [testEventId]);
+      },
+      /IMMUTABLE_RECORD.*cannot be modified or deleted/,
+      'Database trigger must reject DELETE on inventory_transfer_events'
+    );
+
+    // 11d. Test existing event data remains unchanged
+    const checkEvent = await db.query(`SELECT notes FROM inventory_transfer_events WHERE id = $1`, [testEventId]);
+    assert.strictEqual(
+      checkEvent.rows[0].notes,
+      'Test initial insert event',
+      'Existing event data must remain completely unchanged after attempted mutations'
+    );
+
+    markPassed('11. Database-Level Event Immutability (INSERT allowed, UPDATE rejected, DELETE rejected, data intact)');
+  } catch (err) {
+    markFailed('11. Database-Level Event Immutability (PostgreSQL Triggers on inventory_transfer_events)', err);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 12: Transfer Concurrency & Row-Level Locking (INV-001R3 Section 2 & 8)
+  // -------------------------------------------------------------------------
+  try {
+    // 12a. Concurrent Dispatch Serialization
+    const { transfer: concTr } = await transferService.createTransfer(
+      orgA,
+      {
+        source_location_id: 'loc_tr_hub_a',
+        destination_location_id: 'loc_tr_retail_a',
+        items: [{ variant_id: 'var_tr_1', requested_quantity: 10 }],
+      },
+      actorId
+    );
+    await transferService.approveTransfer(orgA, concTr.id, actorId);
+
+    const sourceBalBefore = await inventoryService.getBalance(orgA, 'loc_tr_hub_a', 'var_tr_1');
+
+    // Launch two simultaneous dispatch operations in parallel
+    // Both try to dispatch the transfer; locking ensures only 1 deducts stock, second returns idempotent
+    const dispatchPromises = [
+      transferService.dispatchTransfer(orgA, concTr.id, undefined, actorId, 'disp_conc_key_1'),
+      transferService.dispatchTransfer(orgA, concTr.id, undefined, actorId, 'disp_conc_key_2'),
+    ];
+
+    const results = await Promise.allSettled(dispatchPromises);
+    assert.strictEqual(results[0].status, 'fulfilled', 'First dispatch must succeed');
+    assert.strictEqual(results[1].status, 'fulfilled', 'Second dispatch must succeed idempotently');
+
+    // Verify stock at source location was only deducted ONCE (10 units, not 20)
+    const sourceBalAfter = await inventoryService.getBalance(orgA, 'loc_tr_hub_a', 'var_tr_1');
+    const deducted = BigInt(Math.round(Number(sourceBalBefore!.on_hand) * 10000)) -
+                     BigInt(Math.round(Number(sourceBalAfter!.on_hand) * 10000));
+    assert.strictEqual(deducted, 100000n, 'Stock must only be deducted once despite concurrent dispatch calls');
+
+    // Verify transfer is in DISPATCHED state
+    const afterConc = await transferService.getTransfer(orgA, concTr.id);
+    assert.strictEqual(afterConc!.transfer.status, 'DISPATCHED');
+
+    // 12b. Concurrent Receipt Serialization (INV-001R3 Section 8)
+    const { transfer: concRecTr } = await transferService.createTransfer(
+      orgA,
+      {
+        source_location_id: 'loc_tr_hub_a',
+        destination_location_id: 'loc_tr_retail_a',
+        items: [{ variant_id: 'var_tr_1', requested_quantity: 8 }],
+      },
+      actorId
+    );
+    await transferService.approveTransfer(orgA, concRecTr.id, actorId);
+    await transferService.dispatchTransfer(orgA, concRecTr.id, undefined, actorId);
+
+    const destBalBeforeRec = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
+
+    // Launch two simultaneous receipt operations in parallel
+    const receivePromises = [
+      transferService.receiveTransfer(orgA, concRecTr.id, { var_tr_1: 8 }, actorId, 'rec_conc_key_1'),
+      transferService.receiveTransfer(orgA, concRecTr.id, { var_tr_1: 8 }, actorId, 'rec_conc_key_2'),
+    ];
+
+    const recResults = await Promise.allSettled(receivePromises);
+    assert.strictEqual(recResults[0].status, 'fulfilled', 'First receive must succeed');
+    assert.strictEqual(recResults[1].status, 'fulfilled', 'Second receive must succeed idempotently');
+
+    // Verify stock at destination location was credited only ONCE (8 units, not 16)
+    const destBalAfterRec = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
+    const credited = BigInt(Math.round(Number(destBalAfterRec!.on_hand) * 10000)) -
+                     BigInt(Math.round(Number(destBalBeforeRec!.on_hand) * 10000));
+    assert.strictEqual(credited, 80000n, 'Destination on_hand must be credited exactly once (8 units)');
+
+    const afterRec = await transferService.getTransfer(orgA, concRecTr.id);
+    assert.strictEqual(afterRec!.transfer.status, 'COMPLETED');
+
+    markPassed('12. Transfer Concurrency & Row-Level Locking (Concurrent Dispatch & Concurrent Receipt Serialization)');
+  } catch (err) {
+    markFailed('12. Transfer Concurrency & Row-Level Locking (Concurrent Dispatch & Concurrent Receipt Serialization)', err);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 13: Strict Accounting Invariants (INV-001R3 Section 3)
+  // -------------------------------------------------------------------------
+  try {
+    // Create, approve, dispatch, and receive a complete transfer with discrepancy
+    // Dispatch 15, receive 12 (variance -3)
+    const { transfer: accTr } = await transferService.createTransfer(
+      orgA,
+      {
+        source_location_id: 'loc_tr_hub_a',
+        destination_location_id: 'loc_tr_retail_a',
+        items: [{ variant_id: 'var_tr_1', requested_quantity: 15 }],
+      },
+      actorId
+    );
+    await transferService.approveTransfer(orgA, accTr.id, actorId);
+
+    const sourceBalBefore = await inventoryService.getBalance(orgA, 'loc_tr_hub_a', 'var_tr_1');
+    const destBalBefore = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
+
+    await transferService.dispatchTransfer(orgA, accTr.id, undefined, actorId);
+
+    // Verify intermediate in_transit balance increased by exactly 15.0000
+    const destBalInTransit = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
+    const inTransitDelta = BigInt(Math.round(Number(destBalInTransit!.in_transit) * 10000)) -
+                           BigInt(Math.round(Number(destBalBefore!.in_transit) * 10000));
+    assert.strictEqual(inTransitDelta, 150000n, 'In-transit balance must increase by exactly 15.0000 upon dispatch');
+
+    // Receive 12
+    await transferService.receiveTransfer(orgA, accTr.id, { var_tr_1: 12 }, actorId);
+
+    const sourceBalAfter = await inventoryService.getBalance(orgA, 'loc_tr_hub_a', 'var_tr_1');
+    const destBalAfter = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');
+
+    // Invariant 1: Source balance decreased by exactly dispatched quantity (15.0000)
+    const sourceDiff = BigInt(Math.round(Number(sourceBalBefore!.on_hand) * 10000)) -
+                       BigInt(Math.round(Number(sourceBalAfter!.on_hand) * 10000));
+    assert.strictEqual(sourceDiff, 150000n, 'Source balance decreased by exactly 15.0000');
+
+    // Invariant 2: Destination in_transit decreased by exactly dispatched quantity (15.0000)
+    const inTransitDeduction = BigInt(Math.round(Number(destBalInTransit!.in_transit) * 10000)) -
+                              BigInt(Math.round(Number(destBalAfter!.in_transit) * 10000));
+    assert.strictEqual(inTransitDeduction, 150000n, 'In-transit balance must be cleared by 15.0000 upon receipt');
+
+    // Invariant 3: Destination on_hand increased by exactly received quantity (12.0000)
+    const destDiff = BigInt(Math.round(Number(destBalAfter!.on_hand) * 10000)) -
+                     BigInt(Math.round(Number(destBalBefore!.on_hand) * 10000));
+    assert.strictEqual(destDiff, 120000n, 'Destination on_hand increased by exactly 12.0000');
+
+    // Invariant 4: Dispatched = Received + Abs(Variance)
+    const trDetails = await transferService.getTransfer(orgA, accTr.id);
+    const item = trDetails!.items[0];
+    assert.strictEqual(item.dispatched_quantity, '15.0000');
+    assert.strictEqual(item.received_quantity, '12.0000');
+    assert.strictEqual(item.variance_quantity, '-3.0000');
+
+    markPassed('13. Strict Accounting Invariants (Dispatched = Received + Variance)');
+  } catch (err) {
+    markFailed('13. Strict Accounting Invariants (Dispatched = Received + Variance)', err);
   }
 
   console.log('======================================================');

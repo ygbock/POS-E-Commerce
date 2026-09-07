@@ -1123,6 +1123,207 @@ $ npm run lint
 - Zero unauthorized framework dependencies added.
 - POS-001 remains in `NOT STARTED` state pending supervisor approval.
 
+---
+
+## Task ID: INV-001R3 — Final Inventory Integrity Hardening
+- **Date**: 2026-09-07
+- **Status**: `READY FOR REVIEW`
+- **Assigned Agent**: Senior Software Engineer, Implementation Lead, and Repository Execution Agent
+- **Parent Task**: `INV-001` / `INV-001R2`
+- **Supervisor Gate**: POS-001 remains strictly `NOT STARTED` and has not been touched.
+
+---
+
+### 1. Objective & Scope
+Perform final integrity hardening required to make the Inventory Management domain fully safe for supervisor approval:
+1. **Database-Level Event Immutability**: PostgreSQL triggers preventing UPDATE and DELETE on `inventory_transfer_events`.
+2. **Movement & Reservation Idempotency Constraints**: Database partial unique indexes on `(organization_id, idempotency_key)` preventing duplicate records under race conditions.
+3. **Exact Decimal Arithmetic Across All Layers**: Fixed-scale integer arithmetic (scale 10,000, 4 decimal places) using `BigInt` for all calculations, exact Weighted Average Cost (WAC), and strict HTTP parsing via `parseExactQuantity()` rejecting `NaN`, `Infinity`, `1e309`, non-numeric inputs, and precision violations.
+4. **Tenant Boundary Hardening**: Eliminating all query-string and request-body tenant overrides. All inventory operations strictly source `organizationId` from `req.auth.organizationId`.
+5. **Transfer Concurrency & Accounting Invariants**: Pessimistic row locking on dispatches and receipts, enforcing strict conservation laws (`Dispatched = Received + Variance`).
+6. **Legacy In-Memory State Audit**: Documenting the non-authoritative role of `CommerceContext` and `offlineStore` and confirming the server database ledger as the sole authority.
+
+---
+
+### 2. Architectural Decisions & Implementations
+
+#### A. Database-Level Event Immutability (Section 1)
+- Implemented PostgreSQL trigger function `prevent_transfer_event_modification()` and trigger `trg_immutable_transfer_events` firing `BEFORE UPDATE OR DELETE ON inventory_transfer_events`.
+- Trigger raises an explicit database exception:
+  `IMMUTABLE_RECORD: inventory_transfer_events is an append-only audit ledger and cannot be modified or deleted.`
+- Automated test verifies:
+  - `INSERT` succeeds.
+  - Direct SQL `UPDATE` fails closed with the `IMMUTABLE_RECORD` error.
+  - Direct SQL `DELETE` fails closed with the `IMMUTABLE_RECORD` error.
+  - Existing event data remains completely unmodified.
+
+#### B. Movement & Reservation Database Idempotency (Section 3 & 4)
+- Added PostgreSQL unique partial indexes:
+  - `uq_inventory_movements_org_idempotency` ON `inventory_movements (organization_id, idempotency_key) WHERE idempotency_key IS NOT NULL`
+  - `uq_inventory_reservations_org_idempotency` ON `inventory_reservations (organization_id, idempotency_key) WHERE idempotency_key IS NOT NULL`
+- Movement & reservation services catch unique constraint violations (PostgreSQL error code `23505`), verify payload equality, permit safe replaying for matching requests, and raise HTTP 409 `IDEMPOTENCY_CONFLICT` if payload parameters mismatch.
+
+#### C. Exact Decimal Arithmetic & WAC Calculations (Section 6)
+- Standardized all quantity calculations onto 4-decimal integer-scaled arithmetic (`BigInt` with scale factor 10,000):
+  - `addQty`, `subQty`, `mulQty`, `divQty`, `roundQty`, `calculateAvailable`
+  - `calculateWeightedAverageCostExact`: computes exact WAC using integer scaling for both cost (scale 100, cents) and quantity (scale 10,000). Handles zero stock, integer and fractional quantities, repeated receipts, and rounding boundaries cleanly.
+- HTTP Request Quantity Validation:
+  - Replaced all raw `Number()` casts in `inventoryRoutes.ts` with `parseExactQuantity()`.
+  - Rejects `NaN`, `Infinity`, `1e309`, non-numeric characters, negative inputs, and numbers exceeding 4 decimal places with HTTP 400 `VALIDATION_ERROR` or `INVALID_QUANTITY`.
+
+#### D. Strict Tenant Extraction (Section 7)
+- Removed all `req.body.organization_id`, `req.body.organizationId`, `req.query.orgId`, and `req.query.organization_id` fallbacks from all inventory routes.
+- Every endpoint extracts tenant identity exclusively from server session: `const orgId = req.auth.organizationId`.
+- Attempted tenant overrides in request bodies or query parameters are ignored or rejected, preventing cross-tenant leakage.
+
+#### E. Transfer Concurrency & Accounting Invariants (Section 2 & 8)
+- Row-level pessimistic locking (`SELECT ... FOR UPDATE`) serializes concurrent dispatch and receipt operations on the same transfer record.
+- Accounting invariants strictly enforced:
+  - `Dispatched = Received + Variance`
+  - All dispatched stock in `in_transit` at destination is cleared upon receipt (both received and variance portions) to prevent phantom floating balances.
+  - Over-receipt is blocked by default (`OVER_RECEIVE_NOT_ALLOWED`).
+
+#### F. Legacy In-Memory Audit (Section 10)
+- Audited `CommerceContext.tsx`: Confirmed strictly as a client-side UI display cache and cart helper (non-authoritative).
+- Audited `offlineStore.ts`: Confirmed strictly as an offline-draft queue (non-authoritative).
+- Confirmed that the server database ledger is the sole authoritative source of truth. Documented in ADR-014 and ADR-015 in `.ai/DECISIONS.md`.
+
+---
+
+### 3. Verification & Test Execution Evidence
+
+#### 1. Inventory Domain Test Suite (`npm run test:inventory`)
+```bash
+$ npm run test:inventory
+> react-example@0.0.0 test:inventory
+> tsx tests/inventory.test.ts
+
+======================================================
+ Omnicore INV-001 Inventory Ledger & Operations Tests
+======================================================
+  [TEST] 1. Exact Integer-Scaled Arithmetic & Weighted Average Cost Calculations... PASSED
+  [TEST] 2. Record Opening Balance & Idempotent Replay... PASSED
+  [TEST] 3. Stock Adjustments & Negative Stock Protection... PASSED
+  [TEST] 4. Stock Quarantine (Damage/Expiry) & Write-Off Ledger... PASSED
+  [TEST] 5. First-Class Inventory Reservations (Lifecycle & Invariants)... PASSED
+  [TEST] 6. Multi-Location Stock Transfer Lifecycle (Dispatch -> In-Transit -> Receive)... PASSED
+  [TEST] 7. Stock Transfer with Discrepancy & Variance Handling... PASSED
+  [TEST] 8. Physical Stock Counts & Compensating Reconciliation Movements... PASSED
+  [TEST] 9. Multi-Tenant Authorization Isolation at Service Layer... PASSED
+  [TEST] 10. Real HTTP Inventory Endpoints, RBAC Gates & Cross-Tenant Defense... PASSED
+  [TEST] 11. Background Reservation Expiry Engine & Expire-Stale Endpoint... PASSED
+  [TEST] 12. Tenant Override Defense (HTTP Tenant Extraction from req.auth Only)... PASSED
+  [TEST] 13. HTTP Quantity Validation & Exact Decimal Enforcement (NaN, Infinity, 1e309, null, negative, precision)... PASSED
+  [TEST] 14. Reservation Idempotency & Database Constraint Concurrency (Safe Replay, 409 Conflict, DB Constraint)... PASSED
+======================================================
+ Results: 14 passed, 0 failed
+======================================================
+```
+
+#### 2. Transfer Domain Test Suite (`npm run test:transfer`)
+```bash
+$ npm run test:transfer
+> react-example@0.0.0 test:transfer
+> tsx tests/transfer.test.ts
+
+======================================================
+ Omnicore INV-001 Stock Transfer & Ledger Domain Tests
+======================================================
+  [TEST] 1. Transfer Creation & Validation Invariants... PASSED
+  [TEST] 2. Transfer Approval & Rejection Lifecycles... PASSED
+  [TEST] 3. Atomic Dispatch & Available Stock Invariants... PASSED
+  [TEST] 4. Transfer Events Append-Only Ledger Audit Trail... PASSED
+  [TEST] 5. Atomic Receipt & Reconciled Balances... PASSED
+  [TEST] 6. Discrepancy & Variance Accounting (variance = received - dispatched)... PASSED
+  [TEST] 7. Over-Receipt Protection Guard... PASSED
+  [TEST] 8. Cancellation Guard & Terminal State Rules... PASSED
+  [TEST] 9. Organization-Scoped Idempotency (Create, Dispatch, Receive)... PASSED
+  [TEST] 10. Multi-Tenant Boundary Enforcement (Locations, Variants, Transfers)... PASSED
+  [TEST] 11. Database-Level Event Immutability (INSERT allowed, UPDATE rejected, DELETE rejected, data intact)... PASSED
+  [TEST] 12. Transfer Concurrency & Row-Level Locking (Concurrent Dispatch & Concurrent Receipt Serialization)... PASSED
+  [TEST] 13. Strict Accounting Invariants (Dispatched = Received + Variance)... PASSED
+======================================================
+ Results: 13 passed, 0 failed
+======================================================
+```
+
+#### 3. Database Persistence Test Suite (`npm run test:db`)
+```bash
+$ npm run test:db
+> react-example@0.0.0 test:db
+> tsx tests/persistence.test.ts
+
+========================================
+ Omnicore Database & Persistence Tests
+========================================
+  [TEST] 1. Database Connection and Ping... PASSED
+  [TEST] 2. Schema Migration Execution (Up)... PASSED
+  [TEST] 3. Migration Idempotency & Reproducibility... PASSED
+  [TEST] 4. Primary Key Constraint Enforcement... PASSED
+  [TEST] 5. Foreign Key Constraint Enforcement... PASSED
+  [TEST] 6. Unique Constraints (Organization + SKU, Organization + Barcode)... PASSED
+  [TEST] 7. Monetary Decimal Precision (No Floating-Point Distortion)... PASSED
+  [TEST] 8. Fractional Inventory Quantities (NUMERIC 14,4)... PASSED
+  [TEST] 9. Atomic Database Transactions & Rollback on Error... PASSED
+  [TEST] 10. Order + Payment + Audit Trail Repository Workflows... PASSED
+  [TEST] 11. Production Driver Fail-Closed Validation... PASSED
+  [TEST] 12. Migration Checksum Mismatch Rejection... PASSED
+  [TEST] 13. Demo Seed Environment Protection... PASSED
+  [TEST] 14. Inventory Negative-Stock Rule & Movement Idempotency... PASSED
+  [TEST] 15. Admin DB-Status Production Exposure Rules... PASSED
+----------------------------------------
+Results: 15 passed, 0 failed
+----------------------------------------
+```
+
+#### 4. Security & RBAC Test Suite (`npm run test:security`)
+```bash
+$ npm run test:security
+> react-example@0.0.0 test:security
+> tsx tests/auth_security.test.ts
+
+======================================================
+ Omnicore SEC-001 Authentication & RBAC Security Tests
+======================================================
+  [TEST] 1. Apply Auth Migrations (001 + 002)... PASSED
+  [TEST] 2. Password Hashing & Verification (PBKDF2-HMAC-SHA512)... PASSED
+  [TEST] 3. Cryptographic JWT Signing & Verification (HMAC-SHA256)... PASSED
+  [TEST] 4. JWT Verification Comprehensive Edge Cases & Cryptographic Validation... PASSED
+  [TEST] 5. RBAC Permission Hierarchy & Matrix... PASSED
+  [TEST] 6. User Repository & Token Revocation (Logout)... PASSED
+  [TEST] 7. AuthService Authentication & Revocation Lifecycle... PASSED
+  [TEST] 8. Server-Authoritative Audit Logging (Anti-Spoofing)... PASSED
+  [TEST] 9. Input Validation & Prototype Pollution Defense... PASSED
+  [TEST] 10. Multi-Tenant Authorization Isolation... PASSED
+  [TEST] 11. Expired Credential Rejection... PASSED
+  [TEST] 12. Real HTTP Authentication Boundaries (401 Rejections)... PASSED
+  [TEST] 13. Real HTTP Role & Permission Boundaries (403 Rejections)... PASSED
+  [TEST] 14. Real HTTP Multi-Tenant Isolation Enforcement (ORG-A vs ORG-B)... PASSED
+  [TEST] 15. Real HTTP Identity Spoofing Protection in Request Body... PASSED
+  [TEST] 16. Real HTTP Admin Diagnostic Security & Leak Prevention... PASSED
+  [TEST] 17. Real HTTP Sensitive Endpoint Rate Limiting (429 Defense)... PASSED
+  [TEST] 18. Real HTTP Error Leakage & Sanitization (500 Defense)... PASSED
+  [TEST] 19. Production Startup Credential Seeding Rejection... PASSED
+  [TEST] 20. Real HTTP Health & Ready Sanitization (Simulated DB Outage)... PASSED
+  [TEST] 21. Real HTTP Authentication Error Sanitization... PASSED
+  [TEST] 22. Deep Resource-Level Multi-Tenant Isolation & Repository Boundary Enforcement... PASSED
+======================================================
+ Results: 22 passed, 0 failed
+======================================================
+```
+
+#### 5. Full Test Pipeline Across All Domains
+- Total Tests: **64 passed, 0 failed (100% Pass Rate)**
+- TypeScript Linter (`tsc --noEmit`): **0 errors**
+- Applet Compilation: **Build succeeded cleanly**
+
+---
+
+### 4. Gate Confirmation
+- Task `INV-001R3` is marked: **`READY FOR REVIEW`** (not approved).
+- Task `POS-001` remains strictly: **`NOT STARTED`**.
+- Zero modifications have been made toward POS-001 implementation pending independent supervisor review and approval.
+
 
 
 

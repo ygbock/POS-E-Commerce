@@ -201,8 +201,8 @@ async function main() {
         reason: 'Received shipment of bulk items',
       });
 
-      assert.strictEqual(moveRes.balance.on_hand, 2.5);
-      assert.strictEqual(moveRes.movement.quantity_change, 2.5);
+      assert.strictEqual(Number(moveRes.balance.on_hand), 2.5);
+      assert.strictEqual(Number(moveRes.movement.quantity_change), 2.5);
 
       // Add fractional 0.1250 units
       const moveRes2 = await invRepo.recordMovement({
@@ -215,7 +215,7 @@ async function main() {
         performed_by: 'Test Worker',
       });
 
-      assert.strictEqual(moveRes2.balance.on_hand, 2.625);
+      assert.strictEqual(Number(moveRes2.balance.on_hand), 2.625);
     });
 
     // Test 9: Atomic Transactions and Rollback Safety

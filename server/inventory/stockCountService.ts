@@ -5,11 +5,19 @@ import {
   StockCountRecord,
   StockCountItemRecord,
   StockCountStatus,
+  Quantity,
 } from './inventoryTypes';
-import { roundQty } from './inventoryPolicies';
+import {
+  toQtyString,
+  subQtyExact,
+  parseExactQuantity,
+  parseQtyToScaled,
+  generateInventoryId,
+  generateDocumentNumber,
+} from './inventoryPolicies';
 
 /**
- * Stock Count & Physical Audit Service (INV-001)
+ * Stock Count & Physical Audit Service (INV-001 / INV-001R3)
  * 
  * Manages cycle counts, physical inventory sessions, discrepancy tracking,
  * and reconciliation via compensating ADJUSTMENT_STOCKTAKE ledger movements.
@@ -39,6 +47,9 @@ export class StockCountService {
     },
     performed_by: string
   ): Promise<{ count: StockCountRecord; items: StockCountItemRecord[] }> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory for createStockCount.');
+    }
     if (!data.variant_ids || data.variant_ids.length === 0) {
       throw new Error('INVALID_COUNT: Stock count must contain at least one variant.');
     }
@@ -51,7 +62,7 @@ export class StockCountService {
       }
 
       // 2. Snapshot current system balances for variants
-      const itemsToCount: Array<{ id: string; variant_id: string; system_quantity: number }> = [];
+      const itemsToCount: Array<{ id: string; variant_id: string; system_quantity: Quantity }> = [];
 
       for (const variantId of data.variant_ids) {
         const isVarValid = await this.inventoryRepo.verifyVariantOwnership(organizationId, variantId, tx);
@@ -60,17 +71,17 @@ export class StockCountService {
         }
 
         const bal = await this.inventoryRepo.getBalance(data.location_id, variantId, organizationId, tx);
-        const sysQty = bal ? roundQty(Number(bal.on_hand)) : 0;
+        const sysQty = bal ? toQtyString(bal.on_hand) : '0.0000';
 
         itemsToCount.push({
-          id: `sci_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          id: generateInventoryId('sci'),
           variant_id: variantId,
           system_quantity: sysQty,
         });
       }
 
-      const countId = `sc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const countNumber = data.count_number || `SC-${Date.now().toString().slice(-6)}`;
+      const countId = generateInventoryId('sc');
+      const countNumber = data.count_number || generateDocumentNumber('SC');
 
       return this.stockCountRepo.createStockCountWithItems(
         {
@@ -91,9 +102,12 @@ export class StockCountService {
   async submitStockCount(
     organizationId: string,
     countId: string,
-    countedItemsMap: Record<string, number>,
+    countedItemsMap: Record<string, unknown>,
     performed_by: string
   ): Promise<StockCountRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory for submitStockCount.');
+    }
     return this.db.withTransaction(async (tx) => {
       const existing = await this.stockCountRepo.findStockCountById(countId, organizationId, tx);
       if (!existing) {
@@ -106,8 +120,8 @@ export class StockCountService {
       // Update counted quantities and variance
       for (const item of existing.items) {
         if (countedItemsMap[item.variant_id] !== undefined) {
-          const countedQty = roundQty(countedItemsMap[item.variant_id]);
-          if (countedQty < 0) {
+          const countedQty = parseExactQuantity(countedItemsMap[item.variant_id], `variant_${item.variant_id}_counted`);
+          if (parseQtyToScaled(countedQty) < 0n) {
             throw new Error('INVALID_QUANTITY: Counted quantity cannot be negative.');
           }
           await this.stockCountRepo.updateItemCount(item.id, countedQty, item.system_quantity, undefined, tx);
@@ -135,6 +149,9 @@ export class StockCountService {
     countId: string,
     performed_by: string
   ): Promise<StockCountRecord> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory for approveStockCount.');
+    }
     return this.db.withTransaction(async (tx) => {
       const existing = await this.stockCountRepo.findStockCountById(countId, organizationId, tx);
       if (!existing) {
@@ -146,11 +163,12 @@ export class StockCountService {
 
       // Reconcile non-zero variances with ADJUSTMENT_STOCKTAKE ledger movements
       for (const item of existing.items) {
-        const variance = roundQty(item.counted_quantity - item.system_quantity);
-        if (variance !== 0) {
+        const counted = toQtyString(item.counted_quantity ?? item.system_quantity);
+        const variance = subQtyExact(counted, item.system_quantity);
+        if (parseQtyToScaled(variance) !== 0n) {
           await this.inventoryRepo.recordMovement(
             {
-              id: `mov_stk_${existing.count.id}_${item.variant_id}_${Date.now()}`,
+              id: generateInventoryId('mov_stk'),
               organization_id: organizationId,
               location_id: existing.count.location_id,
               variant_id: item.variant_id,
@@ -158,7 +176,7 @@ export class StockCountService {
               quantity_change: variance,
               reference_type: 'STOCK_COUNT',
               reference_id: existing.count.id,
-              reason: `Physical stock count reconciliation. Counted: ${item.counted_quantity}, System: ${item.system_quantity}, Variance: ${variance}`,
+              reason: `Physical stock count reconciliation. Counted: ${counted}, System: ${item.system_quantity}, Variance: ${variance}`,
               performed_by,
               notes: `Count session: ${existing.count.count_number}`,
             },
@@ -187,6 +205,9 @@ export class StockCountService {
     organizationId: string,
     countId: string
   ): Promise<{ count: StockCountRecord; items: StockCountItemRecord[] } | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
     return this.stockCountRepo.findStockCountById(countId, organizationId);
   }
 
@@ -199,6 +220,9 @@ export class StockCountService {
       offset?: number;
     } = {}
   ): Promise<StockCountRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: Explicit organizationId is mandatory.');
+    }
     return this.stockCountRepo.listStockCounts({
       organizationId,
       ...options,

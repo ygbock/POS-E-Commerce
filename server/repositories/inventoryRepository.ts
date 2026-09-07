@@ -3,16 +3,20 @@ import {
   InventoryBalanceRecord,
   InventoryMovementRecord,
   MovementType,
+  Quantity,
 } from '../inventory/inventoryTypes';
 import {
-  roundQty,
-  addQty,
-  subQty,
+  toQtyString,
+  addQtyExact,
+  subQtyExact,
   assertLedgerInvariant,
-  calculateAvailable,
+  calculateAvailableExact,
+  parseQtyToScaled,
+  roundMoneyExact,
+  generateInventoryId,
 } from '../inventory/inventoryPolicies';
 
-export type { InventoryBalanceRecord, InventoryMovementRecord, MovementType };
+export type { InventoryBalanceRecord, InventoryMovementRecord, MovementType, Quantity };
 
 function mapBalanceRow(row: any): InventoryBalanceRecord {
   return {
@@ -20,12 +24,12 @@ function mapBalanceRow(row: any): InventoryBalanceRecord {
     organization_id: row.organization_id,
     location_id: row.location_id,
     variant_id: row.variant_id,
-    on_hand: roundQty(row.on_hand),
-    reserved: roundQty(row.reserved),
-    damaged: roundQty(row.damaged),
-    expired: roundQty(row.expired),
-    in_transit: roundQty(row.in_transit),
-    available: roundQty(row.available),
+    on_hand: toQtyString(row.on_hand),
+    reserved: toQtyString(row.reserved),
+    damaged: toQtyString(row.damaged),
+    expired: toQtyString(row.expired),
+    in_transit: toQtyString(row.in_transit),
+    available: toQtyString(row.available),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -38,10 +42,10 @@ function mapMovementRow(row: any): InventoryMovementRecord {
     location_id: row.location_id,
     variant_id: row.variant_id,
     movement_type: row.movement_type,
-    quantity_change: roundQty(row.quantity_change),
-    previous_balance: roundQty(row.previous_balance),
-    new_balance: roundQty(row.new_balance),
-    unit_cost: roundQty(row.unit_cost),
+    quantity_change: toQtyString(row.quantity_change),
+    previous_balance: toQtyString(row.previous_balance),
+    new_balance: toQtyString(row.new_balance),
+    unit_cost: roundMoneyExact(row.unit_cost || '0.00'),
     reference_type: row.reference_type,
     reference_id: row.reference_id,
     reason: row.reason,
@@ -102,7 +106,6 @@ export class InventoryRepository {
   /**
    * Retrieves stock balance for a location and variant.
    * Requires explicit organizationId for strict tenant isolation.
-   * Supports both (locationId, variantId, organizationId) and (organizationId, locationId, variantId).
    */
   async getBalance(
     arg1: string,
@@ -192,24 +195,25 @@ export class InventoryRepository {
    * Records an inventory movement atomically, maintaining an immutable inventory movement ledger
    * and updating the location's inventory balance.
    * 
-   * CONCURRENCY & INTEGRITY CONTROLS (INV-001 / INV-001R2):
+   * CONCURRENCY & INTEGRITY CONTROLS (INV-001 / INV-001R3):
    * - Transaction boundary: balance lookup, validation, movement insertion, and balance update are executed inside a single transaction.
    * - Row locking: balance row is locked with FOR UPDATE scoped by (organization_id, location_id, variant_id).
+   * - Database uniqueness constraint: uq_inventory_movements_org_idempotency is the final concurrency authority.
    * - Tenant isolation: verifies location and variant ownership; never falls back to default organizations.
    * - Decimal precision: BigInt scaled integer arithmetic with zero floating-point casts.
    * - Negative stock rule: strictly prohibits negative balance unless allowNegativeStock: true is specified.
-   * - Idempotency: protects against duplicate movement ID or idempotency_key.
+   * - Idempotency: safe replay on identical payload; rejects conflicting payload with IDEMPOTENCY_CONFLICT.
    * - Mathematical invariant: assertLedgerInvariant(previous_balance, quantity_change, new_balance).
    */
   async recordMovement(
     params: {
-      id: string;
+      id?: string;
       organization_id: string;
       location_id: string;
       variant_id: string;
       movement_type: MovementType;
-      quantity_change: number; // positive for additions, negative for deductions
-      unit_cost?: number;
+      quantity_change: string | number;
+      unit_cost?: string | number;
       reference_type?: string;
       reference_id?: string;
       reason?: string;
@@ -246,7 +250,10 @@ export class InventoryRepository {
         );
       }
 
-      // 2. Idempotency protection: idempotency_key or id duplicate check
+      const exactQtyChange = toQtyString(params.quantity_change);
+      const scaledQtyChange = parseQtyToScaled(exactQtyChange);
+
+      // 2. Pre-check idempotency key if provided
       if (params.idempotency_key) {
         const existingKeyMov = await tx.query(
           `SELECT id, organization_id, location_id, variant_id, movement_type,
@@ -260,18 +267,27 @@ export class InventoryRepository {
           [orgId, params.idempotency_key]
         );
         if (existingKeyMov.rows.length > 0) {
-          const currentBal = await this.getBalance(params.location_id, params.variant_id, orgId, tx);
-          return {
-            balance: currentBal!,
-            movement: mapMovementRow(existingKeyMov.rows[0]),
-          };
+          const ex = existingKeyMov.rows[0];
+          const isMatch =
+            ex.location_id === params.location_id &&
+            ex.variant_id === params.variant_id &&
+            ex.movement_type === params.movement_type &&
+            parseQtyToScaled(ex.quantity_change) === scaledQtyChange;
+
+          if (isMatch) {
+            const currentBal = await this.getBalance(params.location_id, params.variant_id, orgId, tx);
+            return {
+              balance: currentBal!,
+              movement: mapMovementRow(ex),
+            };
+          }
+          throw new Error(
+            `IDEMPOTENCY_CONFLICT: An inventory movement with idempotency key '${params.idempotency_key}' already exists with conflicting parameters.`
+          );
         }
       }
 
-      const existingMov = await tx.query('SELECT id FROM inventory_movements WHERE id = $1', [params.id]);
-      if (existingMov.rows.length > 0) {
-        throw new Error(`DUPLICATE_MOVEMENT: Inventory movement with ID '${params.id}' has already been recorded.`);
-      }
+      const movementId = params.id || generateInventoryId('mov');
 
       // 3. Ensure balance row exists (upsert without overwriting existing stock)
       const balanceId = `bal_${params.location_id}_${params.variant_id}`;
@@ -307,71 +323,117 @@ export class InventoryRepository {
       }
 
       const actualBalanceId = balanceRow.id;
-      const currentOnHand = roundQty(balanceRow.on_hand);
-      const currentReserved = roundQty(balanceRow.reserved);
-      const currentDamaged = roundQty(balanceRow.damaged);
-      const currentExpired = roundQty(balanceRow.expired);
+      const currentOnHand = toQtyString(balanceRow.on_hand);
+      const currentReserved = toQtyString(balanceRow.reserved);
+      const currentDamaged = toQtyString(balanceRow.damaged);
+      const currentExpired = toQtyString(balanceRow.expired);
 
       // Exact decimal arithmetic with BigInt scaled precision
-      const roundedQuantityChange = roundQty(params.quantity_change);
-      const newOnHand = roundQty(addQty(currentOnHand, roundedQuantityChange));
+      const newOnHand = addQtyExact(currentOnHand, exactQtyChange);
 
       // Invariant assertion: previous + delta === new
-      assertLedgerInvariant(currentOnHand, roundedQuantityChange, newOnHand);
+      assertLedgerInvariant(currentOnHand, exactQtyChange, newOnHand);
 
       // 5. Negative stock policy check
-      if (!params.allowNegativeStock && newOnHand < 0) {
+      if (!params.allowNegativeStock && parseQtyToScaled(newOnHand) < 0n) {
         throw new Error(
-          `INSUFFICIENT_STOCK: Stock movement of ${roundedQuantityChange} would result in negative on_hand balance (${newOnHand}) for variant '${params.variant_id}' at location '${params.location_id}'. Current on_hand: ${currentOnHand}.`
+          `INSUFFICIENT_STOCK: Stock movement of ${exactQtyChange} would result in negative on_hand balance (${newOnHand}) for variant '${params.variant_id}' at location '${params.location_id}'. Current on_hand: ${currentOnHand}.`
         );
       }
 
       // 6. If decrementing on_hand, ensure available stock is not breached below reserved
-      if (roundedQuantityChange < 0) {
-        const newAvailable = calculateAvailable(newOnHand, currentReserved, currentDamaged, currentExpired);
-        if (newAvailable < 0 && !params.allowNegativeStock) {
+      if (scaledQtyChange < 0n) {
+        const newAvailable = calculateAvailableExact(newOnHand, currentReserved, currentDamaged, currentExpired);
+        if (!params.allowNegativeStock && parseQtyToScaled(newAvailable) < 0n) {
+          const curAvail = calculateAvailableExact(currentOnHand, currentReserved, currentDamaged, currentExpired);
           throw new Error(
-            `RESERVATION_BREACH: Deducting ${Math.abs(roundedQuantityChange)} exceeds available unreserved stock (${calculateAvailable(currentOnHand, currentReserved, currentDamaged, currentExpired)}). On hand: ${currentOnHand}, Reserved: ${currentReserved}.`
+            `RESERVATION_BREACH: Deducting ${exactQtyChange.replace('-', '')} exceeds available unreserved stock (${curAvail}). On hand: ${currentOnHand}, Reserved: ${currentReserved}.`
           );
         }
       }
 
-      // 7. Append-only ledger insert into inventory_movements
-      const movRes = await tx.query(
-        `INSERT INTO inventory_movements (
-          id, organization_id, location_id, variant_id, movement_type,
-          quantity_change, previous_balance, new_balance, unit_cost,
-          reference_type, reference_id, reason, performed_by, notes,
-          source_location_id, destination_location_id, idempotency_key,
-          source_system, source_reference
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-        RETURNING id, organization_id, location_id, variant_id, movement_type,
-                  quantity_change::text, previous_balance::text, new_balance::text,
-                  unit_cost::text, reference_type, reference_id, reason, performed_by, notes,
-                  source_location_id, destination_location_id, idempotency_key,
-                  source_system, source_reference, created_at`,
-        [
-          params.id,
-          orgId,
-          params.location_id,
-          params.variant_id,
-          params.movement_type,
-          roundedQuantityChange,
-          currentOnHand,
-          newOnHand,
-          params.unit_cost !== undefined ? roundQty(params.unit_cost) : 0,
-          params.reference_type || null,
-          params.reference_id || null,
-          params.reason || null,
-          params.performed_by,
-          params.notes || null,
-          params.source_location_id || null,
-          params.destination_location_id || null,
-          params.idempotency_key || null,
-          params.source_system || null,
-          params.source_reference || null,
-        ]
-      );
+      // 7. Append-only ledger insert into inventory_movements with DB constraint authority
+      let movRes;
+      try {
+        movRes = await tx.query(
+          `INSERT INTO inventory_movements (
+            id, organization_id, location_id, variant_id, movement_type,
+            quantity_change, previous_balance, new_balance, unit_cost,
+            reference_type, reference_id, reason, performed_by, notes,
+            source_location_id, destination_location_id, idempotency_key,
+            source_system, source_reference
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          RETURNING id, organization_id, location_id, variant_id, movement_type,
+                    quantity_change::text, previous_balance::text, new_balance::text,
+                    unit_cost::text, reference_type, reference_id, reason, performed_by, notes,
+                    source_location_id, destination_location_id, idempotency_key,
+                    source_system, source_reference, created_at`,
+          [
+            movementId,
+            orgId,
+            params.location_id,
+            params.variant_id,
+            params.movement_type,
+            exactQtyChange,
+            currentOnHand,
+            newOnHand,
+            params.unit_cost !== undefined ? roundMoneyExact(params.unit_cost) : '0.00',
+            params.reference_type || null,
+            params.reference_id || null,
+            params.reason || null,
+            params.performed_by,
+            params.notes || null,
+            params.source_location_id || null,
+            params.destination_location_id || null,
+            params.idempotency_key || null,
+            params.source_system || null,
+            params.source_reference || null,
+          ]
+        );
+      } catch (insertErr: any) {
+        if (
+          params.idempotency_key &&
+          (insertErr.code === '23505' || String(insertErr.message).includes('uq_inventory_movements_org_idempotency'))
+        ) {
+          const existingKeyMov = await tx.query(
+            `SELECT id, organization_id, location_id, variant_id, movement_type,
+                    quantity_change::text, previous_balance::text, new_balance::text,
+                    unit_cost::text, reference_type, reference_id, reason, performed_by, notes,
+                    source_location_id, destination_location_id, idempotency_key,
+                    source_system, source_reference, created_at
+             FROM inventory_movements
+             WHERE organization_id = $1 AND idempotency_key = $2
+             LIMIT 1`,
+            [orgId, params.idempotency_key]
+          );
+          if (existingKeyMov.rows.length > 0) {
+            const ex = existingKeyMov.rows[0];
+            const isMatch =
+              ex.location_id === params.location_id &&
+              ex.variant_id === params.variant_id &&
+              ex.movement_type === params.movement_type &&
+              parseQtyToScaled(ex.quantity_change) === scaledQtyChange;
+
+            if (isMatch) {
+              const currentBal = await this.getBalance(params.location_id, params.variant_id, orgId, tx);
+              return {
+                balance: currentBal!,
+                movement: mapMovementRow(ex),
+              };
+            }
+          }
+          throw new Error(
+            `IDEMPOTENCY_CONFLICT: An inventory movement with idempotency key '${params.idempotency_key}' was concurrently recorded with conflicting parameters.`
+          );
+        }
+        if (
+          insertErr.code === '23505' &&
+          (String(insertErr.detail).includes('Key (id)=') || String(insertErr.message).includes('inventory_movements_pkey'))
+        ) {
+          throw new Error(`DUPLICATE_MOVEMENT: An inventory movement with ID '${movementId}' already exists.`);
+        }
+        throw insertErr;
+      }
 
       // 8. Update inventory_balances with new on-hand balance
       const updatedBalRes = await tx.query(
@@ -393,14 +455,14 @@ export class InventoryRepository {
   }
 
   /**
-   * Atomically adjusts reserved inventory on an inventory balance.
+   * Adjusts reserved stock for a balance row atomically.
    */
   async adjustReserved(
     params: {
       organization_id: string;
       location_id: string;
       variant_id: string;
-      delta_reserved: number;
+      delta_reserved: string | number;
     },
     client?: DatabaseClient
   ): Promise<InventoryBalanceRecord> {
@@ -431,21 +493,23 @@ export class InventoryRepository {
       );
 
       const bal = lockedBal.rows[0];
-      const currentReserved = roundQty(bal.reserved);
-      const currentOnHand = roundQty(bal.on_hand);
-      const currentDamaged = roundQty(bal.damaged);
-      const currentExpired = roundQty(bal.expired);
-      const newReserved = roundQty(addQty(currentReserved, params.delta_reserved));
+      const currentReserved = toQtyString(bal.reserved);
+      const currentOnHand = toQtyString(bal.on_hand);
+      const currentDamaged = toQtyString(bal.damaged);
+      const currentExpired = toQtyString(bal.expired);
 
-      if (newReserved < 0) {
+      const deltaReserved = toQtyString(params.delta_reserved);
+      const newReserved = addQtyExact(currentReserved, deltaReserved);
+
+      if (parseQtyToScaled(newReserved) < 0n) {
         throw new Error(
-          `INVALID_RESERVATION: Reserved stock cannot be negative. Current: ${currentReserved}, Delta: ${params.delta_reserved}.`
+          `INVALID_RESERVATION: Reserved stock cannot be negative. Current: ${currentReserved}, Delta: ${deltaReserved}.`
         );
       }
 
       // Check available stock
-      const availableUnreserved = calculateAvailable(currentOnHand, 0, currentDamaged, currentExpired);
-      if (newReserved > availableUnreserved) {
+      const availableUnreserved = calculateAvailableExact(currentOnHand, '0.0000', currentDamaged, currentExpired);
+      if (parseQtyToScaled(newReserved) > parseQtyToScaled(availableUnreserved)) {
         throw new Error(
           `INSUFFICIENT_STOCK_FOR_RESERVATION: Cannot reserve ${newReserved} units. Total unquarantined stock: ${availableUnreserved}.`
         );
@@ -474,7 +538,7 @@ export class InventoryRepository {
       organization_id: string;
       location_id: string;
       variant_id: string;
-      quantity: number;
+      quantity: string | number;
       type: 'damage' | 'expired';
       reason?: string;
       performed_by: string;
@@ -488,6 +552,11 @@ export class InventoryRepository {
     const db = this.getClient(client);
 
     return db.withTransaction(async (tx) => {
+      const exactQty = toQtyString(params.quantity);
+      if (parseQtyToScaled(exactQty) <= 0n) {
+        throw new Error('INVALID_QUANTITY: Quarantine quantity must be greater than zero.');
+      }
+
       // 1. Ensure balance row exists
       const balanceId = `bal_${params.location_id}_${params.variant_id}`;
       await tx.query(
@@ -509,21 +578,21 @@ export class InventoryRepository {
       );
 
       const bal = lockedBal.rows[0];
-      const currentOnHand = roundQty(bal.on_hand);
-      const currentReserved = roundQty(bal.reserved);
-      const currentDamaged = roundQty(bal.damaged);
-      const currentExpired = roundQty(bal.expired);
-      const currentAvailable = calculateAvailable(currentOnHand, currentReserved, currentDamaged, currentExpired);
+      const currentOnHand = toQtyString(bal.on_hand);
+      const currentReserved = toQtyString(bal.reserved);
+      const currentDamaged = toQtyString(bal.damaged);
+      const currentExpired = toQtyString(bal.expired);
+      const currentAvailable = calculateAvailableExact(currentOnHand, currentReserved, currentDamaged, currentExpired);
 
-      if (params.quantity > currentAvailable) {
+      if (parseQtyToScaled(exactQty) > parseQtyToScaled(currentAvailable)) {
         throw new Error(
-          `INSUFFICIENT_AVAILABLE_STOCK: Cannot quarantine ${params.quantity} units as ${params.type}. Available: ${currentAvailable}.`
+          `INSUFFICIENT_AVAILABLE_STOCK: Cannot quarantine ${exactQty} units as ${params.type}. Available: ${currentAvailable}.`
         );
       }
 
       const columnToUpdate = params.type === 'damage' ? 'damaged' : 'expired';
       const currentVal = params.type === 'damage' ? currentDamaged : currentExpired;
-      const newVal = roundQty(addQty(currentVal, params.quantity));
+      const newVal = addQtyExact(currentVal, exactQty);
 
       const updated = await tx.query(
         `UPDATE inventory_balances
@@ -545,7 +614,7 @@ export class InventoryRepository {
           reason, performed_by, notes
         ) VALUES ($1, $2, $3, $4, $5, 0, $6, $6, 0, $7, $8, $9)`,
         [
-          `mov_quar_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          generateInventoryId('mov_quar'),
           params.organization_id,
           params.location_id,
           params.variant_id,
@@ -570,7 +639,7 @@ export class InventoryRepository {
       organization_id: string;
       location_id: string;
       variant_id: string;
-      quantity: number;
+      quantity: string | number;
       type: 'damage' | 'expired';
       reason?: string;
       performed_by: string;
@@ -584,6 +653,12 @@ export class InventoryRepository {
     const db = this.getClient(client);
 
     return db.withTransaction(async (tx) => {
+      const exactQty = toQtyString(params.quantity);
+      const scaledQty = parseQtyToScaled(exactQty);
+      if (scaledQty <= 0n) {
+        throw new Error('INVALID_QUANTITY: Write-off quantity must be greater than zero.');
+      }
+
       // 1. Lock row scoped by organization_id
       const lockedBal = await tx.query(
         `SELECT id, organization_id, location_id, variant_id,
@@ -600,23 +675,23 @@ export class InventoryRepository {
       }
 
       const bal = lockedBal.rows[0];
-      const currentOnHand = roundQty(bal.on_hand);
-      const currentDamaged = roundQty(bal.damaged);
-      const currentExpired = roundQty(bal.expired);
+      const currentOnHand = toQtyString(bal.on_hand);
+      const currentDamaged = toQtyString(bal.damaged);
+      const currentExpired = toQtyString(bal.expired);
       const currentQuarantined = params.type === 'damage' ? currentDamaged : currentExpired;
 
-      if (params.quantity > currentQuarantined) {
+      if (scaledQty > parseQtyToScaled(currentQuarantined)) {
         throw new Error(
-          `INSUFFICIENT_QUARANTINED_STOCK: Cannot write off ${params.quantity} units of ${params.type} stock. Current quarantined: ${currentQuarantined}.`
+          `INSUFFICIENT_QUARANTINED_STOCK: Cannot write off ${exactQty} units of ${params.type} stock. Current quarantined: ${currentQuarantined}.`
         );
       }
 
-      const newOnHand = roundQty(subQty(currentOnHand, params.quantity));
-      const newQuarantined = roundQty(subQty(currentQuarantined, params.quantity));
+      const newOnHand = subQtyExact(currentOnHand, exactQty);
+      const newQuarantined = subQtyExact(currentQuarantined, exactQty);
       const columnToUpdate = params.type === 'damage' ? 'damaged' : 'expired';
       const movType: MovementType = params.type === 'damage' ? 'DAMAGE_WRITE_OFF' : 'EXPIRY_WRITE_OFF';
 
-      const movId = `mov_woff_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const movId = generateInventoryId('mov_woff');
       const movRes = await tx.query(
         `INSERT INTO inventory_movements (
           id, organization_id, location_id, variant_id, movement_type,
@@ -634,7 +709,7 @@ export class InventoryRepository {
           params.location_id,
           params.variant_id,
           movType,
-          -params.quantity,
+          `-${exactQty}`,
           currentOnHand,
           newOnHand,
           params.reason || `Stock write-off (${params.type})`,
@@ -672,7 +747,7 @@ export class InventoryRepository {
       transfer_id: string;
       source_location_id: string;
       destination_location_id: string;
-      items: Array<{ variant_id: string; quantity: number }>;
+      items: Array<{ variant_id: string; quantity: string | number }>;
       performed_by: string;
       notes?: string;
     },
@@ -692,16 +767,17 @@ export class InventoryRepository {
       }
 
       for (const item of params.items) {
+        const itemQty = toQtyString(item.quantity);
         // 1. Deduct from source on_hand
         await this.recordMovement(
           {
-            id: `mov_tout_${params.transfer_id}_${item.variant_id}_${Date.now()}`,
+            id: generateInventoryId('mov_tout'),
             organization_id: params.organization_id,
             location_id: params.source_location_id,
             variant_id: item.variant_id,
             movement_type: 'TRANSFER_OUT',
-            quantity_change: -item.quantity,
-            reference_type: 'TRANSFER',
+            quantity_change: `-${itemQty}`,
+            reference_type: 'inventory_transfer',
             reference_id: params.transfer_id,
             source_location_id: params.source_location_id,
             destination_location_id: params.destination_location_id,
@@ -729,8 +805,8 @@ export class InventoryRepository {
           [params.organization_id, params.destination_location_id, item.variant_id]
         );
 
-        const currentInTransit = roundQty(lockedDest.rows[0].in_transit);
-        const newInTransit = roundQty(addQty(currentInTransit, item.quantity));
+        const currentInTransit = toQtyString(lockedDest.rows[0].in_transit);
+        const newInTransit = addQtyExact(currentInTransit, itemQty);
 
         await tx.query(
           `UPDATE inventory_balances
@@ -753,7 +829,7 @@ export class InventoryRepository {
       transfer_id: string;
       source_location_id: string;
       destination_location_id: string;
-      items: Array<{ variant_id: string; dispatched_quantity: number; received_quantity: number }>;
+      items: Array<{ variant_id: string; dispatched_quantity: string | number; received_quantity: string | number }>;
       performed_by: string;
       notes?: string;
     },
@@ -766,6 +842,9 @@ export class InventoryRepository {
 
     return db.withTransaction(async (tx) => {
       for (const item of params.items) {
+        const dispatchedQty = toQtyString(item.dispatched_quantity);
+        const receivedQty = toQtyString(item.received_quantity);
+
         // 1. Lock destination balance
         const destBalanceId = `bal_${params.destination_location_id}_${item.variant_id}`;
         await tx.query(
@@ -783,14 +862,14 @@ export class InventoryRepository {
           [params.organization_id, params.destination_location_id, item.variant_id]
         );
 
-        const currentInTransit = roundQty(lockedDest.rows[0].in_transit);
-        if (currentInTransit < item.dispatched_quantity) {
+        const currentInTransit = toQtyString(lockedDest.rows[0].in_transit);
+        if (parseQtyToScaled(currentInTransit) < parseQtyToScaled(dispatchedQty)) {
           throw new Error(
-            `INSUFFICIENT_IN_TRANSIT: In-transit balance (${currentInTransit}) is less than dispatched quantity (${item.dispatched_quantity}) for variant '${item.variant_id}'.`
+            `INSUFFICIENT_IN_TRANSIT: In-transit balance (${currentInTransit}) is less than dispatched quantity (${dispatchedQty}) for variant '${item.variant_id}'.`
           );
         }
 
-        const newInTransit = roundQty(subQty(currentInTransit, item.dispatched_quantity));
+        const newInTransit = subQtyExact(currentInTransit, dispatchedQty);
 
         await tx.query(
           `UPDATE inventory_balances
@@ -800,16 +879,16 @@ export class InventoryRepository {
         );
 
         // 2. Increment destination on_hand by received_quantity
-        if (item.received_quantity > 0) {
+        if (parseQtyToScaled(receivedQty) > 0n) {
           await this.recordMovement(
             {
-              id: `mov_tin_${params.transfer_id}_${item.variant_id}_${Date.now()}`,
+              id: generateInventoryId('mov_tin'),
               organization_id: params.organization_id,
               location_id: params.destination_location_id,
               variant_id: item.variant_id,
               movement_type: 'TRANSFER_IN',
-              quantity_change: item.received_quantity,
-              reference_type: 'TRANSFER',
+              quantity_change: receivedQty,
+              reference_type: 'inventory_transfer',
               reference_id: params.transfer_id,
               source_location_id: params.source_location_id,
               destination_location_id: params.destination_location_id,

@@ -13,6 +13,9 @@ import {
   subQty,
   calculateAvailable,
   validateTransferTransition,
+  generateInventoryId,
+  generateDocumentNumber,
+  toQtyString,
 } from './inventoryPolicies';
 
 /**
@@ -121,8 +124,8 @@ export class TransferService {
       }
     }
 
-    const transferId = `tr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const transferNumber = data.transfer_number || `TR-${Date.now().toString().slice(-6)}`;
+    const transferId = generateInventoryId('tr');
+    const transferNumber = data.transfer_number || generateDocumentNumber('TR');
     const initialStatus: TransferStatus = data.status === 'DRAFT' ? 'DRAFT' : 'REQUESTED';
 
     return this.db.withTransaction(async (tx) => {
@@ -158,10 +161,10 @@ export class TransferService {
           notes: data.notes,
         },
         data.items.map((it) => ({
-          id: `tri_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          id: generateInventoryId('tri'),
           variant_id: it.variant_id,
-          requested_quantity: roundQty(it.requested_quantity),
-          approved_quantity: it.approved_quantity !== undefined ? roundQty(it.approved_quantity) : roundQty(it.requested_quantity),
+          requested_quantity: toQtyString(it.requested_quantity),
+          approved_quantity: it.approved_quantity !== undefined ? toQtyString(it.approved_quantity) : toQtyString(it.requested_quantity),
           notes: it.notes,
         })),
         tx
@@ -566,7 +569,7 @@ export class TransferService {
         // 1. Record physical deduction at source location (TRANSFER_OUT)
         await this.inventoryRepo.recordMovement(
           {
-            id: `mov_tout_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            id: generateInventoryId('mov_tout'),
             organization_id: organizationId,
             location_id: lockedTransfer.source_location_id,
             variant_id: item.variant_id,
@@ -906,7 +909,7 @@ export class TransferService {
         if (receivedQty > 0) {
           await this.inventoryRepo.recordMovement(
             {
-              id: `mov_tin_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+              id: generateInventoryId('mov_tin'),
               organization_id: organizationId,
               location_id: lockedTransfer.destination_location_id,
               variant_id: item.variant_id,

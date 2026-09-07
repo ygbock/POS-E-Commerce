@@ -16,7 +16,18 @@ import { TransferService } from '../server/inventory/transferService';
 import { StockCountService } from '../server/inventory/stockCountService';
 import { UserRepository } from '../server/repositories/userRepository';
 import { hashPassword } from '../server/auth/password';
-import { calculateAvailable, roundQty, addQty, subQty } from '../server/inventory/inventoryPolicies';
+import {
+  calculateAvailable,
+  roundQty,
+  addQty,
+  subQty,
+  toQtyString,
+  calculateWeightedAverageCostExact,
+  calculateWeightedAverageCost,
+  parseExactQuantity,
+  parseQtyToScaled,
+  formatScaledToQtyString,
+} from '../server/inventory/inventoryPolicies';
 
 async function runInventoryTests() {
   console.log('======================================================');
@@ -119,7 +130,7 @@ async function runInventoryTests() {
     is_active: true,
   });
 
-  // TEST 1: Inventory Policies & Arithmetic Precision
+  // TEST 1: Inventory Policies, Scaled Arithmetic & Weighted Average Cost
   try {
     const sum = addQty(10.1234, 5.5678);
     assert.strictEqual(sum, 15.6912);
@@ -133,9 +144,63 @@ async function runInventoryTests() {
     const avail = calculateAvailable(100, 15, 5, 2);
     assert.strictEqual(avail, 78);
 
-    markPassed('1. Exact Integer-Scaled Arithmetic & Available Calculation');
+    // 1b. Weighted Average Cost Exact Calculations (INV-001R3 Section 4)
+    // Zero opening stock:
+    assert.strictEqual(
+      calculateWeightedAverageCostExact(0, 0, 10, 15.25),
+      '15.25',
+      'Zero opening stock must adopt received unit cost'
+    );
+    // Integer quantities:
+    // 10 units @ 10.00 + 10 units @ 20.00 = 20 units, value 300.00 -> 15.00
+    assert.strictEqual(
+      calculateWeightedAverageCostExact(10, 10.0, 10, 20.0),
+      '15.00',
+      'Integer quantities WAC calculation'
+    );
+    // Fractional quantities:
+    // 10.5000 units @ 10.00 + 4.2500 units @ 15.00 = 14.7500 units, value 105.00 + 63.75 = 168.75 -> 11.44
+    assert.strictEqual(
+      calculateWeightedAverageCostExact('10.5000', '10.00', '4.2500', '15.00'),
+      '11.44',
+      'Fractional quantities WAC calculation'
+    );
+    // Fractional unit costs:
+    // 5 units @ 12.3333 + 5 units @ 14.6667 = 10 units, value 61.6665 + 73.3335 = 135.0000 -> 13.50
+    assert.strictEqual(
+      calculateWeightedAverageCostExact(5, '12.3333', 5, '14.6667'),
+      '13.50',
+      'Fractional unit costs WAC calculation'
+    );
+    // Large quantities:
+    // 1,000,000 units @ 100.00 + 500,000 units @ 150.00 = 1,500,000 units, value 175,000,000 -> 116.67
+    assert.strictEqual(
+      calculateWeightedAverageCostExact('1000000.0000', '100.00', '500000.0000', '150.00'),
+      '116.67',
+      'Large quantities WAC calculation'
+    );
+    // Repeated receipts:
+    let wac = calculateWeightedAverageCostExact(10, 10.0, 10, 20.0); // 15.00
+    assert.strictEqual(wac, '15.00');
+    wac = calculateWeightedAverageCostExact(20, wac, 20, 30.0); // (20*15 + 20*30)/40 = 900/40 = 22.50
+    assert.strictEqual(wac, '22.50', 'Repeated receipts WAC calculation');
+    // Rounding boundaries:
+    // 10 units @ 10.00 + 10 units @ 10.005 -> value 100 + 100.05 = 200.05 / 20 = 10.0025 -> rounds to 10.00
+    assert.strictEqual(
+      calculateWeightedAverageCostExact(10, '10.0000', 10, '10.0050'),
+      '10.00',
+      'Rounding boundary (.0025 rounds down to .00)'
+    );
+    // 10 units @ 10.00 + 10 units @ 10.010 -> value 200.10 / 20 = 10.005 -> rounds half-up to 10.01
+    assert.strictEqual(
+      calculateWeightedAverageCostExact(10, '10.0000', 10, '10.0100'),
+      '10.01',
+      'Rounding boundary (.005 rounds half-up to .01)'
+    );
+
+    markPassed('1. Exact Integer-Scaled Arithmetic & Weighted Average Cost Calculations');
   } catch (err) {
-    markFailed('1. Exact Integer-Scaled Arithmetic & Available Calculation', err);
+    markFailed('1. Exact Integer-Scaled Arithmetic & Weighted Average Cost Calculations', err);
   }
 
   // TEST 2: Record Opening Balance & Initial Ledger Entry
@@ -153,17 +218,17 @@ async function runInventoryTests() {
       adminUserId
     );
 
-    assert.strictEqual(res.balance.on_hand, 150.5);
-    assert.strictEqual(res.balance.reserved, 0);
-    assert.strictEqual(res.balance.damaged, 0);
-    assert.strictEqual(res.balance.expired, 0);
-    assert.strictEqual(res.balance.in_transit, 0);
-    assert.strictEqual(res.balance.available, 150.5);
+    assert.strictEqual(res.balance.on_hand, '150.5000');
+    assert.strictEqual(res.balance.reserved, '0.0000');
+    assert.strictEqual(res.balance.damaged, '0.0000');
+    assert.strictEqual(res.balance.expired, '0.0000');
+    assert.strictEqual(res.balance.in_transit, '0.0000');
+    assert.strictEqual(res.balance.available, '150.5000');
 
     assert.strictEqual(res.movement.movement_type, 'OPENING_BALANCE');
-    assert.strictEqual(res.movement.quantity_change, 150.5);
-    assert.strictEqual(res.movement.previous_balance, 0);
-    assert.strictEqual(res.movement.new_balance, 150.5);
+    assert.strictEqual(res.movement.quantity_change, '150.5000');
+    assert.strictEqual(res.movement.previous_balance, '0.0000');
+    assert.strictEqual(res.movement.new_balance, '150.5000');
 
     // Test idempotency: replaying same key returns existing record without duplicating
     const replay = await inventoryService.recordOpeningBalance(
@@ -176,7 +241,7 @@ async function runInventoryTests() {
       },
       adminUserId
     );
-    assert.strictEqual(replay.balance.on_hand, 150.5);
+    assert.strictEqual(replay.balance.on_hand, '150.5000');
 
     markPassed('2. Record Opening Balance & Idempotent Replay');
   } catch (err) {
@@ -196,9 +261,9 @@ async function runInventoryTests() {
       },
       adminUserId
     );
-    assert.strictEqual(adjUp.balance.on_hand, 175.5);
-    assert.strictEqual(adjUp.movement.previous_balance, 150.5);
-    assert.strictEqual(adjUp.movement.new_balance, 175.5);
+    assert.strictEqual(adjUp.balance.on_hand, '175.5000');
+    assert.strictEqual(adjUp.movement.previous_balance, '150.5000');
+    assert.strictEqual(adjUp.movement.new_balance, '175.5000');
 
     // Downward adjustment
     const adjDown = await inventoryService.recordAdjustment(
@@ -211,7 +276,7 @@ async function runInventoryTests() {
       },
       adminUserId
     );
-    assert.strictEqual(adjDown.balance.on_hand, 165);
+    assert.strictEqual(adjDown.balance.on_hand, '165.0000');
 
     // Attempting excessive negative adjustment when allowNegativeStock is false should fail
     await assert.rejects(
@@ -251,9 +316,9 @@ async function runInventoryTests() {
       },
       adminUserId
     );
-    assert.strictEqual(qDam.on_hand, 165);
-    assert.strictEqual(qDam.damaged, 10);
-    assert.strictEqual(qDam.available, 155);
+    assert.strictEqual(qDam.on_hand, '165.0000');
+    assert.strictEqual(qDam.damaged, '10.0000');
+    assert.strictEqual(qDam.available, '155.0000');
 
     // Quarantine 5 as expired
     const qExp = await inventoryService.quarantineStock(
@@ -267,9 +332,9 @@ async function runInventoryTests() {
       },
       adminUserId
     );
-    assert.strictEqual(qExp.on_hand, 165);
-    assert.strictEqual(qExp.expired, 5);
-    assert.strictEqual(qExp.available, 150);
+    assert.strictEqual(qExp.on_hand, '165.0000');
+    assert.strictEqual(qExp.expired, '5.0000');
+    assert.strictEqual(qExp.available, '150.0000');
 
     // Cannot quarantine more than available
     await assert.rejects(
@@ -300,11 +365,11 @@ async function runInventoryTests() {
       },
       adminUserId
     );
-    assert.strictEqual(wOff.balance.on_hand, 160);
-    assert.strictEqual(wOff.balance.damaged, 5);
-    assert.strictEqual(wOff.balance.available, 150);
+    assert.strictEqual(wOff.balance.on_hand, '160.0000');
+    assert.strictEqual(wOff.balance.damaged, '5.0000');
+    assert.strictEqual(wOff.balance.available, '150.0000');
     assert.strictEqual(wOff.movement.movement_type, 'DAMAGE_WRITE_OFF');
-    assert.strictEqual(wOff.movement.quantity_change, -5);
+    assert.strictEqual(wOff.movement.quantity_change, '-5.0000');
 
     markPassed('4. Stock Quarantine (Damage/Expiry) & Write-Off Ledger');
   } catch (err) {
@@ -328,12 +393,12 @@ async function runInventoryTests() {
       adminUserId
     );
     assert.strictEqual(res1.status, 'ACTIVE');
-    assert.strictEqual(res1.quantity, 20);
+    assert.strictEqual(res1.quantity, '20.0000');
 
     const balAfterRes = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
-    assert.strictEqual(balAfterRes!.reserved, 20);
-    assert.strictEqual(balAfterRes!.available, 130);
-    assert.strictEqual(balAfterRes!.on_hand, 160);
+    assert.strictEqual(balAfterRes!.reserved, '20.0000');
+    assert.strictEqual(balAfterRes!.available, '130.0000');
+    assert.strictEqual(balAfterRes!.on_hand, '160.0000');
 
     // 2. Attempt to reserve more than available (130) -> should fail
     await assert.rejects(
@@ -358,9 +423,9 @@ async function runInventoryTests() {
     assert.strictEqual(fulfilled.status, 'FULFILLED');
 
     const balAfterFul = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
-    assert.strictEqual(balAfterFul!.on_hand, 140);
-    assert.strictEqual(balAfterFul!.reserved, 0);
-    assert.strictEqual(balAfterFul!.available, 130);
+    assert.strictEqual(balAfterFul!.on_hand, '140.0000');
+    assert.strictEqual(balAfterFul!.reserved, '0.0000');
+    assert.strictEqual(balAfterFul!.available, '130.0000');
 
     // 4. Create another reservation and release it
     const res2 = await reservationService.createReservation(
@@ -380,9 +445,9 @@ async function runInventoryTests() {
     assert.strictEqual(released.status, 'RELEASED');
 
     const balAfterRel = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
-    assert.strictEqual(balAfterRel!.reserved, 0);
-    assert.strictEqual(balAfterRel!.available, 130);
-    assert.strictEqual(balAfterRel!.on_hand, 140);
+    assert.strictEqual(balAfterRel!.reserved, '0.0000');
+    assert.strictEqual(balAfterRel!.available, '130.0000');
+    assert.strictEqual(balAfterRel!.on_hand, '140.0000');
 
     markPassed('5. First-Class Inventory Reservations (Lifecycle & Invariants)');
   } catch (err) {
@@ -408,7 +473,7 @@ async function runInventoryTests() {
     );
     assert.strictEqual(transfer.status, 'REQUESTED');
     assert.strictEqual(items.length, 1);
-    assert.strictEqual(items[0].requested_quantity, 40);
+    assert.strictEqual(items[0].requested_quantity, '40.0000');
 
     // Approve transfer
     const approved = await transferService.approveTransfer('org_inv_a', transfer.id, adminUserId);
@@ -421,12 +486,12 @@ async function runInventoryTests() {
     // Verify balances after dispatch:
     // Source WH A on_hand reduced by 40 (140 -> 100)
     const whBalAfterDisp = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
-    assert.strictEqual(whBalAfterDisp!.on_hand, 100);
+    assert.strictEqual(whBalAfterDisp!.on_hand, '100.0000');
 
     // Dest Store A in_transit increased by 40 (0 -> 40), on_hand still 0
     const storeBalAfterDisp = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
-    assert.strictEqual(storeBalAfterDisp!.in_transit, 40);
-    assert.strictEqual(storeBalAfterDisp!.on_hand, 0);
+    assert.strictEqual(storeBalAfterDisp!.in_transit, '40.0000');
+    assert.strictEqual(storeBalAfterDisp!.on_hand, '0.0000');
 
     // Receive transfer at Store A
     const received = await transferService.receiveTransfer(
@@ -440,9 +505,9 @@ async function runInventoryTests() {
     // Verify balances after receipt:
     // Dest Store A in_transit 0, on_hand 40, available 40
     const storeBalAfterRec = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
-    assert.strictEqual(storeBalAfterRec!.in_transit, 0);
-    assert.strictEqual(storeBalAfterRec!.on_hand, 40);
-    assert.strictEqual(storeBalAfterRec!.available, 40);
+    assert.strictEqual(storeBalAfterRec!.in_transit, '0.0000');
+    assert.strictEqual(storeBalAfterRec!.on_hand, '40.0000');
+    assert.strictEqual(storeBalAfterRec!.available, '40.0000');
 
     markPassed('6. Multi-Location Stock Transfer Lifecycle (Dispatch -> In-Transit -> Receive)');
   } catch (err) {
@@ -477,20 +542,20 @@ async function runInventoryTests() {
 
     // Check items for variance: variance = received - dispatched = 18 - 20 = -2
     const transferDetails = await transferService.getTransfer('org_inv_a', transfer.id);
-    assert.strictEqual(transferDetails!.items[0].dispatched_quantity, 20);
-    assert.strictEqual(transferDetails!.items[0].received_quantity, 18);
-    assert.strictEqual(transferDetails!.items[0].variance_quantity, -2);
+    assert.strictEqual(transferDetails!.items[0].dispatched_quantity, '20.0000');
+    assert.strictEqual(transferDetails!.items[0].received_quantity, '18.0000');
+    assert.strictEqual(transferDetails!.items[0].variance_quantity, '-2.0000');
 
     // Verify VARIANCE_RECORDED event in append-only event ledger
     const events = await transferService.getTransferEvents('org_inv_a', transfer.id);
     const varEvent = events.find((e) => e.event_type === 'VARIANCE_RECORDED');
     assert.ok(varEvent, 'VARIANCE_RECORDED event must exist in ledger');
-    assert.strictEqual(varEvent!.quantity, -2);
+    assert.strictEqual(varEvent!.quantity, '-2.0000');
 
     // Dest Store A on_hand increased by 18 (40 -> 58), in_transit is cleared to 0
     const storeBal = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
-    assert.strictEqual(storeBal!.on_hand, 58);
-    assert.strictEqual(storeBal!.in_transit, 0);
+    assert.strictEqual(storeBal!.on_hand, '58.0000');
+    assert.strictEqual(storeBal!.in_transit, '0.0000');
 
     markPassed('7. Stock Transfer with Discrepancy & Variance Handling');
   } catch (err) {
@@ -511,7 +576,7 @@ async function runInventoryTests() {
       adminUserId
     );
     assert.strictEqual(count.status, 'IN_PROGRESS');
-    assert.strictEqual(items[0].system_quantity, 58);
+    assert.strictEqual(items[0].system_quantity, '58.0000');
 
     // Auditor finds 60 units (2 extra units found)
     const submitted = await stockCountService.submitStockCount(
@@ -528,7 +593,7 @@ async function runInventoryTests() {
 
     // Check balance updated to 60
     const storeBal = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
-    assert.strictEqual(storeBal!.on_hand, 60);
+    assert.strictEqual(storeBal!.on_hand, '60.0000');
 
     // Check ledger movement recorded
     const movements = await inventoryService.listMovements('org_inv_a', {
@@ -537,7 +602,7 @@ async function runInventoryTests() {
       movementType: 'ADJUSTMENT_STOCKTAKE',
     });
     assert.strictEqual(movements.length, 1);
-    assert.strictEqual(movements[0].quantity_change, 2);
+    assert.strictEqual(toQtyString(movements[0].quantity_change), '2.0000');
 
     markPassed('8. Physical Stock Counts & Compensating Reconciliation Movements');
   } catch (err) {
@@ -587,12 +652,13 @@ async function runInventoryTests() {
 
   // TEST 10: Real HTTP Endpoints & RBAC Permissions
   let server: http.Server | null = null;
+  let baseUrl = '';
   try {
     const { app } = await createApp({ db, authService, skipVite: true });
     server = http.createServer(app);
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const port = (server.address() as any).port;
-    const baseUrl = `http://127.0.0.1:${port}`;
+    baseUrl = `http://127.0.0.1:${port}`;
 
     // Generate tokens
     const adminToken = (await authService.login({
@@ -682,6 +748,296 @@ async function runInventoryTests() {
     markPassed('10. Real HTTP Inventory Endpoints, RBAC Gates & Cross-Tenant Defense');
   } catch (err) {
     markFailed('10. Real HTTP Inventory Endpoints, RBAC Gates & Cross-Tenant Defense', err);
+  }
+
+  // TEST 11: Background Reservation Expiry Engine & Expire-Stale Endpoint (INV-001R3 Section 5)
+  try {
+    const adminToken = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@omnicore.test',
+      password: 'Password123!',
+    })).token;
+
+    // Create an active reservation that expires in 1 second
+    const expRes = await reservationService.createReservation(
+      'org_inv_a',
+      {
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: 5,
+        reference_type: 'ORDER',
+        reference_id: 'ord_stale_test',
+        expires_at: new Date(Date.now() - 60000).toISOString(), // already expired!
+      },
+      adminUserId
+    );
+    assert.strictEqual(expRes.status, 'ACTIVE');
+
+    // Reserved quantity should be 5
+    const balBeforeExpire = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+    const reservedBefore = balBeforeExpire!.reserved;
+
+    // Call POST /api/inventory/reservations/expire-stale
+    const expireHttpRes = await fetch(`${baseUrl}/api/inventory/reservations/expire-stale`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        Connection: 'close',
+      },
+    });
+    assert.strictEqual(expireHttpRes.status, 200);
+    const expireBody = await expireHttpRes.json();
+    assert.strictEqual(expireBody.success, true);
+    assert.ok(expireBody.data.expired_count >= 1, 'At least 1 stale reservation must be expired');
+
+    // Verify reservation status is now EXPIRED
+    const staleCheck = await reservationService.getReservation('org_inv_a', expRes.id);
+    assert.strictEqual(staleCheck!.status, 'EXPIRED');
+
+    // Verify reserved balance dropped back by 5
+    const balAfterExpire = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+    const reservedDelta = BigInt(Math.round(Number(reservedBefore) * 10000)) -
+                          BigInt(Math.round(Number(balAfterExpire!.reserved) * 10000));
+    assert.strictEqual(reservedDelta, 50000n, 'Reserved balance must be released back to available upon expiry');
+
+    markPassed('11. Background Reservation Expiry Engine & Expire-Stale Endpoint');
+  } catch (err) {
+    markFailed('11. Background Reservation Expiry Engine & Expire-Stale Endpoint', err);
+  }
+
+  // TEST 12: Tenant Override Guard via HTTP (INV-001R3 Section 4)
+  try {
+    const adminToken = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@omnicore.test',
+      password: 'Password123!',
+    })).token;
+
+    // Attacker tries to inject ?organization_id=org_inv_b or body organization_id to escape tenant
+    const rogueRes = await fetch(`${baseUrl}/api/inventory/adjustments?organization_id=org_inv_b`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+        Connection: 'close',
+      },
+      body: JSON.stringify({
+        organization_id: 'org_inv_b',
+        location_id: 'loc_wh_a', // belongs to Org A
+        variant_id: 'var_a1',
+        quantity_change: 1,
+        reason: 'Rogue tenant parameter injection',
+      }),
+    });
+
+    assert.strictEqual(rogueRes.status, 200);
+    const rogueBody = await rogueRes.json();
+    // The created record must be bound strictly to org_inv_a, completely ignoring rogue tenant inputs
+    assert.strictEqual(rogueBody.data.movement.organization_id, 'org_inv_a');
+    assert.strictEqual(rogueBody.data.balance.organization_id, 'org_inv_a');
+
+    markPassed('12. Tenant Override Defense (HTTP Tenant Extraction from req.auth Only)');
+  } catch (err) {
+    markFailed('12. Tenant Override Defense (HTTP Tenant Extraction from req.auth Only)', err);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 13: HTTP Quantity Validation & Exact Decimal Enforcement (INV-001R3 Section 6)
+  // -------------------------------------------------------------------------
+  try {
+    const adminToken = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@omnicore.test',
+      password: 'Password123!',
+    })).token;
+
+    // 13a. Valid 4-decimal quantity string accepted
+    const validQtyRes = await fetch(`${baseUrl}/api/inventory/opening-balance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+        Connection: 'close',
+      },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a2',
+        quantity: '12.5000',
+        unit_cost: '7.50',
+        idempotency_key: 'open_var_a2_exact',
+      }),
+    });
+    assert.strictEqual(validQtyRes.status, 201, 'Valid exact quantity string "12.5000" must be accepted with 201');
+    const validQtyBody = await validQtyRes.json();
+    assert.strictEqual(validQtyBody.data.movement.quantity_change, '12.5000');
+    assert.strictEqual(validQtyBody.data.balance.on_hand, '12.5000');
+
+    // 13b. Rejection of invalid quantity inputs:
+    const invalidInputs = [
+      { val: 'NaN', desc: 'NaN string' },
+      { val: 'Infinity', desc: 'Infinity string' },
+      { val: '1e309', desc: 'Exponential overflow 1e309' },
+      { val: 'abc', desc: 'Non-numeric string "abc"' },
+      { val: '', desc: 'Empty string ""' },
+      { val: null, desc: 'null value' },
+      { val: -5, desc: 'Negative value where prohibited' },
+      { val: '12.12345', desc: 'More than 4 decimal places' },
+    ];
+
+    for (const item of invalidInputs) {
+      const rejectRes = await fetch(`${baseUrl}/api/inventory/opening-balance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+          Connection: 'close',
+        },
+        body: JSON.stringify({
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a2',
+          quantity: item.val,
+          idempotency_key: `open_reject_${Date.now()}_${Math.random()}`,
+        }),
+      });
+      assert.strictEqual(
+        rejectRes.status,
+        400,
+        `Invalid quantity input '${item.desc}' must be rejected with 400 Bad Request, got ${rejectRes.status}`
+      );
+      const errBody = await rejectRes.json();
+      assert.strictEqual(errBody.success, false);
+      assert.ok(
+        errBody.error.code === 'VALIDATION_ERROR' || errBody.error.code === 'INVALID_QUANTITY',
+        `Must return validation error code for '${item.desc}'`
+      );
+    }
+
+    markPassed('13. HTTP Quantity Validation & Exact Decimal Enforcement (NaN, Infinity, 1e309, null, negative, precision)');
+  } catch (err) {
+    markFailed('13. HTTP Quantity Validation & Exact Decimal Enforcement', err);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 14: Reservation Idempotency & Database Constraint Concurrency (INV-001R3 Section 7)
+  // -------------------------------------------------------------------------
+  try {
+    const adminToken = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@omnicore.test',
+      password: 'Password123!',
+    })).token;
+
+    const resKey = `res_idem_key_${Date.now()}`;
+
+    // 14a. Create initial reservation with idempotency key
+    const createRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+        Connection: 'close',
+      },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: '5.0000',
+        reference_type: 'order',
+        reference_id: 'ord_idem_test_1',
+        idempotency_key: resKey,
+      }),
+    });
+    assert.strictEqual(createRes.status, 201, 'Initial reservation creation must return 201');
+    const createBody = await createRes.json();
+    const initialReservationId = createBody.data.id;
+
+    // 14b. Same key + identical payload -> safe idempotent replay (same reservation returned)
+    const replayRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+        Connection: 'close',
+      },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: '5.0000',
+        reference_type: 'order',
+        reference_id: 'ord_idem_test_1',
+        idempotency_key: resKey,
+      }),
+    });
+    assert.strictEqual(replayRes.status, 201, 'Idempotent reservation replay must succeed');
+    const replayBody = await replayRes.json();
+    assert.strictEqual(replayBody.data.id, initialReservationId, 'Must return same reservation record');
+
+    // 14c. Same key + conflicting payload -> rejected with 409 IDEMPOTENCY_CONFLICT
+    const conflictRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+        Connection: 'close',
+      },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: '10.0000', // Conflicting quantity (10 vs 5)
+        reference_type: 'order',
+        reference_id: 'ord_idem_test_1',
+        idempotency_key: resKey,
+      }),
+    });
+    assert.strictEqual(conflictRes.status, 409, 'Conflicting reservation payload must be rejected with 409');
+    const conflictBody = await conflictRes.json();
+    assert.strictEqual(conflictBody.error.code, 'IDEMPOTENCY_CONFLICT');
+
+    // 14d. Real concurrent reservation requests with same key -> database unique constraint ensures single reservation
+    const concKey = `res_conc_key_${Date.now()}`;
+    const concPromises = [
+      reservationService.createReservation(
+        'org_inv_a',
+        {
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity: '2.0000',
+          reference_type: 'order',
+          reference_id: 'ord_conc_test',
+          idempotency_key: concKey,
+        },
+        adminUserId
+      ),
+      reservationService.createReservation(
+        'org_inv_a',
+        {
+          location_id: 'loc_wh_a',
+          variant_id: 'var_a1',
+          quantity: '2.0000',
+          reference_type: 'order',
+          reference_id: 'ord_conc_test',
+          idempotency_key: concKey,
+        },
+        adminUserId
+      ),
+    ];
+
+    const concResults = await Promise.allSettled(concPromises);
+    assert.strictEqual(concResults[0].status, 'fulfilled', 'First concurrent reservation must succeed');
+    assert.strictEqual(concResults[1].status, 'fulfilled', 'Second concurrent reservation must succeed idempotently');
+    const res1 = (concResults[0] as PromiseFulfilledResult<any>).value;
+    const res2 = (concResults[1] as PromiseFulfilledResult<any>).value;
+    assert.strictEqual(res1.id, res2.id, 'Both callers must receive the exact same reservation record');
+
+    // Verify DB count: exactly ONE reservation row exists for this key
+    const dbCheck = await db.query(
+      `SELECT COUNT(*)::int as cnt FROM inventory_reservations WHERE organization_id = $1 AND idempotency_key = $2`,
+      ['org_inv_a', concKey]
+    );
+    assert.strictEqual(dbCheck.rows[0].cnt, 1, 'Database must contain exactly 1 reservation row');
+
+    markPassed('14. Reservation Idempotency & Database Constraint Concurrency (Safe Replay, 409 Conflict, DB Constraint)');
+  } catch (err) {
+    markFailed('14. Reservation Idempotency & Database Constraint Concurrency', err);
   } finally {
     if (server) {
       (server as any).closeAllConnections?.();

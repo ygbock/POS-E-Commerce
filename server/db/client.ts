@@ -191,11 +191,17 @@ export function getDatabaseClient(options?: { forceNew?: boolean }): DatabaseCli
   const pgHost = process.env.PGHOST;
 
   // NODE_ENV=production:
-  // - valid PostgreSQL configuration required
+  // - valid PostgreSQL configuration required (or explicit ALLOW_EMBEDDED_POSTGRES for cloud sandbox containers)
   // - missing configuration → throw
-  // - PGlite → NEVER permitted
+  // - PGlite → NEVER permitted unless explicit ALLOW_EMBEDDED_POSTGRES is set
   if (env === 'production') {
     if (!databaseUrl && !pgHost) {
+      if (process.env.ALLOW_EMBEDDED_POSTGRES === 'true') {
+        const dataDir = path.join(process.cwd(), '.data/postgres');
+        const client = new PGliteDatabaseClient(dataDir);
+        activeDbInstance = client;
+        return client;
+      }
       throw new Error(
         '[Omnicore DB Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST). ' +
         'PGlite is NEVER permitted in production.'

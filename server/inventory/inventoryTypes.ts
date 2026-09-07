@@ -1,21 +1,24 @@
 /**
- * Authoritative Inventory Domain Types (INV-001)
+ * Authoritative Inventory Domain Types (INV-001 / INV-001R3)
  * 
  * Server-authoritative data models, DTOs, and status enums.
  * Balances are a transactional projection of an immutable inventory movement ledger.
+ * Quantities are exact fixed 4-decimal strings (e.g. "12.5000") backed by BigInt scaled arithmetic.
  */
+
+export type Quantity = string;
 
 export interface InventoryBalanceRecord {
   id: string;
   organization_id: string;
   location_id: string;
   variant_id: string;
-  on_hand: number;
-  reserved: number;
-  damaged: number;
-  expired: number;
-  in_transit: number;
-  available: number;
+  on_hand: Quantity;
+  reserved: Quantity;
+  damaged: Quantity;
+  expired: Quantity;
+  in_transit: Quantity;
+  available: Quantity;
   created_at?: string;
   updated_at?: string;
 }
@@ -43,10 +46,10 @@ export interface InventoryMovementRecord {
   location_id: string;
   variant_id: string;
   movement_type: MovementType;
-  quantity_change: number;
-  previous_balance: number;
-  new_balance: number;
-  unit_cost: number;
+  quantity_change: Quantity;
+  previous_balance: Quantity;
+  new_balance: Quantity;
+  unit_cost: string;
   reference_type?: string | null;
   reference_id?: string | null;
   reason?: string | null;
@@ -67,10 +70,11 @@ export interface InventoryReservationRecord {
   organization_id: string;
   location_id: string;
   variant_id: string;
-  quantity: number;
+  quantity: Quantity;
   reference_type: string;
   reference_id: string;
   status: ReservationStatus;
+  idempotency_key?: string | null;
   notes?: string | null;
   expires_at?: string | null;
   created_by: string;
@@ -110,7 +114,7 @@ export interface InventoryTransferEventRecord {
   event_type: TransferEventType;
   from_status?: TransferStatus | null;
   to_status: TransferStatus;
-  quantity?: number | null;
+  quantity?: Quantity | null;
   actor_id: string;
   source_location_id?: string | null;
   destination_location_id?: string | null;
@@ -151,11 +155,11 @@ export interface InventoryTransferItemRecord {
   id: string;
   transfer_id: string;
   variant_id: string;
-  requested_quantity: number;
-  approved_quantity: number;
-  dispatched_quantity: number;
-  received_quantity: number;
-  variance_quantity: number;
+  requested_quantity: Quantity;
+  approved_quantity: Quantity;
+  dispatched_quantity: Quantity;
+  received_quantity: Quantity;
+  variance_quantity: Quantity;
   notes?: string | null;
   created_at?: string;
 }
@@ -183,9 +187,9 @@ export interface StockCountItemRecord {
   id: string;
   stock_count_id: string;
   variant_id: string;
-  system_quantity: number;
-  counted_quantity: number;
-  variance_quantity: number;
+  system_quantity: Quantity;
+  counted_quantity: Quantity;
+  variance_quantity: Quantity;
   notes?: string | null;
   created_at?: string;
 }

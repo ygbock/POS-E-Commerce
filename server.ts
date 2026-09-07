@@ -12,6 +12,7 @@ import { CustomerRepository } from './server/repositories/customerRepository.ts'
 import { InventoryRepository } from './server/repositories/inventoryRepository.ts';
 import { AuditRepository } from './server/repositories/auditRepository.ts';
 import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
+import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
 import {
   createAuthenticateMiddleware,
   requireAuth,
@@ -1221,6 +1222,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
   app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
+  if (process.env.NODE_ENV !== 'test') {
+    app.locals.reservationExpiryWorker = startReservationExpiryWorker({ db });
+  }
 
   // Orders Query (Tenant-scoped)
   app.get(
@@ -1493,6 +1497,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
 export async function startServer() {
   const PORT = 3000;
+
+  // In cloud sandbox containers without external PostgreSQL configured, enable embedded persistent PostgreSQL engine
+  if (!process.env.DATABASE_URL && !process.env.PGHOST) {
+    console.warn('[Omnicore DB] No external DATABASE_URL or PGHOST detected in container environment. Booting persistent embedded PostgreSQL engine (.data/postgres).');
+    process.env.ALLOW_EMBEDDED_POSTGRES = 'true';
+  }
+
   const { app } = await createApp();
 
   app.listen(PORT, '0.0.0.0', () => {

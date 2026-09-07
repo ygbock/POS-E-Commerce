@@ -6,21 +6,21 @@ import {
   TransferStatus,
   TransferEventType,
 } from '../inventory/inventoryTypes';
-import { roundQty } from '../inventory/inventoryPolicies';
+import { toQtyString, generateInventoryId } from '../inventory/inventoryPolicies';
 
 function mapTransferItemRow(row: any): InventoryTransferItemRecord {
   return {
     id: row.id,
     transfer_id: row.transfer_id,
     variant_id: row.variant_id,
-    requested_quantity: roundQty(row.requested_quantity),
+    requested_quantity: toQtyString(row.requested_quantity),
     approved_quantity:
       row.approved_quantity !== null && row.approved_quantity !== undefined
-        ? roundQty(row.approved_quantity)
+        ? toQtyString(row.approved_quantity)
         : null,
-    dispatched_quantity: roundQty(row.dispatched_quantity || 0),
-    received_quantity: roundQty(row.received_quantity || 0),
-    variance_quantity: roundQty(row.variance_quantity || 0),
+    dispatched_quantity: toQtyString(row.dispatched_quantity || 0),
+    received_quantity: toQtyString(row.received_quantity || 0),
+    variance_quantity: toQtyString(row.variance_quantity || 0),
     notes: row.notes,
     created_at: row.created_at,
   };
@@ -37,8 +37,8 @@ function mapTransferEventRow(row: any): InventoryTransferEventRecord {
     to_status: row.to_status,
     quantity:
       row.quantity !== null && row.quantity !== undefined
-        ? roundQty(row.quantity)
-        : 0,
+        ? toQtyString(row.quantity)
+        : '0.0000',
     actor_id: row.actor_id,
     source_location_id: row.source_location_id,
     destination_location_id: row.destination_location_id,
@@ -81,8 +81,8 @@ export class InventoryTransferRepository {
     items: Array<{
       id: string;
       variant_id: string;
-      requested_quantity: number;
-      approved_quantity?: number;
+      requested_quantity: number | string;
+      approved_quantity?: number | string;
       notes?: string | null;
     }>,
     client?: DatabaseClient
@@ -134,8 +134,8 @@ export class InventoryTransferRepository {
             item.id,
             transferData.id,
             item.variant_id,
-            roundQty(item.requested_quantity),
-            item.approved_quantity !== undefined ? roundQty(item.approved_quantity) : roundQty(item.requested_quantity),
+            toQtyString(item.requested_quantity),
+            item.approved_quantity !== undefined ? toQtyString(item.approved_quantity) : toQtyString(item.requested_quantity),
             item.notes || null,
           ]
         );
@@ -495,7 +495,7 @@ export class InventoryTransferRepository {
                  requested_quantity::text, approved_quantity::text,
                  dispatched_quantity::text, received_quantity::text,
                  variance_quantity::text, notes, created_at`,
-      [roundQty(dispatchedQty), itemId, organizationId]
+      [toQtyString(dispatchedQty), itemId, organizationId]
     );
     if (!res.rows[0]) return null;
     return mapTransferItemRow(res.rows[0]);
@@ -524,7 +524,7 @@ export class InventoryTransferRepository {
                  requested_quantity::text, approved_quantity::text,
                  dispatched_quantity::text, received_quantity::text,
                  variance_quantity::text, notes, created_at`,
-      [roundQty(receivedQty), roundQty(varianceQty), itemId, organizationId]
+      [toQtyString(receivedQty), toQtyString(varianceQty), itemId, organizationId]
     );
     if (!res.rows[0]) return null;
     return mapTransferItemRow(res.rows[0]);
@@ -543,7 +543,7 @@ export class InventoryTransferRepository {
       event_type: TransferEventType;
       from_status?: TransferStatus | null;
       to_status: TransferStatus;
-      quantity?: number;
+      quantity?: string | number;
       actor_id: string;
       source_location_id?: string | null;
       destination_location_id?: string | null;
@@ -560,7 +560,7 @@ export class InventoryTransferRepository {
       throw new Error('TENANT_REQUIRED: Explicit organizationId is required for appendEvent.');
     }
     const db = this.getClient(client);
-    const eventId = eventData.id || `trevt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const eventId = eventData.id || generateInventoryId('trevt');
     const metaStr = eventData.metadata
       ? typeof eventData.metadata === 'string'
         ? eventData.metadata
@@ -586,7 +586,7 @@ export class InventoryTransferRepository {
         eventData.event_type,
         eventData.from_status || null,
         eventData.to_status,
-        eventData.quantity !== undefined ? roundQty(eventData.quantity) : 0,
+        eventData.quantity !== undefined ? toQtyString(eventData.quantity) : '0.0000',
         eventData.actor_id,
         eventData.source_location_id || null,
         eventData.destination_location_id || null,
