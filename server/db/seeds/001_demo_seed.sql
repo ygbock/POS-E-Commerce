@@ -1,10 +1,10 @@
--- Omnicore Unified Commerce
+-- AbaCha Unified Commerce
 -- Demo Seed Data: Development & Testing Demo Data
 -- Strictly isolated from migrations. NEVER executed in production unless explicitly authorized.
 
 -- Default Organization
 INSERT INTO organizations (id, name, code, is_active)
-VALUES ('org_default', 'Omnicore Global Retail Ltd', 'OMNICORE_DEFAULT', TRUE)
+VALUES ('org_default', 'AbaCha Global Retail Ltd', 'ABACHA_DEFAULT', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- Primary Locations

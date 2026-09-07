@@ -1,4 +1,4 @@
--- Omnicore Unified Commerce
+-- AbaCha Unified Commerce
 -- Migration 002: Authentication, Authorization & Security Boundaries
 -- Supports users, RBAC roles, permissions, token revocation, and tenant isolation
 

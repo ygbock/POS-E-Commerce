@@ -1,4 +1,4 @@
--- Omnicore Unified Commerce
+-- AbaCha Unified Commerce
 -- Migration 006: Inventory Integrity Hardening (INV-001R3)
 -- 1. Unique organization-scoped partial index on inventory_movements(organization_id, idempotency_key)
 -- 2. Organization-scoped idempotency for inventory_reservations

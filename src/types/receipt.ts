@@ -38,7 +38,7 @@ export interface ReceiptTemplateConfig {
 export const DEFAULT_RECEIPT_CONFIG: ReceiptTemplateConfig = {
   templateType: 'standard80mm',
   paperWidthMm: 80,
-  storeName: 'OMNICORE RETAIL & COMMERCE',
+  storeName: 'AbaCha Retail & Commerce',
   storeSubtitle: 'Omnichannel POS & Inventory Engine',
   taxRegistrationNumber: 'VAT-98420194-TX',
   showLogoText: true,

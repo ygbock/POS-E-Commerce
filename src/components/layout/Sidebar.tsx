@@ -207,7 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="font-black text-base tracking-tight text-white block leading-tight truncate">
-                  OMNICORE
+                  AbaCha
                 </span>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="System Live" />
               </div>
@@ -222,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div
               onClick={() => handleNavClick('dashboard')}
               className="hidden lg:flex w-9 h-9 mx-auto bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl items-center justify-center font-black text-lg text-white shadow-md shadow-blue-500/25 cursor-pointer hover:scale-105 transition-transform"
-              title="OMNICORE - Go to Dashboard"
+              title="AbaCha - Go to Dashboard"
             >
               O
             </div>

@@ -143,7 +143,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const handleShareProduct = async () => {
     const shareData = {
       title: product.name,
-      text: `${product.name} on Aura Commerce - ${product.shortDescription}`,
+      text: `${product.name} on AbaCha Commerce - ${product.shortDescription}`,
       url: window.location.href,
     };
 
@@ -438,7 +438,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                         {product.brand}
                       </span>
                       <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                        SKU: {selectedVariant.sku || 'AURA-001'}
+                        SKU: {selectedVariant.sku || 'AbaCha-001'}
                       </span>
                     </div>
 

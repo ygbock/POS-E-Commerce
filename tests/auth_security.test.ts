@@ -43,7 +43,7 @@ async function runTest(name: string, fn: () => Promise<void>) {
 
 async function main() {
   console.log('\n======================================================');
-  console.log(' Omnicore SEC-001 Authentication & RBAC Security Tests');
+  console.log(' AbaCha SEC-001 Authentication & RBAC Security Tests');
   console.log('======================================================\n');
 
   const db: DatabaseClient = createIsolatedTestClient();
@@ -66,7 +66,7 @@ async function main() {
       await db.exec(`
         INSERT INTO organizations (id, name, code)
         VALUES 
-          ('org_default', 'Omnicore Global Retail Ltd', 'OMNICORE_DEFAULT'),
+          ('org_default', 'AbaCha Global Retail Ltd', 'ABACHA_DEFAULT'),
           ('org_company_a', 'Company A Retail Ltd', 'COMP_A'),
           ('org_company_b', 'Company B Logistics Inc', 'COMP_B')
         ON CONFLICT (id) DO NOTHING;
@@ -263,7 +263,7 @@ async function main() {
       );
 
       // 11. Future iat (clock skew beyond 60s) -> MALFORMED
-      const secret = 'omnicore-dev-local-jwt-insecure-secret-key-32-chars-min';
+      const secret = 'abacha-dev-local-jwt-insecure-secret-key-32-chars-min';
       const futurePayload = Buffer.from(JSON.stringify({
         sub: 'usr_future',
         orgId: 'org_test',
@@ -354,7 +354,7 @@ async function main() {
       const passHash = await hashPassword('UserSecret123!');
       const createdUser = await userRepo.createUser({
         organizationId: 'org_default',
-        email: 'revocation_test@omnicore.internal',
+        email: 'revocation_test@abacha.internal',
         name: 'Revocation Test User',
         passwordHash: passHash,
         passwordSalt: 'test_salt',
@@ -362,7 +362,7 @@ async function main() {
       });
 
       assert.ok(createdUser.id);
-      assert.strictEqual(createdUser.email, 'revocation_test@omnicore.internal');
+      assert.strictEqual(createdUser.email, 'revocation_test@abacha.internal');
 
       // Issue token with specific JTI
       const jti = generateTokenId();
@@ -391,18 +391,18 @@ async function main() {
 
       // Successful login
       const loginResult = await authService.login({
-        email: 'superadmin@omnicore.internal',
+        email: 'superadmin@abacha.internal',
         password: 'SuperAdmin123!',
         organizationId: 'org_default',
       });
 
       assert.ok(loginResult.token, 'Login must return a JWT token');
-      assert.strictEqual(loginResult.user.email, 'superadmin@omnicore.internal');
+      assert.strictEqual(loginResult.user.email, 'superadmin@abacha.internal');
       assert.strictEqual(loginResult.user.role, ROLES.SUPER_ADMIN);
 
       // Session verification
       const claims = await authService.verifySession(loginResult.token);
-      assert.strictEqual(claims.email, 'superadmin@omnicore.internal');
+      assert.strictEqual(claims.email, 'superadmin@abacha.internal');
       assert.strictEqual(claims.role, ROLES.SUPER_ADMIN);
 
       // Logout (Revoke)
@@ -425,7 +425,7 @@ async function main() {
 
       const authenticContext: AuthContext = {
         userId: 'usr_authentic_01',
-        email: 'authentic@omnicore.internal',
+        email: 'authentic@abacha.internal',
         organizationId: 'org_default',
         role: ROLES.STORE_MANAGER,
         permissions: [PERMISSIONS.PRODUCTS_UPDATE],
@@ -496,7 +496,7 @@ async function main() {
 
       const superAdminContext: AuthContext = {
         userId: 'usr_super',
-        email: 'super@omnicore.internal',
+        email: 'super@abacha.internal',
         organizationId: 'org_default',
         role: ROLES.SUPER_ADMIN,
         permissions: Object.values(PERMISSIONS),
@@ -600,7 +600,7 @@ async function main() {
         // 3. Expired token -> 401
         const expiredToken = signToken({
           userId: 'usr_exp',
-          email: 'exp@omnicore.internal',
+          email: 'exp@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.VIEWER,
           expiresInSeconds: -60,
@@ -623,7 +623,7 @@ async function main() {
         // 5. Valid token -> 200
         const validToken = signToken({
           userId: 'usr_valid_01',
-          email: 'valid@omnicore.internal',
+          email: 'valid@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.STORE_MANAGER,
         });
@@ -676,21 +676,21 @@ async function main() {
       try {
         const cashierToken = signToken({
           userId: 'usr_cashier_real',
-          email: 'cashier@omnicore.internal',
+          email: 'cashier@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.CASHIER,
         });
 
         const managerToken = signToken({
           userId: 'usr_mgr_real',
-          email: 'manager@omnicore.internal',
+          email: 'manager@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.STORE_MANAGER,
         });
 
         const superAdminToken = signToken({
           userId: 'usr_super_real',
-          email: 'super@omnicore.internal',
+          email: 'super@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.SUPER_ADMIN,
         });
@@ -1101,7 +1101,7 @@ async function main() {
       try {
         const legitimateUserToken = signToken({
           userId: 'usr_legitimate_manager',
-          email: 'manager@omnicore.internal',
+          email: 'manager@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.STORE_MANAGER,
         });
@@ -1157,7 +1157,7 @@ async function main() {
         // 2. Authenticated non-admin (Cashier) -> 403
         const cashierToken = signToken({
           userId: 'usr_cashier_diag',
-          email: 'cashier@omnicore.internal',
+          email: 'cashier@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.CASHIER,
         });
@@ -1169,7 +1169,7 @@ async function main() {
         // 3. Super Admin -> 200
         const adminToken = signToken({
           userId: 'usr_super_diag',
-          email: 'admin@omnicore.internal',
+          email: 'admin@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.SUPER_ADMIN,
         });
@@ -1206,7 +1206,7 @@ async function main() {
           const res = await fetch(`${baseUrl}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'admin@omnicore.internal', password: 'WrongPassword!' }),
+            body: JSON.stringify({ email: 'admin@abacha.internal', password: 'WrongPassword!' }),
           });
 
           if (res.status === 429) {
@@ -1504,7 +1504,7 @@ async function main() {
 
         const tokenSuperAdmin = signToken({
           userId: 'usr_super_runner',
-          email: 'super@omnicore.internal',
+          email: 'super@abacha.internal',
           organizationId: 'org_default',
           role: ROLES.SUPER_ADMIN,
         });

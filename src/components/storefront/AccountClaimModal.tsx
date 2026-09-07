@@ -330,7 +330,7 @@ export const AccountClaimModal: React.FC<AccountClaimModalProps> = ({
               <div className="space-y-1">
                 <h3 className="text-xl font-black text-slate-900 dark:text-white">Account Created & Orders Claimed!</h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  Welcome to OmniCore Club, <strong className="text-slate-900 dark:text-white">{fullName}</strong>.
+                  Welcome to AbaCha Club, <strong className="text-slate-900 dark:text-white">{fullName}</strong>.
                 </p>
               </div>
 

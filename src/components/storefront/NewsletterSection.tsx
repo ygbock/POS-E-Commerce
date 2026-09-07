@@ -51,10 +51,10 @@ export const NewsletterSection: React.FC = () => {
       await new Promise((resolve) => setTimeout(resolve, 850));
 
       // Save email to local storage subscription list for persistence
-      const currentList: string[] = JSON.parse(localStorage.getItem('omnicore_newsletter_subscribers') || '[]');
+      const currentList: string[] = JSON.parse(localStorage.getItem('abacha_newsletter_subscribers') || '[]');
       if (!currentList.includes(cleanEmail.toLowerCase())) {
         currentList.push(cleanEmail.toLowerCase());
-        localStorage.setItem('omnicore_newsletter_subscribers', JSON.stringify(currentList));
+        localStorage.setItem('abacha_newsletter_subscribers', JSON.stringify(currentList));
       }
 
       setIsSubscribed(true);
@@ -91,7 +91,7 @@ export const NewsletterSection: React.FC = () => {
             <div className="lg:col-span-6 space-y-3 text-left">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-300 text-xs font-bold">
                 <Gift className="w-3.5 h-3.5 text-amber-400" />
-                <span>Join Aura VIP Club</span>
+                <span>Join AbaCha VIP Club</span>
               </div>
 
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
@@ -202,7 +202,7 @@ export const NewsletterSection: React.FC = () => {
                 </button>
 
                 <p className="text-[10px] text-slate-400 text-center leading-tight">
-                  By subscribing, you agree to receive marketing updates from Aura Store. You can unsubscribe anytime with 1-click.
+                  By subscribing, you agree to receive marketing updates from AbaCha Store. You can unsubscribe anytime with 1-click.
                 </p>
               </form>
             </div>
@@ -216,7 +216,7 @@ export const NewsletterSection: React.FC = () => {
 
             <div>
               <span className="text-xs font-black uppercase tracking-wider text-emerald-400">Subscription Confirmed</span>
-              <h3 className="text-2xl font-black text-white mt-1">Welcome to Aura VIP Club!</h3>
+              <h3 className="text-2xl font-black text-white mt-1">Welcome to AbaCha VIP Club!</h3>
               <p className="text-xs text-slate-300 max-w-md mx-auto mt-1">
                 Your email has been registered. Here is your exclusive 15% welcome discount code:
               </p>

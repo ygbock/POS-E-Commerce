@@ -217,7 +217,7 @@ export const LedgerAndFinance: React.FC = () => {
       {activeFinanceTab === 'pnl' && (
         <div className="max-w-2xl mx-auto bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 text-sm text-slate-900">
           <div className="border-b border-slate-200 pb-3 text-center">
-            <h3 className="text-base font-bold uppercase tracking-wider text-slate-900">OmniCore Statement of Profit & Loss</h3>
+            <h3 className="text-base font-bold uppercase tracking-wider text-slate-900">AbaCha Statement of Profit & Loss</h3>
             <p className="text-slate-500 text-xs mt-0.5">Real-time consolidated multi-channel accounting</p>
           </div>
 

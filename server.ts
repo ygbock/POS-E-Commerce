@@ -83,17 +83,17 @@ export async function createApp(options: CreateAppOptions = {}) {
         dbStatus.migrationsApplied = Array.from(applied);
         dbStatus.version = Array.from(applied).pop() || '000';
         // Production/server startup is decoupled from fixture seeding. Fixture seeding lives exclusively in CLI seed scripts.
-        console.log(`[Omnicore DB] Connected (${dbStatus.engine}). Schema: ${dbStatus.version}`);
+        console.log(`[AbaCha DB] Connected (${dbStatus.engine}). Schema: ${dbStatus.version}`);
       }
     } catch (dbErr: any) {
       dbStatus.error = dbErr.message || 'Database initialization error';
       db = getDatabaseClient();
       authService = options.authService || new AuthService();
       if (isProd) {
-        console.error('[Omnicore DB Fatal] Production PostgreSQL startup failed:', dbStatus.error);
-        throw new Error(`[Omnicore DB Fatal] Production PostgreSQL startup failed: ${dbStatus.error}`);
+        console.error('[AbaCha DB Fatal] Production PostgreSQL startup failed:', dbStatus.error);
+        throw new Error(`[AbaCha DB Fatal] Production PostgreSQL startup failed: ${dbStatus.error}`);
       } else {
-        console.warn('[Omnicore DB] Non-production running in degraded persistence mode:', dbStatus.error);
+        console.warn('[AbaCha DB] Non-production running in degraded persistence mode:', dbStatus.error);
       }
     }
   }
@@ -278,7 +278,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       isDbHealthy = false;
       dbStatus.connected = false;
       dbStatus.error = err.message || 'Database ping error';
-      console.error('[Omnicore Health Check] Database connection failure:', dbStatus.error);
+      console.error('[AbaCha Health Check] Database connection failure:', dbStatus.error);
     }
 
     if (!isDbHealthy) {
@@ -322,7 +322,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       isDbHealthy = false;
       dbStatus.connected = false;
       dbStatus.error = err.message || 'Database ping error';
-      console.error('[Omnicore Ready Check] Database unavailable:', dbStatus.error);
+      console.error('[AbaCha Ready Check] Database unavailable:', dbStatus.error);
     }
 
     if (!isDbHealthy) {
@@ -1425,7 +1425,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Diagnostic Test Error Route (Non-production test harness for error sanitization validation)
   if (process.env.NODE_ENV !== 'production') {
     app.get('/api/test-error-trigger', (req: Request, res: Response, next: NextFunction) => {
-      const err: any = new Error('Database connection string: postgres://admin:SuperSecretSecretPassword@db.internal:5432/omnicore');
+      const err: any = new Error('Database connection string: postgres://admin:SuperSecretSecretPassword@db.internal:5432/abacha');
       err.status = 500;
       next(err);
     });
@@ -1500,7 +1500,7 @@ export async function startServer() {
 
   // In cloud sandbox containers without external PostgreSQL configured, enable embedded persistent PostgreSQL engine
   if (!process.env.DATABASE_URL && !process.env.PGHOST) {
-    console.warn('[Omnicore DB] No external DATABASE_URL or PGHOST detected in container environment. Booting persistent embedded PostgreSQL engine (.data/postgres).');
+    console.warn('[AbaCha DB] No external DATABASE_URL or PGHOST detected in container environment. Booting persistent embedded PostgreSQL engine (.data/postgres).');
     process.env.ALLOW_EMBEDDED_POSTGRES = 'true';
   }
 

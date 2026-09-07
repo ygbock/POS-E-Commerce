@@ -1,4 +1,4 @@
--- Omnicore Unified Commerce
+-- AbaCha Unified Commerce
 -- Migration 005: Transfer Event Immutability Trigger
 -- Enforces append-only ledger integrity for inventory_transfer_events at the database engine level
 

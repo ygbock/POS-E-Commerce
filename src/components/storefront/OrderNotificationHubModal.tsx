@@ -61,7 +61,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
   if (!isOpen || !order) return null;
 
   const magicToken = order.trackingMagicToken || `tok_${order.id.slice(0, 8)}`;
-  const magicLink = `https://store.omnicore.io/orders/track?id=${order.orderNumber}&token=${magicToken}`;
+  const magicLink = `https://store.abacha.io/orders/track?id=${order.orderNumber}&token=${magicToken}`;
   const carrierTrackingUrl = `https://www.fedex.com/fedextrack/?trknbr=${order.trackingNumber || 'FDX-99824102'}`;
 
   const copyMagicLink = () => {
@@ -196,7 +196,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                 <div className="p-3 sm:p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 space-y-1 text-[11px]">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between text-slate-600 dark:text-slate-400 gap-0.5">
                     <div>
-                      <strong className="text-slate-800 dark:text-slate-200">From:</strong> OmniCore Orders &lt;orders@omnicore.io&gt;
+                      <strong className="text-slate-800 dark:text-slate-200">From:</strong> AbaCha Orders &lt;orders@abacha.io&gt;
                     </div>
                     <span className="text-slate-500 text-[10px] sm:text-[11px]">{new Date(order.createdAt).toLocaleString()}</span>
                   </div>
@@ -204,7 +204,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                     <strong className="text-slate-800 dark:text-slate-200">To:</strong> {order.customerName} &lt;{order.customerEmail || 'customer@example.com'}&gt;
                   </div>
                   <div className="text-slate-700 dark:text-slate-300 font-semibold pt-0.5">
-                    <strong>Subject:</strong> Your OmniCore Order Confirmation #{order.orderNumber}
+                    <strong>Subject:</strong> Your AbaCha Order Confirmation #{order.orderNumber}
                   </div>
                 </div>
 
@@ -318,7 +318,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                 <div className="p-3 sm:p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 space-y-1 text-[11px]">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between text-slate-600 dark:text-slate-400 gap-0.5">
                     <div>
-                      <strong className="text-slate-800 dark:text-slate-200">From:</strong> OmniCore Shipping Dispatch &lt;dispatch@omnicore.io&gt;
+                      <strong className="text-slate-800 dark:text-slate-200">From:</strong> AbaCha Shipping Dispatch &lt;dispatch@abacha.io&gt;
                     </div>
                     <span className="text-slate-500 text-[10px] sm:text-[11px]">{new Date().toLocaleString()}</span>
                   </div>
@@ -415,7 +415,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                         OC
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900 dark:text-white text-xs">OmniCore Alerts</p>
+                        <p className="font-bold text-slate-900 dark:text-white text-xs">AbaCha Alerts</p>
                         <p className="text-[9px] sm:text-[10px] text-slate-600 dark:text-slate-400">{order.customerPhone || '+1 (555) 349-8812'}</p>
                       </div>
                     </div>
@@ -535,7 +535,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                       </div>
                       <div>
                         <div className="flex items-center gap-1">
-                          <p className="font-bold text-xs">OmniCore Official</p>
+                          <p className="font-bold text-xs">AbaCha Official</p>
                           <CheckCircle2 className="w-3 h-3 text-sky-300" />
                         </div>
                         <p className="text-[8px] sm:text-[9px] text-emerald-200">Verified Business</p>

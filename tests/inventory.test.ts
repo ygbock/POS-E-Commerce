@@ -27,7 +27,7 @@ import {
 
 async function runInventoryTests() {
   console.log('======================================================');
-  console.log(' Omnicore INV-001 Inventory Ledger & Operations Tests');
+  console.log(' AbaCha INV-001 Inventory Ledger & Operations Tests');
   console.log('======================================================');
 
   let passed = 0;
@@ -94,7 +94,7 @@ async function runInventoryTests() {
   await userRepo.createUser({
     id: adminUserId,
     organization_id: 'org_inv_a',
-    email: 'admin_a@omnicore.test',
+    email: 'admin_a@abacha.test',
     name: 'Admin Org A',
     password_hash: adminHash,
     password_salt: adminSalt,
@@ -106,7 +106,7 @@ async function runInventoryTests() {
   await userRepo.createUser({
     id: 'usr_inv_cashier_a',
     organization_id: 'org_inv_a',
-    email: 'cashier_a@omnicore.test',
+    email: 'cashier_a@abacha.test',
     name: 'Cashier Org A',
     password_hash: cashierHash,
     password_salt: cashierSalt,
@@ -118,7 +118,7 @@ async function runInventoryTests() {
   await userRepo.createUser({
     id: 'usr_inv_admin_b',
     organization_id: 'org_inv_b',
-    email: 'admin_b@omnicore.test',
+    email: 'admin_b@abacha.test',
     name: 'Admin Org B',
     password_hash: orgBHash,
     password_salt: orgBSalt,
@@ -693,19 +693,19 @@ async function runInventoryTests() {
     // Generate tokens
     const adminToken = (await authService.login({
       organizationId: 'org_inv_a',
-      email: 'admin_a@omnicore.test',
+      email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
     const cashierToken = (await authService.login({
       organizationId: 'org_inv_a',
-      email: 'cashier_a@omnicore.test',
+      email: 'cashier_a@abacha.test',
       password: 'Password123!',
     })).token;
 
     const orgBToken = (await authService.login({
       organizationId: 'org_inv_b',
-      email: 'admin_b@omnicore.test',
+      email: 'admin_b@abacha.test',
       password: 'Password123!',
     })).token;
 
@@ -784,7 +784,7 @@ async function runInventoryTests() {
   try {
     const adminToken = (await authService.login({
       organizationId: 'org_inv_a',
-      email: 'admin_a@omnicore.test',
+      email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
@@ -839,7 +839,7 @@ async function runInventoryTests() {
   try {
     const adminToken = (await authService.login({
       organizationId: 'org_inv_a',
-      email: 'admin_a@omnicore.test',
+      email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
@@ -877,7 +877,7 @@ async function runInventoryTests() {
   try {
     const adminToken = (await authService.login({
       organizationId: 'org_inv_a',
-      email: 'admin_a@omnicore.test',
+      email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
@@ -953,7 +953,7 @@ async function runInventoryTests() {
   try {
     const adminToken = (await authService.login({
       organizationId: 'org_inv_a',
-      email: 'admin_a@omnicore.test',
+      email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
@@ -961,7 +961,7 @@ async function runInventoryTests() {
 
     const orgBToken = (await authService.login({
       organizationId: 'org_inv_b',
-      email: 'admin_b@omnicore.test',
+      email: 'admin_b@abacha.test',
       password: 'Password123!',
     })).token;
 
@@ -1103,13 +1103,13 @@ async function runInventoryTests() {
 
     const adminToken = (await authService.login({
       organizationId: 'org_inv_a',
-      email: 'admin_a@omnicore.test',
+      email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
     const orgBToken = (await authService.login({
       organizationId: 'org_inv_b',
-      email: 'admin_b@omnicore.test',
+      email: 'admin_b@abacha.test',
       password: 'Password123!',
     })).token;
 

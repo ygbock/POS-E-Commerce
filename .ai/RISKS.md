@@ -36,7 +36,7 @@
 ---
 
 ### RISK-002: `localStorage` Business Persistence
-- **Description**: Orders, shifts, stock movements, and financial accounts are stored under `localStorage` keys (`omnicore_commerce_db_v1_*`).
+- **Description**: Orders, shifts, stock movements, and financial accounts are stored under `localStorage` keys (`abacha_commerce_db_v1_*`).
 - **Vulnerability**: If a user clears browsing data, switches devices, or accesses the application via private browsing mode, all business history is lost. Multiple registers cannot share state.
 - **Planned Mitigation**: Shift authoritative persistence to a centralized cloud relational database (`DATA-001`).
 

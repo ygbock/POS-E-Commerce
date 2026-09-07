@@ -8,7 +8,7 @@
 
 ## 1. Core Principle
 
-An implementation task in Omnicore Unified Commerce is **NEVER** considered complete merely because:
+An implementation task in AbaCha Unified Commerce is **NEVER** considered complete merely because:
 - The TypeScript compiler reports no errors (`tsc --noEmit` passes).
 - The development server runs without crashing.
 - The UI renders cleanly in the browser.

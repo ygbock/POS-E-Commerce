@@ -8,7 +8,7 @@
 
 ## 1. Core Security Philosophy: Zero-Trust Client
 
-In Omnicore Unified Commerce, **security takes absolute priority over developer convenience**.
+In AbaCha Unified Commerce, **security takes absolute priority over developer convenience**.
 
 All software engineers and implementation agents must adhere strictly to the principle that **the client browser is an untrusted execution environment**.
 

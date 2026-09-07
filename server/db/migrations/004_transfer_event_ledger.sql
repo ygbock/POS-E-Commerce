@@ -1,4 +1,4 @@
--- Omnicore Unified Commerce
+-- AbaCha Unified Commerce
 -- Migration 004: Multi-Location Stock Transfer Event Ledger and Constraints
 -- Supports immutable transfer event audit history, item constraints, and organization idempotency
 

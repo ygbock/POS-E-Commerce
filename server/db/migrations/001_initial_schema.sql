@@ -1,4 +1,4 @@
--- Omnicore Unified Commerce
+-- AbaCha Unified Commerce
 -- Migration 001: Initial Relational Schema
 -- Supports multi-tenancy foundation, catalog, inventory, orders, payments, purchasing, and audit
 

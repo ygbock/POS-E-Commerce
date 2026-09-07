@@ -1,5 +1,5 @@
 /**
- * Omnicore Development & Testing Seed Fixtures (CLI Tool Only)
+ * AbaCha Development & Testing Seed Fixtures (CLI Tool Only)
  * 
  * CRITICAL ARCHITECTURAL CONTRACT:
  * - This file houses development and testing fixture users and seeds.
@@ -14,16 +14,16 @@ import { AuthService } from '../../services/authService';
 export async function runDevSeed(): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
-      '[Omnicore Security Fatal] CRITICAL SECURITY VIOLATION: dev/test seeding must NEVER execute in production.'
+      '[AbaCha Security Fatal] CRITICAL SECURITY VIOLATION: dev/test seeding must NEVER execute in production.'
     );
   }
 
   const db = getDatabaseClient();
   try {
     const authService = new AuthService(db);
-    console.log('[Omnicore Seed CLI] Seeding development fixture users into database...');
+    console.log('[AbaCha Seed CLI] Seeding development fixture users into database...');
     await authService.seedDefaultUsers();
-    console.log('[Omnicore Seed CLI] Development fixture users successfully seeded.');
+    console.log('[AbaCha Seed CLI] Development fixture users successfully seeded.');
   } finally {
     try {
       await db.close();
@@ -44,11 +44,11 @@ const isDirectCli = Boolean(
 if (isDirectCli) {
   runDevSeed()
     .then(() => {
-      console.log('[Omnicore Seed CLI] Seeding completed.');
+      console.log('[AbaCha Seed CLI] Seeding completed.');
       process.exit(0);
     })
     .catch((err) => {
-      console.error('[Omnicore Seed Fatal]', err.message || err);
+      console.error('[AbaCha Seed Fatal]', err.message || err);
       process.exit(1);
     });
 }

@@ -722,7 +722,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
                     <Sparkles className="w-4 h-4 text-sky-400" />
                   </div>
                 </div>
-                <span className="text-base font-black text-white tracking-tight">AURA STORE</span>
+                <span className="text-base font-black text-white tracking-tight">AbaCha Store</span>
               </div>
               <p className="text-slate-400 text-xs leading-relaxed max-w-sm">
                 Premium multi-channel retail platform connecting real-time inventory, in-store registers, and instant omnichannel fulfillment.
@@ -872,7 +872,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
           </div>
 
           <div className="mt-10 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-            <p>© 2026 Aura Store & Omnicore Enterprise Commerce. All rights reserved.</p>
+            <p>© 2026 AbaCha Store & AbaCha Enterprise Commerce. All rights reserved.</p>
             <div className="flex items-center gap-4">
               <span>Privacy Policy</span>
               <span>•</span>

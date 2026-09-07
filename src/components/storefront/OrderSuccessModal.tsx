@@ -40,7 +40,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
   if (!isOpen || !order) return null;
 
   const magicToken = order.trackingMagicToken || `tok_${order.id.slice(0, 8)}`;
-  const magicLink = `https://store.omnicore.io/orders/track?id=${order.orderNumber}&token=${magicToken}`;
+  const magicLink = `https://store.abacha.io/orders/track?id=${order.orderNumber}&token=${magicToken}`;
 
   const copyMagicLink = () => {
     navigator.clipboard.writeText(magicLink);

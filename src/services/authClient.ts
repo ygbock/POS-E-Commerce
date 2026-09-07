@@ -15,8 +15,8 @@ export interface AuthUser {
   locationId?: string | null;
 }
 
-const TOKEN_KEY = 'omnicore_auth_jwt';
-const USER_KEY = 'omnicore_auth_user';
+const TOKEN_KEY = 'abacha_auth_jwt';
+const USER_KEY = 'abacha_auth_user';
 
 class AuthClient {
   private currentToken: string | null = null;
@@ -123,17 +123,17 @@ class AuthClient {
    */
   async loginAsPersona(roleName: string): Promise<AuthUser | null> {
     const personaMap: Record<string, { email: string; pass: string }> = {
-      'Super Admin': { email: 'superadmin@omnicore.internal', pass: 'SuperAdmin123!' },
-      'Business Owner': { email: 'superadmin@omnicore.internal', pass: 'SuperAdmin123!' },
-      'Store Manager': { email: 'manager@omnicore.internal', pass: 'ManagerPass123!' },
-      'Cashier': { email: 'cashier@omnicore.internal', pass: 'CashierPass123!' },
-      'Inventory Manager': { email: 'inventory@omnicore.internal', pass: 'InventoryPass123!' },
-      'Warehouse Manager': { email: 'inventory@omnicore.internal', pass: 'InventoryPass123!' },
-      'Accountant': { email: 'sales@omnicore.internal', pass: 'SalesPass123!' },
-      'E-commerce Customer': { email: 'viewer@omnicore.internal', pass: 'ViewerPass123!' },
+      'Super Admin': { email: 'superadmin@abacha.internal', pass: 'SuperAdmin123!' },
+      'Business Owner': { email: 'superadmin@abacha.internal', pass: 'SuperAdmin123!' },
+      'Store Manager': { email: 'manager@abacha.internal', pass: 'ManagerPass123!' },
+      'Cashier': { email: 'cashier@abacha.internal', pass: 'CashierPass123!' },
+      'Inventory Manager': { email: 'inventory@abacha.internal', pass: 'InventoryPass123!' },
+      'Warehouse Manager': { email: 'inventory@abacha.internal', pass: 'InventoryPass123!' },
+      'Accountant': { email: 'sales@abacha.internal', pass: 'SalesPass123!' },
+      'E-commerce Customer': { email: 'viewer@abacha.internal', pass: 'ViewerPass123!' },
     };
 
-    const target = personaMap[roleName] || { email: 'viewer@omnicore.internal', pass: 'ViewerPass123!' };
+    const target = personaMap[roleName] || { email: 'viewer@abacha.internal', pass: 'ViewerPass123!' };
     try {
       return await this.login(target.email, target.pass);
     } catch (err) {

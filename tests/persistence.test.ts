@@ -31,7 +31,7 @@ async function runTest(name: string, fn: () => Promise<void>) {
 
 async function main() {
   console.log('\n========================================');
-  console.log(' Omnicore Database & Persistence Tests');
+  console.log(' AbaCha Database & Persistence Tests');
   console.log('========================================\n');
 
   // Use an isolated in-memory PostgreSQL test instance
@@ -393,7 +393,7 @@ async function main() {
 
     // Test 12: Migration Checksum Mismatch Rejection
     await runTest('12. Migration Checksum Mismatch Rejection', async () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnicore-mig-test-'));
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abacha-mig-test-'));
       const checksumDb = createIsolatedTestClient();
 
       try {

@@ -25,7 +25,7 @@ import { InventoryService } from '../server/inventory/inventoryService';
 
 async function runTransferTests() {
   console.log('======================================================');
-  console.log(' Omnicore INV-001 Stock Transfer & Ledger Domain Tests');
+  console.log(' AbaCha INV-001 Stock Transfer & Ledger Domain Tests');
   console.log('======================================================');
 
   const db: DatabaseClient = getDatabaseClient({ forceNew: true });

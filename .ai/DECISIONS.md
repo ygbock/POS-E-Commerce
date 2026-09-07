@@ -112,7 +112,7 @@
 - **Date**: 2026-09-04
 - **Status**: `IMPLEMENTED (PENDING REVIEW)`
 - **Task Association**: `DATA-001`
-- **Context**: Omnicore requires strict relational integrity (foreign keys, check constraints, composite uniqueness, decimal precision) across multi-entity retail operations (organizations, locations, products, variants, balances, movements, orders, items, payments, audit events). In local development and cloud sandbox environments without external database containers, developers need zero-configuration startup, while production deployments require standard PostgreSQL / Cloud SQL connection pooling.
+- **Context**: AbaCha requires strict relational integrity (foreign keys, check constraints, composite uniqueness, decimal precision) across multi-entity retail operations (organizations, locations, products, variants, balances, movements, orders, items, payments, audit events). In local development and cloud sandbox environments without external database containers, developers need zero-configuration startup, while production deployments require standard PostgreSQL / Cloud SQL connection pooling.
 - **Decision**: 
   1. Standardize the persistence layer on standard SQL / PostgreSQL schemas with full transactional DDL and DML.
   2. Implement a unified `DatabaseClient` interface (`server/db/client.ts`) with dual-driver capability and strict environment boundaries:
@@ -138,7 +138,7 @@
 - **Date**: 2026-09-04
 - **Status**: `IMPLEMENTED (PENDING REVIEW)`
 - **Task Association**: `SEC-001`
-- **Context**: The Omnicore prototype historically relied on client-side React role checks, non-authoritative localStorage variables, and unvalidated request bodies. In retail and commerce systems, client-asserted identity or roles expose the system to unauthorized privilege escalation, cross-tenant data leakage, and fraudulent price or stock overrides.
+- **Context**: The AbaCha prototype historically relied on client-side React role checks, non-authoritative localStorage variables, and unvalidated request bodies. In retail and commerce systems, client-asserted identity or roles expose the system to unauthorized privilege escalation, cross-tenant data leakage, and fraudulent price or stock overrides.
 - **Decision**:
   1. **Zero-Trust Client Boundary**: Client browsers are strictly untrusted execution environments. UI controls are for display only. Every mutation is independently authorized on the server.
   2. **Cryptographic Credential Verification**: Passwords are saved as cryptographic hashes using PBKDF2 with HMAC-SHA512 (100,000 rounds, 32-byte salt, constant-time verification).

@@ -106,7 +106,7 @@ export async function runMigrations(
       // Checksum verification: ensure migration script has not been modified after being applied
       if (!appliedRecord.checksum || appliedRecord.checksum !== migration.checksum) {
         throw new Error(
-          `[Omnicore DB Fatal] Migration checksum mismatch for version ${migration.version} (${migration.name}). ` +
+          `[AbaCha DB Fatal] Migration checksum mismatch for version ${migration.version} (${migration.name}). ` +
           `Stored checksum: ${appliedRecord.checksum || '(none)'}, Computed checksum: ${migration.checksum}. ` +
           `Applied migrations must never be modified in-place.`
         );
@@ -166,7 +166,7 @@ export async function runSeeds(
   const isProd = process.env.NODE_ENV === 'production';
   if (isProd && !options?.allowProduction && process.env.ALLOW_DEMO_SEED !== 'true') {
     throw new Error(
-      '[Omnicore DB Fatal] Demo seed execution is strictly prohibited in production unless ALLOW_DEMO_SEED=true is explicitly set.'
+      '[AbaCha DB Fatal] Demo seed execution is strictly prohibited in production unless ALLOW_DEMO_SEED=true is explicitly set.'
     );
   }
 
@@ -189,19 +189,19 @@ const isDirectCliRun = Boolean(process.argv[1] && (process.argv[1].endsWith('mig
 if (isDirectCliRun) {
   const db = getDatabaseClient();
   const withSeed = process.argv.includes('--with-seed') || process.argv.includes('--seed');
-  console.log(`[Omnicore DB] Running database migrations...`);
+  console.log(`[AbaCha DB] Running database migrations...`);
 
   runMigrations(db)
     .then(async (result) => {
-      console.log(`[Omnicore DB] Migrations complete. Applied: ${result.applied.length}, Skipped: ${result.skipped.length}`);
+      console.log(`[AbaCha DB] Migrations complete. Applied: ${result.applied.length}, Skipped: ${result.skipped.length}`);
       if (result.applied.length > 0) {
         console.log(`Applied migrations: ${result.applied.join(', ')}`);
       }
 
       if (withSeed) {
-        console.log(`[Omnicore DB] Running demo seeds...`);
+        console.log(`[AbaCha DB] Running demo seeds...`);
         const seedResult = await runSeeds(db);
-        console.log(`[Omnicore DB] Seeds applied: ${seedResult.applied.join(', ')}`);
+        console.log(`[AbaCha DB] Seeds applied: ${seedResult.applied.join(', ')}`);
       }
 
       try {
@@ -215,7 +215,7 @@ if (isDirectCliRun) {
       process.exit(0);
     })
     .catch(async (err) => {
-      console.error('[Omnicore DB] Migration/Seed failed:', err);
+      console.error('[AbaCha DB] Migration/Seed failed:', err);
       try {
         await Promise.race([
           db.close(),

@@ -188,7 +188,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm sm:text-base font-black tracking-tight text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                    AURA
+                    AbaCha
                   </span>
                   <span className="text-[9px] sm:text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
                     STORE
@@ -321,7 +321,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 id="btn-store-admin-portal"
                 onClick={onOpenAdmin}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-white text-xs font-bold transition-all shadow-xs min-h-[38px]"
-                title="Open Omnicore Super Admin Dashboard"
+                title="Open AbaCha Super Admin Dashboard"
               >
                 <LayoutDashboard className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span className="hidden lg:inline">Admin</span>
@@ -574,7 +574,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-black tracking-tight text-slate-900 dark:text-white">AURA</span>
+                  <span className="text-sm font-black tracking-tight text-slate-900 dark:text-white">AbaCha</span>
                   <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
                     STORE
                   </span>

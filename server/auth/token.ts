@@ -43,17 +43,17 @@ export function getJwtSecret(): string {
   if (!secret) {
     if (isProd) {
       throw new TokenVerificationError(
-        '[Omnicore Security Fatal] JWT_SECRET environment variable is mandatory in production.',
+        '[AbaCha Security Fatal] JWT_SECRET environment variable is mandatory in production.',
         'CONFIG_ERROR'
       );
     }
     // Safe development fallback
-    return 'omnicore-dev-local-jwt-insecure-secret-key-32-chars-min';
+    return 'abacha-dev-local-jwt-insecure-secret-key-32-chars-min';
   }
 
   if (isProd && (secret.length < 32 || secret.includes('dev') || secret.includes('default'))) {
     throw new TokenVerificationError(
-      '[Omnicore Security Fatal] Production JWT_SECRET must be a high-entropy string of at least 32 characters.',
+      '[AbaCha Security Fatal] Production JWT_SECRET must be a high-entropy string of at least 32 characters.',
       'CONFIG_ERROR'
     );
   }
@@ -88,7 +88,7 @@ export function signToken(
   const secret = customSecret || getJwtSecret();
   const now = Math.floor(Date.now() / 1000);
   const expiry = now + (params.expiresInSeconds || parseInt(process.env.JWT_EXPIRY || '86400', 10));
-  const email = params.email || `${params.userId}@omnicore.local`;
+  const email = params.email || `${params.userId}@abacha.local`;
 
   const permissions = params.permissions && params.permissions.length > 0
     ? params.permissions
@@ -226,7 +226,7 @@ export function issueToken(
   }
   return signToken({
     userId: claims.userId,
-    email: claims.email || `${claims.userId}@omnicore.internal`,
+    email: claims.email || `${claims.userId}@abacha.internal`,
     organizationId: claims.organizationId,
     role: claims.role,
     permissions: claims.permissions,

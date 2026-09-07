@@ -1,4 +1,4 @@
-# Project Context — Omnicore Unified Commerce Platform
+# Project Context — AbaCha Unified Commerce Platform
 
 > **Document Version**: 1.0.0  
 > **Status**: Authoritative Reference  
@@ -8,7 +8,7 @@
 
 ## 1. Project Purpose & Vision
 
-**Omnicore Unified Commerce** (commercial branded as *Aura Commerce*) is a modern omnichannel retail operating platform designed to unify in-store physical operations with digital e-commerce storefronts under a shared catalog, inventory, and accounting ledger.
+**AbaCha Unified Commerce** (commercial branded as *AbaCha Commerce*) is a modern omnichannel retail operating platform designed to unify in-store physical operations with digital e-commerce storefronts under a shared catalog, inventory, and accounting ledger.
 
 The platform eliminates the operational silos between brick-and-mortar sales and digital storefront orders by synchronizing product catalog data, customer loyalty profiles, multi-location stock, and general ledger journal entries.
 
@@ -81,7 +81,7 @@ It is essential to distinguish between the **CURRENT IMPLEMENTATION** and the **
 
 | Dimension | Current State (As-Is) | Target State (To-Be) |
 | :--- | :--- | :--- |
-| **Primary Persistence** | Client `localStorage` (`omnicore_commerce_db_v1_*`) + in-memory Express arrays | Server-authoritative persistent relational database (PostgreSQL / Cloud SQL) |
+| **Primary Persistence** | Client `localStorage` (`abacha_commerce_db_v1_*`) + in-memory Express arrays | Server-authoritative persistent relational database (PostgreSQL / Cloud SQL) |
 | **Backend State Lifetime** | In-memory variables in `server.ts`; resets whenever the process restarts | Durable database transactions with ACID compliance and connection pooling |
 | **Inventory Source of Truth** | Client `CommerceContext` mutating `product.stock` locally in the browser | Server-authoritative double-entry stock movement ledger (`Balance + Movement`) |
 | **POS Checkout Authority** | Browser calculates totals, discounts, taxes, and pushes order object | Server API computes prices, applies validated promotions, deducts stock atomically |
@@ -138,7 +138,7 @@ src/
 
 ## 7. Development & Migration Workflow
 
-To modernize Omnicore into an enterprise-ready system, the project will follow the approved roadmap in `.ai/TASK_QUEUE.md`:
+To modernize AbaCha into an enterprise-ready system, the project will follow the approved roadmap in `.ai/TASK_QUEUE.md`:
 1. Establish governance & architectural standards (`ARCH-001`).
 2. Establish server-side database schema and persistence layer (`DATA-001`).
 3. Enforce server-side authentication and role-based access control (`SEC-001`).

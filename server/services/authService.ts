@@ -130,7 +130,7 @@ export class AuthService {
     // Ensure organizations exist
     await this.db.query(
       `INSERT INTO organizations (id, name, code, is_active)
-       VALUES ('org_default', 'Omnicore Global Retail Ltd', 'OMNICORE_DEFAULT', TRUE)
+       VALUES ('org_default', 'AbaCha Global Retail Ltd', 'ABACHA_DEFAULT', TRUE)
        ON CONFLICT (id) DO NOTHING`
     );
 
@@ -144,7 +144,7 @@ export class AuthService {
       {
         id: 'usr_super_admin',
         orgId: orgDefault,
-        email: 'superadmin@omnicore.internal',
+        email: 'superadmin@abacha.internal',
         name: 'Super Administrator',
         role: 'super_admin' as UserRole,
         password: 'SuperAdmin123!',
@@ -152,7 +152,7 @@ export class AuthService {
       {
         id: 'usr_admin',
         orgId: orgDefault,
-        email: 'admin@omnicore.internal',
+        email: 'admin@abacha.internal',
         name: 'Enterprise Admin',
         role: 'admin' as UserRole,
         password: 'AdminPass123!',
@@ -160,7 +160,7 @@ export class AuthService {
       {
         id: 'usr_manager',
         orgId: orgDefault,
-        email: 'manager@omnicore.internal',
+        email: 'manager@abacha.internal',
         name: 'Store Operations Manager',
         role: 'manager' as UserRole,
         password: 'ManagerPass123!',
@@ -168,7 +168,7 @@ export class AuthService {
       {
         id: 'usr_cashier',
         orgId: orgDefault,
-        email: 'cashier@omnicore.internal',
+        email: 'cashier@abacha.internal',
         name: 'POS Terminal Cashier',
         role: 'cashier' as UserRole,
         password: 'CashierPass123!',
@@ -176,7 +176,7 @@ export class AuthService {
       {
         id: 'usr_inventory_mgr',
         orgId: orgDefault,
-        email: 'inventory@omnicore.internal',
+        email: 'inventory@abacha.internal',
         name: 'Inventory Controller',
         role: 'inventory_manager' as UserRole,
         password: 'InventoryPass123!',
@@ -184,7 +184,7 @@ export class AuthService {
       {
         id: 'usr_purchasing_mgr',
         orgId: orgDefault,
-        email: 'purchasing@omnicore.internal',
+        email: 'purchasing@abacha.internal',
         name: 'Procurement Specialist',
         role: 'purchasing_manager' as UserRole,
         password: 'PurchasingPass123!',
@@ -192,7 +192,7 @@ export class AuthService {
       {
         id: 'usr_sales',
         orgId: orgDefault,
-        email: 'sales@omnicore.internal',
+        email: 'sales@abacha.internal',
         name: 'Retail Sales Rep',
         role: 'sales_user' as UserRole,
         password: 'SalesPass123!',
@@ -200,7 +200,7 @@ export class AuthService {
       {
         id: 'usr_viewer',
         orgId: orgDefault,
-        email: 'viewer@omnicore.internal',
+        email: 'viewer@abacha.internal',
         name: 'Auditor Viewer',
         role: 'viewer' as UserRole,
         password: 'ViewerPass123!',

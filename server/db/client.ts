@@ -27,7 +27,7 @@ class PostgresPoolClient implements DatabaseClient {
           port: process.env.PGPORT ? parseInt(process.env.PGPORT, 10) : 5432,
           user: process.env.PGUSER || 'postgres',
           password: process.env.PGPASSWORD || 'postgres',
-          database: process.env.PGDATABASE || 'omnicore',
+          database: process.env.PGDATABASE || 'abacha',
           ssl: process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : undefined,
         };
 
@@ -203,7 +203,7 @@ export function getDatabaseClient(options?: { forceNew?: boolean }): DatabaseCli
         return client;
       }
       throw new Error(
-        '[Omnicore DB Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST). ' +
+        '[AbaCha DB Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST). ' +
         'PGlite is NEVER permitted in production.'
       );
     }

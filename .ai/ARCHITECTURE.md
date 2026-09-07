@@ -1,4 +1,4 @@
-# System Architecture Specification — Omnicore Unified Commerce
+# System Architecture Specification — AbaCha Unified Commerce
 
 > **Document Version**: 1.0.0  
 > **Status**: Canonical Architecture Specification  
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary & Architectural Mission
 
-This document defines the architectural baseline and target operating model for the **Omnicore Unified Commerce** application.
+This document defines the architectural baseline and target operating model for the **AbaCha Unified Commerce** application.
 
 The primary architectural mission is transforming the existing single-page client-centric prototype into a secure, server-authoritative, transactionally consistent omnichannel platform supporting concurrent Point of Sale (POS) checkouts, digital storefront orders, multi-branch inventory tracking, and double-entry general ledger accounting.
 
@@ -34,7 +34,7 @@ Currently, the application runs as a hybrid Express + React single-page applicat
 │                                                    ▼                   │
 │                                     ┌───────────────────────────────┐  │
 │                                     │     Browser localStorage      │  │
-│                                     │ (omnicore_commerce_db_v1_*)   │  │
+│                                     │ (abacha_commerce_db_v1_*)   │  │
 │                                     └───────────────────────────────┘  │
 └────────────────────────────────────────────────────┬───────────────────┘
                                                      │
@@ -60,7 +60,7 @@ Currently, the application runs as a hybrid Express + React single-page applicat
 ### Key Characteristics of Current Architecture
 1. **Client-Centric Computing**: The bulk of business logic (tax computations, discount calculations, order generation, shift reconciliations, inventory stock increments/decrements, journal entry creation) executes inside the browser within `CommerceContext.tsx`.
 2. **Dual-Persistence Disconnect**:
-   - The browser persists application state to `window.localStorage` under partitioned keys (`omnicore_commerce_db_v1_products`, `_orders`, `_shifts`, `_stockMovements`, `_journalEntries`).
+   - The browser persists application state to `window.localStorage` under partitioned keys (`abacha_commerce_db_v1_products`, `_orders`, `_shifts`, `_stockMovements`, `_journalEntries`).
    - The Express server (`server.ts`) maintains in-memory arrays populated from `src/data/initialData.ts`. Edits to products via `/api/products` update memory on the server, but any server restart erases them.
 3. **No Central Transaction Coordinator**: There is no ACID database engine or centralized locking mechanism coordinating inventory availability across POS registers and e-commerce shoppers.
 
@@ -108,7 +108,7 @@ Notice that during checkout, **no HTTP request is sent to the Express server**. 
 ## 5. Current Persistence Model
 
 ### Client Persistence (`localStorage`)
-- Storage Key Prefix: `omnicore_commerce_db_v1_`
+- Storage Key Prefix: `abacha_commerce_db_v1_`
 - Stored Entities:
   - `products`: Array of `Product` objects (with variant structures, prices, and stock counts)
   - `categories` & `brands`: Category and brand taxonomy definitions

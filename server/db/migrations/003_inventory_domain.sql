@@ -1,4 +1,4 @@
--- Omnicore Unified Commerce
+-- AbaCha Unified Commerce
 -- Migration 003: Inventory Management Domain & Transactional Ledger
 -- Establishes balance extensions (damaged, expired, in_transit), reservations,
 -- stock transfers, stock counts, and expanded immutable movement types.

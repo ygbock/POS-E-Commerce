@@ -249,7 +249,7 @@ interface CommerceContextType {
   resetToDefaultData: () => void;
 }
 
-const STORAGE_KEY = 'omnicore_commerce_db_v1';
+const STORAGE_KEY = 'abacha_commerce_db_v1';
 
 const CommerceContext = createContext<CommerceContextType | undefined>(undefined);
 
@@ -1950,7 +1950,7 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       initialSmsLogs.push({
         timestamp: now,
         channel: 'WhatsApp' as const,
-        message: `✨ Hi ${orderData.customer.name.split(' ')[0]}! Your order #${orderNumber} is confirmed at OmniCore. We'll update you here at each milestone!`,
+        message: `✨ Hi ${orderData.customer.name.split(' ')[0]}! Your order #${orderNumber} is confirmed at AbaCha. We'll update you here at each milestone!`,
         status: 'Delivered' as const,
       });
     }

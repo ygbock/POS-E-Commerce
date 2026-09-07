@@ -36,7 +36,7 @@ PROD-001 (NOT STARTED)
 
 ### Task 1: BASELINE-001 — Repository Baseline Assessment
 - **Status**: `COMPLETED`
-- **Objective**: Conduct comprehensive code inspection of the existing Omnicore codebase, mapping out dependencies, module topologies, state management strategies, API endpoints, and existing risks.
+- **Objective**: Conduct comprehensive code inspection of the existing AbaCha codebase, mapping out dependencies, module topologies, state management strategies, API endpoints, and existing risks.
 - **Scope**: Repository inspection across `package.json`, `server.ts`, `/src` directory tree, `CommerceContext.tsx`, and all UI components.
 - **Dependencies**: None.
 - **Acceptance Criteria**:
