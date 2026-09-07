@@ -355,3 +355,17 @@ PROD-001 (NOT STARTED)
   - [x] Evaluated return workflows (Audit G1).
   - [x] Generated detailed Implementation Report.
 - **Supervisor Gate**: Marked READY FOR REVIEW.
+
+### Task 5.5: INV-002R1 — Inventory Acceptance Audit Targeted Rework
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Close the evidence and implementation gaps identified during the independent review of INV-002.
+- **Dependencies**: `INV-002`
+- **Acceptance Criteria**:
+  - [x] R1 (Exact Quantity/Money Contract): Enforce authoritative quantity/money contract at the service/API boundary. Reject numeric inputs; only allow decimal strings.
+  - [x] R2 (Reservation Expiration): Prove reservation expiration behavior via explicit tests (E1-E5 scenarios).
+  - [x] R3 (Transfer Concurrency): Prove transfer concurrency semantics (T1-T3 scenarios) with explicit assertions on inventory effects.
+  - [x] R4 (Error Sanitization): Prove HTTP error sanitization via endpoint-level tests.
+  - [x] R5 (Full Test/Lint/Build): Execute full test suite, lint, and build.
+  - [x] R10 (Acceptance Matrix): Update the acceptance matrix in the implementation report with specific, executable evidence for every PASS.
+- **Supervisor Gate**: Marked READY FOR REVIEW.
+

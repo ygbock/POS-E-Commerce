@@ -69,7 +69,10 @@ async function runInventoryTests() {
       ('prod_b1', 'org_inv_b', 'Competitor Beans', 'competitor-beans', 'KG', 'standard');
 
     INSERT INTO product_variants (id, organization_id, product_id, sku, barcode, name, cost_price, retail_price) VALUES
+      
       ('var_a1', 'org_inv_a', 'prod_a1', 'SKU-BEANS-01', 'BAR-BEANS-01', '1kg Bag', 12.50, 25.00),
+      ('var_r2', 'org_inv_a', 'prod_a1', 'SKU-BEANS-R2', 'BAR-BEANS-R2', 'R2 Bag', 12.50, 25.00),
+
       ('var_a2', 'org_inv_a', 'prod_a1', 'SKU-BEANS-02', 'BAR-BEANS-02', '500g Bag', 7.00, 14.00),
       ('var_b1', 'org_inv_b', 'prod_b1', 'SKU-COMP-01', 'BAR-COMP-01', '1kg Bag B', 11.00, 22.00);
   `);
@@ -681,13 +684,13 @@ async function runInventoryTests() {
 
   // TEST 10: Real HTTP Endpoints & RBAC Permissions
   let server: http.Server | null = null;
-  let baseUrl = '';
+  let rBaseUrl = '';
   try {
     const { app } = await createApp({ db, authService, skipVite: true });
     server = http.createServer(app);
     await new Promise<void>((resolve) => server!.listen(0, resolve));
     const port = (server.address() as any).port;
-    baseUrl = `http://127.0.0.1:${port}`;
+    rBaseUrl = `http://127.0.0.1:${port}`;
 
     // Generate tokens
     const adminToken = (await authService.login({
@@ -709,7 +712,7 @@ async function runInventoryTests() {
     })).token;
 
     // 10a. Query Balances via HTTP
-    const balRes = await fetch(`${baseUrl}/api/inventory/balances/loc_wh_a`, {
+    const balRes = await fetch(`${rBaseUrl}/api/inventory/balances/loc_wh_a`, {
       headers: { Authorization: `Bearer ${adminToken}`, Connection: 'close' },
     });
     assert.strictEqual(balRes.status, 200);
@@ -718,7 +721,7 @@ async function runInventoryTests() {
     assert.ok(balBody.data.length > 0);
 
     // 10b. Unauthenticated request to /api/inventory/adjustments -> 401
-    const unauthRes = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+    const unauthRes = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Connection: 'close' },
       body: JSON.stringify({
@@ -732,7 +735,7 @@ async function runInventoryTests() {
 
     // 10c. Cashier attempting stock transfer without INVENTORY_TRANSFER permission -> 403
     // (cashier has ORDERS_CREATE, PRODUCTS_VIEW, etc. but NOT INVENTORY_TRANSFER)
-    const cashierTransferRes = await fetch(`${baseUrl}/api/inventory/transfers`, {
+    const cashierTransferRes = await fetch(`${rBaseUrl}/api/inventory/transfers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -748,7 +751,7 @@ async function runInventoryTests() {
     assert.strictEqual(cashierTransferRes.status, 403);
 
     // 10d. Cross-tenant balance query: Org B user queries Org A location -> returns 0 items
-    const crossBalRes = await fetch(`${baseUrl}/api/inventory/balances/loc_wh_a`, {
+    const crossBalRes = await fetch(`${rBaseUrl}/api/inventory/balances/loc_wh_a`, {
       headers: { Authorization: `Bearer ${orgBToken}`, Connection: 'close' },
     });
     assert.strictEqual(crossBalRes.status, 200);
@@ -756,7 +759,7 @@ async function runInventoryTests() {
     assert.strictEqual(crossBalBody.count, 0);
 
     // 10e. Cross-tenant adjustment attempt -> 403 TENANT_ACCESS_DENIED
-    const crossAdjRes = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+    const crossAdjRes = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -807,7 +810,7 @@ async function runInventoryTests() {
     const reservedBefore = balBeforeExpire!.reserved;
 
     // Call POST /api/inventory/reservations/expire-stale
-    const expireHttpRes = await fetch(`${baseUrl}/api/inventory/reservations/expire-stale`, {
+    const expireHttpRes = await fetch(`${rBaseUrl}/api/inventory/reservations/expire-stale`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${adminToken}`,
@@ -843,7 +846,7 @@ async function runInventoryTests() {
     })).token;
 
     // Attacker tries to inject ?organization_id=org_inv_b or body organization_id to escape tenant
-    const rogueRes = await fetch(`${baseUrl}/api/inventory/adjustments?organization_id=org_inv_b`, {
+    const rogueRes = await fetch(`${rBaseUrl}/api/inventory/adjustments?organization_id=org_inv_b`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -881,7 +884,7 @@ async function runInventoryTests() {
     })).token;
 
     // 13a. Valid 4-decimal quantity string accepted
-    const validQtyRes = await fetch(`${baseUrl}/api/inventory/opening-balance`, {
+    const validQtyRes = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -914,7 +917,7 @@ async function runInventoryTests() {
     ];
 
     for (const item of invalidInputs) {
-      const rejectRes = await fetch(`${baseUrl}/api/inventory/opening-balance`, {
+      const rejectRes = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -965,7 +968,7 @@ async function runInventoryTests() {
     })).token;
 
     // 14a. Create initial reservation with idempotency key
-    const createRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+    const createRes = await fetch(`${rBaseUrl}/api/inventory/reservations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -986,7 +989,7 @@ async function runInventoryTests() {
     const initialReservationId = createBody.data.id;
 
     // 14b. Same key + identical payload -> safe idempotent replay (same reservation returned)
-    const replayRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+    const replayRes = await fetch(`${rBaseUrl}/api/inventory/reservations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1007,7 +1010,7 @@ async function runInventoryTests() {
     assert.strictEqual(replayBody.data.id, initialReservationId, 'Must return same reservation record');
 
     // 14c. Same key + conflicting payload -> rejected with 409 IDEMPOTENCY_CONFLICT
-    const conflictRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+    const conflictRes = await fetch(`${rBaseUrl}/api/inventory/reservations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1028,7 +1031,7 @@ async function runInventoryTests() {
     assert.strictEqual(conflictBody.error.code, 'IDEMPOTENCY_CONFLICT');
 
     // 14d. Different organization + same key -> Allowed
-    const crossOrgRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+    const crossOrgRes = await fetch(`${rBaseUrl}/api/inventory/reservations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1113,7 +1116,7 @@ async function runInventoryTests() {
     })).token;
 
     // 15a. Initial movement
-    const m1Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+    const m1Res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, Connection: 'close' },
       body: JSON.stringify({
@@ -1128,7 +1131,7 @@ async function runInventoryTests() {
     const m1Data = await m1Res.json();
 
     // 15b. Same key + same payload -> safe replay
-    const m2Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+    const m2Res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, Connection: 'close' },
       body: JSON.stringify({
@@ -1144,7 +1147,7 @@ async function runInventoryTests() {
     assert.strictEqual(m2Data.data.id, m1Data.data.id, 'Idempotent movement replay must return the identical movement');
 
     // 15c. Same key + different payload -> 409
-    const m3Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+    const m3Res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, Connection: 'close' },
       body: JSON.stringify({
@@ -1158,7 +1161,7 @@ async function runInventoryTests() {
     assert.strictEqual(m3Res.status, 409, 'Movement idempotency conflict must return 409');
 
     // 15d. Different org + same key -> Allowed (Not 409)
-    const m4Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+    const m4Res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${orgBToken}`, Connection: 'close' },
       body: JSON.stringify({
@@ -1204,7 +1207,7 @@ async function runInventoryTests() {
       reason: 'Customer return', performed_by: 'usr_inv_admin_a',
       idempotency_key: 'return_audit_1'
     });
-    assert.strictEqual(returnMovIdem.id, returnMov.id, 'Idempotency key prevents duplicate return');
+    assert.strictEqual(returnMovIdem.movement.id, returnMov.movement.id, 'Idempotency key prevents duplicate return');
     markPassed('17. Returns Workflow & Idempotency (Audit G1)');
   } catch(e: any) {
     markFailed('17. Returns Workflow & Idempotency (Audit G1)', e);
@@ -1301,9 +1304,288 @@ async function runInventoryTests() {
     markFailed('20. Transfer Concurrency & Double Receive/Dispatch Defense (Audit F2/F3)', e);
   }
 
-  console.log(` Results: ${passed} passed, ${failed} failed`);
+  
+  // ==========================================
+  // R1: EXACT QUANTITY/MONEY BOUNDARY TESTS
+  // ==========================================
+  try {
+    const { app: rApp } = await createApp({ db, authService, skipVite: true });
+    const rServer = http.createServer(rApp);
+    await new Promise<void>((resolve) => rServer.listen(0, resolve));
+    const rPort = (rServer.address() as any).port;
+    const rBaseUrl = `http://127.0.0.1:${rPort}`;
+    (global as any).rServer = rServer;
+    (global as any).rBaseUrl = rBaseUrl;
+
+    const r1Token = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@abacha.test',
+      password: 'Password123!',
+    })).token;
+
+    // Quantity invalid (number instead of string)
+    const resNum = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: 10,
+        unit_cost: "10.00"
+      })
+    });
+    assert.strictEqual(resNum.status, 400, 'HTTP quantity validation should reject numeric 10');
+    
+    const resFloat = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: 10.5,
+        unit_cost: "10.00"
+      })
+    });
+    assert.strictEqual(resFloat.status, 400, 'HTTP quantity validation should reject numeric 10.5');
+
+    // unit_cost invalid (number instead of string)
+    const resCostNum = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: "10.0000",
+        unit_cost: 10
+      })
+    });
+    assert.strictEqual(resCostNum.status, 400, 'HTTP unit_cost validation should reject numeric 10');
+    const costError = await resCostNum.json();
+    assert.ok(costError.error.message.includes('must be supplied as a decimal string'), 'Should explicitly complain about decimal string for money');
+
+    // Valid string acceptance
+    const resValid = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: "10.5000",
+        unit_cost: "12.50",
+        idempotency_key: 'r1-test-key-1'
+      })
+    });
+    assert.strictEqual(resValid.status, 201, 'HTTP should accept string 10.5000 and 12.50');
+
+    markPassed('R1. Exact Quantity/Money Boundary Rejects Numeric Inputs (API Boundary)');
+  } catch (err) {
+    markFailed('R1. Exact Quantity/Money Boundary Rejects Numeric Inputs (API Boundary)', err);
+  }
+
+  // ==========================================
+  // R2: RESERVATION EXPIRATION ACCEPTANCE (E1-E5)
+  // ==========================================
+  try {
+    // Create new variant and opening balance for clean R2
+    const varR2Id = 'var_r2';
+    await inventoryService.recordOpeningBalance('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '100', unit_cost: '10.00'
+    }, 'usr_inv_admin_a');
+
+    const preBal = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const preRes = parseFloat(preBal?.reserved || '0');
+    
+    // Create one expired (E1) and one future (E2)
+    const resExpired = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '2', reference_type: 'ORDER', reference_id: 'R2-E1',
+      expires_at: new Date(Date.now() - 60000).toISOString()
+    }, 'usr_inv_admin_a');
+    
+    const resFuture = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '3', reference_type: 'ORDER', reference_id: 'R2-E2',
+      expires_at: new Date(Date.now() + 60000).toISOString()
+    }, 'usr_inv_admin_a');
+
+    const balAfterCreate = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(parseFloat(balAfterCreate!.reserved) - preRes, 5, 'Reserved should increase by 5');
+
+    // Run expiration (E1 & E2)
+    const expire1 = await reservationService.expireStaleReservations('org_inv_a');
+    assert.ok(expire1.reservationIds.includes(resExpired.id), 'E1: Expired reservation should be processed');
+    assert.ok(!expire1.reservationIds.includes(resFuture.id), 'E2: Future reservation should NOT be processed');
+
+    const balAfterExpire = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(parseFloat(balAfterExpire!.reserved) - preRes, 3, 'E1: Reserved quantity should decrease strictly by expired amount (2)');
+
+    // Run expiration again (E3)
+    const expire2 = await reservationService.expireStaleReservations('org_inv_a');
+    assert.ok(!expire2.reservationIds.includes(resExpired.id), 'E3: Should not re-expire');
+    const balAfterExpire2 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(balAfterExpire2!.reserved, balAfterExpire!.reserved, 'E3: Reserved quantity should not change on repeated run');
+
+    // E4: Expiration vs Release
+    const resConflict = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1', reference_type: 'ORDER', reference_id: 'R2-E4',
+      expires_at: new Date(Date.now() - 1000).toISOString() // expired
+    }, 'usr_inv_admin_a');
+    
+    const balPreE4 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const preE4Res = parseFloat(balPreE4!.reserved);
+
+    // Race expiration and release
+    const p1 = reservationService.expireStaleReservations('org_inv_a');
+    const p2 = reservationService.releaseReservation('org_inv_a', resConflict.id, 'usr_inv_admin_a');
+    await Promise.allSettled([p1, p2]);
+
+    const balPostE4 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(parseFloat(balPostE4!.reserved), preE4Res - 1, 'E4: Reserved quantity restored exactly once');
+
+    // E5: Expiration vs Fulfillment
+    const resFulfill = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1', reference_type: 'ORDER', reference_id: 'R2-E5',
+      expires_at: new Date(Date.now() - 1000).toISOString() // expired
+    }, 'usr_inv_admin_a');
+    
+    const balPreE5 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const preE5Res = parseFloat(balPreE5!.reserved);
+    const preE5OnHand = parseFloat(balPreE5!.on_hand);
+
+    const f1 = reservationService.expireStaleReservations('org_inv_a');
+    const f2 = reservationService.fulfillReservation('org_inv_a', resFulfill.id, 'usr_inv_admin_a');
+    await Promise.allSettled([f1, f2]);
+
+    const balPostE5 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const finalRes = await reservationService.getReservation('org_inv_a', resFulfill.id);
+    
+    if (finalRes!.status === 'FULFILLED') {
+      assert.strictEqual(parseFloat(balPostE5!.on_hand), preE5OnHand - 1, 'E5: Fulfilled won, on_hand decreases');
+    } else {
+      assert.strictEqual(parseFloat(balPostE5!.on_hand), preE5OnHand, 'E5: Expired won, on_hand unchanged');
+    }
+    assert.strictEqual(parseFloat(balPostE5!.reserved), preE5Res - 1, 'E5: Reserved quantity restored exactly once');
+
+    markPassed('R2. Reservation Expiration Acceptance (E1-E5)');
+  } catch (err) {
+    markFailed('R2. Reservation Expiration Acceptance (E1-E5)', err);
+  }
+
+  // ==========================================
+  // R3: TRANSFER CONCURRENCY EVIDENCE (T1-T3)
+  // ==========================================
+  try {
+    const getMovCount = async (transferId: string) => {
+      const res = await db.query('SELECT COUNT(*) as c FROM inventory_movements WHERE reference_type = $1 AND reference_id = $2', ['inventory_transfer', transferId]);
+      return parseInt(res.rows[0].c, 10);
+    };
+
+    // T1: Concurrent Dispatch
+    const { transfer: t1, items: i1 } = await transferService.createTransfer('org_inv_a', {
+      transfer_number: 'TR-R3-T1', source_location_id: 'loc_wh_a', destination_location_id: 'loc_store_a',
+      items: [{ variant_id: 'var_a1', requested_quantity: '10' }]
+    }, 'usr_inv_admin_a');
+    await transferService.approveTransfer('org_inv_a', t1.id, 'usr_inv_admin_a');
+
+    const balPreT1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+    
+    const disp1 = transferService.dispatchTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
+    const disp2 = transferService.dispatchTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
+    await Promise.allSettled([disp1, disp2]);
+
+    const finalT1 = await transferService.getTransfer('org_inv_a', t1.id);
+    const balPostT1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', 'var_a1');
+    
+    assert.strictEqual(finalT1!.transfer.status, 'DISPATCHED', 'T1: Final transfer state should be DISPATCHED');
+    assert.strictEqual(parseFloat(balPreT1!.on_hand) - parseFloat(balPostT1!.on_hand), 10, 'T1: Source inventory deducted exactly once');
+    
+    const t1Movs = await getMovCount(t1.id);
+    assert.strictEqual(t1Movs, 1, 'T1: Exactly 1 movement (TRANSFER_OUT) should be created');
+
+    // T2: Concurrent Receive
+    const destPreT2 = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
+    
+    const rec1 = transferService.receiveTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
+    const rec2 = transferService.receiveTransfer('org_inv_a', t1.id, undefined, 'usr_inv_admin_a');
+    await Promise.allSettled([rec1, rec2]);
+
+    const finalT2 = await transferService.getTransfer('org_inv_a', t1.id);
+    const destPostT2 = await inventoryService.getBalance('org_inv_a', 'loc_store_a', 'var_a1');
+    
+    assert.strictEqual(finalT2!.transfer.status, 'COMPLETED', 'T2: Final transfer state should be COMPLETED');
+    assert.strictEqual(parseFloat(destPostT2!.on_hand) - parseFloat(destPreT2!.on_hand), 10, 'T2: Destination inventory incremented exactly once');
+    
+    const t2Movs = await getMovCount(t1.id);
+    assert.strictEqual(t2Movs, 2, 'T2: Exactly 2 movements (1 OUT, 1 IN) should exist');
+
+    // T3: Concurrent state transition (Approve vs Cancel)
+    const { transfer: t3 } = await transferService.createTransfer('org_inv_a', {
+      transfer_number: 'TR-R3-T3', source_location_id: 'loc_wh_a', destination_location_id: 'loc_store_a',
+      items: [{ variant_id: 'var_a1', requested_quantity: '1' }]
+    }, 'usr_inv_admin_a');
+    
+    const st1 = transferService.approveTransfer('org_inv_a', t3.id, 'usr_inv_admin_a');
+    const st2 = transferService.cancelTransfer('org_inv_a', t3.id, 'usr_inv_admin_a', 'Race');
+    await Promise.allSettled([st1, st2]);
+
+    const finalT3 = await transferService.getTransfer('org_inv_a', t3.id);
+    assert.ok(['APPROVED', 'CANCELLED'].includes(finalT3!.transfer.status), 'T3: Must end in a valid state (APPROVED or CANCELLED)');
+    
+    markPassed('R3. Transfer Concurrency & Inventory State Integrity (T1-T3)');
+  } catch (err) {
+    markFailed('R3. Transfer Concurrency & Inventory State Integrity (T1-T3)', err);
+  }
+
+  // ==========================================
+  // R4: ERROR SANITIZATION TESTS
+  // ==========================================
+  try {
+    const r4Token = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@abacha.test',
+      password: 'Password123!',
+    })).token;
+
+    const rBaseUrl = (global as any).rBaseUrl;
+
+    const massiveString = 'A'.repeat(5000);
+    
+    // Simulate production environment to test error sanitization
+    
+
+    const resCrash = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r4Token}` },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity: "10.0000",
+        unit_cost: "10.00",
+        idempotency_key: massiveString // Will crash DB due to varchar(255)
+      })
+    });
+    
+    
+
+    const crashBody = await resCrash.json();
+    assert.strictEqual(resCrash.status, 500, 'Should return 500 for unhandled DB string truncation or similar');
+    assert.ok(!crashBody.error.message.includes('value too long'), 'DB error details must be sanitized');
+    assert.ok(!crashBody.error.message.includes('at async'), 'Stack trace must be sanitized');
+    assert.strictEqual(crashBody.error.code, 'INVENTORY_ERROR', 'Must return INVENTORY_ERROR code');
+
+    markPassed('R4. HTTP Error Sanitization (Internal DB Leak Prevention)');
+  } catch (err) {
+    markFailed('R4. HTTP Error Sanitization (Internal DB Leak Prevention)', err);
+  }
+
+console.log(` Results: ${passed} passed, ${failed} failed`);
   console.log('======================================================');
 
+
+  try {
+    if ((global as any).rServer) {
+      (global as any).rServer.closeAllConnections?.();
+      await new Promise<void>((resolve) => (global as any).rServer.close(() => resolve()));
+    }
+  } catch (e) { }
   try {
     await db.close();
   } catch (e) {

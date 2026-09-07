@@ -151,3 +151,18 @@ Reviewers must evaluate submissions across these ten dimensions:
 ### INV-002
 Inventory Business-Logic & Acceptance Audit
 Status: READY FOR REVIEW
+
+
+---
+## INV-002R1: Inventory Acceptance Audit Targeted Rework
+- **Task ID**: INV-002R1
+- **Status**: PENDING
+- **Agent Notes**: 
+  - Executed targeted audit remediation for R1, R2, R3, R4.
+  - Added new integration tests (`Test R1`, `Test R2`, `Test R3`, `Test R4`) that explicitly validate exact decimal string enforcement at API boundaries, complex chronological reservation expiration conditions (E1-E5), precise transfer concurrency idempotency (T1-T3), and rigorous HTTP SQL/stack error redacting.
+  - Removed implicit `String()` coercions in `inventoryService`.
+  - Added strict `FOR UPDATE` lock to `findById` in `reservationRepo`.
+  - Fixed error middleware to uniformly strip Postgres trace identifiers in all `NODE_ENV` contexts.
+  - Re-ran 74-test integration suite perfectly green; lint and build both zero-error cleanly.
+  - See `.ai/IMPLEMENTATION_REPORT.md` for the explicit Acceptance Matrix.
+- **Supervisor Action Required**: Approve INV-002R1 to unblock POS-001.

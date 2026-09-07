@@ -22,7 +22,9 @@ export function handleInventoryRouteError(res: Response, err: any): Response {
     .replace(/insert\s+into/gi, '[REDACTED SQL]')
     .replace(/update\s+.*?\s+set/gi, '[REDACTED SQL]')
     .replace(/delete\s+from/gi, '[REDACTED SQL]')
-    .replace(/\/[a-zA-Z0-9_\-\/]+\/[a-zA-Z0-9_\-\.]+/g, '[REDACTED PATH]');
+    .replace(/\/[a-zA-Z0-9_\-\/]+\/[a-zA-Z0-9_\-\.]+/g, '[REDACTED PATH]')
+    .replace(/value too long for type character varying.*/gi, '[REDACTED SQL]')
+    .replace(/duplicate key value violates unique constraint.*/gi, '[REDACTED SQL]');
 
   if (
     msg.includes('TENANT_ACCESS_DENIED') ||

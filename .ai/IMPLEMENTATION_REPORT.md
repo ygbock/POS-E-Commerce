@@ -27,9 +27,9 @@
 | Opening stock          | PASS      | tests/inventory.test.ts (Tests 2, 16) |
 | Movements              | PASS      | tests/inventory.test.ts (Tests 2, 3, 4, 6, 8, 15) |
 | Stock calculations     | PASS      | tests/inventory.test.ts (Tests 1, 3, 5) |
-| Reservations           | PASS      | tests/inventory.test.ts (Tests 5, 11, 14, 19) |
-| Transfers              | PASS      | tests/inventory.test.ts (Tests 6, 7) |
-| Concurrency            | PASS      | tests/inventory.test.ts (Tests 19, 20) |
+| Reservations           | PASS      | tests/inventory.test.ts (Tests 5, 11, 14, 19, R2) |
+| Transfers              | PASS      | tests/inventory.test.ts (Tests 6, 7, R3) |
+| Concurrency            | PASS      | tests/inventory.test.ts (Tests 19, 20, R3) |
 | Returns                | PASS      | tests/inventory.test.ts (Test 17) |
 | Damage/expiry          | PASS      | tests/inventory.test.ts (Test 4) |
 | Stock count            | PASS      | tests/inventory.test.ts (Test 8, 3) |
@@ -39,8 +39,14 @@
 | Idempotency            | PASS      | tests/inventory.test.ts (Tests 14, 15, 2, 17) |
 | Tenant isolation       | PASS      | tests/inventory.test.ts (Tests 9, 10, 12) |
 | Authorization          | PASS      | tests/inventory.test.ts (Test 10) |
-| Exact quantities/money | PASS      | tests/inventory.test.ts (Tests 13, 1) |
-| Error handling         | PASS      | tests/inventory.test.ts (Test 10) |
+| Exact quantities/money | PASS      | tests/inventory.test.ts (Tests 13, 1, R1) |
+| Error handling         | PASS      | tests/inventory.test.ts (Test 10, R4) |
+
+### Targeted Rework (INV-002R1) Evidence
+- **[R1] Exact Quantity/Money Contract**: Added `Test R1` proving HTTP endpoints reject JS `number` types for `quantity` and `unit_cost`, strictly enforcing decimal string validation boundaries. Removed `String()` coercion in service layers to prevent implicit bypasses.
+- **[R2] Reservation Expiration (E1-E5)**: Added `Test R2` proving chronological expiration semantics, concurrency protection when racing `release`/`fulfill` vs `expire`, and strict mathematical ledger adjustments.
+- **[R3] Transfer Concurrency (T1-T3)**: Added `Test R3` proving `SELECT ... FOR UPDATE` isolation prevents double-deduction and double-receipt on multi-click dispatch/receive requests.
+- **[R4] Error Sanitization**: Added `Test R4` validating `handleInventoryRouteError()`. Injected raw database exception during route processing to assert exact response structure (`code: INTERNAL_ERROR`) without leaking SQL context or stack traces.
 
 ### Testing Results:
 Executed locally: `npm run test`

@@ -95,12 +95,14 @@ export class InventoryReservationRepository {
       throw new Error('TENANT_REQUIRED: Explicit organizationId is required for findById.');
     }
     const db = this.getClient(client);
+    const forUpdate = client ? ' FOR UPDATE' : '';
     const query = `
       SELECT id, organization_id, location_id, variant_id,
              quantity::text, reference_type, reference_id,
              status, idempotency_key, notes, expires_at, created_by, created_at, updated_at
       FROM inventory_reservations
       WHERE id = $1 AND organization_id = $2
+      ${forUpdate}
     `;
     const res = await db.query(query, [id, organizationId]);
     if (!res.rows[0]) return null;
