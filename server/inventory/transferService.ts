@@ -78,8 +78,8 @@ export class TransferService {
       status?: 'DRAFT' | 'REQUESTED';
       items: Array<{
         variant_id: string;
-        requested_quantity: number | string;
-        approved_quantity?: number | string;
+        requested_quantity: string;
+        approved_quantity?: string;
         notes?: string;
       }>;
       notes?: string;
@@ -304,7 +304,7 @@ export class TransferService {
     organizationId: string,
     transferId: string,
     performed_by: string = 'system',
-    itemApprovalsOrIdemp?: Array<{ itemId: string; approved_quantity: number | string }> | string,
+    itemApprovalsOrIdemp?: Array<{ itemId: string; approved_quantity: string }> | string,
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
@@ -474,7 +474,7 @@ export class TransferService {
   async dispatchTransfer(
     organizationId: string,
     transferId: string,
-    dispatchQuantities?: Array<{ itemId?: string; variant_id?: string; quantity: number | string }> | Record<string, number | string>,
+    dispatchQuantities?: Array<{ itemId?: string; variant_id?: string; quantity: string }> | Record<string, string>,
     performed_by: string = 'system',
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord & { items?: InventoryTransferItemRecord[]; events?: InventoryTransferEventRecord[] }> {
@@ -782,7 +782,7 @@ export class TransferService {
   async receiveTransfer(
     organizationId: string,
     transferId: string,
-    receipts?: Array<{ itemId?: string; variant_id?: string; received_quantity?: number | string; quantity?: number | string; notes?: string }> | Record<string, number | string>,
+    receipts?: Array<{ itemId?: string; variant_id?: string; received_quantity?: string; quantity?: string; notes?: string }> | Record<string, string>,
     performed_by: string = 'system',
     arg5?: string | { idempotencyKey?: string; allowOverReceive?: boolean; authorizedBy?: string; reason?: string },
     arg6?: { idempotencyKey?: string; allowOverReceive?: boolean; authorizedBy?: string; reason?: string }

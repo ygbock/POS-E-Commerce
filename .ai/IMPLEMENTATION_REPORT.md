@@ -1,22 +1,20 @@
-# Implementation Report: INV-001R5
+# Implementation Report: INV-001R6
 
-**Task ID**: INV-001R5  
+**Task ID**: INV-001R6  
 **Status**: READY FOR REVIEW  
 **POS-001 Status**: NOT STARTED  
 
-## 1. Floating-Point Eradication Check
+## 1. Floating-Point Eradication & Strict Boundaries
 
-- [x] Audited `server/inventory/` and `server/repositories/inventory*`.
-- [x] Eliminated deprecated IEEE-754 arithmetic (`addQty`, `subQty`, `roundQty`, `calculateAvailable`, etc.).
-- [x] Verified `parseQtyToScaled` strictly uses BigInt parsing, explicitly removing the legacy `Math.round(value * 10000)` fallback branch.
-- [x] `parseExactQuantity` rigorously enforces strict numeric string formats, rejecting NaN, Infinity, non-numeric values, and excess precision (>4 decimals).
+- [x] Eliminated floating-point JavaScript `number` from authoritative inventory quantity and monetary boundaries across all services and tests.
+- [x] Removed all silent decimal truncation. `parseExactQuantity` (up to 4 decimals) and `parseExactMoney` (up to 2 decimals) strictly reject inputs exceeding precision limits.
+- [x] Preserved and utilized BigInt-based exact arithmetic for operations without intermediate truncation.
+- [x] Validated strict string requirements throughout the `transferService` and `inventoryRepository` DTOs (all updated to strictly expect `string` rather than `number | string`).
 
-## 2. Currency Strictness Enforcement
+## 2. API & Service Hardening
 
-- [x] Implemented `parseExactMoney` in `server/inventory/inventoryPolicies.ts`.
-- [x] Ensures currency values strictly possess maximum 2 decimal places.
-- [x] Refuses silent truncation or rounding of sub-penny values, throwing `INVALID_CURRENCY_PRECISION` instead.
-- [x] Rejects `NaN`, `Infinity`, and unparseable input.
+- [x] Input to service layer (`inventoryPolicies.ts`) correctly refuses `number`, `NaN`, `Infinity`, `true`, etc., explicitly demanding string decimal formats.
+- [x] Ensured calculations such as `calculateWeightedAverageCostExact` process exact strings natively and preserve up to 4 decimal places before rounding the final result.
 
 ## 3. Database Event Immutability
 
@@ -45,4 +43,4 @@
 - [x] `npm run test:inventory` (15/15 passed)
 - [x] `npm run test:transfer` (13/13 passed)
 
-All concurrent, idempotent, and cross-tenant isolation constraints verified. No unresolved blockers. POS-001 implementation untouched.
+All tests passed successfully, validating exact decimal handling, multi-tenant isolation, idempotency, and security boundaries. POS-001 implementation untouched.

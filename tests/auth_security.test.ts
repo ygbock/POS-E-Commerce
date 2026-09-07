@@ -865,7 +865,7 @@ async function main() {
         location_id: 'loc-store-a',
         variant_id: 'var-a-01',
         movement_type: 'PURCHASE_RECEIVE',
-        quantity_change: 50,
+        quantity_change: '50',
         performed_by: 'usr_org_a',
       });
 
@@ -875,7 +875,7 @@ async function main() {
         location_id: 'loc-store-b',
         variant_id: 'var-b-01',
         movement_type: 'PURCHASE_RECEIVE',
-        quantity_change: 75,
+        quantity_change: '75',
         performed_by: 'usr_org_b',
       });
 

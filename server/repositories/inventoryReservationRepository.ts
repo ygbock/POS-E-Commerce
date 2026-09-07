@@ -44,7 +44,7 @@ export class InventoryReservationRepository {
       organization_id: string;
       location_id: string;
       variant_id: string;
-      quantity: string | number;
+      quantity: string;
       reference_type: string;
       reference_id: string;
       status?: ReservationStatus;

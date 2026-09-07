@@ -222,6 +222,20 @@ PROD-001 (NOT STARTED)
 
 ---
 
+### Task 5.4: INV-001R6 — Exact Numeric Boundary Closure
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `INV-001R5`
+- **Objective**: Apply narrow corrective patch for remaining numeric-integrity issues.
+- **Acceptance Criteria**:
+  - [x] Remove JavaScript `number` from authoritative inventory quantity and monetary boundaries.
+  - [x] Eliminate all silent decimal truncation.
+  - [x] Preserve BigInt-based exact arithmetic.
+  - [x] Make transfer and inventory repository DTOs use exact string quantities.
+  - [x] Update tests and callers accordingly.
+  - [x] All 64 tests pass.
+
+---
+
 ### Task 5.3: INV-001R4 — Inventory Integrity Verification & Closure
 - **Status**: `READY FOR REVIEW`
 - **Parent Task**: `INV-001` / `INV-001R3`

@@ -49,8 +49,8 @@ export class StockCountRepository {
     items: Array<{
       id: string;
       variant_id: string;
-      system_quantity: string | number;
-      counted_quantity?: string | number;
+      system_quantity: string;
+      counted_quantity?: string;
       notes?: string;
     }>,
     client?: DatabaseClient
@@ -254,8 +254,8 @@ export class StockCountRepository {
 
   async updateItemCount(
     itemId: string,
-    countedQty: string | number,
-    systemQty: string | number,
+    countedQty: string,
+    systemQty: string,
     notes?: string,
     client?: DatabaseClient
   ): Promise<StockCountItemRecord | null> {

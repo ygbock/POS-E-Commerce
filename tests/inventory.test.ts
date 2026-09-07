@@ -128,17 +128,47 @@ async function runInventoryTests() {
 
   // TEST 1: Inventory Policies, Scaled Arithmetic & Weighted Average Cost
   try {
-    // 1. Weighted Average Cost Exact Calculations (INV-001R3 Section 4)
+    // 1. Exact Decimal Policy Validations (INV-001R6)
+    
+    // Quantity Rejection
+    assert.throws(() => parseExactQuantity(12.5 as any), /must be supplied as a decimal string/);
+    assert.throws(() => parseExactQuantity(NaN as any), /must be supplied as a decimal string/);
+    assert.throws(() => parseExactQuantity(Infinity as any), /must be supplied as a decimal string/);
+    
+    // Quantity Acceptance
+    assert.strictEqual(parseExactQuantity('12'), '12.0000');
+    assert.strictEqual(parseExactQuantity('12.5'), '12.5000');
+    assert.strictEqual(parseExactQuantity('12.5000'), '12.5000');
+    
+    // Precision Rejection
+    assert.throws(() => parseExactQuantity('12.50001'), /precision exceeds maximum supported 4 decimal places/);
+    assert.throws(() => parseExactQuantity('12.12345'), /precision exceeds maximum supported 4 decimal places/);
+    
+    // Money Rejection
+    assert.throws(() => parseExactMoney(125.50 as any), /must be supplied as a decimal string/);
+    assert.throws(() => parseExactMoney('125.501'), /precision exceeds maximum supported 2 decimal places/);
+    
+    // Money Acceptance
+    assert.strictEqual(parseExactMoney('125'), '125.00');
+    assert.strictEqual(parseExactMoney('125.5'), '125.50');
+    assert.strictEqual(parseExactMoney('125.50'), '125.50');
+
+    // Cost Precision Truncation test (ensure old behavior is removed)
+    assert.throws(() => {
+      calculateWeightedAverageCostExact('10.0000', '100.00', '5.0000', '101.12345');
+    }, /Cost precision cannot exceed 4 decimal places/);
+
+    // 1b. Weighted Average Cost Exact Calculations (INV-001R3 Section 4)
     // Zero opening stock:
     assert.strictEqual(
-      calculateWeightedAverageCostExact(0, 0, 10, 15.25),
+      calculateWeightedAverageCostExact('0', '0', '10', '15.25'),
       '15.25',
       'Zero opening stock must adopt received unit cost'
     );
     // Integer quantities:
     // 10 units @ 10.00 + 10 units @ 20.00 = 20 units, value 300.00 -> 15.00
     assert.strictEqual(
-      calculateWeightedAverageCostExact(10, 10.0, 10, 20.0),
+      calculateWeightedAverageCostExact('10', '10.00', '10', '20.00'),
       '15.00',
       'Integer quantities WAC calculation'
     );
@@ -152,7 +182,7 @@ async function runInventoryTests() {
     // Fractional unit costs:
     // 5 units @ 12.3333 + 5 units @ 14.6667 = 10 units, value 61.6665 + 73.3335 = 135.0000 -> 13.50
     assert.strictEqual(
-      calculateWeightedAverageCostExact(5, '12.3333', 5, '14.6667'),
+      calculateWeightedAverageCostExact('5.0000', '12.3333', '5.0000', '14.6667'),
       '13.50',
       'Fractional unit costs WAC calculation'
     );
@@ -164,39 +194,39 @@ async function runInventoryTests() {
       'Large quantities WAC calculation'
     );
     // Repeated receipts:
-    let wac = calculateWeightedAverageCostExact(10, 10.0, 10, 20.0); // 15.00
+    let wac = calculateWeightedAverageCostExact('10.0000', '10.00', '10.0000', '20.00'); // 15.00
     assert.strictEqual(wac, '15.00');
-    wac = calculateWeightedAverageCostExact(20, wac, 20, 30.0); // (20*15 + 20*30)/40 = 900/40 = 22.50
+    wac = calculateWeightedAverageCostExact('20.0000', wac, '20.0000', '30.00'); // (20*15 + 20*30)/40 = 900/40 = 22.50
     assert.strictEqual(wac, '22.50', 'Repeated receipts WAC calculation');
     // Rounding boundaries:
     // 10 units @ 10.00 + 10 units @ 10.005 -> value 100 + 100.05 = 200.05 / 20 = 10.0025 -> rounds to 10.00
     assert.strictEqual(
-      calculateWeightedAverageCostExact(10, '10.0000', 10, '10.0050'),
+      calculateWeightedAverageCostExact('10.0000', '10.0000', '10.0000', '10.0050'),
       '10.00',
       'Rounding boundary (.0025 rounds down to .00)'
     );
     // 10 units @ 10.00 + 10 units @ 10.010 -> value 200.10 / 20 = 10.005 -> rounds half-up to 10.01
     assert.strictEqual(
-      calculateWeightedAverageCostExact(10, '10.0000', 10, '10.0100'),
+      calculateWeightedAverageCostExact('10.0000', '10.0000', '10.0000', '10.0100'),
       '10.01',
       'Rounding boundary (.005 rounds half-up to .01)'
     );
 
     // 1c. parseExactMoney strictness tests
-    assert.strictEqual(parseExactMoney(12), '12.00');
-    assert.strictEqual(parseExactMoney(12.3), '12.30');
-    assert.strictEqual(parseExactMoney(12.30), '12.30');
-    assert.strictEqual(parseExactMoney(12.34), '12.34');
+    assert.strictEqual(parseExactMoney('12'), '12.00');
+    assert.strictEqual(parseExactMoney('12.3'), '12.30');
+    assert.strictEqual(parseExactMoney('12.30'), '12.30');
     assert.strictEqual(parseExactMoney('12.34'), '12.34');
-    assert.strictEqual(parseExactMoney(-10, 'cost', { allowNegative: true }), '-10.00');
+    assert.strictEqual(parseExactMoney('12.34'), '12.34');
+    assert.strictEqual(parseExactMoney('-10', 'cost', { allowNegative: true }), '-10.00');
 
-    assert.throws(() => parseExactMoney(12.345), /precision exceeds/);
-    assert.throws(() => parseExactMoney(12.999), /precision exceeds/);
-    assert.throws(() => parseExactMoney(-10), /cannot be negative/);
-    assert.throws(() => parseExactMoney(NaN), /finite number/);
-    assert.throws(() => parseExactMoney(Infinity), /finite number/);
-    assert.throws(() => parseExactMoney('1.2e3'), /invalid format/);
-    assert.throws(() => parseExactMoney(true), /numeric money string/);
+    assert.throws(() => parseExactMoney('12.345'), /precision exceeds/);
+    assert.throws(() => parseExactMoney('12.999'), /precision exceeds/);
+    assert.throws(() => parseExactMoney('-10.00'), /cannot be negative/);
+    assert.throws(() => parseExactMoney(NaN as any), /must be supplied as a decimal string/);
+    assert.throws(() => parseExactMoney(Infinity as any), /must be supplied as a decimal string/);
+    assert.throws(() => parseExactMoney('1.2e3'), /invalid decimal format/);
+    assert.throws(() => parseExactMoney(true as any), /must be supplied as a decimal string/);
 
     markPassed('1. Exact Integer-Scaled Arithmetic & Weighted Average Cost Calculations');
   } catch (err) {
@@ -210,8 +240,8 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 150.5,
-        unit_cost: 12.5,
+        quantity: '150.5000',
+        unit_cost: '12.50',
         notes: 'Initial opening balance test',
         idempotency_key: 'idem_open_var_a1',
       },
@@ -236,7 +266,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 150.5,
+        quantity: '150.5000',
         idempotency_key: 'idem_open_var_a1',
       },
       adminUserId
@@ -256,7 +286,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity_change: 25,
+        quantity_change: '25',
         reason: 'Received supplier sample bonus',
       },
       adminUserId
@@ -271,7 +301,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity_change: -10.5,
+        quantity_change: '-10.5',
         reason: 'Packaging tear during restock',
       },
       adminUserId
@@ -286,7 +316,7 @@ async function runInventoryTests() {
           {
             location_id: 'loc_wh_a',
             variant_id: 'var_a1',
-            quantity_change: -200, // exceeds 165
+            quantity_change: '-200', // exceeds 165
             reason: 'Excess deduction',
             allowNegativeStock: false,
           },
@@ -310,7 +340,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 10,
+        quantity: '10',
         type: 'damage',
         reason: 'Water spill from roof',
       },
@@ -326,7 +356,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 5,
+        quantity: '5',
         type: 'expired',
         reason: 'Best-before date passed',
       },
@@ -344,7 +374,7 @@ async function runInventoryTests() {
           {
             location_id: 'loc_wh_a',
             variant_id: 'var_a1',
-            quantity: 200,
+            quantity: '200',
             type: 'damage',
           },
           adminUserId
@@ -359,7 +389,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 5,
+        quantity: '5',
         type: 'damage',
         reason: 'Destroyed and discarded in dumpster',
       },
@@ -385,7 +415,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 20,
+        quantity: '20',
         reference_type: 'ECOMMERCE_ORDER',
         reference_id: 'ord_ecom_1001',
         notes: 'Hold for web customer',
@@ -408,7 +438,7 @@ async function runInventoryTests() {
           {
             location_id: 'loc_wh_a',
             variant_id: 'var_a1',
-            quantity: 140,
+            quantity: '140',
             reference_type: 'ORDER',
             reference_id: 'ord_excess',
           },
@@ -433,7 +463,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 15,
+        quantity: '15',
         reference_type: 'POS_HOLD',
         reference_id: 'pos_hold_55',
       },
@@ -465,7 +495,7 @@ async function runInventoryTests() {
         source_location_id: 'loc_wh_a',
         destination_location_id: 'loc_store_a',
         items: [
-          { variant_id: 'var_a1', requested_quantity: 40 },
+          { variant_id: 'var_a1', requested_quantity: '40' },
         ],
         notes: 'Replenishment for weekend rush',
       },
@@ -497,7 +527,7 @@ async function runInventoryTests() {
     const received = await transferService.receiveTransfer(
       'org_inv_a',
       transfer.id,
-      { var_a1: 40 },
+      { var_a1: '40' },
       adminUserId
     );
     assert.strictEqual(received.status, 'COMPLETED');
@@ -523,7 +553,7 @@ async function runInventoryTests() {
       {
         source_location_id: 'loc_wh_a',
         destination_location_id: 'loc_store_a',
-        items: [{ variant_id: 'var_a1', requested_quantity: 20 }],
+        items: [{ variant_id: 'var_a1', requested_quantity: '20' }],
       },
       adminUserId
     );
@@ -535,7 +565,7 @@ async function runInventoryTests() {
     const received = await transferService.receiveTransfer(
       'org_inv_a',
       transfer.id,
-      { var_a1: 18 },
+      { var_a1: '18' },
       adminUserId
     );
     assert.strictEqual(received.status, 'COMPLETED');
@@ -582,7 +612,7 @@ async function runInventoryTests() {
     const submitted = await stockCountService.submitStockCount(
       'org_inv_a',
       count.id,
-      { var_a1: 60 },
+      { var_a1: '60' },
       adminUserId
     );
     assert.strictEqual(submitted.status, 'SUBMITTED');
@@ -619,7 +649,7 @@ async function runInventoryTests() {
           {
             source_location_id: 'loc_wh_a',
             destination_location_id: 'loc_wh_b', // belongs to org_inv_b
-            items: [{ variant_id: 'var_a1', requested_quantity: 5 }],
+            items: [{ variant_id: 'var_a1', requested_quantity: '5' }],
           },
           adminUserId
         );
@@ -635,7 +665,7 @@ async function runInventoryTests() {
           {
             location_id: 'loc_wh_a',
             variant_id: 'var_b1', // belongs to org_inv_b
-            quantity: 5,
+            quantity: '5',
             reference_type: 'ORDER',
             reference_id: 'cross_res',
           },
@@ -695,7 +725,7 @@ async function runInventoryTests() {
       body: JSON.stringify({
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity_change: 5,
+        quantity_change: '5',
         reason: 'Unauthorized test',
       }),
     });
@@ -713,7 +743,7 @@ async function runInventoryTests() {
       body: JSON.stringify({
         source_location_id: 'loc_wh_a',
         destination_location_id: 'loc_store_a',
-        items: [{ variant_id: 'var_a1', requested_quantity: 5 }],
+        items: [{ variant_id: 'var_a1', requested_quantity: '5' }],
       }),
     });
     assert.strictEqual(cashierTransferRes.status, 403);
@@ -737,7 +767,7 @@ async function runInventoryTests() {
       body: JSON.stringify({
         location_id: 'loc_wh_a', // belongs to org A
         variant_id: 'var_a1',
-        quantity_change: 10,
+        quantity_change: '10',
         reason: 'Hacker adjustment',
       }),
     });
@@ -764,7 +794,7 @@ async function runInventoryTests() {
       {
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',
-        quantity: 5,
+        quantity: '5',
         reference_type: 'ORDER',
         reference_id: 'ord_stale_test',
         expires_at: new Date(Date.now() - 60000).toISOString(), // already expired!
@@ -825,7 +855,7 @@ async function runInventoryTests() {
         organization_id: 'org_inv_b',
         location_id: 'loc_wh_a', // belongs to Org A
         variant_id: 'var_a1',
-        quantity_change: 1,
+        quantity_change: '1',
         reason: 'Rogue tenant parameter injection',
       }),
     });

@@ -14,6 +14,8 @@ import {
   parseQtyToScaled,
   roundMoneyExact,
   generateInventoryId,
+  parseExactQuantity,
+  parseExactMoney,
 } from '../inventory/inventoryPolicies';
 
 export type { InventoryBalanceRecord, InventoryMovementRecord, MovementType, Quantity };
@@ -212,8 +214,8 @@ export class InventoryRepository {
       location_id: string;
       variant_id: string;
       movement_type: MovementType;
-      quantity_change: string | number;
-      unit_cost?: string | number;
+      quantity_change: string;
+      unit_cost?: string;
       reference_type?: string;
       reference_id?: string;
       reason?: string;
@@ -250,7 +252,11 @@ export class InventoryRepository {
         );
       }
 
-      const exactQtyChange = toQtyString(params.quantity_change);
+      const exactQtyChange = parseExactQuantity(
+        params.quantity_change,
+        'quantity_change',
+        { allowNegative: true }
+      );
       const scaledQtyChange = parseQtyToScaled(exactQtyChange);
 
       // 2. Pre-check idempotency key if provided
@@ -377,7 +383,7 @@ export class InventoryRepository {
             exactQtyChange,
             currentOnHand,
             newOnHand,
-            params.unit_cost !== undefined ? roundMoneyExact(params.unit_cost) : '0.00',
+            params.unit_cost !== undefined ? parseExactMoney(params.unit_cost, 'unit_cost') : '0.00',
             params.reference_type || null,
             params.reference_id || null,
             params.reason || null,
@@ -462,7 +468,7 @@ export class InventoryRepository {
       organization_id: string;
       location_id: string;
       variant_id: string;
-      delta_reserved: string | number;
+      delta_reserved: string;
     },
     client?: DatabaseClient
   ): Promise<InventoryBalanceRecord> {
@@ -538,7 +544,7 @@ export class InventoryRepository {
       organization_id: string;
       location_id: string;
       variant_id: string;
-      quantity: string | number;
+      quantity: string;
       type: 'damage' | 'expired';
       reason?: string;
       performed_by: string;
@@ -639,7 +645,7 @@ export class InventoryRepository {
       organization_id: string;
       location_id: string;
       variant_id: string;
-      quantity: string | number;
+      quantity: string;
       type: 'damage' | 'expired';
       reason?: string;
       performed_by: string;
@@ -747,7 +753,7 @@ export class InventoryRepository {
       transfer_id: string;
       source_location_id: string;
       destination_location_id: string;
-      items: Array<{ variant_id: string; quantity: string | number }>;
+      items: Array<{ variant_id: string; quantity: string }>;
       performed_by: string;
       notes?: string;
     },
@@ -829,7 +835,7 @@ export class InventoryRepository {
       transfer_id: string;
       source_location_id: string;
       destination_location_id: string;
-      items: Array<{ variant_id: string; dispatched_quantity: string | number; received_quantity: string | number }>;
+      items: Array<{ variant_id: string; dispatched_quantity: string; received_quantity: string }>;
       performed_by: string;
       notes?: string;
     },

@@ -85,12 +85,12 @@ async function runTransferTests() {
     // var_tr_2: 100 on hand
     await inventoryService.recordOpeningBalance(
       orgA,
-      { location_id: 'loc_tr_hub_a', variant_id: 'var_tr_1', quantity: 200, unit_cost: 15.00 },
+      { location_id: 'loc_tr_hub_a', variant_id: 'var_tr_1', quantity: '200', unit_cost: '15.00' },
       actorId
     );
     await inventoryService.recordOpeningBalance(
       orgA,
-      { location_id: 'loc_tr_hub_a', variant_id: 'var_tr_2', quantity: 100, unit_cost: 30.00 },
+      { location_id: 'loc_tr_hub_a', variant_id: 'var_tr_2', quantity: '100', unit_cost: '30.00' },
       actorId
     );
   } catch (err) {
@@ -110,7 +110,7 @@ async function runTransferTests() {
           {
             source_location_id: 'loc_tr_hub_a',
             destination_location_id: 'loc_tr_hub_a',
-            items: [{ variant_id: 'var_tr_1', requested_quantity: 10 }],
+            items: [{ variant_id: 'var_tr_1', requested_quantity: '10' }],
           },
           actorId
         );
@@ -127,8 +127,8 @@ async function runTransferTests() {
             source_location_id: 'loc_tr_hub_a',
             destination_location_id: 'loc_tr_retail_a',
             items: [
-              { variant_id: 'var_tr_1', requested_quantity: 10 },
-              { variant_id: 'var_tr_1', requested_quantity: 5 },
+              { variant_id: 'var_tr_1', requested_quantity: '10' },
+              { variant_id: 'var_tr_1', requested_quantity: '5' },
             ],
           },
           actorId
@@ -145,7 +145,7 @@ async function runTransferTests() {
           {
             source_location_id: 'loc_tr_hub_a',
             destination_location_id: 'loc_tr_retail_a',
-            items: [{ variant_id: 'var_tr_1', requested_quantity: 0 }],
+            items: [{ variant_id: 'var_tr_1', requested_quantity: '0' }],
           },
           actorId
         );
@@ -161,8 +161,8 @@ async function runTransferTests() {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
         items: [
-          { variant_id: 'var_tr_1', requested_quantity: 50 },
-          { variant_id: 'var_tr_2', requested_quantity: 30 },
+          { variant_id: 'var_tr_1', requested_quantity: '50' },
+          { variant_id: 'var_tr_2', requested_quantity: '30' },
         ],
         notes: 'Replenish retail location',
       },
@@ -192,7 +192,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 25 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '25' }],
       },
       actorId
     );
@@ -217,7 +217,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 10 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '10' }],
       },
       actorId
     );
@@ -249,7 +249,7 @@ async function runTransferTests() {
         await transferService.dispatchTransfer(
           orgA,
           approvedTransferId,
-          { var_tr_1: 30 }, // 30 > 25 approved
+          { var_tr_1: '30' }, // 30 > 25 approved
           actorId
         );
       },
@@ -263,7 +263,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 500 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '500' }],
       },
       actorId
     );
@@ -329,7 +329,7 @@ async function runTransferTests() {
     const received = await transferService.receiveTransfer(
       orgA,
       approvedTransferId,
-      { var_tr_1: 25 },
+      { var_tr_1: '25' },
       actorId
     );
     assert.strictEqual(received.status, 'COMPLETED');
@@ -372,7 +372,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 20 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '20' }],
       },
       actorId
     );
@@ -384,7 +384,7 @@ async function runTransferTests() {
     const completed = await transferService.receiveTransfer(
       orgA,
       transfer.id,
-      { var_tr_1: 17 },
+      { var_tr_1: '17' },
       actorId
     );
     assert.strictEqual(completed.status, 'COMPLETED');
@@ -424,7 +424,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 10 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '10' }],
       },
       actorId
     );
@@ -437,7 +437,7 @@ async function runTransferTests() {
         await transferService.receiveTransfer(
           orgA,
           transfer.id,
-          { var_tr_1: 15 },
+          { var_tr_1: '15' },
           actorId,
           undefined,
           { allowOverReceive: false }
@@ -461,7 +461,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 5 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '5' }],
       },
       actorId
     );
@@ -474,7 +474,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 5 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '5' }],
       },
       actorId
     );
@@ -506,7 +506,7 @@ async function runTransferTests() {
         transfer_number: 'TR-IDEMP-01',
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_2', requested_quantity: 10 }],
+        items: [{ variant_id: 'var_tr_2', requested_quantity: '10' }],
         idempotency_key: createKey,
       },
       actorId
@@ -518,7 +518,7 @@ async function runTransferTests() {
         transfer_number: 'TR-IDEMP-01',
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_2', requested_quantity: 10 }],
+        items: [{ variant_id: 'var_tr_2', requested_quantity: '10' }],
         idempotency_key: createKey,
       },
       actorId
@@ -541,8 +541,8 @@ async function runTransferTests() {
 
     // 9c. Receive replay
     const receiveKey = `idemp_rec_${Date.now()}`;
-    const rec1 = await transferService.receiveTransfer(orgA, res1.transfer.id, { var_tr_2: 10 }, actorId, receiveKey);
-    const rec2 = await transferService.receiveTransfer(orgA, res1.transfer.id, { var_tr_2: 10 }, actorId, receiveKey);
+    const rec1 = await transferService.receiveTransfer(orgA, res1.transfer.id, { var_tr_2: '10' }, actorId, receiveKey);
+    const rec2 = await transferService.receiveTransfer(orgA, res1.transfer.id, { var_tr_2: '10' }, actorId, receiveKey);
     assert.strictEqual(rec1.id, rec2.id);
 
     // Verify stock at retail was only credited once (10 on hand, not 20)
@@ -566,7 +566,7 @@ async function runTransferTests() {
           {
             source_location_id: 'loc_tr_hub_a',
             destination_location_id: 'loc_tr_hub_b', // Org B's location!
-            items: [{ variant_id: 'var_tr_1', requested_quantity: 10 }],
+            items: [{ variant_id: 'var_tr_1', requested_quantity: '10' }],
           },
           actorId
         );
@@ -582,7 +582,7 @@ async function runTransferTests() {
           {
             source_location_id: 'loc_tr_hub_a',
             destination_location_id: 'loc_tr_retail_a',
-            items: [{ variant_id: 'var_tr_b1', requested_quantity: 5 }], // Org B's variant!
+            items: [{ variant_id: 'var_tr_b1', requested_quantity: '5' }], // Org B's variant!
           },
           actorId
         );
@@ -596,7 +596,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 5 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '5' }],
       },
       actorId
     );
@@ -695,7 +695,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 10 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '10' }],
       },
       actorId
     );
@@ -730,7 +730,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 8 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '8' }],
       },
       actorId
     );
@@ -741,8 +741,8 @@ async function runTransferTests() {
 
     // Launch two simultaneous receipt operations in parallel
     const receivePromises = [
-      transferService.receiveTransfer(orgA, concRecTr.id, { var_tr_1: 8 }, actorId, 'rec_conc_key_1'),
-      transferService.receiveTransfer(orgA, concRecTr.id, { var_tr_1: 8 }, actorId, 'rec_conc_key_2'),
+      transferService.receiveTransfer(orgA, concRecTr.id, { var_tr_1: '8' }, actorId, 'rec_conc_key_1'),
+      transferService.receiveTransfer(orgA, concRecTr.id, { var_tr_1: '8' }, actorId, 'rec_conc_key_2'),
     ];
 
     const recResults = await Promise.allSettled(receivePromises);
@@ -764,7 +764,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 5 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '5' }],
       },
       actorId
     );
@@ -774,7 +774,7 @@ async function runTransferTests() {
     // Receipt should fail or be queued because state is not DISPATCHED yet, but it must not corrupt state or duplicate stock.
     const mixPromises = [
       transferService.dispatchTransfer(orgA, concMixTr.id, undefined, actorId, 'mix_disp_key'),
-      transferService.receiveTransfer(orgA, concMixTr.id, { var_tr_1: 5 }, actorId, 'mix_rec_key').catch(e => e), // might reject due to state
+      transferService.receiveTransfer(orgA, concMixTr.id, { var_tr_1: '5' }, actorId, 'mix_rec_key').catch(e => e), // might reject due to state
     ];
 
     await Promise.allSettled(mixPromises);
@@ -799,7 +799,7 @@ async function runTransferTests() {
       {
         source_location_id: 'loc_tr_hub_a',
         destination_location_id: 'loc_tr_retail_a',
-        items: [{ variant_id: 'var_tr_1', requested_quantity: 15 }],
+        items: [{ variant_id: 'var_tr_1', requested_quantity: '15' }],
       },
       actorId
     );
@@ -817,7 +817,7 @@ async function runTransferTests() {
     assert.strictEqual(inTransitDelta, 150000n, 'In-transit balance must increase by exactly 15.0000 upon dispatch');
 
     // Receive 12
-    await transferService.receiveTransfer(orgA, accTr.id, { var_tr_1: 12 }, actorId);
+    await transferService.receiveTransfer(orgA, accTr.id, { var_tr_1: '12' }, actorId);
 
     const sourceBalAfter = await inventoryService.getBalance(orgA, 'loc_tr_hub_a', 'var_tr_1');
     const destBalAfter = await inventoryService.getBalance(orgA, 'loc_tr_retail_a', 'var_tr_1');

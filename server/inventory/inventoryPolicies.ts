@@ -58,51 +58,66 @@ export function parseExactQuantity(
   options?: { allowNegative?: boolean; maxDecimals?: number }
 ): Quantity {
   if (value === null || value === undefined) {
-    throw new Error(`INVALID_QUANTITY: '${fieldName}' is required and cannot be null or undefined.`);
-  }
-  if (typeof value === 'boolean' || typeof value === 'object') {
-    throw new Error(`INVALID_QUANTITY: '${fieldName}' must be a valid numeric quantity string or number.`);
+    throw new Error(
+      `INVALID_QUANTITY: '${fieldName}' is required and cannot be null or undefined.`
+    );
   }
 
-  let str: string;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new Error(`INVALID_QUANTITY: '${fieldName}' must be a finite number, received '${value}'.`);
-    }
-    str = value.toString();
-  } else if (typeof value === 'bigint') {
-    str = value.toString();
-  } else {
-    str = String(value).trim();
+  // Authoritative inventory quantities MUST arrive as strings.
+  // JavaScript numbers are rejected because IEEE-754 representation
+  // is not an acceptable authoritative decimal representation.
+  if (typeof value !== 'string') {
+    throw new Error(
+      `INVALID_QUANTITY: '${fieldName}' must be supplied as a decimal string.`
+    );
   }
+
+  const str = value.trim();
 
   if (!str) {
-    throw new Error(`INVALID_QUANTITY: '${fieldName}' cannot be empty.`);
+    throw new Error(
+      `INVALID_QUANTITY: '${fieldName}' cannot be empty.`
+    );
   }
 
-  // Regex check for standard decimal format (optional leading minus, digits, optional decimal dot)
-  if (!/^-?\d+(\.\d+)?$/.test(str)) {
-    throw new Error(`INVALID_QUANTITY: '${fieldName}' has invalid format '${value}'.`);
+  if (!/^-?\d+(?:\.\d+)?$/.test(str)) {
+    throw new Error(
+      `INVALID_QUANTITY: '${fieldName}' has invalid decimal format.`
+    );
   }
 
   const isNegative = str.startsWith('-');
+
   if (isNegative && !options?.allowNegative) {
-    throw new Error(`INVALID_QUANTITY: '${fieldName}' cannot be negative, received '${value}'.`);
+    throw new Error(
+      `INVALID_QUANTITY: '${fieldName}' cannot be negative.`
+    );
   }
 
   const clean = isNegative ? str.slice(1) : str;
   const parts = clean.split('.');
+
   const wholePart = parts[0] || '0';
   let fracPart = parts[1] || '';
 
-  const maxDecimals = options?.maxDecimals !== undefined ? options.maxDecimals : 4;
+  const maxDecimals =
+    options?.maxDecimals !== undefined
+      ? options.maxDecimals
+      : 4;
+
   if (fracPart.length > maxDecimals) {
     throw new Error(
-      `INVALID_QUANTITY: '${fieldName}' precision exceeds maximum supported ${maxDecimals} decimal places: '${value}'.`
+      `INVALID_QUANTITY: '${fieldName}' precision exceeds maximum supported ${maxDecimals} decimal places.`
     );
   }
 
-  // Pad fractional part to exactly 4 digits
+  // The inventory persistence scale is exactly 4 decimals.
+  if (maxDecimals > 4) {
+    throw new Error(
+      `INVALID_QUANTITY: Inventory quantity scale cannot exceed 4 decimal places.`
+    );
+  }
+
   while (fracPart.length < 4) {
     fracPart += '0';
   }
@@ -181,44 +196,45 @@ export function parseExactMoney(
   if (value === null || value === undefined) {
     return '0.00';
   }
-  if (typeof value === 'boolean' || (typeof value === 'object' && value !== null)) {
-    throw new Error(`INVALID_MONEY: '${fieldName}' must be a valid numeric money string or number.`);
+
+  // Authoritative monetary values MUST arrive as decimal strings.
+  if (typeof value !== 'string') {
+    throw new Error(
+      `INVALID_MONEY: '${fieldName}' must be supplied as a decimal string.`
+    );
   }
 
-  let str: string;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new Error(`INVALID_MONEY: '${fieldName}' must be a finite number, received '${value}'.`);
-    }
-    str = value.toString();
-  } else if (typeof value === 'bigint') {
-    str = value.toString();
-  } else {
-    str = String(value).trim();
-  }
+  const str = value.trim();
 
   if (!str) {
-    throw new Error(`INVALID_MONEY: '${fieldName}' cannot be empty.`);
+    throw new Error(
+      `INVALID_MONEY: '${fieldName}' cannot be empty.`
+    );
   }
 
-  if (!/^-?\d+(\.\d+)?$/.test(str)) {
-    throw new Error(`INVALID_MONEY: '${fieldName}' has invalid format '${value}'.`);
+  if (!/^-?\d+(?:\.\d+)?$/.test(str)) {
+    throw new Error(
+      `INVALID_MONEY: '${fieldName}' has invalid decimal format.`
+    );
   }
 
   const isNegative = str.startsWith('-');
+
   if (isNegative && !options?.allowNegative) {
-    throw new Error(`INVALID_MONEY: '${fieldName}' cannot be negative, received '${value}'.`);
+    throw new Error(
+      `INVALID_MONEY: '${fieldName}' cannot be negative.`
+    );
   }
 
   const clean = isNegative ? str.slice(1) : str;
   const parts = clean.split('.');
+
   const whole = BigInt(parts[0] || '0').toString();
   let frac = parts[1] || '';
 
-  // PREFERRED POLICY: Reject precision exceeding 2 decimal places
   if (frac.length > 2) {
     throw new Error(
-      `INVALID_MONEY: '${fieldName}' precision exceeds maximum supported 2 decimal places: '${value}'.`
+      `INVALID_MONEY: '${fieldName}' precision exceeds maximum supported 2 decimal places.`
     );
   }
 
@@ -229,28 +245,59 @@ export function parseExactMoney(
   return `${isNegative ? '-' : ''}${whole}.${frac}`;
 }
 
-export function roundMoneyExact(amount: number | string): string {
-  if (typeof amount === 'number' && !Number.isFinite(amount)) return '0.00';
-  const str = String(amount).trim();
-  if (!str || !/^-?\d+(\.\d+)?$/.test(str)) return '0.00';
+export function roundMoneyExact(amount: string): string {
+  if (typeof amount !== 'string') {
+    throw new Error(
+      'INVALID_MONEY: Monetary amount must be supplied as a decimal string.'
+    );
+  }
+
+  const str = amount.trim();
+
+  if (!str || !/^-?\d+(?:\.\d+)?$/.test(str)) {
+    throw new Error(
+      `INVALID_MONEY: Invalid monetary amount '${amount}'.`
+    );
+  }
+
   const isNegative = str.startsWith('-');
   const clean = isNegative ? str.slice(1) : str;
+
   const parts = clean.split('.');
   const whole = BigInt(parts[0] || '0');
   let frac = parts[1] || '';
-  while (frac.length < 4) frac += '0';
-  const fracBig = BigInt(frac.slice(0, 4));
-  // fracBig is in 1/10000. Divisor to get cents (1/100) is 100n.
-  // Half-up rounding: add 50n then divide by 100n
+
+  if (frac.length > 4) {
+    throw new Error(
+      `INVALID_MONEY: Intermediate monetary precision cannot exceed 4 decimal places.`
+    );
+  }
+
+  while (frac.length < 4) {
+    frac += '0';
+  }
+
+  const fracBig = BigInt(frac);
+
+  // Convert scale 10,000 -> scale 100 using round-half-up.
   const cents = (fracBig + 50n) / 100n;
-  const totalCents = whole * 100n + cents;
-  const resWhole = totalCents / 100n;
-  const resCents = (totalCents % 100n).toString().padStart(2, '0');
+
+  const totalCents =
+    whole * 100n + cents;
+
+  const resWhole =
+    totalCents / 100n;
+
+  const resCents =
+    (totalCents % 100n)
+      .toString()
+      .padStart(2, '0');
+
   return `${isNegative ? '-' : ''}${resWhole}.${resCents}`;
 }
 
-export function toMoneyString(amount: unknown): string {
-  return roundMoneyExact(amount as any);
+export function toMoneyString(amount: string): string {
+  return roundMoneyExact(amount);
 }
 
 /**
@@ -298,18 +345,42 @@ export function assertLedgerInvariant(
  * to support fractional unit costs without floating-point distortion.
  */
 function parseCostToScaled10k(value: unknown): bigint {
-  const str = String(value).trim();
-  if (!str || !/^-?\d+(\.\d+)?$/.test(str)) {
-    throw new Error(`INVALID_COST: Non-numeric cost value '${value}'.`);
+  if (typeof value !== 'string') {
+    throw new Error(
+      'INVALID_COST: Cost must be supplied as a decimal string.'
+    );
   }
+
+  const str = value.trim();
+
+  if (!str || !/^-?\d+(?:\.\d+)?$/.test(str)) {
+    throw new Error(
+      `INVALID_COST: Invalid cost value.`
+    );
+  }
+
   const isNegative = str.startsWith('-');
   const clean = isNegative ? str.slice(1) : str;
+
   const parts = clean.split('.');
   const whole = BigInt(parts[0] || '0');
+
   let frac = parts[1] || '';
-  if (frac.length > 4) frac = frac.slice(0, 4);
-  while (frac.length < 4) frac += '0';
-  const scaled = whole * INTERMEDIATE_COST_SCALE + BigInt(frac);
+
+  if (frac.length > 4) {
+    throw new Error(
+      'INVALID_COST: Cost precision cannot exceed 4 decimal places.'
+    );
+  }
+
+  while (frac.length < 4) {
+    frac += '0';
+  }
+
+  const scaled =
+    whole * INTERMEDIATE_COST_SCALE +
+    BigInt(frac);
+
   return isNegative ? -scaled : scaled;
 }
 
@@ -326,10 +397,10 @@ function parseCostToScaled10k(value: unknown): bigint {
  * 7. Zero floating-point multiplication or division is performed.
  */
 export function calculateWeightedAverageCostExact(
-  currentOnHand: unknown,
-  currentAvgCost: unknown,
-  receivedQty: unknown,
-  receivedUnitCost: unknown
+  currentOnHand: string,
+  currentAvgCost: string,
+  receivedQty: string,
+  receivedUnitCost: string
 ): string {
   const onHandScaled = parseQtyToScaled(currentOnHand);
   const recQtyScaled = parseQtyToScaled(receivedQty);

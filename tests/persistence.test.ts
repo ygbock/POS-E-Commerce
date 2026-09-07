@@ -195,14 +195,14 @@ async function main() {
         location_id: 'test_loc',
         variant_id: 'var_unique_1',
         movement_type: 'PURCHASE_RECEIVE',
-        quantity_change: 2.5,
-        unit_cost: 12.34,
+        quantity_change: '2.5000',
+        unit_cost: '12.34',
         performed_by: 'Test Worker',
         reason: 'Received shipment of bulk items',
       });
 
-      assert.strictEqual(Number(moveRes.balance.on_hand), 2.5);
-      assert.strictEqual(Number(moveRes.movement.quantity_change), 2.5);
+      assert.strictEqual(moveRes.balance.on_hand, '2.5000');
+      assert.strictEqual(moveRes.movement.quantity_change, '2.5000');
 
       // Add fractional 0.1250 units
       const moveRes2 = await invRepo.recordMovement({
@@ -211,18 +211,18 @@ async function main() {
         location_id: 'test_loc',
         variant_id: 'var_unique_1',
         movement_type: 'PURCHASE_RECEIVE',
-        quantity_change: 0.125,
+        quantity_change: '0.1250',
         performed_by: 'Test Worker',
       });
 
-      assert.strictEqual(Number(moveRes2.balance.on_hand), 2.625);
+      assert.strictEqual(moveRes2.balance.on_hand, '2.6250');
     });
 
     // Test 9: Atomic Transactions and Rollback Safety
     await runTest('9. Atomic Database Transactions & Rollback on Error', async () => {
       const invRepo = new InventoryRepository(db);
       const preBalance = await invRepo.getBalance('test_loc', 'var_unique_1', 'test_org');
-      const startOnHand = preBalance?.on_hand ?? 0;
+      const startOnHand = preBalance?.on_hand ?? '0.0000';
 
       let txThrew = false;
       try {
@@ -245,7 +245,7 @@ async function main() {
 
       // Verify that on_hand was rolled back and did not retain +50
       const postBalance = await invRepo.getBalance('test_loc', 'var_unique_1', 'test_org');
-      assert.strictEqual(postBalance?.on_hand, startOnHand, 'Balance must be unchanged after transaction rollback');
+      assert.strictEqual(postBalance?.on_hand ?? '0.0000', startOnHand, 'Balance must be unchanged after transaction rollback');
     });
 
     // Test 10: Order and Payment Creation with Audit Trail
@@ -484,7 +484,7 @@ async function main() {
           location_id: 'test_loc',
           variant_id: 'var_unique_1',
           movement_type: 'POS_SALE',
-          quantity_change: -99999, // exceeds current on-hand
+          quantity_change: '-99999.0000', // exceeds current on-hand
           performed_by: 'Test Cashier',
           allowNegativeStock: false,
         });
@@ -501,7 +501,7 @@ async function main() {
         location_id: 'test_loc',
         variant_id: 'var_unique_1',
         movement_type: 'PURCHASE_RECEIVE',
-        quantity_change: 5,
+        quantity_change: '5.0000',
         performed_by: 'Test Worker',
       });
 
@@ -513,7 +513,7 @@ async function main() {
           location_id: 'test_loc',
           variant_id: 'var_unique_1',
           movement_type: 'PURCHASE_RECEIVE',
-          quantity_change: 5,
+          quantity_change: '5.0000',
           performed_by: 'Test Worker',
         });
       } catch (err: any) {

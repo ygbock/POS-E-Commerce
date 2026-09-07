@@ -82,8 +82,8 @@ export class InventoryTransferRepository {
     items: Array<{
       id: string;
       variant_id: string;
-      requested_quantity: number | string;
-      approved_quantity?: number | string;
+      requested_quantity: string;
+      approved_quantity?: string;
       notes?: string | null;
     }>,
     client?: DatabaseClient
@@ -480,7 +480,7 @@ export class InventoryTransferRepository {
   async updateItemDispatched(
     organizationId: string,
     itemId: string,
-    dispatchedQty: Quantity | number | string,
+    dispatchedQty: Quantity | string,
     client?: DatabaseClient
   ): Promise<InventoryTransferItemRecord | null> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
@@ -508,8 +508,8 @@ export class InventoryTransferRepository {
   async updateItemReceived(
     organizationId: string,
     itemId: string,
-    receivedQty: Quantity | number | string,
-    varianceQty: Quantity | number | string,
+    receivedQty: Quantity | string,
+    varianceQty: Quantity | string,
     client?: DatabaseClient
   ): Promise<InventoryTransferItemRecord | null> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
@@ -544,7 +544,7 @@ export class InventoryTransferRepository {
       event_type: TransferEventType;
       from_status?: TransferStatus | null;
       to_status: TransferStatus;
-      quantity?: string | number;
+      quantity?: string;
       actor_id: string;
       source_location_id?: string | null;
       destination_location_id?: string | null;
