@@ -19,9 +19,9 @@ function mapTransferItemRow(row: any): InventoryTransferItemRecord {
       row.approved_quantity !== null && row.approved_quantity !== undefined
         ? toQtyString(row.approved_quantity)
         : null,
-    dispatched_quantity: toQtyString(row.dispatched_quantity || 0),
-    received_quantity: toQtyString(row.received_quantity || 0),
-    variance_quantity: toQtyString(row.variance_quantity || 0),
+    dispatched_quantity: toQtyString(row.dispatched_quantity ?? '0.0000'),
+    received_quantity: toQtyString(row.received_quantity ?? '0.0000'),
+    variance_quantity: toQtyString(row.variance_quantity ?? '0.0000'),
     notes: row.notes,
     created_at: row.created_at,
   };

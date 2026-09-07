@@ -11,33 +11,39 @@ import { parseExactQuantity, parseExactMoney } from '../inventory/inventoryPolic
 
 /**
  * Sanitizes error messages to prevent leaking SQL statements, database constraint details,
- * file paths, stack traces, connection strings, credentials, or table names.
+ * file paths, stack traces, connection strings, credentials, or table/column names.
  */
 export function sanitizeInventoryErrorMessage(rawMessage: string): string {
   if (!rawMessage) return 'Unknown inventory error';
 
   return rawMessage
-    // Credentials, passwords, keys, tokens
-    .replace(/(?:password|secret|key|token|bearer)\s*[:=]\s*["']?[^&;\s,}'"]+["']?/gi, '***')
+    // Credentials, passwords, keys, tokens, secrets
+    .replace(/\b(?:password|secret|key|token|bearer|credential|authorization|auth_token)\s*[:=]\s*["']?[^&;\s,}'"]+["']?/gi, '***')
     // Connection strings
-    .replace(/(?:postgres|postgresql|mysql|sqlite|redis):\/\/[^\s"',;]+/gi, '[REDACTED_CONN_URI]')
+    .replace(/\b[a-zA-Z0-9_+.-]+:\/\/[^\s"',;]+/gi, '[REDACTED_CONN_URI]')
     // SQL comments
     .replace(/--[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     // Entire SQL statements & clauses
-    .replace(/\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b[\s\S]*?(?=(?:violates|error|at\s+|\n|$))/gi, '[REDACTED_SQL] ')
-    .replace(/\b(?:WHERE|FROM|JOIN|ORDER BY|GROUP BY|HAVING|LIMIT|OFFSET)\b[\s\S]*?(?=(?:violates|error|at\s+|\n|$))/gi, '[REDACTED_SQL] ')
+    .replace(/\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b[\s\S]*?(?=(?:violates|error|at\s+|\n|$))/gi, '[REDACTED_SQL] ')
+    .replace(/\b(?:WHERE|FROM|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|CROSS JOIN|ORDER BY|GROUP BY|HAVING|LIMIT|OFFSET|UNION)\b[\s\S]*?(?=(?:violates|error|at\s+|\n|$))/gi, '[REDACTED_SQL] ')
     // Database constraint & diagnostic details
     .replace(/(?:duplicate key value violates unique constraint|violates foreign key constraint|violates not-null constraint|violates check constraint)[^\n;]*/gi, '[REDACTED_DB_CONSTRAINT]')
     .replace(/(?:value too long for type character varying|syntax error at or near)[^\n;]*/gi, '[REDACTED_DB_SYNTAX]')
-    .replace(/\b(?:relation|table|column)\s+["'][a-zA-Z0-9_]+["']/gi, '[REDACTED_DB_SCHEMA]')
-    .replace(/\b(?:inventory_balances|inventory_movements|inventory_transfers|inventory_reservations|inventory_stock_counts|product_variants|products|organizations|users)\b/g, '[REDACTED_TABLE]')
-    // File paths
+    // Explicit relation, table, column mentions
+    .replace(/\b(?:relation|table|column)\s+["']?[a-zA-Z0-9_]+["']?/gi, '[REDACTED_DB_SCHEMA]')
+    // Specific table names
+    .replace(/\b(?:inventory_balances|inventory_movements|inventory_transfers|inventory_transfer_items|inventory_transfer_events|inventory_reservations|inventory_stock_counts|inventory_stock_count_items|product_variants|products|organizations|locations|users|orders|order_items|payments|customers|audit_events|schema_migrations)\b/g, '[REDACTED_TABLE]')
+    // Sensitive column names
+    .replace(/\b(?:on_hand|available|reserved|in_transit|damaged|expired|unit_cost|weighted_average_cost|password_hash|token_hash)\b/g, '[REDACTED_COLUMN]')
+    // File paths (Unix and Windows)
     .replace(/(?:\/[a-zA-Z0-9_\-\.]+){2,}/g, '[REDACTED_PATH]')
     .replace(/[a-zA-Z]:\\[a-zA-Z0-9_\-\.\\]+/g, '[REDACTED_PATH]')
     // Stack traces
     .replace(/\s+at\s+[^\n]+/g, '')
+    .replace(/\n\s*at\s+.*$/gm, '')
     // Trace identifiers
-    .replace(/trace[-_]?id[:=]?\s*[a-zA-Z0-9_\-]+/gi, '[REDACTED_TRACE]')
+    .replace(/\b(?:trace[-_]?id|request[-_]?id|span[-_]?id|correlation[-_]?id)[:=]?\s*["']?[a-zA-Z0-9_\-]+["']?/gi, '[REDACTED_TRACE]')
     .trim();
 }
 

@@ -72,21 +72,20 @@ export function parseExactQuantity(
     );
   }
 
-  const str = value.trim();
-
-  if (!str) {
+  // Authoritative boundary must reject whitespace rather than silently trimming it away.
+  if (!value) {
     throw new Error(
       `INVALID_QUANTITY: '${fieldName}' cannot be empty.`
     );
   }
 
-  if (!/^-?\d+(?:\.\d+)?$/.test(str)) {
+  if (!/^-?\d+(?:\.\d+)?$/.test(value)) {
     throw new Error(
       `INVALID_QUANTITY: '${fieldName}' has invalid decimal format.`
     );
   }
 
-  const isNegative = str.startsWith('-');
+  const isNegative = value.startsWith('-');
 
   if (isNegative && !options?.allowNegative) {
     throw new Error(
@@ -94,7 +93,7 @@ export function parseExactQuantity(
     );
   }
 
-  const clean = isNegative ? str.slice(1) : str;
+  const clean = isNegative ? value.slice(1) : value;
   const parts = clean.split('.');
 
   const wholePart = parts[0] || '0';
@@ -215,21 +214,20 @@ export function parseExactMoney(
     );
   }
 
-  const str = value.trim();
-
-  if (!str) {
+  // Authoritative boundary must reject whitespace rather than trimming it away.
+  if (!value) {
     throw new Error(
       `INVALID_MONEY: '${fieldName}' cannot be empty.`
     );
   }
 
-  if (!/^-?\d+(?:\.\d+)?$/.test(str)) {
+  if (!/^-?\d+(?:\.\d+)?$/.test(value)) {
     throw new Error(
       `INVALID_MONEY: '${fieldName}' has invalid decimal format.`
     );
   }
 
-  const isNegative = str.startsWith('-');
+  const isNegative = value.startsWith('-');
 
   if (isNegative && !options?.allowNegative) {
     throw new Error(
@@ -237,7 +235,7 @@ export function parseExactMoney(
     );
   }
 
-  const clean = isNegative ? str.slice(1) : str;
+  const clean = isNegative ? value.slice(1) : value;
   const parts = clean.split('.');
 
   const whole = BigInt(parts[0] || '0').toString();

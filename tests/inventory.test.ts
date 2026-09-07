@@ -24,6 +24,7 @@ import {
   parseQtyToScaled,
   formatScaledToQtyString,
 } from '../server/inventory/inventoryPolicies';
+import { sanitizeInventoryErrorMessage } from '../server/routes/inventoryRoutes';
 
 async function runInventoryTests() {
   console.log('======================================================');
@@ -1354,24 +1355,73 @@ async function runInventoryTests() {
       assert.strictEqual(res.status, 400, `HTTP adjustments quantity validation must reject numeric ${badQty}`);
     }
 
-    // 3. Strict money validation: Rejected inputs on /opening-balance
-    const rejectedMoneyInputs: Array<{ desc: string; val: any }> = [
-      { desc: 'numeric 12', val: 12 },
-      { desc: 'numeric 12.5', val: 12.5 },
+    // 3. Strict money validation: Policy-level accept/reject matrix (INV-002R3)
+    const exactPolicyAccepts: Array<{ input: string; expected: string }> = [
+      { input: "0", expected: "0.00" },
+      { input: "0.00", expected: "0.00" },
+      { input: "10", expected: "10.00" },
+      { input: "10.5", expected: "10.50" },
+      { input: "10.50", expected: "10.50" },
+      { input: "1234.56", expected: "1234.56" },
+    ];
+    for (const testCase of exactPolicyAccepts) {
+      const parsed = parseExactMoney(testCase.input);
+      assert.strictEqual(parsed, testCase.expected, `parseExactMoney('${testCase.input}') must yield '${testCase.expected}'`);
+    }
+
+    const exactPolicyRejects: Array<{ desc: string; val: any }> = [
+      { desc: 'numeric 10', val: 10 },
+      { desc: 'numeric 10.5', val: 10.5 },
+      { desc: 'null', val: null },
+      { desc: 'undefined (required)', val: undefined },
+      { desc: 'boolean true', val: true },
+      { desc: 'boolean false', val: false },
+      { desc: 'object {}', val: {} },
+      { desc: 'array []', val: [] },
+      { desc: 'empty string ""', val: "" },
+      { desc: 'whitespace " "', val: " " },
+      { desc: 'padded " 10.00 "', val: " 10.00 " },
+      { desc: 'trailing space "10.00 "', val: "10.00 " },
+      { desc: 'leading space " 10.00"', val: " 10.00" },
+      { desc: 'scientific "1e2"', val: "1e2" },
+      { desc: 'excess precision "10.001"', val: "10.001" },
+      { desc: 'currency symbol "$10.00"', val: "$10.00" },
+      { desc: 'comma formatted "10,000.00"', val: "10,000.00" },
+      { desc: 'non-numeric "abc"', val: "abc" },
+    ];
+    for (const testCase of exactPolicyRejects) {
+      assert.throws(
+        () => parseExactMoney(testCase.val, 'unit_cost', { required: true }),
+        (err: any) => err.message.includes('INVALID_MONEY'),
+        `parseExactMoney must reject ${testCase.desc}`
+      );
+    }
+
+    // 4. Strict money validation: Rejected inputs on /opening-balance
+    const rejectedHttpMoneyInputs: Array<{ desc: string; val: any }> = [
+      { desc: 'numeric 10', val: 10 },
+      { desc: 'numeric 10.5', val: 10.5 },
+      { desc: 'null', val: null },
+      { desc: 'boolean true', val: true },
+      { desc: 'object {}', val: {} },
+      { desc: 'array []', val: [] },
+      { desc: 'empty string ""', val: "" },
+      { desc: 'whitespace string " "', val: " " },
+      { desc: 'padded string " 10.00 "', val: " 10.00 " },
+      { desc: 'trailing space "10.00 "', val: "10.00 " },
+      { desc: 'leading space " 10.00"', val: " 10.00" },
+      { desc: 'scientific notation "1e2"', val: "1e2" },
+      { desc: 'excess precision "10.001"', val: "10.001" },
+      { desc: 'currency symbol "$10.00"', val: "$10.00" },
+      { desc: 'thousands comma "10,000.00"', val: "10,000.00" },
+      { desc: 'alphabetic string "abc"', val: "abc" },
       { desc: 'numeric NaN', val: NaN },
       { desc: 'string NaN', val: "NaN" },
       { desc: 'numeric Infinity', val: Infinity },
       { desc: 'string Infinity', val: "Infinity" },
-      { desc: 'numeric 1e309', val: 1e309 },
-      { desc: 'string 1e309', val: "1e309" },
-      { desc: 'boolean true', val: true },
-      { desc: 'null', val: null },
-      { desc: 'object', val: { amount: 12 } },
-      { desc: 'array', val: [12.5] },
-      { desc: 'excess precision 12.345', val: "12.345" },
     ];
 
-    for (const item of rejectedMoneyInputs) {
+    for (const item of rejectedHttpMoneyInputs) {
       const res = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
@@ -1382,7 +1432,7 @@ async function runInventoryTests() {
           unit_cost: item.val
         })
       });
-      assert.strictEqual(res.status, 400, `HTTP unit_cost validation must reject ${item.desc}`);
+      assert.strictEqual(res.status, 400, `HTTP /opening-balance unit_cost validation must reject ${item.desc}`);
       const body = await res.json();
       assert.strictEqual(body.success, false);
       assert.ok(
@@ -1391,8 +1441,8 @@ async function runInventoryTests() {
       );
     }
 
-    // 4. Strict money validation: Rejected inputs on /adjustments
-    for (const item of rejectedMoneyInputs.slice(0, 5)) {
+    // 5. Strict money validation: Rejected inputs on /adjustments
+    for (const item of rejectedHttpMoneyInputs) {
       const res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r1Token}` },
@@ -1404,11 +1454,11 @@ async function runInventoryTests() {
           unit_cost: item.val
         })
       });
-      assert.strictEqual(res.status, 400, `HTTP adjustments unit_cost validation must reject ${item.desc}`);
+      assert.strictEqual(res.status, 400, `HTTP /adjustments unit_cost validation must reject ${item.desc}`);
     }
 
-    // 5. Accepted decimal strings on /opening-balance: "12", "12.5", "12.50"
-    const acceptedMoneyStrings = ["12", "12.5", "12.50"];
+    // 6. Accepted decimal strings on /opening-balance: "0", "0.00", "10", "10.5", "10.50", "1234.56"
+    const acceptedMoneyStrings = ["0", "0.00", "10", "10.5", "10.50", "1234.56"];
     for (let idx = 0; idx < acceptedMoneyStrings.length; idx++) {
       const moneyStr = acceptedMoneyStrings[idx];
       const res = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
@@ -1427,7 +1477,7 @@ async function runInventoryTests() {
       assert.strictEqual(body.success, true);
     }
 
-    // 6. Accepted decimal strings on /adjustments: "12", "12.5", "12.50"
+    // 7. Accepted decimal strings on /adjustments: "0", "0.00", "10", "10.5", "10.50", "1234.56"
     for (let idx = 0; idx < acceptedMoneyStrings.length; idx++) {
       const moneyStr = acceptedMoneyStrings[idx];
       const res = await fetch(`${rBaseUrl}/api/inventory/adjustments`, {
@@ -1465,44 +1515,98 @@ async function runInventoryTests() {
       location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '100.0000', unit_cost: '10.00'
     }, 'usr_inv_admin_a');
 
-    const preBal = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    const preRes = parseFloat(preBal?.reserved || '0');
-    const preAvail = parseFloat(preBal?.available || '100');
-    const preOnHand = parseFloat(preBal?.on_hand || '100');
+    // -------------------------------------------------------------------------
+    // E1: Create an active reservation
+    // -------------------------------------------------------------------------
+    const balPreE1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const preE1Res = parseFloat(balPreE1!.reserved);
+    const preE1Avail = parseFloat(balPreE1!.available);
+    const preE1OnHand = parseFloat(balPreE1!.on_hand);
 
-    // E1 & E2: Expired reservation (past expires_at) vs Active non-expired reservation (future expires_at)
-    const resExpired = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '2.0000', reference_type: 'ORDER', reference_id: 'R2-E1',
+    const resE1 = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '5.0000', reference_type: 'ORDER', reference_id: 'R2-E1',
+      expires_at: new Date(Date.now() + 3600000).toISOString()
+    }, 'usr_inv_admin_a');
+
+    // Direct DB state verification for E1
+    const dbE1Res = (await db.query(`SELECT * FROM inventory_reservations WHERE id = $1`, [resE1.id])).rows[0];
+    assert.strictEqual(dbE1Res.status, 'ACTIVE', 'E1: Reservation status in database must be ACTIVE');
+    assert.strictEqual(dbE1Res.quantity, '5.0000', 'E1: Reservation quantity in database must be 5.0000');
+
+    const balPostE1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(parseFloat(balPostE1!.reserved) - preE1Res, 5, 'E1: Reserved quantity must increase by 5.0000');
+    assert.strictEqual(preE1Avail - parseFloat(balPostE1!.available), 5, 'E1: Available quantity must decrease by 5.0000');
+    assert.strictEqual(balPostE1!.on_hand, balPreE1!.on_hand, 'E1: on_hand must remain unchanged');
+
+    // -------------------------------------------------------------------------
+    // E2: Expire a reservation whose expiration time has passed
+    // -------------------------------------------------------------------------
+    const resE2 = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '3.0000', reference_type: 'ORDER', reference_id: 'R2-E2',
       expires_at: new Date(Date.now() - 60000).toISOString()
     }, 'usr_inv_admin_a');
-    
-    const resFuture = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '3.0000', reference_type: 'ORDER', reference_id: 'R2-E2',
-      expires_at: new Date(Date.now() + 60000).toISOString()
+
+    const balPreE2 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const preE2Res = parseFloat(balPreE2!.reserved);
+    const preE2Avail = parseFloat(balPreE2!.available);
+
+    const expireE2Result = await reservationService.expireStaleReservations('org_inv_a');
+    assert.ok(expireE2Result.reservationIds.includes(resE2.id), 'E2: Expired reservation must be returned in expired list');
+
+    // Direct DB state verification for E2
+    const dbE2Res = (await db.query(`SELECT * FROM inventory_reservations WHERE id = $1`, [resE2.id])).rows[0];
+    assert.strictEqual(dbE2Res.status, 'EXPIRED', 'E2: Reservation status in database must be EXPIRED');
+
+    const balPostE2 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(preE2Res - parseFloat(balPostE2!.reserved), 3, 'E2: Reserved quantity must be restored by 3.0000');
+    assert.strictEqual(parseFloat(balPostE2!.available) - preE2Avail, 3, 'E2: Available quantity must be restored by 3.0000');
+    assert.strictEqual(balPostE2!.on_hand, balPreE2!.on_hand, 'E2: on_hand must remain unchanged');
+
+    // Clean up E1 before concurrency races
+    await reservationService.releaseReservation('org_inv_a', resE1.id, 'usr_inv_admin_a');
+
+    // -------------------------------------------------------------------------
+    // E3: Reservation expiration vs release race
+    // -------------------------------------------------------------------------
+    const resE3 = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '2.0000', reference_type: 'ORDER', reference_id: 'R2-E3',
+      expires_at: new Date(Date.now() - 1000).toISOString()
     }, 'usr_inv_admin_a');
+    
+    const balPreE3 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const preE3Res = parseFloat(balPreE3!.reserved);
+    const preE3OnHand = parseFloat(balPreE3!.on_hand);
+    const preE3Avail = parseFloat(balPreE3!.available);
 
-    const balAfterCreate = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    assert.strictEqual(parseFloat(balAfterCreate!.reserved) - preRes, 5, 'Reserved should increase by exactly 5');
+    const [e3ExpireRes, e3ReleaseRes] = await Promise.allSettled([
+      reservationService.expireStaleReservations('org_inv_a'),
+      reservationService.releaseReservation('org_inv_a', resE3.id, 'usr_inv_admin_a')
+    ]);
 
-    // Run expiration engine: E1 must expire, E2 must remain unchanged
-    const expire1 = await reservationService.expireStaleReservations('org_inv_a');
-    assert.ok(expire1.reservationIds.includes(resExpired.id), 'E1: Expired reservation must be expired');
-    assert.ok(!expire1.reservationIds.includes(resFuture.id), 'E2: Future reservation must NOT be expired');
+    assert.ok(e3ExpireRes.status === 'fulfilled' || e3ReleaseRes.status === 'fulfilled', 'E3: At least one operation must succeed');
+    
+    // Direct DB state verification for E3
+    const dbE3Res = (await db.query(`SELECT * FROM inventory_reservations WHERE id = $1`, [resE3.id])).rows[0];
+    assert.ok(
+      dbE3Res.status === 'RELEASED' || dbE3Res.status === 'EXPIRED',
+      `E3: Final database reservation status must be RELEASED or EXPIRED, got ${dbE3Res.status}`
+    );
 
-    const balAfterExpire1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    assert.strictEqual(parseFloat(balAfterExpire1!.reserved) - preRes, 3, 'E1: Reserved quantity should decrease strictly by 2.0000');
-    assert.strictEqual(parseFloat(balAfterExpire1!.available) - preAvail, -3, 'E1: Available should be preAvail - 3.0000');
+    const balPostE3 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    const postE3Res = parseFloat(balPostE3!.reserved);
+    const postE3OnHand = parseFloat(balPostE3!.on_hand);
+    const postE3Avail = parseFloat(balPostE3!.available);
 
-    // E3: Repeated expiration run: No duplicate release, idempotent
-    const expire2 = await reservationService.expireStaleReservations('org_inv_a');
-    assert.ok(!expire2.reservationIds.includes(resExpired.id), 'E3: Already expired reservation must not re-expire');
-    const balAfterExpire2 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    assert.strictEqual(balAfterExpire2!.reserved, balAfterExpire1!.reserved, 'E3: Reserved quantity unchanged on repeat');
-    assert.strictEqual(balAfterExpire2!.available, balAfterExpire1!.available, 'E3: Available quantity unchanged on repeat');
+    assert.strictEqual(postE3Res, preE3Res - 2, 'E3: Reserved quantity restored exactly once (no double restoration)');
+    assert.strictEqual(postE3OnHand, preE3OnHand, 'E3: on_hand unchanged during release/expiration race');
+    assert.strictEqual(postE3Avail, preE3Avail + 2, 'E3: Available restored by exactly 2.0000');
+    assert.ok(postE3Res >= 0, 'E3: Reserved quantity must never be negative');
 
-    // E4: Expiration racing with manual release
-    const resConflict = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1.0000', reference_type: 'ORDER', reference_id: 'R2-E4',
+    // -------------------------------------------------------------------------
+    // E4: Reservation expiration vs fulfillment race
+    // -------------------------------------------------------------------------
+    const resE4 = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '2.0000', reference_type: 'ORDER', reference_id: 'R2-E4',
       expires_at: new Date(Date.now() - 1000).toISOString()
     }, 'usr_inv_admin_a');
     
@@ -1511,61 +1615,83 @@ async function runInventoryTests() {
     const preE4OnHand = parseFloat(balPreE4!.on_hand);
     const preE4Avail = parseFloat(balPreE4!.available);
 
-    const [e4ExpireRes, e4ReleaseRes] = await Promise.allSettled([
+    const [e4ExpireRes, e4FulfillRes] = await Promise.allSettled([
       reservationService.expireStaleReservations('org_inv_a'),
-      reservationService.releaseReservation('org_inv_a', resConflict.id, 'usr_inv_admin_a')
+      reservationService.fulfillReservation('org_inv_a', resE4.id, 'usr_inv_admin_a')
     ]);
 
-    // Assert both operation results
-    assert.ok(e4ExpireRes.status === 'fulfilled' || e4ReleaseRes.status === 'fulfilled', 'E4: At least one operation must succeed');
-    const finalE4Reservation = await reservationService.getReservation('org_inv_a', resConflict.id);
-    assert.ok(['RELEASED', 'EXPIRED'].includes(finalE4Reservation!.status), 'E4: Final reservation status must be RELEASED or EXPIRED');
+    assert.ok(e4ExpireRes.status === 'fulfilled' || e4FulfillRes.status === 'fulfilled', 'E4: At least one operation must succeed');
+    
+    // Direct DB state verification for E4
+    const dbE4Res = (await db.query(`SELECT * FROM inventory_reservations WHERE id = $1`, [resE4.id])).rows[0];
+    assert.ok(
+      dbE4Res.status === 'FULFILLED' || dbE4Res.status === 'EXPIRED',
+      `E4: Final database reservation status must be FULFILLED or EXPIRED, got ${dbE4Res.status}`
+    );
 
     const balPostE4 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
     const postE4Res = parseFloat(balPostE4!.reserved);
     const postE4OnHand = parseFloat(balPostE4!.on_hand);
     const postE4Avail = parseFloat(balPostE4!.available);
 
-    assert.strictEqual(postE4Res, preE4Res - 1, 'E4: Reserved quantity restored exactly once');
-    assert.strictEqual(postE4OnHand, preE4OnHand, 'E4: On hand unchanged during release/expiration race');
-    assert.strictEqual(postE4Avail, preE4Avail + 1, 'E4: Available restored by exactly 1');
-    assert.ok(postE4Res >= 0, 'E4: Reserved quantity must never be negative');
-
-    // E5: Expiration racing with fulfillment
-    const resFulfill = await reservationService.createReservation('org_inv_a', {
-      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1.0000', reference_type: 'ORDER', reference_id: 'R2-E5',
-      expires_at: new Date(Date.now() - 1000).toISOString()
-    }, 'usr_inv_admin_a');
-    
-    const balPreE5 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    const preE5Res = parseFloat(balPreE5!.reserved);
-    const preE5OnHand = parseFloat(balPreE5!.on_hand);
-    const preE5Avail = parseFloat(balPreE5!.available);
-
-    const [e5ExpireRes, e5FulfillRes] = await Promise.allSettled([
-      reservationService.expireStaleReservations('org_inv_a'),
-      reservationService.fulfillReservation('org_inv_a', resFulfill.id, 'usr_inv_admin_a')
-    ]);
-
-    // Assert both operation results
-    assert.ok(e5ExpireRes.status === 'fulfilled' || e5FulfillRes.status === 'fulfilled', 'E5: At least one operation must succeed');
-    const finalE5Reservation = await reservationService.getReservation('org_inv_a', resFulfill.id);
-    assert.ok(['FULFILLED', 'EXPIRED'].includes(finalE5Reservation!.status), 'E5: Final reservation status must be FULFILLED or EXPIRED');
-
-    const balPostE5 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
-    const postE5Res = parseFloat(balPostE5!.reserved);
-    const postE5OnHand = parseFloat(balPostE5!.on_hand);
-    const postE5Avail = parseFloat(balPostE5!.available);
-
-    if (finalE5Reservation!.status === 'FULFILLED') {
-      assert.strictEqual(postE5OnHand, preE5OnHand - 1, 'E5: If fulfilled, on_hand must decrease by 1');
-      assert.strictEqual(postE5Avail, preE5Avail, 'E5: If fulfilled, available is unchanged');
+    if (dbE4Res.status === 'FULFILLED') {
+      assert.strictEqual(postE4OnHand, preE4OnHand - 2, 'E4: If fulfilled, on_hand must decrease by exactly 2.0000');
+      assert.strictEqual(postE4Avail, preE4Avail, 'E4: If fulfilled, available is unchanged');
     } else {
-      assert.strictEqual(postE5OnHand, preE5OnHand, 'E5: If expired, on_hand unchanged');
-      assert.strictEqual(postE5Avail, preE5Avail + 1, 'E5: If expired, available restored by 1');
+      assert.strictEqual(postE4OnHand, preE4OnHand, 'E4: If expired, on_hand remains unchanged');
+      assert.strictEqual(postE4Avail, preE4Avail + 2, 'E4: If expired, available restored by exactly 2.0000');
     }
-    assert.strictEqual(postE5Res, preE5Res - 1, 'E5: Reserved quantity restored exactly once');
-    assert.ok(postE5Res >= 0, 'E5: Reserved quantity must never be negative');
+    assert.strictEqual(postE4Res, preE4Res - 2, 'E4: Reserved quantity restored/deducted exactly once');
+    assert.ok(postE4Res >= 0, 'E4: Reserved quantity must never be negative');
+    assert.ok(postE4OnHand >= 0, 'E4: on_hand must never be negative');
+
+    // -------------------------------------------------------------------------
+    // E5: Repeated expiration idempotency & unexpired reservation protection
+    // -------------------------------------------------------------------------
+    // 1. Create a reservation that has NOT yet expired (future expires_at)
+    const resE5Active = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '4.0000', reference_type: 'ORDER', reference_id: 'R2-E5-ACTIVE',
+      expires_at: new Date(Date.now() + 86400000).toISOString() // Expires in 24 hours
+    }, 'usr_inv_admin_a');
+
+    // 2. Create a reservation that HAS expired
+    const resE5Expired = await reservationService.createReservation('org_inv_a', {
+      location_id: 'loc_wh_a', variant_id: varR2Id, quantity: '1.0000', reference_type: 'ORDER', reference_id: 'R2-E5-EXPIRED',
+      expires_at: new Date(Date.now() - 5000).toISOString()
+    }, 'usr_inv_admin_a');
+
+    const balPreE5Run1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    
+    // First expiration pass: should expire resE5Expired, but NOT resE5Active
+    const e5Pass1 = await reservationService.expireStaleReservations('org_inv_a');
+    assert.ok(e5Pass1.reservationIds.includes(resE5Expired.id), 'E5: resE5Expired must expire on pass 1');
+    assert.ok(!e5Pass1.reservationIds.includes(resE5Active.id), 'E5: resE5Active (future) must NOT expire on pass 1');
+
+    const balPostE5Run1 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(
+      parseFloat(balPreE5Run1!.reserved) - parseFloat(balPostE5Run1!.reserved),
+      1,
+      'E5: Reserved quantity must decrease by exactly 1.0000 from resE5Expired'
+    );
+
+    // Second expiration pass immediately: must not re-expire resE5Expired or modify inventory again
+    const e5Pass2 = await reservationService.expireStaleReservations('org_inv_a');
+    assert.ok(!e5Pass2.reservationIds.includes(resE5Expired.id), 'E5: Already expired reservation must not appear in pass 2');
+    assert.ok(!e5Pass2.reservationIds.includes(resE5Active.id), 'E5: Active reservation must not appear in pass 2');
+
+    const balPostE5Run2 = await inventoryService.getBalance('org_inv_a', 'loc_wh_a', varR2Id);
+    assert.strictEqual(balPostE5Run2!.reserved, balPostE5Run1!.reserved, 'E5: Reserved balance unchanged on second expiration run');
+    assert.strictEqual(balPostE5Run2!.available, balPostE5Run1!.available, 'E5: Available balance unchanged on second expiration run');
+    assert.strictEqual(balPostE5Run2!.on_hand, balPostE5Run1!.on_hand, 'E5: on_hand unchanged on second expiration run');
+
+    // Direct DB state verification for both E5 reservations
+    const dbE5Expired = (await db.query(`SELECT * FROM inventory_reservations WHERE id = $1`, [resE5Expired.id])).rows[0];
+    const dbE5Active = (await db.query(`SELECT * FROM inventory_reservations WHERE id = $1`, [resE5Active.id])).rows[0];
+    assert.strictEqual(dbE5Expired.status, 'EXPIRED', 'E5: Expired reservation in DB must be EXPIRED');
+    assert.strictEqual(dbE5Active.status, 'ACTIVE', 'E5: Unexpired reservation in DB must remain ACTIVE');
+
+    // Clean up resE5Active
+    await reservationService.releaseReservation('org_inv_a', resE5Active.id, 'usr_inv_admin_a');
 
     markPassed('R2. Reservation Expiration Acceptance (E1-E5)');
   } catch (err) {
@@ -1686,13 +1812,77 @@ async function runInventoryTests() {
   // TEST 24 / R4: HTTP ERROR SANITIZATION & REDACTION (INTERNAL DB LEAK DEFENSE)
   // =========================================================================
   try {
+    // 1. Direct unit verification of sanitizeInventoryErrorMessage across all required categories
+    const testSanitizationCases = [
+      {
+        category: 'SQL statements & clauses',
+        raw: 'Error in query: SELECT id, on_hand FROM inventory_balances WHERE organization_id = 123',
+        banned: ['SELECT', 'FROM', 'WHERE'],
+      },
+      {
+        category: 'Database connection URI',
+        raw: 'Connection refused: postgresql://admin:supersecret@10.0.0.1:5432/abacha_prod?ssl=true',
+        banned: ['postgresql://', 'supersecret', '10.0.0.1:5432'],
+      },
+      {
+        category: 'Password, secret, and token credentials',
+        raw: 'Invalid authentication: password: "super_secret_password" and secret="jwt_secret_token" and bearer: 987654321',
+        banned: ['super_secret_password', 'jwt_secret_token', '987654321'],
+      },
+      {
+        category: 'Table names',
+        raw: 'Locked table inventory_balances, inventory_movements, and product_variants during checkout',
+        banned: ['inventory_balances', 'inventory_movements', 'product_variants'],
+      },
+      {
+        category: 'Column names',
+        raw: 'Cannot compute unit_cost or update column "on_hand" with invalid input',
+        banned: ['unit_cost', 'column "on_hand"'],
+      },
+      {
+        category: 'File paths (Unix and Windows)',
+        raw: 'Unhandled exception at /app/server/inventory/inventoryService.ts:42:15 and C:\\projects\\abacha\\server.ts:10:5',
+        banned: ['/app/server/inventory/inventoryService.ts', 'C:\\projects\\abacha\\server.ts'],
+      },
+      {
+        category: 'Stack traces',
+        raw: 'Failure occurred\n    at async DatabaseClient.query (/app/server/db/client.ts:89:12)\n    at Object.run (/app/server.ts:4:1)',
+        banned: ['at async DatabaseClient.query', 'at Object.run'],
+      },
+      {
+        category: 'Trace identifiers',
+        raw: 'Transaction aborted (trace-id: 9a8b7c6d5e-trace and request_id: req_987654)',
+        banned: ['trace-id: 9a8b7c6d5e-trace', 'request_id: req_987654'],
+      },
+      {
+        category: 'PostgreSQL constraint errors',
+        raw: 'Failed write: duplicate key value violates unique constraint "uq_inventory_movements_idempotency" on table inventory_movements',
+        banned: ['violates unique constraint "uq_inventory_movements_idempotency"'],
+      },
+      {
+        category: 'PostgreSQL syntax errors',
+        raw: 'Database execution failed: syntax error at or near "SELECT" in query string',
+        banned: ['syntax error at or near "SELECT"'],
+      },
+    ];
+
+    for (const c of testSanitizationCases) {
+      const sanitized = sanitizeInventoryErrorMessage(c.raw);
+      for (const b of c.banned) {
+        assert.ok(
+          !sanitized.includes(b),
+          `Sanitizer must redact ${c.category} '${b}'. Result was: '${sanitized}'`
+        );
+      }
+    }
+
+    // 2. HTTP endpoint verification with injected internal database exception containing sensitive material
     const r4Token = (await authService.login({
       organizationId: 'org_inv_a',
       email: 'admin_a@abacha.test',
       password: 'Password123!',
     })).token;
 
-    // 1. Endpoint-level test with injected internal database exception containing sensitive material
     const originalRecordOpeningBalance = InventoryService.prototype.recordOpeningBalance;
     
     InventoryService.prototype.recordOpeningBalance = async function() {
@@ -1776,8 +1966,8 @@ async function runInventoryTests() {
       InventoryService.prototype.recordOpeningBalance = originalRecordOpeningBalance;
     }
 
-    // 2. Real PostgreSQL constraint violation: massive string exceeding varchar(255)
-    const r4TokenStep2 = (await authService.login({
+    // 3. Real PostgreSQL constraint violation: massive string exceeding varchar(255)
+    const r4TokenStep3 = (await authService.login({
       organizationId: 'org_inv_a',
       email: 'admin_a@abacha.test',
       password: 'Password123!',
@@ -1786,7 +1976,7 @@ async function runInventoryTests() {
     const massiveString = 'A'.repeat(5000);
     const resCrash = await fetch(`${rBaseUrl}/api/inventory/opening-balance`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r4TokenStep2}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${r4TokenStep3}` },
       body: JSON.stringify({
         location_id: 'loc_wh_a',
         variant_id: 'var_a1',

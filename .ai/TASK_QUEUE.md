@@ -19,6 +19,8 @@ SEC-001 (APPROVED)
      ↓
 INV-001 / INV-001R4 (READY FOR REVIEW)
      ↓
+INV-002 / INV-002R3 (READY FOR REVIEW)
+     ↓
 POS-001 (NOT STARTED)
      ↓
 API-001 (NOT STARTED)
@@ -385,4 +387,21 @@ PROD-001 (NOT STARTED)
   - [x] R5: Test Execution & Verification: Full suite (24/24 tests) passes cleanly without warnings or skipped assertions.
   - [x] R6: POS Scope Discipline: `POS-001` remains `NOT STARTED`. POS files modified: `NONE`.
 - **Supervisor Gate**: Marked READY FOR REVIEW.
+
+---
+
+### Task 5.7: INV-002R3 — Final Inventory Verification & Targeted Remediation
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `INV-002R2` → `INV-002`
+- **Objective**: Complete the final targeted remediation, verification, and proof of INV-002 Inventory Business Logic & Acceptance. Close remaining independently identified evidence/implementation gaps: strict whitespace rejection on exact money strings (`parseExactMoney`), explicit E1-E5 reservation expiration state validations, explicit T1-T3 transfer concurrency invariants with zero duplicate events/movements, endpoint-level & unit-level error sanitization against raw DB leak, and reproducible git/test evidence.
+- **Scope**: Targeted inventory verification and remediation only. POS-001 remains NOT STARTED. POS files modified: NONE.
+- **Dependencies**: `INV-002R2`.
+- **Acceptance Criteria**:
+  - [x] R1: Strict Money Boundary: Rejection of whitespace-padded strings (e.g. `" 10.00 "`, `" 10.00"`, `"10.00 "`, `" "`), numeric values (`10`, `10.5`), booleans, objects, arrays, exponents, null, NaN, Infinity, excess precision (>2 decimal places), and currency symbols across `parseExactMoney` unit tests and HTTP `/api/inventory/opening-balance` and `/api/inventory/adjustments`. Acceptance of exact strings: `"0"`, `"0.00"`, `"10"`, `"10.5"`, `"10.50"`, `"1234.56"`.
+  - [x] R2: Reservation Expiration: E1-E5 tests fully passing with direct DB state inspection (`SELECT * FROM inventory_reservations WHERE id = $1`): active status on creation, expired status on expiry, concurrent release/expiry race yielding valid terminal state without double restoration, concurrent fulfillment/expiry race without double processing, repeated expiration idempotency with protection of unexpired active reservations.
+  - [x] R3: Transfer Concurrency & State Integrity: T1-T3 tests passing with exact inventory balance assertions, in-transit quantity reduction, exactly 1 movement and 1 event on dispatch, exactly 2 movements and 1 receive event on completion, and zero duplicate movements/events.
+  - [x] R4: HTTP Error Sanitization & Redaction: Full unit and endpoint-level defense against internal DB leaks. Injected SQL queries, connection URIs, credentials, table names, column names, file paths, stack traces, and trace IDs fully redacted. Production mode (`NODE_ENV === 'production'`) yields standard HTTP 500 `INVENTORY_ERROR` with generic safe message.
+  - [x] R5: Test Execution & Verification: Full suite (74/74 tests: 15 db, 22 security, 24 inventory, 13 transfer) passes cleanly with 0 failures; `npm run lint` (`tsc --noEmit`) passes with 0 errors; `npm run build` succeeds cleanly.
+  - [x] R6: POS Scope Discipline: `POS-001` remains `NOT STARTED`. POS files modified: `NONE`.
+- **Supervisor Gate**: Marked READY FOR REVIEW for final human supervisor approval. Ready for independent review.
 
