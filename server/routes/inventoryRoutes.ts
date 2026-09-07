@@ -9,6 +9,142 @@ import { StockCountService } from '../inventory/stockCountService';
 import { DatabaseClient } from '../db/client';
 import { parseExactQuantity } from '../inventory/inventoryPolicies';
 
+/**
+ * Centralized error handler for Inventory HTTP Routes (INV-001R4)
+ * Guarantees safe error classification, status codes, and prevents internal DB leakage.
+ */
+export function handleInventoryRouteError(res: Response, err: any): Response {
+  const msg: string = err?.message || 'Unknown inventory error';
+
+  const safeMessage = msg
+    .replace(/["']?(?:password|secret|key|token)["']?\s*[:=]\s*["']?[^&;\s,}'"]+["']?/gi, '$1=***')
+    .replace(/select\s+.*?\s+from/gi, '[REDACTED SQL]')
+    .replace(/insert\s+into/gi, '[REDACTED SQL]')
+    .replace(/update\s+.*?\s+set/gi, '[REDACTED SQL]')
+    .replace(/delete\s+from/gi, '[REDACTED SQL]')
+    .replace(/\/[a-zA-Z0-9_\-\/]+\/[a-zA-Z0-9_\-\.]+/g, '[REDACTED PATH]');
+
+  if (
+    msg.includes('TENANT_ACCESS_DENIED') ||
+    msg.includes('LOCATION_ACCESS_DENIED') ||
+    msg.includes('VARIANT_ACCESS_DENIED') ||
+    msg.includes('TENANT_MISMATCH')
+  ) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'TENANT_ACCESS_DENIED',
+        message: 'Access to the specified inventory resource is denied for this organization.',
+      },
+    });
+  }
+
+  if (msg.includes('TENANT_REQUIRED')) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'TENANT_REQUIRED',
+        message: 'Organization ID is required.',
+      },
+    });
+  }
+
+  if (
+    msg.includes('INSUFFICIENT_STOCK') ||
+    msg.includes('INSUFFICIENT_AVAILABLE_STOCK') ||
+    msg.includes('INSUFFICIENT_QUARANTINED_STOCK')
+  ) {
+    return res.status(422).json({
+      success: false,
+      error: {
+        code: 'INSUFFICIENT_STOCK',
+        message: safeMessage,
+      },
+    });
+  }
+
+  if (
+    msg.includes('IDEMPOTENCY_CONFLICT') ||
+    msg.includes('DUPLICATE_RESERVATION') ||
+    msg.includes('DUPLICATE_MOVEMENT')
+  ) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: msg.includes('DUPLICATE_MOVEMENT') ? 'DUPLICATE_MOVEMENT' : 'IDEMPOTENCY_CONFLICT',
+        message: safeMessage,
+      },
+    });
+  }
+
+  if (
+    msg.includes('TRANSFER_NOT_FOUND') ||
+    msg.includes('RESERVATION_NOT_FOUND') ||
+    msg.includes('STOCK_COUNT_NOT_FOUND') ||
+    msg.includes('BALANCE_NOT_FOUND') ||
+    msg.includes('LOCATION_NOT_FOUND') ||
+    msg.includes('VARIANT_NOT_FOUND')
+  ) {
+    return res.status(404).json({
+      success: false,
+      error: {
+        code: msg.includes('TRANSFER_NOT_FOUND')
+          ? 'TRANSFER_NOT_FOUND'
+          : msg.includes('RESERVATION_NOT_FOUND')
+          ? 'RESERVATION_NOT_FOUND'
+          : msg.includes('STOCK_COUNT_NOT_FOUND')
+          ? 'STOCK_COUNT_NOT_FOUND'
+          : 'NOT_FOUND',
+        message: safeMessage,
+      },
+    });
+  }
+
+  if (
+    msg.includes('INVALID_QUANTITY') ||
+    msg.includes('VALIDATION_ERROR') ||
+    msg.includes('INVALID_STATE') ||
+    msg.includes('INVALID_COUNT') ||
+    msg.includes('INVALID_TRANSFER') ||
+    msg.includes('INVALID_RESERVATION') ||
+    msg.includes('INVALID_TRANSFER_ITEM') ||
+    msg.includes('INVALID_MONEY') ||
+    msg.includes('INVALID_COST') ||
+    msg.includes('OVER_RECEIPT_PROHIBITED')
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: msg.includes('INVALID_QUANTITY') ? 'INVALID_QUANTITY' : 'VALIDATION_ERROR',
+        message: safeMessage,
+      },
+    });
+  }
+
+  if (msg.includes('IMMUTABLE_RECORD')) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'IMMUTABLE_RECORD',
+        message: 'Modification or deletion of immutable records is strictly rejected.',
+      },
+    });
+  }
+
+  const productionSafeMessage =
+    process.env.NODE_ENV === 'production'
+      ? 'An internal inventory processing error occurred.'
+      : safeMessage;
+
+  return res.status(500).json({
+    success: false,
+    error: {
+      code: 'INVENTORY_ERROR',
+      message: productionSafeMessage,
+    },
+  });
+}
+
 export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: InventoryRepository): Router {
   const router = Router();
   const repo = inventoryRepo || new InventoryRepository(db);
@@ -44,13 +180,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: balances,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -91,13 +221,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: balance,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -124,13 +248,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: movements,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -171,17 +289,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: result,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
-        const isDup = err.message?.includes('DUPLICATE_MOVEMENT');
-        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
-        const status = isTenant ? 403 : isDup ? 409 : isValidation ? 400 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isDup ? 'DUPLICATE_MOVEMENT' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -228,19 +336,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: result,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
-        const isInsufficient = err.message?.includes('INSUFFICIENT_STOCK');
-        const isDup = err.message?.includes('DUPLICATE_MOVEMENT');
-        const isConflict = err.message?.includes('IDEMPOTENCY_CONFLICT');
-        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
-        const status = isTenant ? 403 : isInsufficient ? 422 : (isDup || isConflict) ? 409 : isValidation ? 400 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : (isDup || isConflict) ? 'IDEMPOTENCY_CONFLICT' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -278,17 +374,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: balance,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
-        const isInsufficient = err.message?.includes('INSUFFICIENT_AVAILABLE_STOCK');
-        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
-        const status = isTenant ? 403 : isInsufficient ? 422 : isValidation ? 400 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -326,17 +412,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: result,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
-        const isInsufficient = err.message?.includes('INSUFFICIENT_QUARANTINED_STOCK');
-        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
-        const status = isTenant ? 403 : isInsufficient ? 422 : isValidation ? 400 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -378,18 +454,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: reservation,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
-        const isInsufficient = err.message?.includes('INSUFFICIENT_STOCK');
-        const isConflict = err.message?.includes('IDEMPOTENCY_CONFLICT') || err.message?.includes('DUPLICATE_RESERVATION');
-        const isValidation = err.message?.includes('INVALID_QUANTITY') || err.message?.includes('VALIDATION_ERROR');
-        const status = isTenant ? 403 : isInsufficient ? 422 : isConflict ? 409 : isValidation ? 400 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : isInsufficient ? 'INSUFFICIENT_STOCK' : isConflict ? 'IDEMPOTENCY_CONFLICT' : isValidation ? 'VALIDATION_ERROR' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -418,13 +483,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: reservations,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -451,13 +510,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: reservation,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -476,15 +529,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('RESERVATION_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -503,15 +548,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('RESERVATION_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -530,15 +567,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('RESERVATION_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -559,13 +588,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           },
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -605,15 +628,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: result,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED') || err.message?.includes('LOCATION_ACCESS_DENIED') || err.message?.includes('VARIANT_ACCESS_DENIED');
-        const status = isTenant ? 403 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isTenant ? 'ACCESS_DENIED' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -640,13 +655,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: transfers,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -673,13 +682,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: transfer,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -698,13 +701,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: events,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -724,15 +721,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -752,15 +741,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -781,15 +762,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -811,16 +784,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
-        const isInsufficient = err.message?.includes('INSUFFICIENT_STOCK');
-        const status = isNotFound ? 404 : isInsufficient ? 422 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : isInsufficient ? 'INSUFFICIENT_STOCK' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -859,15 +823,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -888,15 +844,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('TRANSFER_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -935,15 +883,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: result,
         });
       } catch (err: any) {
-        const isTenant = err.message?.includes('TENANT_ACCESS_DENIED');
-        const status = isTenant ? 403 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isTenant ? 'TENANT_ACCESS_DENIED' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -969,13 +909,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: counts,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -1002,13 +936,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: count,
         });
       } catch (err: any) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -1039,15 +967,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('STOCK_COUNT_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );
@@ -1066,15 +986,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
           data: updated,
         });
       } catch (err: any) {
-        const isNotFound = err.message?.includes('STOCK_COUNT_NOT_FOUND');
-        const status = isNotFound ? 404 : 400;
-        res.status(status).json({
-          success: false,
-          error: {
-            code: isNotFound ? 'NOT_FOUND' : 'INVENTORY_ERROR',
-            message: err.message,
-          },
-        });
+        return handleInventoryRouteError(res, err);
       }
     }
   );

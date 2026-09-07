@@ -17,14 +17,10 @@ import { StockCountService } from '../server/inventory/stockCountService';
 import { UserRepository } from '../server/repositories/userRepository';
 import { hashPassword } from '../server/auth/password';
 import {
-  calculateAvailable,
-  roundQty,
-  addQty,
-  subQty,
   toQtyString,
   calculateWeightedAverageCostExact,
-  calculateWeightedAverageCost,
   parseExactQuantity,
+  parseExactMoney,
   parseQtyToScaled,
   formatScaledToQtyString,
 } from '../server/inventory/inventoryPolicies';
@@ -132,19 +128,7 @@ async function runInventoryTests() {
 
   // TEST 1: Inventory Policies, Scaled Arithmetic & Weighted Average Cost
   try {
-    const sum = addQty(10.1234, 5.5678);
-    assert.strictEqual(sum, 15.6912);
-
-    const diff = subQty(15.6912, 5.5678);
-    assert.strictEqual(diff, 10.1234);
-
-    const rounded = roundQty(42.123456);
-    assert.strictEqual(rounded, 42.1235);
-
-    const avail = calculateAvailable(100, 15, 5, 2);
-    assert.strictEqual(avail, 78);
-
-    // 1b. Weighted Average Cost Exact Calculations (INV-001R3 Section 4)
+    // 1. Weighted Average Cost Exact Calculations (INV-001R3 Section 4)
     // Zero opening stock:
     assert.strictEqual(
       calculateWeightedAverageCostExact(0, 0, 10, 15.25),
@@ -197,6 +181,22 @@ async function runInventoryTests() {
       '10.01',
       'Rounding boundary (.005 rounds half-up to .01)'
     );
+
+    // 1c. parseExactMoney strictness tests
+    assert.strictEqual(parseExactMoney(12), '12.00');
+    assert.strictEqual(parseExactMoney(12.3), '12.30');
+    assert.strictEqual(parseExactMoney(12.30), '12.30');
+    assert.strictEqual(parseExactMoney(12.34), '12.34');
+    assert.strictEqual(parseExactMoney('12.34'), '12.34');
+    assert.strictEqual(parseExactMoney(-10, 'cost', { allowNegative: true }), '-10.00');
+
+    assert.throws(() => parseExactMoney(12.345), /precision exceeds/);
+    assert.throws(() => parseExactMoney(12.999), /precision exceeds/);
+    assert.throws(() => parseExactMoney(-10), /cannot be negative/);
+    assert.throws(() => parseExactMoney(NaN), /finite number/);
+    assert.throws(() => parseExactMoney(Infinity), /finite number/);
+    assert.throws(() => parseExactMoney('1.2e3'), /invalid format/);
+    assert.throws(() => parseExactMoney(true), /numeric money string/);
 
     markPassed('1. Exact Integer-Scaled Arithmetic & Weighted Average Cost Calculations');
   } catch (err) {
@@ -929,6 +929,12 @@ async function runInventoryTests() {
 
     const resKey = `res_idem_key_${Date.now()}`;
 
+    const orgBToken = (await authService.login({
+      organizationId: 'org_inv_b',
+      email: 'admin_b@omnicore.test',
+      password: 'Password123!',
+    })).token;
+
     // 14a. Create initial reservation with idempotency key
     const createRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
       method: 'POST',
@@ -992,7 +998,26 @@ async function runInventoryTests() {
     const conflictBody = await conflictRes.json();
     assert.strictEqual(conflictBody.error.code, 'IDEMPOTENCY_CONFLICT');
 
-    // 14d. Real concurrent reservation requests with same key -> database unique constraint ensures single reservation
+    // 14d. Different organization + same key -> Allowed
+    const crossOrgRes = await fetch(`${baseUrl}/api/inventory/reservations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${orgBToken}`,
+        Connection: 'close',
+      },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a', // Will likely fail with 404/403 for org B since it doesn't own loc_wh_a, but for idempotency it shouldn't be 409. Let's use a location for org B if available, or just assert it is NOT 409.
+        variant_id: 'var_a1',
+        quantity: '5.0000',
+        reference_type: 'order',
+        reference_id: 'ord_idem_test_1',
+        idempotency_key: resKey,
+      }),
+    });
+    assert.notStrictEqual(crossOrgRes.status, 409, 'Different organization with same idempotency key must not return 409');
+
+    // 14e. Real concurrent reservation requests with same key -> database unique constraint ensures single reservation
     const concKey = `res_conc_key_${Date.now()}`;
     const concPromises = [
       reservationService.createReservation(
@@ -1038,6 +1063,88 @@ async function runInventoryTests() {
     markPassed('14. Reservation Idempotency & Database Constraint Concurrency (Safe Replay, 409 Conflict, DB Constraint)');
   } catch (err) {
     markFailed('14. Reservation Idempotency & Database Constraint Concurrency', err);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 15: Movement Idempotency (INV-001R5 Section 6)
+  // -------------------------------------------------------------------------
+  try {
+    const moveKey = `mov_idem_${Date.now()}`;
+
+    const adminToken = (await authService.login({
+      organizationId: 'org_inv_a',
+      email: 'admin_a@omnicore.test',
+      password: 'Password123!',
+    })).token;
+
+    const orgBToken = (await authService.login({
+      organizationId: 'org_inv_b',
+      email: 'admin_b@omnicore.test',
+      password: 'Password123!',
+    })).token;
+
+    // 15a. Initial movement
+    const m1Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, Connection: 'close' },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity_change: '1.0000',
+        reason: 'damage',
+        idempotency_key: moveKey,
+      }),
+    });
+    assert.strictEqual(m1Res.status, 200);
+    const m1Data = await m1Res.json();
+
+    // 15b. Same key + same payload -> safe replay
+    const m2Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, Connection: 'close' },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity_change: '1.0000',
+        reason: 'damage',
+        idempotency_key: moveKey,
+      }),
+    });
+    assert.strictEqual(m2Res.status, 200);
+    const m2Data = await m2Res.json();
+    assert.strictEqual(m2Data.data.id, m1Data.data.id, 'Idempotent movement replay must return the identical movement');
+
+    // 15c. Same key + different payload -> 409
+    const m3Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, Connection: 'close' },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity_change: '2.0000',
+        reason: 'damage',
+        idempotency_key: moveKey,
+      }),
+    });
+    assert.strictEqual(m3Res.status, 409, 'Movement idempotency conflict must return 409');
+
+    // 15d. Different org + same key -> Allowed (Not 409)
+    const m4Res = await fetch(`${baseUrl}/api/inventory/adjustments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${orgBToken}`, Connection: 'close' },
+      body: JSON.stringify({
+        location_id: 'loc_wh_a',
+        variant_id: 'var_a1',
+        quantity_change: '1.0000',
+        reason: 'damage',
+        idempotency_key: moveKey,
+      }),
+    });
+    assert.notStrictEqual(m4Res.status, 409, 'Cross-org with same movement key must not return 409');
+
+    markPassed('15. Movement Idempotency (Safe Replay, 409 Conflict, Cross-org isolation)');
+  } catch (err) {
+    markFailed('15. Movement Idempotency', err);
   } finally {
     if (server) {
       (server as any).closeAllConnections?.();

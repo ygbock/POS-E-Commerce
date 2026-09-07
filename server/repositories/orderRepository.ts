@@ -66,6 +66,37 @@ export interface PaymentRecord {
   created_at?: string;
 }
 
+function mapOrderRow(row: any): OrderRecord {
+  return {
+    ...row,
+    subtotal: Number(row.subtotal),
+    discount_amount: Number(row.discount_amount || 0),
+    tax_amount: Number(row.tax_amount || 0),
+    shipping_fee: Number(row.shipping_fee || 0),
+    total_amount: Number(row.total_amount),
+    total_cost_amount: Number(row.total_cost_amount || 0),
+  };
+}
+
+function mapOrderItemRow(row: any): OrderItemRecord {
+  return {
+    ...row,
+    unit_price: Number(row.unit_price),
+    cost_price: Number(row.cost_price || 0),
+    quantity: Number(row.quantity),
+    discount_amount: Number(row.discount_amount || 0),
+    tax_rate: Number(row.tax_rate || 0),
+    total_amount: Number(row.total_amount),
+  };
+}
+
+function mapPaymentRow(row: any): PaymentRecord {
+  return {
+    ...row,
+    amount: Number(row.amount),
+  };
+}
+
 export class OrderRepository {
   private defaultClient: DatabaseClient;
 
@@ -87,7 +118,7 @@ export class OrderRepository {
 
     return db.withTransaction(async (tx) => {
       // 1. Insert order
-      const orderRes = await tx.query<OrderRecord>(
+      const orderRes = await tx.query<any>(
         `INSERT INTO orders (
           id, organization_id, location_id, customer_id, order_number,
           source, channel, fulfillment_method, subtotal, discount_amount,
@@ -97,8 +128,8 @@ export class OrderRepository {
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
         ) RETURNING id, organization_id, location_id, customer_id, order_number,
                     source, channel, fulfillment_method,
-                    subtotal::float, discount_amount::float, discount_code,
-                    tax_amount::float, shipping_fee::float, total_amount::float, total_cost_amount::float,
+                    subtotal, discount_amount, discount_code,
+                    tax_amount, shipping_fee, total_amount, total_cost_amount,
                     payment_status, status, cashier_name, tracking_number, carrier_name, notes,
                     created_at, updated_at`,
         [
@@ -129,14 +160,14 @@ export class OrderRepository {
       // 2. Insert order items
       const createdItems: OrderItemRecord[] = [];
       for (const item of items) {
-        const itemRes = await tx.query<OrderItemRecord>(
+        const itemRes = await tx.query<any>(
           `INSERT INTO order_items (
             id, order_id, variant_id, product_name, variant_name, sku,
             unit_price, cost_price, quantity, discount_amount, tax_rate, total_amount
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING id, order_id, variant_id, product_name, variant_name, sku,
-                    unit_price::float, cost_price::float, quantity::float,
-                    discount_amount::float, tax_rate::float, total_amount::float, created_at`,
+                    unit_price, cost_price, quantity,
+                    discount_amount, tax_rate, total_amount, created_at`,
           [
             item.id,
             order.id,
@@ -152,17 +183,17 @@ export class OrderRepository {
             item.total_amount,
           ]
         );
-        createdItems.push(itemRes.rows[0]);
+        createdItems.push(mapOrderItemRow(itemRes.rows[0]));
       }
 
       // 3. Optional payment record
       let createdPayment: PaymentRecord | undefined;
       if (payment) {
-        const payRes = await tx.query<PaymentRecord>(
+        const payRes = await tx.query<any>(
           `INSERT INTO payments (
             id, organization_id, order_id, payment_method, amount, currency, status, reference, provider, transaction_payload
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          RETURNING id, organization_id, order_id, payment_method, amount::float, currency, status, reference, provider, created_at`,
+          RETURNING id, organization_id, order_id, payment_method, amount, currency, status, reference, provider, created_at`,
           [
             payment.id,
             payment.organization_id || order.organization_id || 'org_default',
@@ -176,11 +207,11 @@ export class OrderRepository {
             JSON.stringify(payment.transaction_payload || {}),
           ]
         );
-        createdPayment = payRes.rows[0];
+        createdPayment = mapPaymentRow(payRes.rows[0]);
       }
 
       return {
-        order: orderRes.rows[0],
+        order: mapOrderRow(orderRes.rows[0]),
         items: createdItems,
         payment: createdPayment,
       };
@@ -199,37 +230,37 @@ export class OrderRepository {
     const querySql = orgId
       ? `SELECT id, organization_id, location_id, customer_id, order_number,
                 source, channel, fulfillment_method,
-                subtotal::float, discount_amount::float, discount_code,
-                tax_amount::float, shipping_fee::float, total_amount::float, total_cost_amount::float,
+                subtotal, discount_amount, discount_code,
+                tax_amount, shipping_fee, total_amount, total_cost_amount,
                 payment_status, status, cashier_name, tracking_number, carrier_name, notes,
                 created_at, updated_at
          FROM orders WHERE id = $1 AND organization_id = $2`
       : `SELECT id, organization_id, location_id, customer_id, order_number,
                 source, channel, fulfillment_method,
-                subtotal::float, discount_amount::float, discount_code,
-                tax_amount::float, shipping_fee::float, total_amount::float, total_cost_amount::float,
+                subtotal, discount_amount, discount_code,
+                tax_amount, shipping_fee, total_amount, total_cost_amount,
                 payment_status, status, cashier_name, tracking_number, carrier_name, notes,
                 created_at, updated_at
          FROM orders WHERE id = $1`;
 
     const params = orgId ? [id, orgId] : [id];
-    const orderRes = await db.query<OrderRecord>(querySql, params);
+    const orderRes = await db.query<any>(querySql, params);
 
     if (orderRes.rows.length === 0) {
       return null;
     }
 
-    const itemsRes = await db.query<OrderItemRecord>(
+    const itemsRes = await db.query<any>(
       `SELECT id, order_id, variant_id, product_name, variant_name, sku,
-              unit_price::float, cost_price::float, quantity::float,
-              discount_amount::float, tax_rate::float, total_amount::float, created_at
+              unit_price, cost_price, quantity,
+              discount_amount, tax_rate, total_amount, created_at
        FROM order_items WHERE order_id = $1`,
       [id]
     );
 
     return {
-      order: orderRes.rows[0],
-      items: itemsRes.rows,
+      order: mapOrderRow(orderRes.rows[0]),
+      items: itemsRes.rows.map(mapOrderItemRow),
     };
   }
 
@@ -268,22 +299,25 @@ export class OrderRepository {
 
     const limit = options.limit || 50;
     const offset = options.offset || 0;
+    
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
     params.push(limit, offset);
 
     const query = `
       SELECT id, organization_id, location_id, customer_id, order_number,
              source, channel, fulfillment_method,
-             subtotal::float, discount_amount::float, discount_code,
-             tax_amount::float, shipping_fee::float, total_amount::float, total_cost_amount::float,
+             subtotal, discount_amount, discount_code,
+             tax_amount, shipping_fee, total_amount, total_cost_amount,
              payment_status, status, cashier_name, tracking_number, carrier_name, notes,
              created_at, updated_at
       FROM orders
       WHERE ${conditions.join(' AND ')}
       ORDER BY created_at DESC
-      LIMIT $${params.length - 1} OFFSET $${params.length}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `;
 
-    const res = await db.query<OrderRecord>(query, params);
-    return res.rows;
+    const res = await db.query<any>(query, params);
+    return res.rows.map(mapOrderRow);
   }
 }

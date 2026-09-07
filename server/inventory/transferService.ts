@@ -2,20 +2,23 @@ import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { InventoryRepository } from '../repositories/inventoryRepository';
 import { InventoryTransferRepository } from '../repositories/inventoryTransferRepository';
 import {
+  Quantity,
   InventoryTransferRecord,
   InventoryTransferItemRecord,
   InventoryTransferEventRecord,
   TransferStatus,
 } from './inventoryTypes';
 import {
-  roundQty,
-  addQty,
-  subQty,
-  calculateAvailable,
+  toQtyString,
+  addQtyExact,
+  subQtyExact,
+  parseQtyToScaled,
+  formatScaledToQtyString,
+  calculateAvailableExact,
+  parseExactQuantity,
   validateTransferTransition,
   generateInventoryId,
   generateDocumentNumber,
-  toQtyString,
 } from './inventoryPolicies';
 
 /**
@@ -75,8 +78,8 @@ export class TransferService {
       status?: 'DRAFT' | 'REQUESTED';
       items: Array<{
         variant_id: string;
-        requested_quantity: number;
-        approved_quantity?: number;
+        requested_quantity: number | string;
+        approved_quantity?: number | string;
         notes?: string;
       }>;
       notes?: string;
@@ -98,18 +101,28 @@ export class TransferService {
       throw new Error('INVALID_TRANSFER: Transfer must contain at least one item.');
     }
 
-    // Prevent duplicate variants within the same transfer
+    // Prevent duplicate variants within the same transfer and validate quantities
     const seenVariants = new Set<string>();
-    for (const item of data.items) {
+    const parsedItems = data.items.map((item) => {
       if (seenVariants.has(item.variant_id)) {
         throw new Error(`INVALID_TRANSFER: Duplicate variant '${item.variant_id}' in transfer items.`);
       }
       seenVariants.add(item.variant_id);
 
-      if (item.requested_quantity <= 0) {
+      const parsedRequested = parseExactQuantity(item.requested_quantity, 'requested_quantity', { allowNegative: false });
+      if (parseQtyToScaled(parsedRequested) <= 0n) {
         throw new Error('INVALID_QUANTITY: Requested quantity must be greater than zero.');
       }
-    }
+      const parsedApproved = item.approved_quantity !== undefined
+        ? parseExactQuantity(item.approved_quantity, 'approved_quantity', { allowNegative: false })
+        : parsedRequested;
+
+      return {
+        ...item,
+        requested_quantity: parsedRequested,
+        approved_quantity: parsedApproved,
+      };
+    });
 
     // Idempotency check
     if (data.idempotency_key) {
@@ -160,11 +173,11 @@ export class TransferService {
           idempotency_key: data.idempotency_key || null,
           notes: data.notes,
         },
-        data.items.map((it) => ({
+        parsedItems.map((it) => ({
           id: generateInventoryId('tri'),
           variant_id: it.variant_id,
-          requested_quantity: toQtyString(it.requested_quantity),
-          approved_quantity: it.approved_quantity !== undefined ? toQtyString(it.approved_quantity) : toQtyString(it.requested_quantity),
+          requested_quantity: it.requested_quantity,
+          approved_quantity: it.approved_quantity,
           notes: it.notes,
         })),
         tx
@@ -291,7 +304,7 @@ export class TransferService {
     organizationId: string,
     transferId: string,
     performed_by: string = 'system',
-    itemApprovalsOrIdemp?: Array<{ itemId: string; approved_quantity: number }> | string,
+    itemApprovalsOrIdemp?: Array<{ itemId: string; approved_quantity: number | string }> | string,
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
@@ -331,12 +344,10 @@ export class TransferService {
           if (!it) {
             throw new Error(`ITEM_NOT_FOUND: Transfer item '${app.itemId}' not found in transfer.`);
           }
-          if (app.approved_quantity < 0) {
-            throw new Error('INVALID_QUANTITY: Approved quantity cannot be negative.');
-          }
+          const appQty = parseExactQuantity(app.approved_quantity, 'approved_quantity', { allowNegative: false });
           await tx.query(
             'UPDATE inventory_transfer_items SET approved_quantity = $1 WHERE id = $2',
-            [roundQty(app.approved_quantity), app.itemId]
+            [appQty, app.itemId]
           );
         }
       }
@@ -463,7 +474,7 @@ export class TransferService {
   async dispatchTransfer(
     organizationId: string,
     transferId: string,
-    dispatchQuantities?: Array<{ itemId?: string; variant_id?: string; quantity: number }> | Record<string, number>,
+    dispatchQuantities?: Array<{ itemId?: string; variant_id?: string; quantity: number | string }> | Record<string, number | string>,
     performed_by: string = 'system',
     idempotencyKey?: string
   ): Promise<InventoryTransferRecord & { items?: InventoryTransferItemRecord[]; events?: InventoryTransferEventRecord[] }> {
@@ -503,49 +514,51 @@ export class TransferService {
 
       const lockedItems = await this.transferRepo.lockTransferItems(organizationId, transferId, tx);
 
-      const getQtyToDispatch = (item: InventoryTransferItemRecord): number => {
+      const getQtyToDispatch = (item: InventoryTransferItemRecord): Quantity => {
         if (!dispatchQuantities) {
-          return roundQty(item.approved_quantity || item.requested_quantity);
+          return toQtyString(item.approved_quantity || item.requested_quantity);
         }
         if (Array.isArray(dispatchQuantities)) {
           const found = dispatchQuantities.find(
             (d) => (d.itemId && d.itemId === item.id) || (d.variant_id && d.variant_id === item.variant_id)
           );
           if (found !== undefined) {
-            return roundQty(found.quantity);
+            return toQtyString(found.quantity);
           }
-          return roundQty(item.approved_quantity || item.requested_quantity);
+          return toQtyString(item.approved_quantity || item.requested_quantity);
         }
         if (typeof dispatchQuantities === 'object') {
           if (dispatchQuantities[item.id] !== undefined) {
-            return roundQty(dispatchQuantities[item.id]);
+            return toQtyString(dispatchQuantities[item.id]);
           }
           if (dispatchQuantities[item.variant_id] !== undefined) {
-            return roundQty(dispatchQuantities[item.variant_id]);
+            return toQtyString(dispatchQuantities[item.variant_id]);
           }
         }
-        return roundQty(item.approved_quantity || item.requested_quantity);
+        return toQtyString(item.approved_quantity || item.requested_quantity);
       };
 
       // Preliminary validation: verify cannot exceed approved quantity on any item
       for (const item of lockedItems) {
         const qtyToDispatch = getQtyToDispatch(item);
-        const maxAllowed = roundQty(item.approved_quantity || item.requested_quantity);
-        if (qtyToDispatch > maxAllowed) {
+        const maxAllowed = toQtyString(item.approved_quantity || item.requested_quantity);
+        const qtyScaled = parseQtyToScaled(qtyToDispatch);
+        const maxScaled = parseQtyToScaled(maxAllowed);
+        if (qtyScaled > maxScaled) {
           throw new Error(
             `INVALID_QUANTITY: Dispatched quantity (${qtyToDispatch}) cannot exceed approved quantity (${maxAllowed}) for variant '${item.variant_id}'.`
           );
         }
-        if (qtyToDispatch <= 0) {
+        if (qtyScaled <= 0n) {
           throw new Error(`INVALID_QUANTITY: Dispatched quantity must be greater than zero for variant '${item.variant_id}'.`);
         }
       }
 
-      let totalDispatched = 0;
+      let totalDispatched: Quantity = '0.0000';
 
       for (const item of lockedItems) {
         const qtyToDispatch = getQtyToDispatch(item);
-        totalDispatched = addQty(totalDispatched, qtyToDispatch);
+        totalDispatched = addQtyExact(totalDispatched, qtyToDispatch);
 
         // Verify source stock availability
         const sourceBal = await this.inventoryRepo.getBalance(
@@ -554,19 +567,20 @@ export class TransferService {
           organizationId,
           tx
         );
-        const currentOnHand = sourceBal ? roundQty(sourceBal.on_hand) : 0;
-        const currentReserved = sourceBal ? roundQty(sourceBal.reserved) : 0;
-        const currentDamaged = sourceBal ? roundQty(sourceBal.damaged) : 0;
-        const currentExpired = sourceBal ? roundQty(sourceBal.expired) : 0;
-        const available = calculateAvailable(currentOnHand, currentReserved, currentDamaged, currentExpired);
+        const currentOnHand = sourceBal ? sourceBal.on_hand : '0.0000';
+        const currentReserved = sourceBal ? sourceBal.reserved : '0.0000';
+        const currentDamaged = sourceBal ? sourceBal.damaged : '0.0000';
+        const currentExpired = sourceBal ? sourceBal.expired : '0.0000';
+        const available = calculateAvailableExact(currentOnHand, currentReserved, currentDamaged, currentExpired);
 
-        if (available < qtyToDispatch) {
+        if (parseQtyToScaled(available) < parseQtyToScaled(qtyToDispatch)) {
           throw new Error(
             `INSUFFICIENT_STOCK_FOR_DISPATCH: Location '${lockedTransfer.source_location_id}' has ${available} available unreserved units of variant '${item.variant_id}', but ${qtyToDispatch} was requested for dispatch.`
           );
         }
 
         // 1. Record physical deduction at source location (TRANSFER_OUT)
+        const negQtyToDispatch = formatScaledToQtyString(-parseQtyToScaled(qtyToDispatch));
         await this.inventoryRepo.recordMovement(
           {
             id: generateInventoryId('mov_tout'),
@@ -574,7 +588,7 @@ export class TransferService {
             location_id: lockedTransfer.source_location_id,
             variant_id: item.variant_id,
             movement_type: 'TRANSFER_OUT',
-            quantity_change: -qtyToDispatch,
+            quantity_change: negQtyToDispatch,
             reference_type: 'inventory_transfer',
             reference_id: transferId,
             source_location_id: lockedTransfer.source_location_id,
@@ -609,8 +623,8 @@ export class TransferService {
           );
         }
 
-        const currentInTransit = roundQty(lockedDestBal.rows[0].in_transit);
-        const newInTransit = roundQty(addQty(currentInTransit, qtyToDispatch));
+        const currentInTransit = toQtyString(lockedDestBal.rows[0].in_transit);
+        const newInTransit = addQtyExact(currentInTransit, qtyToDispatch);
 
         // 4. Update in_transit balance at destination
         await tx.query(
@@ -768,7 +782,7 @@ export class TransferService {
   async receiveTransfer(
     organizationId: string,
     transferId: string,
-    receipts?: Array<{ itemId?: string; variant_id?: string; received_quantity?: number; quantity?: number; notes?: string }> | Record<string, number>,
+    receipts?: Array<{ itemId?: string; variant_id?: string; received_quantity?: number | string; quantity?: number | string; notes?: string }> | Record<string, number | string>,
     performed_by: string = 'system',
     arg5?: string | { idempotencyKey?: string; allowOverReceive?: boolean; authorizedBy?: string; reason?: string },
     arg6?: { idempotencyKey?: string; allowOverReceive?: boolean; authorizedBy?: string; reason?: string }
@@ -819,9 +833,9 @@ export class TransferService {
 
       const lockedItems = await this.transferRepo.lockTransferItems(organizationId, transferId, tx);
 
-      const getReceiptInfo = (item: InventoryTransferItemRecord): { receivedQty: number; notes?: string } => {
+      const getReceiptInfo = (item: InventoryTransferItemRecord): { receivedQty: Quantity; notes?: string } => {
         if (!receipts) {
-          return { receivedQty: roundQty(item.dispatched_quantity) };
+          return { receivedQty: toQtyString(item.dispatched_quantity) };
         }
         if (Array.isArray(receipts)) {
           const found = receipts.find(
@@ -829,19 +843,19 @@ export class TransferService {
           );
           if (found !== undefined) {
             const q = found.received_quantity !== undefined ? found.received_quantity : found.quantity;
-            return { receivedQty: roundQty(q ?? item.dispatched_quantity), notes: found.notes };
+            return { receivedQty: toQtyString(q ?? item.dispatched_quantity), notes: found.notes };
           }
-          return { receivedQty: roundQty(item.dispatched_quantity) };
+          return { receivedQty: toQtyString(item.dispatched_quantity) };
         }
         if (typeof receipts === 'object') {
           if (receipts[item.id] !== undefined) {
-            return { receivedQty: roundQty(receipts[item.id]) };
+            return { receivedQty: toQtyString(receipts[item.id]) };
           }
           if (receipts[item.variant_id] !== undefined) {
-            return { receivedQty: roundQty(receipts[item.variant_id]) };
+            return { receivedQty: toQtyString(receipts[item.variant_id]) };
           }
         }
-        return { receivedQty: roundQty(item.dispatched_quantity) };
+        return { receivedQty: toQtyString(item.dispatched_quantity) };
       };
 
       let hasVariance = false;
@@ -850,16 +864,19 @@ export class TransferService {
 
       for (const item of lockedItems) {
         const { receivedQty, notes } = getReceiptInfo(item);
+        const recScaled = parseQtyToScaled(receivedQty);
 
-        if (receivedQty < 0) {
+        if (recScaled < 0n) {
           throw new Error(`INVALID_QUANTITY: Received quantity cannot be negative for item '${item.id}'.`);
         }
 
-        const dispatchedQty = roundQty(item.dispatched_quantity);
-        const varianceQty = roundQty(subQty(receivedQty, dispatchedQty));
+        const dispatchedQty = toQtyString(item.dispatched_quantity);
+        const dispScaled = parseQtyToScaled(dispatchedQty);
+        const varianceQty = subQtyExact(receivedQty, dispatchedQty);
+        const varScaled = parseQtyToScaled(varianceQty);
 
         // Over-receipt policy enforcement
-        if (receivedQty > dispatchedQty) {
+        if (recScaled > dispScaled) {
           if (!options.allowOverReceive) {
             throw new Error(
               `OVER_RECEIPT_PROHIBITED: Over-receiving is not permitted. Received quantity (${receivedQty}) exceeds dispatched quantity (${dispatchedQty}) for variant '${item.variant_id}'. Over-receipt requires supervisor authorization.`
@@ -887,17 +904,18 @@ export class TransferService {
           );
         }
 
-        const currentInTransit = roundQty(lockedDestBal.rows[0].in_transit);
+        const currentInTransit = toQtyString(lockedDestBal.rows[0].in_transit);
+        const inTransitScaled = parseQtyToScaled(currentInTransit);
 
         // 2. Validate in_transit balance
-        if (currentInTransit < dispatchedQty) {
+        if (inTransitScaled < dispScaled) {
           throw new Error(
             `INSUFFICIENT_IN_TRANSIT: In-transit balance (${currentInTransit}) is less than dispatched quantity (${dispatchedQty}) for variant '${item.variant_id}'.`
           );
         }
 
         // 3. Deduct dispatched_quantity from in_transit
-        const newInTransit = roundQty(subQty(currentInTransit, dispatchedQty));
+        const newInTransit = subQtyExact(currentInTransit, dispatchedQty);
         await tx.query(
           `UPDATE inventory_balances
            SET in_transit = $1, updated_at = CURRENT_TIMESTAMP
@@ -906,7 +924,7 @@ export class TransferService {
         );
 
         // 4. Physical receipt: increment on_hand by receivedQty via TRANSFER_IN movement
-        if (receivedQty > 0) {
+        if (recScaled > 0n) {
           await this.inventoryRepo.recordMovement(
             {
               id: generateInventoryId('mov_tin'),
@@ -937,7 +955,7 @@ export class TransferService {
         updatedItems.push(updatedItem!);
 
         // 6. Record variance event if applicable
-        if (varianceQty !== 0) {
+        if (varScaled !== 0n) {
           hasVariance = true;
           const varEvent = await this.transferRepo.appendEvent(
             organizationId,
@@ -953,8 +971,8 @@ export class TransferService {
               destination_location_id: lockedTransfer.destination_location_id,
               reference_type: 'inventory_transfer',
               reference_id: transferId,
-              reason: options.reason || (varianceQty > 0 ? 'Over-receipt approved' : 'Short receipt at destination'),
-              notes: notes || (varianceQty > 0 ? `Over-receipt of +${varianceQty} authorized by ${options.authorizedBy}` : `Shortage of ${varianceQty}`),
+              reason: options.reason || (varScaled > 0n ? 'Over-receipt approved' : 'Short receipt at destination'),
+              notes: notes || (varScaled > 0n ? `Over-receipt of +${varianceQty} authorized by ${options.authorizedBy}` : `Shortage of ${varianceQty}`),
               metadata: {
                 variant_id: item.variant_id,
                 dispatched_quantity: dispatchedQty,

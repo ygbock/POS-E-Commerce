@@ -17,7 +17,7 @@ DATA-001 (READY FOR REVIEW)
      ↓
 SEC-001 (APPROVED)
      ↓
-INV-001 (READY FOR REVIEW)
+INV-001 / INV-001R4 (READY FOR REVIEW)
      ↓
 POS-001 (NOT STARTED)
      ↓
@@ -196,7 +196,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 5.2: INV-001R3 — Final Inventory Integrity Hardening
-- **Status**: `READY FOR REVIEW`
+- **Status**: `NOT APPROVED (SUPERSEDED BY INV-001R4)`
 - **Parent Task**: `INV-001` / `INV-001R2`
 - **Objective**: Complete database-level event immutability, movement/reservation unique constraint idempotency, exact scaled decimal arithmetic across all inventory layers, complete elimination of HTTP tenant overrides, and stock transfer accounting invariants.
 - **Scope**:
@@ -218,7 +218,32 @@ PROD-001 (NOT STARTED)
   - [x] Concurrent transfer dispatches and receipts are safely serialized with row locks.
   - [x] In-memory store audit recorded in `.ai/DECISIONS.md`.
   - [x] All 64 automated tests passing across all test suites.
-- **Supervisor Gate**: INV-001R3 is READY FOR REVIEW. POS-001 MUST remain NOT STARTED and MUST NOT be implemented until INV-001R3 passes independent supervisor review. Do NOT mark approved.
+- **Supervisor Gate**: Superseded by INV-001R4.
+
+---
+
+### Task 5.3: INV-001R4 — Inventory Integrity Verification & Closure
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `INV-001` / `INV-001R3`
+- **Objective**: Close remaining supervisor findings from the independent INV-001R3 review with verified proof of database event immutability, elimination of floating-point arithmetic from authoritative paths, explicit repository row mapping, centralized route error handling, and legacy store audit documentation.
+- **Scope**:
+  - Prove Database Event Immutability: Verify PostgreSQL trigger `trg_immutable_transfer_events` and function `prevent_transfer_event_modification()` on `inventory_transfer_events` with integration tests executing raw SQL (`UPDATE` and `DELETE`), verifying both are rejected with `IMMUTABLE_RECORD` (code 23506) while `INSERT` succeeds and existing data is intact.
+  - Remove Authoritative Floating-Point Quantity Paths: Standardize on `BigInt` scaled arithmetic (scale factor 10,000 for quantities, 100 for currency) across `server/inventory/inventoryPolicies.ts`. Mark deprecated non-authoritative helpers. Enforce `parseExactQuantity()` and check `parseQtyToScaled(qty) > 0n` on all items in `TransferService.createTransfer`.
+  - Repository Row Mappers: Ensure explicit field mapping functions (`mapBalanceRow`, `mapMovementRow`, `mapTransferItemRow`, `mapTransferEventRow`, `mapReservationRow`, `mapStockCountItemRow`) are used across all repositories to prevent untyped or raw DB leaks.
+  - Centralize Route Error Handling: Implement and deploy `handleInventoryRouteError()` across all inventory HTTP endpoints in `server/routes/inventoryRoutes.ts`, returning standard HTTP status codes (403, 400, 422, 409, 404, 500) and sanitizing internal error messages.
+  - Legacy In-Memory Store Audit: Record formal audit in `.ai/DECISIONS.md` (ADR-015 and ADR-016), establishing that `CommerceContext` and `offlineStore` are non-authoritative client UI helpers and that the PostgreSQL database ledger is the sole authority for inventory state.
+  - Automated Quality Gates: Verify that all 64 automated tests pass (`npm run test`), `npm run lint` (`tsc --noEmit`) passes with 0 errors, and `npm run build` succeeds.
+- **Dependencies**: `INV-001`, `INV-001R3`.
+- **Acceptance Criteria**:
+  - [x] Direct SQL `UPDATE` and `DELETE` on `inventory_transfer_events` fail at the database level with `IMMUTABLE_RECORD`.
+  - [x] Zero floating-point calculations used in authoritative server-side inventory mutations.
+  - [x] Transfer creation strictly validates quantities using `parseExactQuantity` and rejects non-positive or malformed values.
+  - [x] Centralized HTTP route error handler eliminates inconsistent status codes and DB stack leakage.
+  - [x] Repositories explicitly extract typed fields via dedicated mapper functions.
+  - [x] Legacy store audit documented in `.ai/DECISIONS.md`.
+  - [x] All 64 automated tests passing across 4 test suites (15 db, 22 security, 14 inventory, 13 transfer).
+  - [x] Production build and TypeScript lint pass with 0 errors.
+- **Supervisor Gate**: INV-001R4 is marked READY FOR REVIEW. POS-001 MUST remain NOT STARTED and MUST NOT be implemented until INV-001R4 passes independent supervisor review. Do NOT mark approved.
 
 ---
 

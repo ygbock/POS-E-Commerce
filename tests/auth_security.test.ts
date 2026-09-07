@@ -1003,6 +1003,9 @@ async function main() {
         const listOrdersRes = await fetch(`${baseUrl}/api/orders`, {
           headers: { Authorization: `Bearer ${userOrgAToken}` },
         });
+        if (listOrdersRes.status !== 200) {
+          console.error("listOrdersRes failed:", await listOrdersRes.text());
+        }
         assert.strictEqual(listOrdersRes.status, 200);
         const listOrdersBody = await listOrdersRes.json();
         assert.strictEqual(listOrdersBody.data.length, 1);
@@ -1018,6 +1021,9 @@ async function main() {
         const listCustRes = await fetch(`${baseUrl}/api/customers`, {
           headers: { Authorization: `Bearer ${userOrgAToken}` },
         });
+        if (listCustRes.status !== 200) {
+          console.error("listCustRes failed:", await listCustRes.text());
+        }
         assert.strictEqual(listCustRes.status, 200);
         const listCustBody = await listCustRes.json();
         assert.strictEqual(listCustBody.data.length, 1);
@@ -1027,6 +1033,9 @@ async function main() {
         const readCrossInvRes = await fetch(`${baseUrl}/api/inventory/balances/loc-store-b`, {
           headers: { Authorization: `Bearer ${userOrgAToken}` },
         });
+        if (readCrossInvRes.status !== 200) {
+          console.error("Test 14 readCrossInvRes failed:", await readCrossInvRes.text());
+        }
         assert.strictEqual(readCrossInvRes.status, 200);
         const invBody = await readCrossInvRes.json();
         assert.strictEqual(invBody.count, 0, 'User A should receive 0 inventory items from Location B');
@@ -1035,6 +1044,9 @@ async function main() {
         const auditRes = await fetch(`${baseUrl}/api/audit-logs`, {
           headers: { Authorization: `Bearer ${userOrgAToken}` },
         });
+        if (auditRes.status !== 200) {
+          console.error("auditRes failed:", await auditRes.text());
+        }
         assert.strictEqual(auditRes.status, 200);
         const auditBody = await auditRes.json();
         for (const evt of auditBody.data) {

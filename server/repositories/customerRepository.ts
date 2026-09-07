@@ -17,6 +17,14 @@ export interface CustomerRecord {
   updated_at?: string;
 }
 
+function mapCustomerRow(row: any): CustomerRecord {
+  return {
+    ...row,
+    store_credit_balance: row.store_credit_balance != null ? Number(row.store_credit_balance) : 0,
+    credit_limit: row.credit_limit != null ? Number(row.credit_limit) : 0,
+  };
+}
+
 export class CustomerRepository {
   private defaultClient: DatabaseClient;
 
@@ -30,16 +38,16 @@ export class CustomerRepository {
 
   async listCustomers(orgId = 'org_default', client?: DatabaseClient): Promise<CustomerRecord[]> {
     const db = this.getClient(client);
-    const res = await db.query<CustomerRecord>(
+    const res = await db.query<any>(
       `SELECT id, organization_id, name, email, phone, tier,
-              loyalty_points, store_credit_balance::float, credit_limit::float,
+              loyalty_points, store_credit_balance, credit_limit,
               customer_group, notes, registered_at, created_at, updated_at
        FROM customers
        WHERE organization_id = $1
        ORDER BY name ASC`,
       [orgId]
     );
-    return res.rows;
+    return res.rows.map(mapCustomerRow);
   }
 
   async findCustomerById(
@@ -53,28 +61,28 @@ export class CustomerRepository {
 
     const querySql = orgId
       ? `SELECT id, organization_id, name, email, phone, tier,
-                loyalty_points, store_credit_balance::float, credit_limit::float,
+                loyalty_points, store_credit_balance, credit_limit,
                 customer_group, notes, registered_at, created_at, updated_at
          FROM customers WHERE id = $1 AND organization_id = $2`
       : `SELECT id, organization_id, name, email, phone, tier,
-                loyalty_points, store_credit_balance::float, credit_limit::float,
+                loyalty_points, store_credit_balance, credit_limit,
                 customer_group, notes, registered_at, created_at, updated_at
          FROM customers WHERE id = $1`;
 
     const params = orgId ? [id, orgId] : [id];
-    const res = await db.query<CustomerRecord>(querySql, params);
-    return res.rows[0] || null;
+    const res = await db.query<any>(querySql, params);
+    return res.rows[0] ? mapCustomerRow(res.rows[0]) : null;
   }
 
   async createCustomer(customer: CustomerRecord, client?: DatabaseClient): Promise<CustomerRecord> {
     const db = this.getClient(client);
-    const res = await db.query<CustomerRecord>(
+    const res = await db.query<any>(
       `INSERT INTO customers (
         id, organization_id, name, email, phone, tier, loyalty_points,
         store_credit_balance, credit_limit, customer_group, notes
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id, organization_id, name, email, phone, tier,
-                loyalty_points, store_credit_balance::float, credit_limit::float,
+                loyalty_points, store_credit_balance, credit_limit,
                 customer_group, notes, registered_at, created_at, updated_at`,
       [
         customer.id,
@@ -90,6 +98,6 @@ export class CustomerRepository {
         customer.notes || null,
       ]
     );
-    return res.rows[0];
+    return mapCustomerRow(res.rows[0]);
   }
 }

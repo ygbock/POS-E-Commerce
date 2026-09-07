@@ -26,15 +26,15 @@ export class InventoryMovementRepository {
     const db = this.getClient(client);
     const query = organizationId
       ? `SELECT id, organization_id, location_id, variant_id, movement_type,
-                quantity_change::float, previous_balance::float, new_balance::float,
-                unit_cost::float, reference_type, reference_id, reason, performed_by, notes,
+                quantity_change, previous_balance, new_balance,
+                unit_cost, reference_type, reference_id, reason, performed_by, notes,
                 source_location_id, destination_location_id, idempotency_key,
                 source_system, source_reference, created_at
          FROM inventory_movements
          WHERE id = $1 AND organization_id = $2`
       : `SELECT id, organization_id, location_id, variant_id, movement_type,
-                quantity_change::float, previous_balance::float, new_balance::float,
-                unit_cost::float, reference_type, reference_id, reason, performed_by, notes,
+                quantity_change, previous_balance, new_balance,
+                unit_cost, reference_type, reference_id, reason, performed_by, notes,
                 source_location_id, destination_location_id, idempotency_key,
                 source_system, source_reference, created_at
          FROM inventory_movements
@@ -53,8 +53,8 @@ export class InventoryMovementRepository {
     const db = this.getClient(client);
     const query = `
       SELECT id, organization_id, location_id, variant_id, movement_type,
-             quantity_change::float, previous_balance::float, new_balance::float,
-             unit_cost::float, reference_type, reference_id, reason, performed_by, notes,
+             quantity_change, previous_balance, new_balance,
+             unit_cost, reference_type, reference_id, reason, performed_by, notes,
              source_location_id, destination_location_id, idempotency_key,
              source_system, source_reference, created_at
       FROM inventory_movements
@@ -105,18 +105,21 @@ export class InventoryMovementRepository {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const limit = options.limit || 50;
     const offset = options.offset || 0;
+    
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
     params.push(limit, offset);
 
     const query = `
       SELECT id, organization_id, location_id, variant_id, movement_type,
-             quantity_change::float, previous_balance::float, new_balance::float,
-             unit_cost::float, reference_type, reference_id, reason, performed_by, notes,
+             quantity_change, previous_balance, new_balance,
+             unit_cost, reference_type, reference_id, reason, performed_by, notes,
              source_location_id, destination_location_id, idempotency_key,
              source_system, source_reference, created_at
       FROM inventory_movements
       ${whereClause}
       ORDER BY created_at DESC
-      LIMIT $${params.length - 1} OFFSET $${params.length}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `;
 
     const res = await db.query<InventoryMovementRecord>(query, params);

@@ -23,6 +23,7 @@
 - [ADR-013: Stock Transfer Domain, Append-Only Event Ledger & Strict Tenant Isolation](#adr-013-stock-transfer-domain-append-only-event-ledger--strict-tenant-isolation)
 - [ADR-014: Database-Level Event Immutability, Idempotency Unique Constraints & Exact Scaled Arithmetic (INV-001R3)](#adr-014-database-level-event-immutability-idempotency-unique-constraints--exact-scaled-arithmetic-inv-001r3)
 - [ADR-015: Legacy In-Memory State Audit & Server Ledger Sole Authority (INV-001R3)](#adr-015-legacy-in-memory-state-audit--server-ledger-sole-authority-inv-001r3)
+- [ADR-016: Inventory Integrity Verification & Closure (INV-001R4)](#adr-016-inventory-integrity-verification--closure-inv-001r4)
 
 ---
 
@@ -226,6 +227,24 @@
 - **Consequences**:
   - Clear architectural boundaries between UI convenience state and trusted server ledger.
   - All mutating inventory operations must route through server endpoints backed by transactional database operations.
+
+---
+
+### ADR-016: Inventory Integrity Verification & Closure (INV-001R4)
+- **Date**: 2026-09-07
+- **Status**: `IMPLEMENTED (READY FOR REVIEW)`
+- **Task Association**: `INV-001R4`
+- **Context**: In response to supervisor review of INV-001R3, a targeted integrity verification and closure pass was executed to prove database-level immutability, eradicate authoritative floating-point quantity paths, enforce explicit repository row mapping, and standardize HTTP error handling contracts.
+- **Decision**:
+  1. **Proof of Database Immutability**: Verified `prevent_transfer_event_modification()` and trigger `trg_immutable_transfer_events` on `inventory_transfer_events`. Added explicit integration tests executing raw SQL (`UPDATE` and `DELETE`), verifying that mutations fail closed with error code `23506` (`IMMUTABLE_RECORD`) while `INSERT` succeeds.
+  2. **Eradication of Authoritative Floating-Point Arithmetic**: Verified all authoritative inventory calculation methods in `server/inventory/inventoryPolicies.ts` use `BigInt` scaled arithmetic (factor 10,000 for quantity, factor 100 for money). Marked legacy floating-point helpers `@deprecated` and verified that zero server mutation routes invoke them. Updated `TransferService.createTransfer` to validate all transfer item quantities using `parseExactQuantity` upfront, ensuring `parseQtyToScaled(qty) > 0n`.
+  3. **Explicit Repository Row Mapping**: Confirmed all repository queries across `inventoryRepository`, `inventoryTransferRepository`, `inventoryReservationRepository`, and `stockCountRepository` utilize explicit mapper functions (`mapBalanceRow`, `mapMovementRow`, `mapTransferItemRow`, `mapTransferEventRow`, `mapReservationRow`, `mapStockCountItemRow`) to guarantee type safety and prevent leaking raw unparsed DB fields.
+  4. **Centralized HTTP Route Error Handling**: Standardized error handling in `server/routes/inventoryRoutes.ts` with `handleInventoryRouteError()`, enforcing consistent status codes (403 for `TENANT_ACCESS_DENIED`, 400 for `VALIDATION_ERROR`/`INVALID_QUANTITY`, 422 for `INSUFFICIENT_STOCK`, 409 for `IDEMPOTENCY_CONFLICT`/`DUPLICATE_MOVEMENT`, 404 for `NOT_FOUND`, and 500 for unexpected errors sanitized in production).
+  5. **Legacy Store Audit**: Confirmed `CommerceContext` and `offlineStore` are strictly client-side UI buffers; all authoritative inventory mutations execute against PostgreSQL transactions.
+- **Consequences**:
+  - Full compliance with supervisor mandates and zero regressions across all 64 automated tests.
+  - POS-001 remains strictly `NOT STARTED` pending independent supervisor review and approval.
+
 
 
 

@@ -1,5 +1,6 @@
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import {
+  Quantity,
   InventoryTransferRecord,
   InventoryTransferItemRecord,
   InventoryTransferEventRecord,
@@ -479,7 +480,7 @@ export class InventoryTransferRepository {
   async updateItemDispatched(
     organizationId: string,
     itemId: string,
-    dispatchedQty: number,
+    dispatchedQty: Quantity | number | string,
     client?: DatabaseClient
   ): Promise<InventoryTransferItemRecord | null> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
@@ -507,8 +508,8 @@ export class InventoryTransferRepository {
   async updateItemReceived(
     organizationId: string,
     itemId: string,
-    receivedQty: number,
-    varianceQty: number,
+    receivedQty: Quantity | number | string,
+    varianceQty: Quantity | number | string,
     client?: DatabaseClient
   ): Promise<InventoryTransferItemRecord | null> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {

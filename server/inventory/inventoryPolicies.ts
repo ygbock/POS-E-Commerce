@@ -118,13 +118,6 @@ export function parseQtyToScaled(value: unknown): bigint {
   if (typeof value === 'bigint') {
     return value;
   }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new Error(`INVALID_QUANTITY: Number must be finite, received '${value}'.`);
-    }
-    const rounded = Math.round(value * 10000);
-    return BigInt(rounded);
-  }
   const qtyStr = parseExactQuantity(value, 'quantity', { allowNegative: true });
   const isNegative = qtyStr.startsWith('-');
   const clean = isNegative ? qtyStr.slice(1) : qtyStr;
@@ -148,13 +141,6 @@ export function formatScaledToQtyString(scaled: bigint): Quantity {
 }
 
 /**
- * Formats a scaled BigInt to a JavaScript number.
- */
-export function formatScaledToNumber(scaled: bigint): number {
-  return Number(formatScaledToQtyString(scaled));
-}
-
-/**
  * Exact quantity addition returning a fixed 4-decimal Quantity string.
  */
 export function addQtyExact(a: unknown, b: unknown): Quantity {
@@ -171,20 +157,6 @@ export function subQtyExact(a: unknown, b: unknown): Quantity {
 }
 
 /**
- * Backward-compatible number quantity addition.
- */
-export function addQty(a: unknown, b: unknown): number {
-  return formatScaledToNumber(parseQtyToScaled(a) + parseQtyToScaled(b));
-}
-
-/**
- * Backward-compatible number quantity subtraction.
- */
-export function subQty(a: unknown, b: unknown): number {
-  return formatScaledToNumber(parseQtyToScaled(a) - parseQtyToScaled(b));
-}
-
-/**
  * Formats any quantity to a strict 4-decimal-place Quantity string.
  */
 export function toQtyString(value: unknown): Quantity {
@@ -192,43 +164,69 @@ export function toQtyString(value: unknown): Quantity {
 }
 
 /**
- * Formats any quantity to a rounded number.
- */
-export function roundQty(value: unknown): number {
-  return formatScaledToNumber(parseQtyToScaled(value));
-}
-
-/**
  * Normalizes monetary amounts into exact 2-decimal string representation.
+ * 
+ * Policy: PREFERRED REJECTION POLICY
+ * - Validates input is numeric string, finite number, or bigint.
+ * - Rejects non-numeric, NaN, Infinity, whitespace-only, booleans, objects.
+ * - Rejects precision exceeding 2 decimal places (does NOT silently truncate).
+ * - Rejects negative values unless options.allowNegative: true is explicitly specified.
+ * - Normalizes valid values to strict 2 decimal places (e.g. 12 -> "12.00", 12.5 -> "12.50").
  */
-export function parseExactMoney(value: unknown, fieldName: string = 'unit_cost'): string {
+export function parseExactMoney(
+  value: unknown,
+  fieldName: string = 'unit_cost',
+  options?: { allowNegative?: boolean }
+): string {
   if (value === null || value === undefined) {
     return '0.00';
   }
+  if (typeof value === 'boolean' || (typeof value === 'object' && value !== null)) {
+    throw new Error(`INVALID_MONEY: '${fieldName}' must be a valid numeric money string or number.`);
+  }
+
   let str: string;
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) {
-      throw new Error(`INVALID_MONEY: '${fieldName}' must be a finite number.`);
+      throw new Error(`INVALID_MONEY: '${fieldName}' must be a finite number, received '${value}'.`);
     }
-    str = value.toFixed(2);
+    str = value.toString();
+  } else if (typeof value === 'bigint') {
+    str = value.toString();
   } else {
     str = String(value).trim();
   }
-  if (!str || !/^-?\d+(\.\d+)?$/.test(str)) {
+
+  if (!str) {
+    throw new Error(`INVALID_MONEY: '${fieldName}' cannot be empty.`);
+  }
+
+  if (!/^-?\d+(\.\d+)?$/.test(str)) {
     throw new Error(`INVALID_MONEY: '${fieldName}' has invalid format '${value}'.`);
   }
-  const parts = str.split('.');
-  const whole = parts[0];
-  let frac = (parts[1] || '').slice(0, 2);
-  while (frac.length < 2) frac += '0';
-  return `${whole}.${frac}`;
-}
 
-/**
- * Rounds monetary amounts to 2 decimal places using symmetric round-half-up BigInt arithmetic.
- */
-export function roundMoney(amount: number | string): number {
-  return Number(roundMoneyExact(amount));
+  const isNegative = str.startsWith('-');
+  if (isNegative && !options?.allowNegative) {
+    throw new Error(`INVALID_MONEY: '${fieldName}' cannot be negative, received '${value}'.`);
+  }
+
+  const clean = isNegative ? str.slice(1) : str;
+  const parts = clean.split('.');
+  const whole = BigInt(parts[0] || '0').toString();
+  let frac = parts[1] || '';
+
+  // PREFERRED POLICY: Reject precision exceeding 2 decimal places
+  if (frac.length > 2) {
+    throw new Error(
+      `INVALID_MONEY: '${fieldName}' precision exceeds maximum supported 2 decimal places: '${value}'.`
+    );
+  }
+
+  while (frac.length < 2) {
+    frac += '0';
+  }
+
+  return `${isNegative ? '-' : ''}${whole}.${frac}`;
 }
 
 export function roundMoneyExact(amount: number | string): string {
@@ -271,15 +269,6 @@ export function calculateAvailableExact(
   const expiredScaled = parseQtyToScaled(expired);
   const availScaled = onHandScaled - (reservedScaled + damagedScaled + expiredScaled);
   return formatScaledToQtyString(availScaled);
-}
-
-export function calculateAvailable(
-  onHand: unknown,
-  reserved: unknown = 0,
-  damaged: unknown = 0,
-  expired: unknown = 0
-): number {
-  return formatScaledToNumber(parseQtyToScaled(calculateAvailableExact(onHand, reserved, damaged, expired)));
 }
 
 /**
@@ -381,15 +370,6 @@ export function calculateWeightedAverageCostExact(
   const whole = roundedCents / 100n;
   const cents = (roundedCents % 100n).toString().padStart(2, '0');
   return `${whole}.${cents}`;
-}
-
-export function calculateWeightedAverageCost(
-  currentOnHand: unknown,
-  currentAvgCost: unknown,
-  receivedQty: unknown,
-  receivedUnitCost: unknown
-): number {
-  return Number(calculateWeightedAverageCostExact(currentOnHand, currentAvgCost, receivedQty, receivedUnitCost));
 }
 
 /**

@@ -53,7 +53,7 @@ export class ReservationService {
       throw new Error('TENANT_REQUIRED: Organization context is required for createReservation.');
     }
 
-    const idempotencyKey = explicitIdempotencyKey || data.idempotency_key;
+    const idempotencyKey = explicitIdempotencyKey || data.idempotency_key || generateInventoryId('res_idem');
     const exactQty = parseExactQuantity(data.quantity, 'quantity');
     const scaledQty = parseQtyToScaled(exactQty);
     if (scaledQty <= 0n) {
@@ -161,6 +161,10 @@ export class ReservationService {
       if (!reservation) {
         throw new Error(`RESERVATION_NOT_FOUND: Reservation '${reservationId}' not found.`);
       }
+      if (reservation.status === 'RELEASED') {
+        // Idempotent: already released, return cleanly without duplicating inventory restoration
+        return reservation;
+      }
       if (reservation.status !== 'ACTIVE') {
         throw new Error(`INVALID_RESERVATION_STATE: Reservation '${reservationId}' is in state '${reservation.status}', expected 'ACTIVE'.`);
       }
@@ -195,6 +199,10 @@ export class ReservationService {
       const reservation = await this.reservationRepo.findById(organizationId, reservationId, tx);
       if (!reservation) {
         throw new Error(`RESERVATION_NOT_FOUND: Reservation '${reservationId}' not found.`);
+      }
+      if (reservation.status === 'FULFILLED') {
+        // Idempotent: already fulfilled, return cleanly without duplicating stock deduction
+        return reservation;
       }
       if (reservation.status !== 'ACTIVE') {
         throw new Error(`INVALID_RESERVATION_STATE: Reservation '${reservationId}' is in state '${reservation.status}', expected 'ACTIVE'.`);
@@ -247,6 +255,10 @@ export class ReservationService {
       const reservation = await this.reservationRepo.findById(organizationId, reservationId, tx);
       if (!reservation) {
         throw new Error(`RESERVATION_NOT_FOUND: Reservation '${reservationId}' not found.`);
+      }
+      if (reservation.status === 'CANCELLED') {
+        // Idempotent: already cancelled
+        return reservation;
       }
       if (reservation.status !== 'ACTIVE') {
         throw new Error(`INVALID_RESERVATION_STATE: Reservation '${reservationId}' is in state '${reservation.status}', expected 'ACTIVE'.`);

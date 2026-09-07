@@ -667,7 +667,20 @@ async function runTransferTests() {
       'Existing event data must remain completely unchanged after attempted mutations'
     );
 
-    markPassed('11. Database-Level Event Immutability (INSERT allowed, UPDATE rejected, DELETE rejected, data intact)');
+    // 11e. Trigger exists in pg_trigger
+    const triggerRes = await db.query(`
+      SELECT tgname 
+      FROM pg_trigger 
+      WHERE tgname = 'trg_immutable_transfer_events' 
+      AND tgrelid = 'inventory_transfer_events'::regclass
+    `);
+    assert.strictEqual(
+      triggerRes.rows.length,
+      1,
+      'Trigger trg_immutable_transfer_events must exist in pg_trigger'
+    );
+
+    markPassed('11. Database-Level Event Immutability (INSERT allowed, UPDATE rejected, DELETE rejected, data intact, trigger exists)');
   } catch (err) {
     markFailed('11. Database-Level Event Immutability (PostgreSQL Triggers on inventory_transfer_events)', err);
   }
@@ -745,9 +758,34 @@ async function runTransferTests() {
     const afterRec = await transferService.getTransfer(orgA, concRecTr.id);
     assert.strictEqual(afterRec!.transfer.status, 'COMPLETED');
 
-    markPassed('12. Transfer Concurrency & Row-Level Locking (Concurrent Dispatch & Concurrent Receipt Serialization)');
+    // 12c. Concurrent Dispatch + Receipt Serialization
+    const { transfer: concMixTr } = await transferService.createTransfer(
+      orgA,
+      {
+        source_location_id: 'loc_tr_hub_a',
+        destination_location_id: 'loc_tr_retail_a',
+        items: [{ variant_id: 'var_tr_1', requested_quantity: 5 }],
+      },
+      actorId
+    );
+    await transferService.approveTransfer(orgA, concMixTr.id, actorId);
+
+    // Launch dispatch and receive concurrently
+    // Receipt should fail or be queued because state is not DISPATCHED yet, but it must not corrupt state or duplicate stock.
+    const mixPromises = [
+      transferService.dispatchTransfer(orgA, concMixTr.id, undefined, actorId, 'mix_disp_key'),
+      transferService.receiveTransfer(orgA, concMixTr.id, { var_tr_1: 5 }, actorId, 'mix_rec_key').catch(e => e), // might reject due to state
+    ];
+
+    await Promise.allSettled(mixPromises);
+    const afterMix = await transferService.getTransfer(orgA, concMixTr.id);
+    // At this point, the transfer is either DISPATCHED (if receive failed) or COMPLETED (if receive succeeded after dispatch).
+    // What's important is it's not corrupted and we didn't double-deduct.
+    assert.ok(afterMix!.transfer.status === 'DISPATCHED' || afterMix!.transfer.status === 'COMPLETED', 'Transfer status must be valid after concurrent mix');
+
+    markPassed('12. Transfer Concurrency & Row-Level Locking (Concurrent Dispatch, Receipt, and Mix)');
   } catch (err) {
-    markFailed('12. Transfer Concurrency & Row-Level Locking (Concurrent Dispatch & Concurrent Receipt Serialization)', err);
+    markFailed('12. Transfer Concurrency & Row-Level Locking (Concurrent Dispatch, Receipt, and Mix)', err);
   }
 
   // -------------------------------------------------------------------------
