@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: omnicore-app
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: omnicore-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRY
+        value: "86400"
+
+databases:
+  - name: omnicore-db
+    plan: free
+    databaseName: omnicore
+    user: omnicore_user
