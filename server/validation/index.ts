@@ -238,8 +238,6 @@ export function validateUserPayload(body: any): {
   password: string;
   role: string;
   locationId?: string | null;
-  organizationId?: string;
-  organization_id?: string;
 } {
   const errors: ValidationErrorDetail[] = [];
 
@@ -249,7 +247,7 @@ export function validateUserPayload(body: any): {
 
   const allowlistErrors = assertAllowedKeys(
     body,
-    ['email', 'name', 'password', 'role', 'locationId', 'organizationId', 'organization_id'],
+    ['email', 'name', 'password', 'role', 'locationId'],
     'user payload'
   );
   if (allowlistErrors.length > 0) {
@@ -327,7 +325,13 @@ export function validateCustomerPayload(body: any, isUpdate = false): Record<str
     throw new ValidationError('Customer validation failed', errors);
   }
 
-  return sanitizeClientBody(body);
+  const dto: Record<string, any> = {};
+  for (const key of allowedKeys) {
+    if (body[key] !== undefined) {
+      dto[key] = body[key];
+    }
+  }
+  return dto;
 }
 
 /**
@@ -358,7 +362,13 @@ export function validateCategoryPayload(body: any, isUpdate = false): Record<str
     throw new ValidationError('Category validation failed', errors);
   }
 
-  return sanitizeClientBody(body);
+  const dto: Record<string, any> = {};
+  for (const key of allowedKeys) {
+    if (body[key] !== undefined) {
+      dto[key] = body[key];
+    }
+  }
+  return dto;
 }
 
 /**
@@ -389,7 +399,13 @@ export function validateBrandPayload(body: any, isUpdate = false): Record<string
     throw new ValidationError('Brand validation failed', errors);
   }
 
-  return sanitizeClientBody(body);
+  const dto: Record<string, any> = {};
+  for (const key of allowedKeys) {
+    if (body[key] !== undefined) {
+      dto[key] = body[key];
+    }
+  }
+  return dto;
 }
 
 /**
@@ -420,7 +436,13 @@ export function validateAttributePayload(body: any, isUpdate = false): Record<st
     throw new ValidationError('Attribute validation failed', errors);
   }
 
-  return sanitizeClientBody(body);
+  const dto: Record<string, any> = {};
+  for (const key of allowedKeys) {
+    if (body[key] !== undefined) {
+      dto[key] = body[key];
+    }
+  }
+  return dto;
 }
 
 /**
@@ -480,7 +502,13 @@ export function validateVariantPayload(body: any, isUpdate = false): Record<stri
     throw new ValidationError('Variant validation failed', errors);
   }
 
-  return sanitizeClientBody(body);
+  const dto: Record<string, any> = {};
+  for (const key of allowedKeys) {
+    if (body[key] !== undefined) {
+      dto[key] = body[key];
+    }
+  }
+  return dto;
 }
 
 /**
@@ -495,12 +523,11 @@ export function validateProductPayload(body: any, isUpdate = false): Record<stri
   }
 
   const allowedProductKeys = [
-    'id', 'name', 'slug', 'brand', 'brandId', 'category', 'categoryId', 'subcategory',
+    'name', 'slug', 'brand', 'brandId', 'category', 'categoryId', 'subcategory',
     'description', 'shortDescription', 'unit', 'unitCode', 'productType', 'status',
     'channels', 'taxRate', 'rating', 'reviewCount', 'tags', 'images', 'featured',
     'variants', 'sku', 'barcode', 'costPrice', 'retailPrice', 'wholesalePrice',
-    'memberPrice', 'minSellingPrice', 'stockByLocation', 'lowStockThreshold',
-    'organizationId', 'organization_id', 'userId', 'user_id', 'role', 'actorId', 'actorRole'
+    'memberPrice', 'minSellingPrice', 'stockByLocation', 'lowStockThreshold'
   ];
 
   const allowlistErrors = assertAllowedKeys(body, allowedProductKeys, 'product payload');
@@ -534,14 +561,16 @@ export function validateProductPayload(body: any, isUpdate = false): Record<stri
     if (err) errors.push(err);
   }
 
+  let validatedVariants: any[] | undefined = undefined;
   if (body.variants !== undefined) {
     if (!Array.isArray(body.variants)) {
       errors.push({ field: 'variants', message: 'variants must be an array of variant objects' });
     } else {
+      validatedVariants = [];
       for (let i = 0; i < body.variants.length; i++) {
         const v = body.variants[i];
         try {
-          validateVariantPayload(v, isUpdate);
+          validatedVariants.push(validateVariantPayload(v, isUpdate));
         } catch (err: any) {
           if (err instanceof ValidationError) {
             for (const d of err.details) {
@@ -559,7 +588,15 @@ export function validateProductPayload(body: any, isUpdate = false): Record<stri
     throw new ValidationError('Product validation failed', errors);
   }
 
-  return sanitizeClientBody(body);
+  const dto: Record<string, any> = {};
+  for (const key of allowedProductKeys) {
+    if (key === 'variants' && validatedVariants !== undefined) {
+      dto.variants = validatedVariants;
+    } else if (body[key] !== undefined) {
+      dto[key] = body[key];
+    }
+  }
+  return dto;
 }
 
 /**

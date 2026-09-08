@@ -34,9 +34,8 @@ import {
   validateBrandPayload,
   validateAttributePayload,
   validateBody,
-  sanitizeClientBody,
 } from './server/validation/index.ts';
-import { apiErrorHandler, buildApiErrorResponse } from './server/utils/errorSanitizer.ts';
+import { apiErrorHandler, buildApiErrorResponse, ApiError } from './server/utils/errorSanitizer.ts';
 import { hashPassword } from './server/auth/password.ts';
 import { PERMISSIONS, ROLE_PERMISSIONS, VALID_ROLES } from './server/auth/roles.ts';
 
@@ -226,35 +225,65 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use('/api', requestIdMiddleware);
 
   /**
-   * Resolves the authoritative tenant context for a request (Model A).
-   * - Ordinary tenants can NEVER override their tenant; query parameters are strictly ignored.
-   * - Super Admins can target another organization via explicit query parameter ?orgId=,
-   *   which is validated and recorded in the audit event log.
+   * Resolves the authoritative tenant context for a request (Super Admin Cross-Tenant Access Model B).
+   * - Fail-Closed: An authenticated caller MUST have an organizationId. If missing, fails with 403 TENANT_REQUIRED.
+   * - Non-Super-Admins: Cannot specify a different tenant. Attempting to pass ?orgId= or ?organizationId=
+   *   targeting another tenant fails with 403 TENANT_ACCESS_DENIED.
+   * - Super Admins: Have a designated home organization. Cross-tenant access is permitted via explicit
+   *   ?orgId= or ?organizationId= query parameter. Any cross-tenant access is audited with method-specific
+   *   action taxonomy (READ, CREATE, UPDATE, DELETE).
    */
-  async function resolveAuthorizedTenant(req: Request, auditRepository?: AuditRepository): Promise<string> {
-    const callerOrg = req.auth?.organizationId || 'org_default';
-    const isSuperAdmin = req.auth?.role === 'super_admin';
+  async function resolveAuthorizedTenant(
+    req: Request,
+    auditRepository?: AuditRepository,
+    entityType = 'RESOURCE'
+  ): Promise<string> {
+    if (!req.auth?.organizationId) {
+      throw new ApiError('TENANT_REQUIRED', 'Authenticated tenant context is required.', 403);
+    }
+    const callerOrg = req.auth.organizationId;
+    const isSuperAdmin = req.auth.role === 'super_admin';
+
+    const targetOrgParam = (req.query.orgId || req.query.organizationId) as string | undefined;
 
     if (!isSuperAdmin) {
+      if (targetOrgParam && typeof targetOrgParam === 'string' && targetOrgParam.trim() !== '') {
+        const requested = targetOrgParam.trim();
+        if (requested !== callerOrg) {
+          throw new ApiError('TENANT_ACCESS_DENIED', 'Cross-tenant access forbidden.', 403);
+        }
+      }
       return callerOrg;
     }
 
-    const targetOrgParam = (req.query.orgId || req.query.organizationId) as string | undefined;
+    // Model B: Super Admin explicit cross-tenant override
     if (targetOrgParam && typeof targetOrgParam === 'string' && targetOrgParam.trim() !== '') {
       const targetOrg = targetOrgParam.trim();
       if (targetOrg !== callerOrg && auditRepository) {
+        let auditAction = 'SUPER_ADMIN_CROSS_TENANT_READ';
+        const method = req.method.toUpperCase();
+        if (method === 'POST') {
+          auditAction = 'SUPER_ADMIN_CROSS_TENANT_CREATE';
+        } else if (method === 'PUT' || method === 'PATCH') {
+          auditAction = 'SUPER_ADMIN_CROSS_TENANT_UPDATE';
+        } else if (method === 'DELETE') {
+          auditAction = 'SUPER_ADMIN_CROSS_TENANT_DELETE';
+        }
+
         await auditRepository.recordEvent({
-          organization_id: callerOrg,
+          organization_id: targetOrg,
           actor_id: req.auth!.userId,
           actor_name: (req.auth as any)?.name || req.auth!.userId,
           actor_role: req.auth!.role,
-          action: 'SUPER_ADMIN_CROSS_TENANT_ACCESS',
-          entity_type: 'ORGANIZATION',
+          action: auditAction,
+          entity_type: entityType,
           entity_id: targetOrg,
           metadata: {
+            homeOrganization: callerOrg,
+            targetOrganization: targetOrg,
             path: req.originalUrl || req.url,
             method: req.method,
-            targetOrganization: targetOrg,
+            requestId: (req as any)?.id || (req.headers?.['x-request-id'] as string) || undefined,
           },
         });
       }
@@ -621,58 +650,73 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     validateBody(validateProductPayload),
     (req: Request, res: Response) => {
-      const sanitizedBody = sanitizeClientBody(req.body) as any;
-      if (!sanitizedBody.name) {
-        return res.status(400).json({ success: false, error: 'Product name is required' });
-      }
+      const body = req.body;
+      const id = `prod-${randomUUID().slice(0, 8)}`;
+      const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-      const id = sanitizedBody.id || `prod-${Date.now().toString().slice(-6)}`;
-      const slug = sanitizedBody.slug || sanitizedBody.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-      // Server-authoritative tenant assignment: ignore any body-supplied organizationId or userId
+      // Server-authoritative tenant assignment: stamped from authenticated context
       const authoritativeOrg = req.auth!.organizationId;
 
       const newProduct: Product = {
         id,
         organizationId: authoritativeOrg,
-        name: sanitizedBody.name,
+        name: body.name,
         slug,
-        brand: sanitizedBody.brand || 'Generic',
-        category: sanitizedBody.category || 'Electronics',
-        subcategory: sanitizedBody.subcategory || 'General',
-        description: sanitizedBody.description || '',
-        shortDescription: sanitizedBody.shortDescription || sanitizedBody.name,
-        unit: sanitizedBody.unit || 'pcs',
-        productType: sanitizedBody.productType || 'standard',
-        status: sanitizedBody.status || 'active',
-        channels: sanitizedBody.channels || { pos: true, ecommerce: true, wholesale: false },
-        taxRate: sanitizedBody.taxRate ?? 10,
-        rating: sanitizedBody.rating || 5.0,
-        reviewCount: sanitizedBody.reviewCount || 0,
-        tags: sanitizedBody.tags || [],
-        images: sanitizedBody.images || ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80'],
+        brand: body.brand || 'Generic',
+        category: body.category || 'Electronics',
+        subcategory: body.subcategory || 'General',
+        description: body.description || '',
+        shortDescription: body.shortDescription || body.name,
+        unit: body.unit || 'pcs',
+        productType: body.productType || 'standard',
+        status: body.status || 'active',
+        channels: body.channels || { pos: true, ecommerce: true, wholesale: false },
+        taxRate: body.taxRate ?? 10,
+        rating: body.rating || 5.0,
+        reviewCount: body.reviewCount || 0,
+        tags: body.tags || [],
+        images: body.images || ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80'],
         variants:
-          sanitizedBody.variants && sanitizedBody.variants.length > 0
-            ? sanitizedBody.variants
+          body.variants && body.variants.length > 0
+            ? body.variants.map((v: any, idx: number) => ({
+                id: `var-${id}-${idx + 1}`,
+                sku: v.sku || `SKU-${id.toUpperCase()}-${idx + 1}`,
+                barcode: v.barcode || `8809${randomInt(10000000, 99999999)}`,
+                name: v.name || 'Variant',
+                attributes: v.attributes || {},
+                costPrice: v.costPrice || '0.00',
+                retailPrice: v.retailPrice || '100.00',
+                wholesalePrice: v.wholesalePrice || v.retailPrice || '80.00',
+                memberPrice: v.memberPrice || v.retailPrice || '90.00',
+                minSellingPrice: v.minSellingPrice || v.retailPrice || '70.00',
+                weightKg: v.weightKg,
+                dimensionsCm: v.dimensionsCm,
+                unit: v.unit,
+                stockByLocation: v.stockByLocation || {},
+                lowStockThreshold: v.lowStockThreshold || 10,
+                image: v.image,
+                isActive: v.isActive !== false,
+                trackInventory: v.trackInventory !== false,
+              }))
             : [
                 {
                   id: `var-${id}-default`,
-                  sku: sanitizedBody.sku || `SKU-${id.toUpperCase()}`,
-                  barcode: sanitizedBody.barcode || `8809${randomInt(10000000, 99999999)}`,
+                  sku: body.sku || `SKU-${id.toUpperCase()}`,
+                  barcode: body.barcode || `8809${randomInt(10000000, 99999999)}`,
                   name: 'Default Variant',
                   attributes: { Standard: 'Default' },
-                  costPrice: sanitizedBody.costPrice || '0.00',
-                  retailPrice: sanitizedBody.retailPrice || '100.00',
-                  wholesalePrice: sanitizedBody.wholesalePrice || sanitizedBody.retailPrice || '80.00',
-                  memberPrice: sanitizedBody.memberPrice || sanitizedBody.retailPrice || '90.00',
-                  minSellingPrice: sanitizedBody.minSellingPrice || sanitizedBody.retailPrice || '70.00',
-                  stockByLocation: sanitizedBody.stockByLocation || {
+                  costPrice: body.costPrice || '0.00',
+                  retailPrice: body.retailPrice || '100.00',
+                  wholesalePrice: body.wholesalePrice || body.retailPrice || '80.00',
+                  memberPrice: body.memberPrice || body.retailPrice || '90.00',
+                  minSellingPrice: body.minSellingPrice || body.retailPrice || '70.00',
+                  stockByLocation: body.stockByLocation || {
                     'loc-main-wh': 50,
                     'loc-store-downtown': 25,
                     'loc-branch-north': 15,
                     'loc-dist-center': 100,
                   },
-                  lowStockThreshold: sanitizedBody.lowStockThreshold || 10,
+                  lowStockThreshold: body.lowStockThreshold || 10,
                 },
               ],
         createdAt: new Date().toISOString(),
@@ -725,15 +769,9 @@ export async function createApp(options: CreateAppOptions = {}) {
         });
       }
 
-      const sanitizedBody = sanitizeClientBody(req.body) as any;
-      // Strip immutable identity properties to prevent reparenting or ID spoofing
-      delete sanitizedBody.id;
-      delete sanitizedBody.organizationId;
-      delete sanitizedBody.organization_id;
-
       const updated: Product = {
         ...existing,
-        ...sanitizedBody,
+        ...req.body,
         id: existing.id,
         organizationId: existing.organizationId,
         updatedAt: new Date().toISOString(),
@@ -1057,18 +1095,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     validateBody(validateAttributePayload),
     (req: Request, res: Response) => {
-      const sanitizedBody = req.body;
-
-      const id = sanitizedBody.id || `attr-${Date.now().toString().slice(-6)}`;
+      const body = req.body;
+      const id = `attr-${randomUUID().slice(0, 8)}`;
       const newAttr: CatalogAttribute = {
         id,
         organizationId: req.auth!.organizationId,
-        name: sanitizedBody.name,
-        code: sanitizedBody.code || sanitizedBody.name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
-        type: sanitizedBody.type || 'select',
-        options: sanitizedBody.options || [],
-        required: sanitizedBody.required || false,
-        description: sanitizedBody.description || '',
+        name: body.name,
+        code: body.code || body.name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        type: body.type || 'select',
+        options: body.values || body.options || [],
+        required: body.required || false,
+        description: body.description || '',
         usageCount: 0,
       };
 
@@ -1095,6 +1132,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
     requireTenantAccess(),
+    validateBody((b: any) => validateAttributePayload(b, true)),
     (req: Request, res: Response) => {
       const index = masterAttributesStore.findIndex((a) => a.id === req.params.id);
       if (index === -1) {
@@ -1115,11 +1153,12 @@ export async function createApp(options: CreateAppOptions = {}) {
         });
       }
 
-      const sanitizedBody = sanitizeClientBody(req.body) as any;
-      delete sanitizedBody.id;
-      delete sanitizedBody.organizationId;
-
-      const updated = { ...existing, ...sanitizedBody, id: existing.id, organizationId: existing.organizationId };
+      const updated = {
+        ...existing,
+        ...req.body,
+        id: existing.id,
+        organizationId: existing.organizationId,
+      };
       masterAttributesStore[index] = updated;
 
       syncAuditLogs.push({
@@ -1204,7 +1243,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     (req: Request, res: Response) => {
       const body = req.body;
       const newCat: Category = {
-        id: body.id || `cat-${Date.now().toString().slice(-6)}`,
+        id: `cat-${randomUUID().slice(0, 8)}`,
         organizationId: req.auth!.organizationId,
         name: body.name,
         slug: body.slug || body.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
@@ -1238,7 +1277,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     (req: Request, res: Response) => {
       const body = req.body;
       const newBrand: Brand = {
-        id: body.id || `brand-${Date.now().toString().slice(-6)}`,
+        id: `brand-${randomUUID().slice(0, 8)}`,
         organizationId: req.auth!.organizationId,
         name: body.name,
         slug: body.slug || body.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),

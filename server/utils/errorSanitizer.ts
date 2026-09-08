@@ -28,6 +28,23 @@ export interface StandardApiErrorResponse {
 }
 
 /**
+ * Standard Application Error with explicit code and HTTP status
+ */
+export class ApiError extends Error {
+  code: string;
+  status: number;
+  details?: any;
+
+  constructor(code: string, message: string, status = 500, details?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
+/**
  * Sanitizes error messages to prevent leaking SQL statements, database constraint details,
  * file paths, stack traces, connection strings, credentials, or table/column names.
  */
@@ -68,18 +85,30 @@ export function sanitizeApiErrorMessage(rawMessage: string): string {
 /**
  * Classifies an error and maps it to a canonical HTTP status and error code.
  */
-export function classifyApiError(err: any): { status: number; code: string; message: string } {
+export function classifyApiError(
+  err: any,
+  forceProduction?: boolean
+): { status: number; code: string; message: string } {
   const msg: string = String(err?.message || '');
   const errCode: string = String(err?.code || '');
   const status: number = err?.status || err?.statusCode || 500;
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = forceProduction !== undefined ? forceProduction : process.env.NODE_ENV === 'production';
+
+  // 0. Explicit Domain / ApiError instances
+  if (err instanceof ApiError) {
+    return {
+      status: err.status,
+      code: err.code,
+      message: err.message,
+    };
+  }
 
   // 1. Tenant boundary violations
-  if (msg.includes('TENANT_REQUIRED')) {
+  if (msg.includes('TENANT_REQUIRED') || errCode === 'TENANT_REQUIRED') {
     return {
-      status: 400,
+      status: err?.status || 403,
       code: 'TENANT_REQUIRED',
-      message: 'Organization ID is required.',
+      message: 'Authenticated tenant context is required.',
     };
   }
 
@@ -231,9 +260,10 @@ export function sanitizeErrorDetails(details: any): ValidationErrorDetail[] | un
  */
 export function buildApiErrorResponse(
   err: any,
-  req?: Request
+  req?: Request,
+  forceProduction?: boolean
 ): { status: number; body: StandardApiErrorResponse } {
-  const classification = classifyApiError(err);
+  const classification = classifyApiError(err, forceProduction);
   const requestId = (req as any)?.id || (req?.headers?.['x-request-id'] as string) || undefined;
   const safeDetails = sanitizeErrorDetails(err?.details);
 
