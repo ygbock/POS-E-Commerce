@@ -12,6 +12,8 @@ import { CustomerRepository } from './server/repositories/customerRepository.ts'
 import { InventoryRepository } from './server/repositories/inventoryRepository.ts';
 import { AuditRepository } from './server/repositories/auditRepository.ts';
 import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
+import { createPosRouter } from './server/routes/posRoutes.ts';
+import { PosService } from './server/services/posService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
 import {
   createAuthenticateMiddleware,
@@ -104,6 +106,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const customerRepo = new CustomerRepository(db);
   const inventoryRepo = new InventoryRepository(db);
   const auditRepo = new AuditRepository(db);
+  const posService = new PosService(undefined, orderRepo, inventoryRepo, auditRepo, db);
 
   // In-Memory Master Data Stores (Transitional catalog state protected by server auth boundaries)
   const masterProductsStore: Product[] = options.initialProducts
@@ -1222,6 +1225,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
   app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
+  app.use('/api/pos', createPosRouter(db, posService));
   if (process.env.NODE_ENV !== 'test') {
     app.locals.reservationExpiryWorker = startReservationExpiryWorker({ db });
   }

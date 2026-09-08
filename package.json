@@ -18,7 +18,8 @@
     "test:security": "tsx tests/auth_security.test.ts",
     "test:inventory": "tsx tests/inventory.test.ts",
     "test:transfer": "tsx tests/transfer.test.ts",
-    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer"
+    "test:pos": "tsx tests/pos.test.ts",
+    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

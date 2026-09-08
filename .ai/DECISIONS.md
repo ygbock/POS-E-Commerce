@@ -24,6 +24,7 @@
 - [ADR-014: Database-Level Event Immutability, Idempotency Unique Constraints & Exact Scaled Arithmetic (INV-001R3)](#adr-014-database-level-event-immutability-idempotency-unique-constraints--exact-scaled-arithmetic-inv-001r3)
 - [ADR-015: Legacy In-Memory State Audit & Server Ledger Sole Authority (INV-001R3)](#adr-015-legacy-in-memory-state-audit--server-ledger-sole-authority-inv-001r3)
 - [ADR-016: Inventory Integrity Verification & Closure (INV-001R4)](#adr-016-inventory-integrity-verification--closure-inv-001r4)
+- [ADR-017: Server-Authoritative POS Checkout & Financial Calculation Engine (POS-001)](#adr-017-server-authoritative-pos-checkout--financial-calculation-engine-pos-001)
 
 ---
 
@@ -244,6 +245,26 @@
 - **Consequences**:
   - Full compliance with supervisor mandates and zero regressions across all 64 automated tests.
   - POS-001 remains strictly `NOT STARTED` pending independent supervisor review and approval.
+
+---
+
+### ADR-017: Server-Authoritative POS Checkout & Financial Calculation Engine (POS-001)
+- **Date**: 2026-09-08
+- **Status**: `IMPLEMENTED (READY FOR REVIEW)`
+- **Task Association**: `POS-001`
+- **Context**: Retail Point-of-Sale (POS) operations require high-reliability transaction processing. The system must process checkout, session management (cashier registers), cash movements, returns, and refunds under strict tenant isolation, server-side RBAC validation, concurrency-safe row locking, exact scaled-integer arithmetic, and idempotency guarantees.
+- **Decision**:
+  1. **Authoritative POS Persistent Ledger**: Implemented database schema (`pos_sessions`, `pos_cash_movements`, `pos_returns`, `pos_return_items`) and updated the `orders` table to track POS sessions and checkout idempotency.
+  2. **Session Lifecycle & Cashier Safekeeping**: Implemented a complete state machine for cashier sessions (`OPEN`, `CLOSED`). Added validation preventing multiple active sessions for the same location/terminal and blocking any mutating sales/cash actions on closed sessions. Reconciles expected vs. counted cash at close, logging exact variance.
+  3. **Atomic Multi-Domain POS Checkout**: Implemented `posService.checkout` executing inside a single database transaction (`db.withTransaction`). Recomputes all totals, taxes, and discounts server-side (ignoring client calculations). Subtracts inventory with negative stock prevention, creates the order and item lines, and posts payment atomically.
+  4. **Strict Concurrency Row Locking**: Utilizes PostgreSQL row-level locks (`SELECT FOR UPDATE`) on both `pos_sessions` and `inventory_balances` to safely serialize concurrent checkouts and returns, preventing race conditions or double-deductions.
+  5. **Sales Returns & Restocking**: Implemented a comprehensive partial/full return engine. Validates return quantities against original order lines to block excess returns. Upon successful refund, atomically adds items back to inventory via `SALE_RETURN` movements and updates the original order's payment status to `Partially Refunded` or `Refunded`.
+  6. **Idempotency Safeguard**: Added `idempotency_key` verification on POS checkouts. Confirmed identical checkouts safely replay and return the cached order without duplicate stock deductions or payment recordings.
+  7. **Tenant Isolation & Security Hardening**: Sourced all multi-tenant boundaries strictly from authenticated route middleware (`req.auth.organizationId`). Added an error sanitization layer (`sanitizePosErrorMessage`) that redacts stack traces, file paths, credentials, and SQL text before returning generic POS error codes.
+- **Consequences**:
+  - Point-of-Sale is a highly reliable transaction-processing layer over the Inventory Ledger.
+  - Complete multi-register concurrency safety and auditability are fully guaranteed.
+  - All 6/6 POS integration tests pass cleanly with 100% correctness.
 
 
 

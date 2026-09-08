@@ -32,6 +32,8 @@ export interface OrderRecord {
   tracking_number?: string | null;
   carrier_name?: string | null;
   notes?: string | null;
+  pos_session_id?: string | null;
+  idempotency_key?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -123,15 +125,16 @@ export class OrderRepository {
           id, organization_id, location_id, customer_id, order_number,
           source, channel, fulfillment_method, subtotal, discount_amount,
           discount_code, tax_amount, shipping_fee, total_amount, total_cost_amount,
-          payment_status, status, cashier_name, tracking_number, carrier_name, notes
+          payment_status, status, cashier_name, tracking_number, carrier_name, notes,
+          pos_session_id, idempotency_key
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
         ) RETURNING id, organization_id, location_id, customer_id, order_number,
                     source, channel, fulfillment_method,
                     subtotal, discount_amount, discount_code,
                     tax_amount, shipping_fee, total_amount, total_cost_amount,
                     payment_status, status, cashier_name, tracking_number, carrier_name, notes,
-                    created_at, updated_at`,
+                    pos_session_id, idempotency_key, created_at, updated_at`,
         [
           order.id,
           order.organization_id || 'org_default',
@@ -154,6 +157,8 @@ export class OrderRepository {
           order.tracking_number || null,
           order.carrier_name || null,
           order.notes || null,
+          order.pos_session_id || null,
+          order.idempotency_key || null,
         ]
       );
 

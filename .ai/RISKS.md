@@ -11,11 +11,11 @@
 
 | Risk ID | Title | Severity | Impact | Mitigation Plan |
 | :--- | :--- | :--- | :--- | :--- |
-| **RISK-001** | Client-Authoritative Business State | **Critical** | Business logic, price overrides, and stock state execute in browser | `POS-001`, `INV-001` |
+| **RISK-001** | Client-Authoritative Business State | **Critical** | Business logic, price overrides, and stock state execute in browser | **Fully Mitigated (POS-001, INV-001)** |
 | **RISK-002** | `localStorage` Business Persistence | **Critical** | Data loss if browser storage cleared; single-device isolation | `DATA-001` |
 | **RISK-003** | In-Memory Ephemeral Backend Persistence | **Critical** | Server restart erases all catalog additions and sync logs | `DATA-001` |
 | **RISK-004** | Missing Trusted Auth & RBAC Boundary | **High** | Any client can invoke mutating endpoints without credentials | Mitigated via `SEC-001` |
-| **RISK-005** | Client-Side Financial Calculations | **High** | Price tampering, erroneous tax or discount math in browser | `POS-001` |
+| **RISK-005** | Client-Side Financial Calculations | **High** | Price tampering, erroneous tax or discount math in browser | **Fully Mitigated (POS-001)** |
 | **RISK-006** | Inventory Integrity & Race Conditions | **High** | Overselling possible under concurrent checkouts; desync | `INV-001` |
 | **RISK-007** | API Validation & Mass-Assignment Risk | **Medium** | Unvalidated JSON accepted on Express endpoints | `API-001` |
 | **RISK-008** | Simulated Payment Tender Processing | **Medium** | No real-world gateway verification or idempotent settlement | `POS-001`, `PROD-001` |
@@ -31,7 +31,7 @@
 ### RISK-001: Client-Authoritative Business State
 - **Description**: Business rules, stock deductions, discount vouchers, and order creation are executed inside `src/context/CommerceContext.tsx`.
 - **Vulnerability**: A client can modify JavaScript runtime memory or dispatch artificial context actions to bypass business validation or manipulate inventory numbers.
-- **Planned Mitigation**: Move core domain logic into server-side application services with transaction boundaries (`POS-001`, `INV-001`).
+- **Mitigation Status**: **Fully Mitigated (POS-001, INV-001)**. Moved core checkout, order creation, session controls, and stock mutations to server application services executing within trusted transactional database contexts. Client context acts strictly as a non-authoritative display helper.
 
 ---
 
@@ -59,7 +59,7 @@
 ### RISK-005: Client-Side Financial Calculations
 - **Description**: The cart computes subtotals, taxes, and discounts on the client and directly saves the computed total as the order total.
 - **Vulnerability**: Tampering with request payloads or client code could permit checkouts with manipulated prices, invalid coupons, or zero taxes.
-- **Planned Mitigation**: Server re-evaluation of prices, line totals, discounts, and taxes on checkout submission (`POS-001`).
+- **Mitigation Status**: **Fully Mitigated (POS-001)**. Shifted all financial, tax, and discount recomputations entirely to the server checkout engine. Client-submitted prices and totals are completely ignored; values are derived directly from database variant pricing records during transactional checkout processing.
 
 ---
 

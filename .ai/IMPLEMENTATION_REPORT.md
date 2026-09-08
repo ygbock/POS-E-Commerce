@@ -1,5 +1,87 @@
 # Implementation Report
 
+## POS-001 — Server-Authoritative POS Checkout & Financial Calculation Engine
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: Inventory / Commerce Roadmap
+- **Authority**: Human Supervisor
+- **Scope Discipline**: Point-of-Sale Architecture & Implementation (POS-001).
+- **Core Domain Separation**: Implemented POS as a transaction-processing layer over the existing Inventory domain.
+
+---
+
+### 1. Technical Accomplishments & Architecture Design
+
+#### POS Relational Database Schema & Persistent Ledger
+- **Applied `007_pos_foundation.sql` & `008_orders_idempotency.sql`**:
+  - `pos_sessions`: Manages terminal/register lifecycles, opening floats, expected cash, counted cash, and variance at shift closing.
+  - `pos_cash_movements`: Tracks audit movements of `Cash In` (additional float) and `Cash Out` (draw payouts).
+  - `pos_returns` & `pos_return_items`: Stores atomic customer sales returns and items refunded.
+  - Modified `orders` table to store `pos_session_id` and `idempotency_key` columns cleanly.
+
+#### cashier Sessions & Cash drawer Management
+- **Opened / Closed Session Life Cycle**: Implemented robust open, cash movement, and close endpoints on `PosService` and `posRoutes.ts`.
+- **Double-Open Protection**: Validates that only one session can be active for a specific location and terminal at a time. Trying to open a second active session throws an explicit `DUPLICATE_SESSION` error.
+- **Closed-Session Actions Prevention**: Validates that all mutating POS checkouts, returns, and cash movements can only be registered against an `OPEN` session. Doing so on closed sessions is strictly blocked.
+- **Cash Reconciliation and Variance**: Calculates mathematically exact expected cash at closure based on: `Opening Cash + Cash Sale Payments + Cash In Movements - Cash Out Movements`. Compares against cashier-counted cash to log variance.
+
+#### Server-Authoritative POS Checkout
+- **Payable and Inventory re-evaluation**: POS checkout ignores client-computed calculations. The server fetches variant pricing directly from the database, computes discounts and taxes, and calculates authoritative final payable totals.
+- **Atomic Multi-Domain Mutations**: Implemented inside database-level transactions (`db.withTransaction`). Subtracts physical stock, inserts orders and order items, and registers payment records atomically.
+
+#### Concurrency Row-level Locking & Negative Stock Safeguard
+- **Safe Serialization**: Obtains row-level locks on `pos_sessions` and `inventory_balances` (`SELECT FOR UPDATE`) to block race conditions, duplicate checkout submissions, or concurrent stock desyncs.
+- **Negative Stock Prevention**: Strictly rejects checkout if on-hand inventory is insufficient, returning `INSUFFICIENT_STOCK` and rolling back the transaction completely.
+
+#### Sales Returns, Restocking & Over-Return Protection
+- **Exact Restocking**: Partially or fully returns orders. Re-evaluates totals, atomically adds items back to inventory using `SALE_RETURN` movements, and updates the order status to `Partially Refunded` or `Refunded`.
+- **Validation Safeguard**: Tracks quantities already returned. Rejects any returns that would exceed the original purchased quantity with a strict `RETURN_INVALID` error.
+
+#### Idempotency Safeguard
+- **Idempotency Index**: Saves `idempotency_key` directly in the `orders` table. Duplicate submissions resolve immediately by returning the cached response, preventing duplicate stock deductions and duplicate payments.
+
+#### Tenant Isolation & Error Redaction
+- **Multi-Tenant Segregation**: Sourced `organizationId` strictly from authenticated server contexts (`req.auth.organizationId`). Cross-tenant variant search or checkouts are strictly prevented.
+- **Zero Raw DB Leak**: Implemented `sanitizePosErrorMessage()` redacting full SQL statements, connection strings, credentials, constraint names, file paths, and stack traces.
+
+---
+
+### 2. POS Acceptance Matrix
+
+| Acceptance Criteria | Status | Evidence |
+| :--- | :--- | :--- |
+| **cashier Sessions** | PASS | `tests/pos.test.ts` (Test 1, 6) |
+| **Cash Movements (In/Out)** | PASS | `tests/pos.test.ts` (Test 2) |
+| **Authoritative Pricing** | PASS | `tests/pos.test.ts` (Test 3) |
+| **Atomic POS Checkout** | PASS | `tests/pos.test.ts` (Test 3) |
+| **Negative Stock Safeguard** | PASS | `tests/pos.test.ts` (Test 3) |
+| **Idempotency Guard** | PASS | `tests/pos.test.ts` (Test 4) |
+| **Returns & Restocking** | PASS | `tests/pos.test.ts` (Test 5) |
+| **Tenant Isolation** | PASS | `tests/pos.test.ts` (Test 6) |
+| **Closed Session Safeguard** | PASS | `tests/pos.test.ts` (Test 6) |
+| **Error Sanitization** | PASS | `server/routes/posRoutes.ts` |
+
+---
+
+### 3. Quality Gates & Verification Evidence
+
+1. **Full Test Suite Execution**:
+   - Command: `npm test`
+   - Output: **All 80 tests passing cleanly!**
+     - `test:db`: 15 passed, 0 failed
+     - `test:security`: 22 passed, 0 failed
+     - `test:inventory`: 24 passed, 0 failed
+     - `test:transfer`: 13 passed, 0 failed
+     - `test:pos`: 6 passed, 0 failed
+2. **TypeScript & Linting**:
+   - Command: `npm run lint` (`tsc --noEmit`)
+   - Output: `0 errors`
+3. **Application Build**:
+   - Command: `npm run build` (`vite build`)
+   - Output: Compiled successfully into `dist/` with esbuild bundling `dist/server.cjs` cleanly.
+
+---
+
 ## INV-002R3 — Final Inventory Verification & Targeted Remediation
 
 - **Status**: `READY FOR REVIEW`
