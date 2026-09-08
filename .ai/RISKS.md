@@ -73,7 +73,7 @@
 ### RISK-007: API Validation & Mass-Assignment Risk
 - **Description**: Express handlers parse raw JSON bodies with `express.json({ limit: '10mb' })` without passing fields through a strict schema validation library.
 - **Vulnerability**: Unexpected or dangerous fields could be injected into stored records, potentially causing runtime crashes, role tampering, or unauthorized tenant assignments.
-- **Mitigation Status**: **Fully Mitigated (API-001)**. Implemented strict DTO validation middleware (`validateBody`), anti-spoofing client key stripping (`stripForbiddenClientKeys`), exact-decimal string formatting, and centralized non-leaking error sanitizers (`classifyApiError`, `sanitizeApiErrorMessage`). All endpoints enforce strict types, authenticated tenant scoping, and structured HTTP error responses.
+- **Mitigation Status**: **Fully Mitigated (API-001R1)**. Hardened API boundary with cryptographic Request IDs (`crypto.randomUUID()`), strict DTO allowlisting with unexpected field rejection (`assertAllowedKeys`), string-based exact-decimal monetary and quantity enforcement (rejection of binary floating-point coercion, exponents, and excess precision), server-authoritative tenant resolution (`resolveAuthorizedTenant`) preventing client tenant overrides, Model B Super Admin cross-tenant governance with audit logging, role escalation defense in user management, and centralized non-leaking error sanitizers. Tested and proven across 7/7 API tests and 98/98 full-suite tests.
 
 ---
 

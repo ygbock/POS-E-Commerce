@@ -286,6 +286,29 @@
   - All 7 new integration tests in `tests/api_hardening.test.ts` pass with 100% pass rate.
   - Zero regressions across the entire test suite (all 98 automated tests pass).
 
+---
+
+### ADR-019: API Boundary Hardening, Cryptographic Request IDs, Strict Allowlisting, and Super Admin Model B Cross-Tenant Access (API-001R1)
+- **Date**: 2026-09-08
+- **Status**: `IMPLEMENTED (READY FOR REVIEW)`
+- **Task Association**: `API-001R1`
+- **Context**: The supervisor's independent review of `API-001` mandated corrective rework across 8 critical areas: cryptographic request IDs (`crypto.randomUUID()`), string-based money/quantity DTOs (no floating-point coercion), strict DTO allowlisting and unknown field rejection, server-authoritative tenant scoping without silent overrides, formal selection and enforcement of a Super Admin cross-tenant model, privilege escalation prevention, and non-leaking error sanitization.
+- **Decision**:
+  1. **Cryptographic Request ID Ingress Tracking**: Implemented `server/middleware/requestId.ts` generating IDs via `req-${randomUUID()}` using Node's standard `node:crypto`. Replaces timestamp/random math approximations. Mounted as first Express middleware; propagated across headers and error envelopes.
+  2. **Strict DTO Allowlisting & Unknown Field Rejection**: Built `assertAllowedKeys()` in `server/validation/index.ts`. Any payload with unexpected or forbidden keys (`__proto__`, `constructor`, `prototype`, arbitrary unknown properties) fails immediately with HTTP 422 `VALIDATION_ERROR` and detailed error objects (`field`, `message`). Client identity and tenant spoofing fields are explicitly allowlisted so they can be stripped/ignored server-authoritatively without crashing callers.
+  3. **Exact Decimal Monetary & Quantity Protocol**: Validated all money and quantity fields using strict string regex (`validateMoneyDecimal` matching `^\d+(\.\d{1,2})?$`, `validateQuantityDecimal` matching `^\d+(\.\d{1,4})?$`). Explicitly rejects `Number()` coercion, exponential notation (`1e5`), negative numbers, and floating-point representations. Catalog variant create/update endpoints (`POST /api/products/:productId/variants`, `PUT /api/products/:productId/variants/:variantId`) validate and persist exact strings.
+  4. **Server-Authoritative Tenant Resolution**: Implemented `resolveAuthorizedTenant(req, auditRepo)` in `server.ts`. Ordinary tenant callers cannot override their tenant context through body or query parameters (`?orgId=`). Any mismatch or attempt by a non-super-admin to specify an external tenant fails closed with HTTP 403 `TENANT_ACCESS_DENIED`.
+  5. **Super Admin Cross-Tenant Access Model B**: Formally selected and implemented Model B:
+     - Super Admin can read across tenants by default. When querying a single order (`GET /api/orders/:id`) or customer (`GET /api/customers/:id`), if the resource is not found in their home tenant, the server looks up the owning tenant and performs the read, recording a `SUPER_ADMIN_CROSS_TENANT_READ` event in `audit_logs`.
+     - All mutations (create, update, delete) strictly require an explicit target tenant (`?orgId=` or body `organizationId`), preventing accidental cross-tenant modifications.
+  6. **Privilege Escalation Defense**: In `POST /api/users`, ordinary managers/admins attempting to assign `role: 'super_admin'` are rejected with HTTP 403 `PERMISSION_DENIED`. Only an authenticated `super_admin` can create users with the `super_admin` role.
+  7. **Production Error Non-Leakage & Sanitization**: Error sanitizer enforces `ValidationErrorDetail` format, redacts connection strings (`postgres://`), credentials, SQL syntax, and file paths. In production, 500 errors return sanitized generic envelopes without leaking internal architecture.
+- **Consequences**:
+  - Full mitigation of RISK-007 (API Validation & Mass-Assignment Risk).
+  - All 98 tests across all 6 test suites pass cleanly with 0 failures (`test:db`: 15, `test:security`: 22, `test:inventory`: 24, `test:transfer`: 13, `test:pos`: 17, `test:api`: 7).
+  - TypeScript compilation (`npm run lint` and `npm run build`) succeeds cleanly with 0 errors.
+
+
 
 
 

@@ -10,6 +10,11 @@ import { Request, Response } from 'express';
  * 4. Request/Correlation ID propagation
  */
 
+export interface ValidationErrorDetail {
+  field: string;
+  message: string;
+}
+
 export interface StandardApiError {
   code: string;
   message: string;
@@ -200,6 +205,28 @@ export function classifyApiError(err: any): { status: number; code: string; mess
 }
 
 /**
+ * Sanitizes validation error details to ensure only safe field-level messages are returned,
+ * completely preventing leakage of arbitrary internal objects, SQL errors, or stack traces.
+ */
+export function sanitizeErrorDetails(details: any): ValidationErrorDetail[] | undefined {
+  if (!details) return undefined;
+  if (!Array.isArray(details)) return undefined;
+  const sanitized: ValidationErrorDetail[] = [];
+  for (const item of details) {
+    if (!item || typeof item !== 'object') continue;
+    const rawField = typeof item.field === 'string' ? item.field.slice(0, 100) : 'unknown';
+    const rawMessage = typeof item.message === 'string' ? item.message : 'Invalid value';
+    const cleanMessage = sanitizeApiErrorMessage(rawMessage);
+    const cleanField = rawField.replace(/[^a-zA-Z0-9_.\[\]-]/g, '');
+    sanitized.push({
+      field: cleanField,
+      message: cleanMessage,
+    });
+  }
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
+/**
  * Builds a standardized API error response envelope.
  */
 export function buildApiErrorResponse(
@@ -208,11 +235,12 @@ export function buildApiErrorResponse(
 ): { status: number; body: StandardApiErrorResponse } {
   const classification = classifyApiError(err);
   const requestId = (req as any)?.id || (req?.headers?.['x-request-id'] as string) || undefined;
+  const safeDetails = sanitizeErrorDetails(err?.details);
 
   const errorObj: StandardApiError = {
     code: classification.code,
     message: classification.message,
-    ...(err?.details ? { details: err.details } : {}),
+    ...(safeDetails ? { details: safeDetails } : {}),
     ...(requestId ? { requestId } : {}),
   };
 

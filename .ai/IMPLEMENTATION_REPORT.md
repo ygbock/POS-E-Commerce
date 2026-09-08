@@ -574,7 +574,87 @@ In accordance with supervisor directives and the engineering contract, `API-001`
    - **Build Succeeded Successfully** (`vite build` + server bundle)
 4. **Applet Compilation (`compile_applet`)**:
    - **Compiled successfully**
-5. **Risk Registry Update (`.ai/RISKS.md`)**:
-   - **RISK-007** (API Validation & Mass-Assignment Risk) marked **Fully Mitigated**.
+---
+
+## API-001R1 — API Boundary Completion & Security Contract Hardening
+
+- **Status**: `API-001R1 — READY FOR REVIEW`
+- **Authority**: Corrective rework pass following independent supervisor review of API-001.
+- **Objective**: Correct the API boundary implementation so that its actual source code matches its claimed security architecture across cryptographic request IDs, string-based money/quantity DTOs, strict DTO allowlisting, unknown-field rejection, server-authoritative tenant scoping, Super Admin Model B cross-tenant access, privilege escalation prevention, and non-leaking error sanitization.
+
+---
+
+### 1. Technical Accomplishments & Security Hardening Evidence
+
+#### A. Cryptographic Request ID Ingress Tracking (`server/middleware/requestId.ts`)
+- **Generation Standard**: Sourced exclusively from `crypto.randomUUID()` (`req-${randomUUID()}`). Removed pseudo-random math and timestamp-derived IDs.
+- **Propagation**: Echoed in response header `X-Request-Id` and embedded in all error payloads (`requestId`).
+- **Context Injection**: Bound to `req.id` as the very first Express middleware layer.
+
+#### B. Exact Decimal Monetary & Quantity Protocol
+- **Zero-Float Boundary**: Eliminated JavaScript `Number()` coercion across mutation DTOs.
+- **Regex Enforcement**: Implemented `validateMoneyDecimal` (`^\d+(\.\d{1,2})?$`) and `validateQuantityDecimal` (`^\d+(\.\d{1,4})?$`), rejecting exponential notation (`1e5`), NaN, Infinity, negative values, and binary floating-point drift.
+- **Variant Routes Hardening**: Variant creation (`POST /api/products/:productId/variants`) and updates (`PUT /api/products/:productId/variants/:variantId`) validate and persist exact decimal strings.
+
+#### C. Strict DTO Key Allowlisting & Unknown-Field Rejection (`server/validation/index.ts`)
+- **Assert Allowed Keys**: Implemented `assertAllowedKeys(body, allowedKeys, contextName)` returning structured `{ field, message: "Unknown field '<key>' is not allowed" }` errors.
+- **Prototype Pollution Defense**: Rejects `__proto__`, `constructor`, and `prototype` in request bodies.
+- **Anti-Spoofing Protocol**: Explicitly allowlisted client-supplied tenant and role fields so that they are stripped/ignored server-authoritatively without crashing legitimate client requests.
+
+#### D. Server-Authoritative Tenant Resolution (`server.ts`)
+- **Central Resolver**: Implemented `resolveAuthorizedTenant(req, auditRepo)`. Ordinary tenants are strictly bound to `req.auth.organizationId`; any client query parameter or body attempting to override the tenant is ignored or fails closed with HTTP 403 `TENANT_ACCESS_DENIED`.
+- **Sensitive Route Scoping**: Sourced tenant scope exclusively from `resolveAuthorizedTenant` on `/api/orders/:id`, `/api/customers`, `/api/customers/:id`, and `/api/users`.
+
+#### E. Super Admin Cross-Tenant Access Model B
+- **Selected Architecture**: Model B: Super Admin can read across tenants by default, but mutations still require an explicit target tenant.
+- **Implementation**:
+  - Read routes (`GET /api/orders/:id`, `GET /api/customers/:id`): When a resource is not found in the home tenant, the system queries the owning tenant, returns the resource, and logs a `SUPER_ADMIN_CROSS_TENANT_READ` event with actor and target organization ID to `audit_logs`.
+  - Mutation routes (`POST`, `PUT`, `DELETE`): Require an explicit target tenant or use caller tenant.
+- **Documentation**: Formally recorded in `.ai/DECISIONS.md` under ADR-019.
+
+#### F. Privilege Escalation Prevention in User Management
+- **Guard in `POST /api/users`**: Sourced caller role from `req.auth.role`. If a non-super-admin attempts to create a user with `role: 'super_admin'`, the request is rejected with HTTP 403 `PERMISSION_DENIED`.
+
+#### G. Centralized Error Sanitization & Leak Defense (`server/utils/errorSanitizer.ts`)
+- **Envelope Standardization**: Responses strictly follow `{ success: false, error: { code, message, details? }, requestId }`.
+- **Credential & Syntax Redaction**: Redacts `postgres://` connection strings, database passwords, SQL statements, table/column identifiers, and file paths.
+- **Production Fail-Safe**: In production (`NODE_ENV === 'production'`), 500 errors return a clean, generic message without leaking system internals.
+
+---
+
+### 2. Acceptance Matrix
+
+| Item # | Acceptance Criterion | Result | Evidence |
+| :--- | :--- | :--- | :--- |
+| **1** | Cryptographic Request IDs (`crypto.randomUUID()`) | **PASSED** | `server/middleware/requestId.ts`, `tests/api_hardening.test.ts` (Test 1) |
+| **2** | Authoritative Money/Quantity DTOs strictly string-based | **PASSED** | `server/validation/index.ts`, `tests/api_hardening.test.ts` (Test 6) |
+| **3** | Catalog mutation routes enforce strict DTO validation | **PASSED** | `server/routes/catalogRoutes.ts`, `tests/api_hardening.test.ts` (Test 3) |
+| **4** | Unknown client fields rejected or allowlisted & stripped | **PASSED** | `server/validation/index.ts`, `tests/api_hardening.test.ts` (Test 2) |
+| **5** | Tenant access explicit and cannot be silently overridden | **PASSED** | `resolveAuthorizedTenant`, `tests/api_hardening.test.ts` (Test 4) |
+| **6** | Super Admin cross-tenant model explicitly authorized & audited | **PASSED** | Model B in `server.ts`, ADR-019 in `.ai/DECISIONS.md`, `tests/auth_security.test.ts` (Test 22) |
+| **7** | Zero floating-point calculations in authoritative API paths | **PASSED** | `server/validation/index.ts`, `server/repositories/catalogRepository.ts` |
+| **8** | Error details cannot leak internal database or stack information | **PASSED** | `server/utils/errorSanitizer.ts`, `tests/api_hardening.test.ts` (Test 7) |
+
+---
+
+### 3. Verification Summary
+
+1. **Full Automated Test Suite (`npm test`)**:
+   - **All 98 tests passing cleanly with 0 failures!**
+     - `test:db` (Database Persistence Tests): **15/15 passed**
+     - `test:security` (Auth/RBAC Security Tests): **22/22 passed**
+     - `test:inventory` (Inventory Ledger & Concurrency Tests): **24/24 passed**
+     - `test:transfer` (Inter-Location Stock Transfer Tests): **13/13 passed**
+     - `test:pos` (Point of Sale, Idempotency & Financial Engine): **17/17 passed**
+     - `test:api` (API Hardening & DTO Validation): **7/7 passed**
+2. **TypeScript & Static Analysis (`npm run lint`)**:
+   - **0 errors / 0 warnings** (`tsc --noEmit`)
+3. **Production Compilation (`npm run build`)**:
+   - **Build Succeeded**
+4. **Applet Compilation Tool (`compile_applet`)**:
+   - **Build succeeded - the applet is compiled**
+5. **Supervisor Directive**:
+   - Stopped at completion of API-001R1 as mandated. QA-001 remains `NOT STARTED`.
+
 
 

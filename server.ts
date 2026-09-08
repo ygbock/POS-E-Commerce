@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { randomUUID, randomInt } from 'node:crypto';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_BRANDS } from './src/data/initialData.ts';
@@ -22,9 +23,11 @@ import {
   requireTenantAccess,
 } from './server/middleware/auth.ts';
 import { authRateLimiter, adminRateLimiter } from './server/middleware/rateLimiter.ts';
+import { requestIdMiddleware } from './server/middleware/requestId.ts';
 import {
   validateLoginPayload,
   validateProductPayload,
+  validateVariantPayload,
   validateUserPayload,
   validateCustomerPayload,
   validateCategoryPayload,
@@ -219,16 +222,47 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Global API Middleware
   app.use(express.json({ limit: '10mb' }));
 
-  // Request / Correlation ID Middleware (API-001)
-  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-    const incomingId = (req.headers['x-request-id'] || req.headers['x-correlation-id']) as string;
-    const requestId = (incomingId && typeof incomingId === 'string' && incomingId.trim() !== '')
-      ? incomingId.trim()
-      : `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
-    (req as any).id = requestId;
-    res.setHeader('X-Request-Id', requestId);
-    next();
-  });
+  // Request / Correlation ID Middleware (API-001R1)
+  app.use('/api', requestIdMiddleware);
+
+  /**
+   * Resolves the authoritative tenant context for a request (Model A).
+   * - Ordinary tenants can NEVER override their tenant; query parameters are strictly ignored.
+   * - Super Admins can target another organization via explicit query parameter ?orgId=,
+   *   which is validated and recorded in the audit event log.
+   */
+  async function resolveAuthorizedTenant(req: Request, auditRepository?: AuditRepository): Promise<string> {
+    const callerOrg = req.auth?.organizationId || 'org_default';
+    const isSuperAdmin = req.auth?.role === 'super_admin';
+
+    if (!isSuperAdmin) {
+      return callerOrg;
+    }
+
+    const targetOrgParam = (req.query.orgId || req.query.organizationId) as string | undefined;
+    if (targetOrgParam && typeof targetOrgParam === 'string' && targetOrgParam.trim() !== '') {
+      const targetOrg = targetOrgParam.trim();
+      if (targetOrg !== callerOrg && auditRepository) {
+        await auditRepository.recordEvent({
+          organization_id: callerOrg,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: 'SUPER_ADMIN_CROSS_TENANT_ACCESS',
+          entity_type: 'ORGANIZATION',
+          entity_id: targetOrg,
+          metadata: {
+            path: req.originalUrl || req.url,
+            method: req.method,
+            targetOrganization: targetOrg,
+          },
+        });
+      }
+      return targetOrg;
+    }
+
+    return callerOrg;
+  }
 
   // Central Cryptographic Authentication Extraction (SEC-001)
   app.use('/api', createAuthenticateMiddleware(authService));
@@ -624,14 +658,14 @@ export async function createApp(options: CreateAppOptions = {}) {
                 {
                   id: `var-${id}-default`,
                   sku: sanitizedBody.sku || `SKU-${id.toUpperCase()}`,
-                  barcode: sanitizedBody.barcode || `8809${Math.floor(10000000 + Math.random() * 90000000)}`,
+                  barcode: sanitizedBody.barcode || `8809${randomInt(10000000, 99999999)}`,
                   name: 'Default Variant',
                   attributes: { Standard: 'Default' },
-                  costPrice: sanitizedBody.costPrice || 50,
-                  retailPrice: sanitizedBody.retailPrice || 100,
-                  wholesalePrice: sanitizedBody.wholesalePrice || 80,
-                  memberPrice: sanitizedBody.memberPrice || 90,
-                  minSellingPrice: sanitizedBody.minSellingPrice || 70,
+                  costPrice: sanitizedBody.costPrice || '0.00',
+                  retailPrice: sanitizedBody.retailPrice || '100.00',
+                  wholesalePrice: sanitizedBody.wholesalePrice || sanitizedBody.retailPrice || '80.00',
+                  memberPrice: sanitizedBody.memberPrice || sanitizedBody.retailPrice || '90.00',
+                  minSellingPrice: sanitizedBody.minSellingPrice || sanitizedBody.retailPrice || '70.00',
                   stockByLocation: sanitizedBody.stockByLocation || {
                     'loc-main-wh': 50,
                     'loc-store-downtown': 25,
@@ -799,6 +833,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.PRODUCTS_CREATE),
     requireTenantAccess(),
+    validateBody(validateVariantPayload),
     (req: Request, res: Response) => {
       const product = masterProductsStore.find((p) => p.id === req.params.productId);
       if (!product) {
@@ -817,21 +852,21 @@ export async function createApp(options: CreateAppOptions = {}) {
         });
       }
 
-      const body = sanitizeClientBody(req.body) as any;
-      const variantId = body.id || `var-${Date.now().toString().slice(-6)}`;
+      const body = req.body;
+      const variantId = `var-${randomUUID().slice(0, 8)}`;
       const newVariant: ProductVariant = {
         id: variantId,
-        sku: body.sku || `SKU-${product.brand.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-        barcode: body.barcode || `8809${Math.floor(10000000 + Math.random() * 90000000)}`,
+        sku: body.sku || `SKU-${product.brand.slice(0, 3).toUpperCase()}-${randomInt(1000, 9999)}`,
+        barcode: body.barcode || `8809${randomInt(10000000, 99999999)}`,
         name: body.name || 'New Variant',
         attributes: body.attributes || {},
-        costPrice: Number(body.costPrice) || 50,
-        retailPrice: Number(body.retailPrice) || 100,
-        wholesalePrice: Number(body.wholesalePrice) || 80,
-        memberPrice: Number(body.memberPrice) || 90,
-        minSellingPrice: Number(body.minSellingPrice) || 70,
+        costPrice: body.costPrice || '0.00',
+        retailPrice: body.retailPrice,
+        wholesalePrice: body.wholesalePrice || body.retailPrice,
+        memberPrice: body.memberPrice || body.retailPrice,
+        minSellingPrice: body.minSellingPrice || body.retailPrice,
         stockByLocation: body.stockByLocation || { 'loc-main-wh': 20, 'loc-store-downtown': 10 },
-        lowStockThreshold: Number(body.lowStockThreshold) || 5,
+        lowStockThreshold: body.lowStockThreshold !== undefined ? Number(body.lowStockThreshold) : 5,
         image: body.image,
       };
 
@@ -860,6 +895,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
     requireTenantAccess(),
+    validateBody((b: any) => validateVariantPayload(b, true)),
     (req: Request, res: Response) => {
       const product = masterProductsStore.find((p) => p.id === req.params.productId);
       if (!product) {
@@ -884,7 +920,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
 
       const existing = product.variants[varIndex];
-      const sanitizedBody = sanitizeClientBody(req.body) as any;
+      const sanitizedBody = req.body;
       delete sanitizedBody.id;
 
       const updated = { ...existing, ...sanitizedBody, id: existing.id };
@@ -1270,41 +1306,49 @@ export async function createApp(options: CreateAppOptions = {}) {
     requirePermission(PERMISSIONS.ORDERS_VIEW),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
         const callerOrg = req.auth!.organizationId;
+        const isSuperAdmin = req.auth!.role === 'super_admin';
+        const targetOrg = await resolveAuthorizedTenant(req, auditRepo);
 
-        let targetOrg = callerOrg;
-        if (isSuperAdmin) {
-          if (req.query.orgId && typeof req.query.orgId === 'string') {
-            targetOrg = req.query.orgId;
-          } else {
-            const orgLookup = await db.query<any>(
-              `SELECT organization_id FROM orders WHERE id = $1`,
-              [req.params.id]
-            );
-            if (orgLookup.rows.length > 0) {
-              targetOrg = orgLookup.rows[0].organization_id;
+        // Scoped directly at repository level with mandatory organizationId
+        let order = await orderRepo.findOrderById(req.params.id, targetOrg);
+
+        // Model B: Super admin read cross-tenant fallback
+        if (!order && isSuperAdmin) {
+          const orgLookup = await db.query<any>('SELECT organization_id FROM orders WHERE id = $1', [req.params.id]);
+          if (orgLookup.rows.length > 0) {
+            order = await orderRepo.findOrderById(req.params.id, orgLookup.rows[0].organization_id);
+            if (order && auditRepo) {
+              await auditRepo.recordEvent({
+                organization_id: orgLookup.rows[0].organization_id,
+                actor_id: req.auth!.userId,
+                actor_name: (req.auth as any)?.name || req.auth!.userId,
+                actor_role: req.auth!.role,
+                action: 'SUPER_ADMIN_CROSS_TENANT_READ',
+                entity_type: 'ORDER',
+                entity_id: req.params.id,
+              });
             }
           }
         }
 
-        // Scoped directly at repository level with mandatory organizationId
-        const order = await orderRepo.findOrderById(req.params.id, targetOrg);
-
         if (!order) {
-          // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
-          const orgLookup = await db.query<any>(
-            `SELECT organization_id FROM orders WHERE id = $1`,
-            [req.params.id]
-          );
-          if (orgLookup.rows.length > 0 && orgLookup.rows[0].organization_id !== callerOrg) {
-            return res.status(403).json({
-              success: false,
-              error: {
-                code: 'TENANT_ACCESS_DENIED',
-                message: 'Cross-tenant order access forbidden.',
-              },
-            });
+          if (!isSuperAdmin) {
+            // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
+            // Note: never exposes or selects the other tenant's organization ID.
+            const otherRes = await db.query<any>(
+              `SELECT 1 FROM orders WHERE id = $1 AND organization_id != $2`,
+              [req.params.id, callerOrg]
+            );
+            if (otherRes.rows.length > 0) {
+              return res.status(403).json({
+                success: false,
+                error: {
+                  code: 'TENANT_ACCESS_DENIED',
+                  message: 'Cross-tenant order access forbidden.',
+                },
+              });
+            }
           }
           return res.status(404).json({ success: false, error: 'Order not found' });
         }
@@ -1324,10 +1368,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
-
-        const customers = await customerRepo.listCustomers(orgId);
+        const targetOrg = await resolveAuthorizedTenant(req, auditRepo);
+        const customers = await customerRepo.listCustomers(targetOrg);
         res.json({ success: true, count: customers.length, data: customers });
       } catch (err) {
         next(err);
@@ -1341,41 +1383,49 @@ export async function createApp(options: CreateAppOptions = {}) {
     requirePermission(PERMISSIONS.CUSTOMERS_VIEW),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
         const callerOrg = req.auth!.organizationId;
+        const isSuperAdmin = req.auth!.role === 'super_admin';
+        const targetOrg = await resolveAuthorizedTenant(req, auditRepo);
 
-        let targetOrg = callerOrg;
-        if (isSuperAdmin) {
-          if (req.query.orgId && typeof req.query.orgId === 'string') {
-            targetOrg = req.query.orgId;
-          } else {
-            const orgLookup = await db.query<any>(
-              `SELECT organization_id FROM customers WHERE id = $1`,
-              [req.params.id]
-            );
-            if (orgLookup.rows.length > 0) {
-              targetOrg = orgLookup.rows[0].organization_id;
+        // Scoped directly at repository level
+        let customer = await customerRepo.findCustomerById(req.params.id, targetOrg);
+
+        // Model B: Super admin read cross-tenant fallback
+        if (!customer && isSuperAdmin) {
+          const orgLookup = await db.query<any>('SELECT organization_id FROM customers WHERE id = $1', [req.params.id]);
+          if (orgLookup.rows.length > 0) {
+            customer = await customerRepo.findCustomerById(req.params.id, orgLookup.rows[0].organization_id);
+            if (customer && auditRepo) {
+              await auditRepo.recordEvent({
+                organization_id: orgLookup.rows[0].organization_id,
+                actor_id: req.auth!.userId,
+                actor_name: (req.auth as any)?.name || req.auth!.userId,
+                actor_role: req.auth!.role,
+                action: 'SUPER_ADMIN_CROSS_TENANT_READ',
+                entity_type: 'CUSTOMER',
+                entity_id: req.params.id,
+              });
             }
           }
         }
 
-        // Scoped directly at repository level
-        const customer = await customerRepo.findCustomerById(req.params.id, targetOrg);
-
         if (!customer) {
-          // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
-          const orgLookup = await db.query<any>(
-            `SELECT organization_id FROM customers WHERE id = $1`,
-            [req.params.id]
-          );
-          if (orgLookup.rows.length > 0 && orgLookup.rows[0].organization_id !== callerOrg) {
-            return res.status(403).json({
-              success: false,
-              error: {
-                code: 'TENANT_ACCESS_DENIED',
-                message: 'Cross-tenant customer access forbidden.',
-              },
-            });
+          if (!isSuperAdmin) {
+            // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
+            // Note: never exposes or selects the other tenant's organization ID.
+            const otherRes = await db.query<any>(
+              `SELECT 1 FROM customers WHERE id = $1 AND organization_id != $2`,
+              [req.params.id, callerOrg]
+            );
+            if (otherRes.rows.length > 0) {
+              return res.status(403).json({
+                success: false,
+                error: {
+                  code: 'TENANT_ACCESS_DENIED',
+                  message: 'Cross-tenant customer access forbidden.',
+                },
+              });
+            }
           }
           return res.status(404).json({
             success: false,
@@ -1431,9 +1481,24 @@ export async function createApp(options: CreateAppOptions = {}) {
     validateBody(validateUserPayload),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const { email, name, password, role, locationId, organizationId } = req.body;
+        const { email, name, password, role, locationId } = req.body;
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const targetOrgId = isSuperAdmin && organizationId ? organizationId : req.auth!.organizationId;
+
+        // Privilege escalation guard: ordinary admins/managers cannot assign super_admin role
+        if (role === 'super_admin' && !isSuperAdmin) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'PERMISSION_DENIED',
+              message: 'Only super_admin can assign the super_admin role.',
+            },
+          });
+        }
+
+        // Server-authoritative tenant assignment: ordinary users can only create users in their own tenant
+        const targetOrgId = isSuperAdmin && typeof req.query.orgId === 'string' && req.query.orgId.trim() !== ''
+          ? req.query.orgId.trim()
+          : req.auth!.organizationId;
 
         const { hash, salt } = hashPassword(password);
         const created = await userRepo.createUser({

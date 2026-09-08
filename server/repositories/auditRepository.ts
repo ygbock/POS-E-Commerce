@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { AuthContext } from '../middleware/auth';
 
@@ -74,7 +75,7 @@ export class AuditRepository {
 
   async recordEvent(event: Partial<AuditEventRecord> & { action: string; entity_type?: string; entity_id?: string }, client?: DatabaseClient): Promise<AuditEventRecord> {
     const db = this.getClient(client);
-    const eventId = event.id || `aud_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const eventId = event.id || `aud_${randomUUID()}`;
     const res = await db.query<AuditEventRecord>(
       `INSERT INTO audit_events (
         id, organization_id, actor_id, actor_name, actor_role, action,

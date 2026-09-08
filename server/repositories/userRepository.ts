@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { UserRole } from '../auth/roles';
 
@@ -50,7 +51,7 @@ export class UserRepository {
     }
 
     const db = this.getClient(client);
-    const userId = user.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const userId = user.id || `usr_${randomUUID()}`;
     const passHash = user.password_hash || user.passwordHash || '';
     const passSalt = user.password_salt || user.passwordSalt || 'default_salt';
     const locId = user.location_id || user.locationId || null;

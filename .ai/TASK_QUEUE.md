@@ -291,27 +291,35 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 7: API-001 — Comprehensive REST API Hardening & DTO Validation
+- **Status**: `SUPERSEDED BY API-001R1`
+- **Supervisor Gate**: Rework requested by supervisor; superseded by API-001R1.
+
+---
+
+### Task 7.1: API-001R1 — API Boundary Completion & Security Contract Hardening
 - **Status**: `READY FOR REVIEW`
-- **Supervisor Gate**: Under supervisor review. Do NOT self-approve.
-- **Objective**: Harden all REST API boundaries with strict schema validation, request/correlation ID tracking, multi-tenant isolation, anti-spoofing defense, exact-decimal financial strings, and centralized non-leaking error handling.
+- **Parent Task**: `API-001`
+- **Objective**: Correct the API-001 implementation so that its actual source code matches its claimed security architecture across cryptographic request IDs, string-based money/quantity DTOs, strict DTO allowlisting, unknown-field rejection, server-authoritative tenant scoping, Super Admin Model B cross-tenant access, privilege escalation prevention, and non-leaking error sanitization.
 - **Scope**:
-  - [x] Request & Correlation ID Middleware: Injected `requestIdMiddleware` on `/api` supporting caller-provided `X-Request-Id` or generating cryptographically random `req-<timestamp>-<random>` identifier. Echoed in response headers and embedded in all error payloads.
-  - [x] Input Validation & DTO Layer: Implemented comprehensive validators (`validateLoginDto`, `validateCreateUserDto`, `validateCreateCustomerDto`, `validateCreateCategoryDto`, `validateCreateBrandDto`, `validateCreateAttributeDto`, `validateCreateProductDto`, `validateCreateVariantDto`, `validateUpdateVariantDto`) with `validateBody()` middleware.
-  - [x] Anti-Spoofing & Identity Defense: Implemented `stripForbiddenClientKeys()` to strip or reject client attempts to spoof `organizationId`, `role`, `permissions`, `is_active`, or internal identifiers from request bodies.
-  - [x] Multi-Tenant Route Isolation: Sourced all multi-tenant boundaries strictly from authenticated route middleware (`req.auth.organizationId`), rejecting cross-tenant lookups with HTTP 403 `TENANT_ACCESS_DENIED`.
-  - [x] Fail-Closed Repository Boundaries: Enforced strict non-empty `organizationId` parameter validation across `UserRepository`, `CustomerRepository`, `CatalogRepository`, `OrderRepository`, and `InventoryRepository`. Missing tenant context throws `TENANT_REQUIRED`.
-  - [x] Exact-Decimal Contract: Validated money and quantity fields as exact decimal strings (e.g. `'249.99'`) without JavaScript IEEE-754 binary floating-point drift.
-  - [x] Centralized Error Sanitization: Created `server/utils/errorSanitizer.ts` with `apiErrorHandler`, `classifyApiError`, and `sanitizeApiErrorMessage`. Redacts database credentials, connection URIs (`postgres://`), SQL syntax, and stack traces. Maps domain errors to standard HTTP status codes (400, 401, 403, 404, 409, 422, 500) and uniform envelope format.
-  - [x] Automated Test Suite: Created `tests/api_hardening.test.ts` with 7 comprehensive integration test cases covering request tracking, DTO validation, anti-spoofing, tenant isolation, fail-closed repositories, exact decimals, and error sanitization.
-- **Dependencies**: `POS-001`.
+  - [x] Cryptographic Request ID Ingress Tracking: Replaced math/timestamp random identifiers with `crypto.randomUUID()` in `server/middleware/requestId.ts`. Attached uniformly to response headers (`X-Request-Id`) and error payloads.
+  - [x] String-Based Money & Quantity DTOs: Eliminated JavaScript `Number()` coercion across mutation paths. Implemented strict string regex validators (`validateMoneyDecimal`, `validateQuantityDecimal`). Catalog variant mutations (`POST /api/products/:productId/variants`, `PUT /api/products/:productId/variants/:variantId`) validate and persist exact decimal strings.
+  - [x] Strict DTO Key Allowlisting & Unknown-Field Rejection: Built `assertAllowedKeys` to reject unexpected keys (`__proto__`, `constructor`, `prototype`, arbitrary fields) with HTTP 422 `VALIDATION_ERROR` containing `{ field, message }` details. Allowlisted client identity/tenant fields so they are safely ignored/stripped server-authoritatively without crashing callers.
+  - [x] Server-Authoritative Tenant Resolution: Built `resolveAuthorizedTenant()` in `server.ts`. Rejects any non-super-admin query/body tenant overrides with HTTP 403 `TENANT_ACCESS_DENIED`.
+  - [x] Super Admin Cross-Tenant Access Model B: Formally adopted Model B: Super Admin can read across tenants by default (falling back to cross-tenant entity lookup if not scoped) with automated `SUPER_ADMIN_CROSS_TENANT_READ` audit logging; mutations strictly require an explicit target tenant or use caller tenant.
+  - [x] Privilege Escalation Guard: Enforced in `POST /api/users` that only super-admin can assign the `super_admin` role; ordinary managers/admins attempting to assign `super_admin` are rejected with HTTP 403 `PERMISSION_DENIED`.
+  - [x] Error Sanitization: Structured `ValidationErrorDetail` contract in `server/utils/errorSanitizer.ts`. All database credentials (`postgres://`), SQL syntax, table names, and stack traces are redacted.
+  - [x] Regression & Quality Verification: All 98 tests pass across all 6 suites (`test:db`: 15, `test:security`: 22, `test:inventory`: 24, `test:transfer`: 13, `test:pos`: 17, `test:api`: 7). TypeScript linting (`tsc --noEmit`) passes with 0 errors. Production compilation succeeds.
+- **Dependencies**: `API-001`.
 - **Acceptance Criteria**:
-  - [x] Malformed or missing required fields return HTTP 422/400 with structured validation errors.
-  - [x] Client injection of `organizationId` or `role` in request bodies is stripped or ignored.
-  - [x] All 7 automated API hardening tests pass (`npm run test:api` -> 7/7 passed).
-  - [x] Full test suite (all 6 suites) passes (`npm test` -> 98/98 passed).
-  - [x] TypeScript linting (`npm run lint`) passes with 0 errors.
-- **Security Requirements**: Prevent mass-assignment vulnerabilities, payload tampering, and internal database credential leakage.
-- **Validation Requirements**: Integration test suite verifying validation failures, cross-tenant rejections, and error redactions.
+  - [x] Request IDs are cryptographically generated with `crypto.randomUUID()`.
+  - [x] Authoritative money/quantity DTOs are strictly string-based without floating-point conversion.
+  - [x] Catalog mutation routes enforce strict DTO allowlisting.
+  - [x] Unknown client fields are rejected or explicitly allowlisted and stripped.
+  - [x] Tenant access is explicit and cannot be silently overridden.
+  - [x] Super Admin cross-tenant behavior is explicitly authorized, audited, and documented under Model B.
+  - [x] No authoritative API path reintroduces floating-point financial calculations.
+  - [x] Error details cannot leak internal information.
+- **Supervisor Gate**: Marked READY FOR REVIEW for supervisor review. Do NOT start QA-001 or any subsequent feature.
 
 ---
 
