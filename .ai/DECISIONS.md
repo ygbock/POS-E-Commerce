@@ -264,7 +264,27 @@
 - **Consequences**:
   - Point-of-Sale is a highly reliable transaction-processing layer over the Inventory Ledger.
   - Complete multi-register concurrency safety and auditability are fully guaranteed.
-  - All 6/6 POS integration tests pass cleanly with 100% correctness.
+  - All 17 automated POS tests and 98 full-suite tests pass cleanly with 100% correctness.
+
+---
+
+### ADR-018: Comprehensive REST API Hardening, DTO Validation, Correlation ID Tracking, and Anti-Leakage Error Handling (API-001)
+- **Date**: 2026-09-08
+- **Status**: `IMPLEMENTED (READY FOR REVIEW)`
+- **Task Association**: `API-001`
+- **Context**: REST API endpoints across `/api/*` must strictly protect against identity spoofing, mass assignment, unvalidated payloads, unauthorized cross-tenant data access, exact-decimal financial drift, and database credential or syntax leakage in error responses.
+- **Decision**:
+  1. **Request & Correlation ID Ingress Tracking**: Mounted `requestIdMiddleware` on `/api` that captures client-provided `X-Request-Id` headers or generates uniform `req-<timestamp>-<entropy>` identifiers. Standardized header reflection and error envelope attachment for end-to-end distributed tracing.
+  2. **Strict Schema & DTO Validation**: Built comprehensive DTO validators (`validateLoginDto`, `validateCreateUserDto`, `validateCreateCustomerDto`, `validateCreateCategoryDto`, `validateCreateBrandDto`, `validateCreateAttributeDto`, `validateCreateProductDto`, `validateCreateVariantDto`, `validateUpdateVariantDto`) with `validateBody()` middleware. Malformed bodies reject upfront with HTTP 422 `VALIDATION_ERROR`.
+  3. **Anti-Spoofing & Identity Defense**: Implemented `stripForbiddenClientKeys()` to strip or reject client attempts to spoof `organizationId`, `role`, `permissions`, `is_active`, or internal entity identifiers from request bodies. All authorization parameters derive exclusively from verified JWT tokens (`req.auth`).
+  4. **Multi-Tenant Route Isolation**: Standardized tenant checks across `/api/customers/:id`, `/api/users`, `/api/products`, and repositories. Unscoped database lookups are eliminated; cross-tenant access returns HTTP 403 `TENANT_ACCESS_DENIED`.
+  5. **Fail-Closed Repository Boundaries**: Repositories enforce non-empty `organizationId` parameter validation (`UserRepository`, `CustomerRepository`, `CatalogRepository`, `OrderRepository`, `InventoryRepository`). Missing tenant context fails closed immediately with `TENANT_REQUIRED`.
+  6. **Exact-Decimal Money & Quantity Protocol**: Validated all financial and quantity values as exact decimal strings (e.g. `'249.99'`, `'10.0000'`) or integer-scaled values, completely preventing IEEE-754 binary floating-point precision loss.
+  7. **Centralized Error Sanitization & Non-Leakage**: Implemented `server/utils/errorSanitizer.ts` with `apiErrorHandler`, `classifyApiError`, and `sanitizeApiErrorMessage`. Redacts database credentials, connection URIs (`postgres://`), SQL syntax, and stack traces. Maps domain errors to standard HTTP status codes (400, 401, 403, 404, 409, 422, 500) and uniform envelope format `{ success: false, error: { code, message, details? }, requestId }`.
+- **Consequences**:
+  - Full mitigation of RISK-007 (API Validation & Mass-Assignment Risk).
+  - All 7 new integration tests in `tests/api_hardening.test.ts` pass with 100% pass rate.
+  - Zero regressions across the entire test suite (all 98 automated tests pass).
 
 
 

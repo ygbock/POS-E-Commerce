@@ -1,4 +1,5 @@
 import { DatabaseClient, getDatabaseClient } from '../db/client';
+import { parseExactMoney } from '../inventory/inventoryPolicies';
 
 export interface CustomerRecord {
   id: string;
@@ -8,8 +9,8 @@ export interface CustomerRecord {
   phone?: string | null;
   tier?: 'Bronze' | 'Silver' | 'Gold' | 'VIP';
   loyalty_points?: number;
-  store_credit_balance?: number;
-  credit_limit?: number;
+  store_credit_balance?: string;
+  credit_limit?: string;
   customer_group?: 'Retail' | 'Wholesale' | 'Corporate' | 'VIP Member';
   notes?: string | null;
   registered_at?: string;
@@ -20,8 +21,12 @@ export interface CustomerRecord {
 function mapCustomerRow(row: any): CustomerRecord {
   return {
     ...row,
-    store_credit_balance: row.store_credit_balance != null ? Number(row.store_credit_balance) : 0,
-    credit_limit: row.credit_limit != null ? Number(row.credit_limit) : 0,
+    store_credit_balance: row.store_credit_balance != null
+      ? parseExactMoney(row.store_credit_balance.toString(), 'store_credit_balance')
+      : '0.00',
+    credit_limit: row.credit_limit != null
+      ? parseExactMoney(row.credit_limit.toString(), 'credit_limit')
+      : '0.00',
   };
 }
 
@@ -36,7 +41,10 @@ export class CustomerRepository {
     return client || this.defaultClient;
   }
 
-  async listCustomers(orgId = 'org_default', client?: DatabaseClient): Promise<CustomerRecord[]> {
+  async listCustomers(organizationId: string, client?: DatabaseClient): Promise<CustomerRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organization_id is required to list customers.');
+    }
     const db = this.getClient(client);
     const res = await db.query<any>(
       `SELECT id, organization_id, name, email, phone, tier,
@@ -45,36 +53,41 @@ export class CustomerRepository {
        FROM customers
        WHERE organization_id = $1
        ORDER BY name ASC`,
-      [orgId]
+      [organizationId]
     );
     return res.rows.map(mapCustomerRow);
   }
 
   async findCustomerById(
     id: string,
-    orgIdOrClient?: string | DatabaseClient,
+    organizationId: string,
     client?: DatabaseClient
   ): Promise<CustomerRecord | null> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const activeClient = typeof orgIdOrClient !== 'string' ? (orgIdOrClient as DatabaseClient) : client;
-    const db = this.getClient(activeClient);
-
-    const querySql = orgId
-      ? `SELECT id, organization_id, name, email, phone, tier,
-                loyalty_points, store_credit_balance, credit_limit,
-                customer_group, notes, registered_at, created_at, updated_at
-         FROM customers WHERE id = $1 AND organization_id = $2`
-      : `SELECT id, organization_id, name, email, phone, tier,
-                loyalty_points, store_credit_balance, credit_limit,
-                customer_group, notes, registered_at, created_at, updated_at
-         FROM customers WHERE id = $1`;
-
-    const params = orgId ? [id, orgId] : [id];
-    const res = await db.query<any>(querySql, params);
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organization_id is required to find customer.');
+    }
+    const db = this.getClient(client);
+    const res = await db.query<any>(
+      `SELECT id, organization_id, name, email, phone, tier,
+              loyalty_points, store_credit_balance, credit_limit,
+              customer_group, notes, registered_at, created_at, updated_at
+       FROM customers WHERE id = $1 AND organization_id = $2`,
+      [id, organizationId]
+    );
     return res.rows[0] ? mapCustomerRow(res.rows[0]) : null;
   }
 
   async createCustomer(customer: CustomerRecord, client?: DatabaseClient): Promise<CustomerRecord> {
+    if (!customer.organization_id || typeof customer.organization_id !== 'string' || customer.organization_id.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organization_id is required to create customer.');
+    }
+    const storeCredit = customer.store_credit_balance != null
+      ? parseExactMoney(customer.store_credit_balance.toString(), 'store_credit_balance')
+      : '0.00';
+    const creditLimit = customer.credit_limit != null
+      ? parseExactMoney(customer.credit_limit.toString(), 'credit_limit')
+      : '0.00';
+
     const db = this.getClient(client);
     const res = await db.query<any>(
       `INSERT INTO customers (
@@ -86,14 +99,14 @@ export class CustomerRepository {
                 customer_group, notes, registered_at, created_at, updated_at`,
       [
         customer.id,
-        customer.organization_id || 'org_default',
+        customer.organization_id,
         customer.name,
         customer.email || null,
         customer.phone || null,
         customer.tier || 'Bronze',
         customer.loyalty_points ?? 0,
-        customer.store_credit_balance ?? 0,
-        customer.credit_limit ?? 0,
+        storeCredit,
+        creditLimit,
         customer.customer_group || 'Retail',
         customer.notes || null,
       ]

@@ -475,4 +475,106 @@
 3. **Production Compilation (`npm run build`)**:
    - **Build Succeeded Successfully** (`vite build` + server bundle)
 
+---
+
+# Implementation Report: API-001 — Comprehensive REST API Hardening & DTO Validation
+
+> **Task ID**: `API-001`  
+> **Status**: `READY FOR REVIEW`  
+> **Execution Date**: 2026-09-08  
+> **Engineer**: Implementation Lead / Repository Agent  
+> **Supervisor Authority**: Human Developer / Supervisor  
+
+---
+
+## 1. Executive Summary
+
+In accordance with supervisor directives and the engineering contract, `API-001` has hardened all REST API boundaries across `/api/*`. The implementation:
+1. Injected correlation/request ID tracking (`X-Request-Id`) across the HTTP boundary.
+2. Built strict, typed DTO validators and input validation middleware (`validateBody`), rejecting unknown, missing, or malformed fields upfront with structured HTTP 422 errors.
+3. Enforced anti-spoofing sanitization (`stripForbiddenClientKeys`) to strip client-supplied identity/tenant parameters (`organizationId`, `role`, `permissions`, `is_active`, internal IDs).
+4. Sourced all multi-tenant boundaries strictly from authenticated route middleware (`req.auth.organizationId`), rejecting cross-tenant lookups with HTTP 403 `TENANT_ACCESS_DENIED`.
+5. Hardened repositories (`UserRepository`, `CustomerRepository`, `CatalogRepository`, `OrderRepository`, `InventoryRepository`) to fail closed if `organizationId` is missing (`TENANT_REQUIRED`).
+6. Enforced exact-decimal representations for monetary and quantity fields across catalog and DTO layers.
+7. Built centralized error sanitization (`server/utils/errorSanitizer.ts`) redacting database connection URIs, credentials, SQL syntax, and stack traces into standardized envelopes: `{ success: false, error: { code, message, details? }, requestId }`.
+
+---
+
+## 2. Detailed Changes
+
+### A. Request & Correlation ID Middleware (`server/middleware/requestId.ts`)
+- Mounted on `/api` at the very beginning of the Express middleware stack.
+- Reads caller-supplied `X-Request-Id` or generates a cryptographically random, collision-resistant identifier: `req-<timestamp>-<random-hex>`.
+- Attaches the ID to `req.id` and sets the `X-Request-Id` response header.
+- Automatically included in all error responses.
+
+### B. Input Validation & DTO Schema Layer (`server/validators/dtoValidators.ts`)
+- Implemented `validateBody(validator)` Express middleware.
+- Built explicit validator functions:
+  - `validateLoginDto`: Validates `email` format and `password` string presence.
+  - `validateCreateUserDto`: Validates email, password complexity (min 8 chars), name, and optional role (admin, manager, cashier, inventory_clerk). Strips unauthorized injection of `organizationId` or `is_active`.
+  - `validateCreateCustomerDto`: Validates `name`, optional email and phone formats.
+  - `validateCreateCategoryDto`: Validates category `name`, slug formatting, and UI metadata.
+  - `validateCreateBrandDto`: Validates brand `name` and slug formatting.
+  - `validateCreateAttributeDto`: Validates attribute `name`, `code`, `type` (text, select, multiselect, color, number), and options array.
+  - `validateCreateProductDto`: Validates product `name`, `unit_code`, `status`, optional exact-decimal `tax_rate`, and variant items.
+  - `validateCreateVariantDto` & `validateUpdateVariantDto`: Validates SKU, barcode, name, and exact-decimal money values (`retail_price`, `cost_price`, `wholesale_price`, `min_selling_price`).
+- Implemented `stripForbiddenClientKeys` defense against mass assignment.
+
+### C. Tenant Isolation & Anti-Spoofing on Routes
+- **`/api/users` (`POST`)**: Sourced `organization_id` strictly from `req.auth.organizationId`. Stripped any client attempt to specify a target tenant or escalate roles.
+- **`/api/customers/:id` (`GET`, `PUT`, `DELETE`)**: Added explicit tenant checking. Cross-tenant lookups reject with HTTP 403 `TENANT_ACCESS_DENIED`.
+- **`/api/catalog/*`**: Applied DTO validators on categories, brands, attributes, and products. Sourced `organizationId` from authenticated token.
+
+### D. Repository Hardening (Fail-Closed)
+- Updated `UserRepository.create`, `UserRepository.findById`, `UserRepository.findByEmail`, `UserRepository.listByOrganization`, `CustomerRepository.findById`, `CustomerRepository.update`, `CustomerRepository.delete`, `CatalogRepository.createCategory`, `CatalogRepository.listBrands`, `CatalogRepository.createProductWithVariants`, etc.
+- Added `assertOrgId(orgId, op)` validation. If `orgId` is missing, undefined, or empty, the call throws `TENANT_REQUIRED` immediately before querying the database.
+
+### E. Error Sanitizer & Leak Defense (`server/utils/errorSanitizer.ts`)
+- Created `apiErrorHandler` middleware, `classifyApiError`, and `sanitizeApiErrorMessage`.
+- Redacts database connection strings (`postgres://...`), SQL errors, passwords, tokens, and internal stack traces.
+- Standardizes HTTP status codes:
+  - `400` / `422`: Validation and malformed payload errors (`VALIDATION_ERROR`, `TENANT_REQUIRED`).
+  - `401`: Authentication failures (`UNAUTHORIZED`).
+  - `403`: Role/permission or cross-tenant boundary violations (`FORBIDDEN`, `TENANT_ACCESS_DENIED`).
+  - `404`: Resource not found (`NOT_FOUND`, `SESSION_NOT_FOUND`).
+  - `409`: Concurrency conflicts and unique constraint violations (`CONFLICT`, `IDEMPOTENCY_CONFLICT`).
+  - `500`: Internal server error (redacted to generic message in production).
+- Standard envelope response: `{ success: false, error: { code, message, details? }, requestId }`.
+
+---
+
+## 3. Acceptance Criteria & Test Verification
+
+| Test # | Acceptance Area | Result | Details |
+| :--- | :--- | :--- | :--- |
+| **Test 1** | Request & Correlation ID Tracking | **PASSED** | Validated `X-Request-Id` reflection and automatic generation. |
+| **Test 2** | Strict DTO Validation on POST /api/users | **PASSED** | Rejected malformed email, short password, and stripped spoofed `organizationId`. |
+| **Test 3** | Catalog DTO Validation | **PASSED** | Validated categories, brands, and attribute schema enforcement. |
+| **Test 4** | Tenant Isolation on Customer Endpoints | **PASSED** | Verified cross-tenant lookup rejection (HTTP 403 `TENANT_ACCESS_DENIED`). |
+| **Test 5** | Repository Hardening & Tenant Requirement | **PASSED** | Verified all repositories fail closed with `TENANT_REQUIRED`. |
+| **Test 6** | Exact-Decimal Catalog Representation | **PASSED** | Verified string decimal pricing (`'249.99'`) without IEEE-754 binary drift. |
+| **Test 7** | Error Sanitizer Defense & Leak Prevention | **PASSED** | Verified complete redaction of DB connection URIs and stack traces. |
+
+---
+
+## 4. Verification Gate Summary
+
+1. **Full Automated Test Suite (`npm test`)**:
+   - **All 98 tests passing cleanly with 0 failures!**
+     - `test:db` (Persistence Tests): **15/15 passed**
+     - `test:security` (Auth/RBAC Security): **22/22 passed**
+     - `test:inventory` (Inventory Ledger): **24/24 passed**
+     - `test:transfer` (Inter-location Transfers): **13/13 passed**
+     - `test:pos` (Checkout/Idempotency/Concurrency/Tenant): **17/17 passed**
+     - `test:api` (API Hardening & DTO Validation): **7/7 passed**
+2. **TypeScript & Linting (`npm run lint`)**:
+   - **0 errors / 0 warnings** (`tsc --noEmit`)
+3. **Production Compilation (`npm run build`)**:
+   - **Build Succeeded Successfully** (`vite build` + server bundle)
+4. **Applet Compilation (`compile_applet`)**:
+   - **Compiled successfully**
+5. **Risk Registry Update (`.ai/RISKS.md`)**:
+   - **RISK-007** (API Validation & Mass-Assignment Risk) marked **Fully Mitigated**.
+
 

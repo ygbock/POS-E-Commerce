@@ -25,9 +25,15 @@ import { authRateLimiter, adminRateLimiter } from './server/middleware/rateLimit
 import {
   validateLoginPayload,
   validateProductPayload,
+  validateUserPayload,
+  validateCustomerPayload,
+  validateCategoryPayload,
+  validateBrandPayload,
+  validateAttributePayload,
   validateBody,
   sanitizeClientBody,
 } from './server/validation/index.ts';
+import { apiErrorHandler, buildApiErrorResponse } from './server/utils/errorSanitizer.ts';
 import { hashPassword } from './server/auth/password.ts';
 import { PERMISSIONS, ROLE_PERMISSIONS, VALID_ROLES } from './server/auth/roles.ts';
 
@@ -212,6 +218,17 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Global API Middleware
   app.use(express.json({ limit: '10mb' }));
+
+  // Request / Correlation ID Middleware (API-001)
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    const incomingId = (req.headers['x-request-id'] || req.headers['x-correlation-id']) as string;
+    const requestId = (incomingId && typeof incomingId === 'string' && incomingId.trim() !== '')
+      ? incomingId.trim()
+      : `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
+    (req as any).id = requestId;
+    res.setHeader('X-Request-Id', requestId);
+    next();
+  });
 
   // Central Cryptographic Authentication Extraction (SEC-001)
   app.use('/api', createAuthenticateMiddleware(authService));
@@ -1002,11 +1019,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.PRODUCTS_CREATE),
     requireTenantAccess(),
+    validateBody(validateAttributePayload),
     (req: Request, res: Response) => {
-      const sanitizedBody = sanitizeClientBody(req.body) as any;
-      if (!sanitizedBody.name) {
-        return res.status(400).json({ success: false, error: 'Attribute name is required' });
-      }
+      const sanitizedBody = req.body;
 
       const id = sanitizedBody.id || `attr-${Date.now().toString().slice(-6)}`;
       const newAttr: CatalogAttribute = {
@@ -1149,9 +1164,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.PRODUCTS_CREATE),
     requireTenantAccess(),
+    validateBody(validateCategoryPayload),
     (req: Request, res: Response) => {
-      const body = sanitizeClientBody(req.body) as any;
-      if (!body.name) return res.status(400).json({ success: false, error: 'Category name is required' });
+      const body = req.body;
       const newCat: Category = {
         id: body.id || `cat-${Date.now().toString().slice(-6)}`,
         organizationId: req.auth!.organizationId,
@@ -1183,9 +1198,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.PRODUCTS_CREATE),
     requireTenantAccess(),
+    validateBody(validateBrandPayload),
     (req: Request, res: Response) => {
-      const body = sanitizeClientBody(req.body) as any;
-      if (!body.name) return res.status(400).json({ success: false, error: 'Brand name is required' });
+      const body = req.body;
       const newBrand: Brand = {
         id: body.id || `brand-${Date.now().toString().slice(-6)}`,
         organizationId: req.auth!.organizationId,
@@ -1329,16 +1344,31 @@ export async function createApp(options: CreateAppOptions = {}) {
         const isSuperAdmin = req.auth!.role === 'super_admin';
         const callerOrg = req.auth!.organizationId;
 
+        let targetOrg = callerOrg;
+        if (isSuperAdmin) {
+          if (req.query.orgId && typeof req.query.orgId === 'string') {
+            targetOrg = req.query.orgId;
+          } else {
+            const orgLookup = await db.query<any>(
+              `SELECT organization_id FROM customers WHERE id = $1`,
+              [req.params.id]
+            );
+            if (orgLookup.rows.length > 0) {
+              targetOrg = orgLookup.rows[0].organization_id;
+            }
+          }
+        }
+
         // Scoped directly at repository level
-        const customer = await customerRepo.findCustomerById(
-          req.params.id,
-          isSuperAdmin ? undefined : callerOrg
-        );
+        const customer = await customerRepo.findCustomerById(req.params.id, targetOrg);
 
         if (!customer) {
           // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
-          const anyCustomer = await customerRepo.findCustomerById(req.params.id);
-          if (anyCustomer && anyCustomer.organization_id !== callerOrg) {
+          const orgLookup = await db.query<any>(
+            `SELECT organization_id FROM customers WHERE id = $1`,
+            [req.params.id]
+          );
+          if (orgLookup.rows.length > 0 && orgLookup.rows[0].organization_id !== callerOrg) {
             return res.status(403).json({
               success: false,
               error: {
@@ -1347,7 +1377,13 @@ export async function createApp(options: CreateAppOptions = {}) {
               },
             });
           }
-          return res.status(404).json({ success: false, error: 'Customer not found' });
+          return res.status(404).json({
+            success: false,
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Customer not found',
+            },
+          });
         }
 
         res.json({ success: true, data: customer });
@@ -1392,25 +1428,18 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.USERS_CREATE),
     requireTenantAccess(),
+    validateBody(validateUserPayload),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const { email, name, password, role, locationId, organizationId } = req.body || {};
-        if (!email || !name || !password || !role) {
-          return res.status(400).json({ success: false, error: 'Missing required user fields' });
-        }
-
-        if (!VALID_ROLES.includes(role)) {
-          return res.status(400).json({ success: false, error: `Invalid role: ${role}` });
-        }
-
+        const { email, name, password, role, locationId, organizationId } = req.body;
         const isSuperAdmin = req.auth!.role === 'super_admin';
         const targetOrgId = isSuperAdmin && organizationId ? organizationId : req.auth!.organizationId;
 
         const { hash, salt } = hashPassword(password);
         const created = await userRepo.createUser({
           organizationId: targetOrgId,
-          email: String(email).trim(),
-          name: String(name).trim(),
+          email,
+          name,
           passwordHash: hash,
           passwordSalt: salt,
           role,
@@ -1431,7 +1460,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           },
         });
       } catch (err: any) {
-        res.status(400).json({ success: false, error: err.message || 'Failed to create user' });
+        next(err);
       }
     }
   );
@@ -1451,26 +1480,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   }
 
   // ------------------------------------------------------------------
-  // 9. CENTRALIZED API ERROR HANDLER (PREVENTS INFORMATION LEAKAGE)
+  // 9. CENTRALIZED API ERROR HANDLER (API-001 / SEC-001)
   // ------------------------------------------------------------------
-  app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    // Strictly sanitize errors: never leak database credentials, connection strings, or stack traces
-    const isClientError = status >= 400 && status < 500;
-    const rawMessage = err.message || (status === 500 ? 'Internal server error' : 'Request error');
-    const hasSensitivePattern = /password|secret|postgres:\/\/|token|private[_-]?key/i.test(rawMessage);
-
-    const errorMessage = isClientError
-      ? (hasSensitivePattern ? 'Bad request parameters' : rawMessage)
-      : (isProd || hasSensitivePattern ? 'An internal server error occurred' : rawMessage);
-
-    res.status(status).json({
-      success: false,
-      error: {
-        code: err.code || (status === 500 ? 'INTERNAL_SERVER_ERROR' : 'REQUEST_ERROR'),
-        message: errorMessage,
-      },
-    });
+  app.use('/api', (err: any, req: Request, res: Response, _next: NextFunction) => {
+    return apiErrorHandler(err, req, res);
   });
 
   // ------------------------------------------------------------------

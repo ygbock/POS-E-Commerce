@@ -74,11 +74,11 @@ export interface ProductVariantRecord {
   qr_code?: string | null;
   name: string;
   attributes?: Record<string, any>;
-  cost_price: number;
-  retail_price: number;
-  wholesale_price?: number;
-  member_price?: number;
-  min_selling_price?: number;
+  cost_price: number | string;
+  retail_price: number | string;
+  wholesale_price?: number | string;
+  member_price?: number | string;
+  min_selling_price?: number | string;
   weight_kg?: number | null;
   dimensions?: any;
   low_stock_threshold?: number;
@@ -98,28 +98,36 @@ export class CatalogRepository {
     return client || this.defaultClient;
   }
 
+  private assertOrgId(orgId: unknown, action: string): string {
+    if (!orgId || typeof orgId !== 'string' || orgId.trim() === '') {
+      throw new Error(`TENANT_REQUIRED: organization_id is required to ${action}.`);
+    }
+    return orgId.trim();
+  }
+
   // Categories
-  async listCategories(orgId = 'org_default', client?: DatabaseClient): Promise<CategoryRecord[]> {
+  async listCategories(orgId: string, client?: DatabaseClient): Promise<CategoryRecord[]> {
+    const validOrg = this.assertOrgId(orgId, 'list categories');
     const db = this.getClient(client);
     const res = await db.query<CategoryRecord>(
       'SELECT * FROM categories WHERE organization_id = $1 ORDER BY display_order ASC, name ASC',
-      [orgId]
+      [validOrg]
     );
     return res.rows;
   }
 
-  async findCategoryById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<CategoryRecord | null> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
-    const query = orgId
-      ? 'SELECT * FROM categories WHERE id = $1 AND organization_id = $2'
-      : 'SELECT * FROM categories WHERE id = $1';
-    const params = orgId ? [id, orgId] : [id];
-    const res = await db.query<CategoryRecord>(query, params);
+  async findCategoryById(id: string, orgId: string, client?: DatabaseClient): Promise<CategoryRecord | null> {
+    const validOrg = this.assertOrgId(orgId, 'find category');
+    const db = this.getClient(client);
+    const res = await db.query<CategoryRecord>(
+      'SELECT * FROM categories WHERE id = $1 AND organization_id = $2',
+      [id, validOrg]
+    );
     return res.rows[0] || null;
   }
 
   async createCategory(data: CategoryRecord, client?: DatabaseClient): Promise<CategoryRecord> {
+    const validOrg = this.assertOrgId(data.organization_id, 'create category');
     const db = this.getClient(client);
     const res = await db.query<CategoryRecord>(
       `INSERT INTO categories (
@@ -129,7 +137,7 @@ export class CatalogRepository {
       RETURNING *`,
       [
         data.id,
-        data.organization_id || 'org_default',
+        validOrg,
         data.name,
         data.slug,
         data.description || null,
@@ -145,27 +153,28 @@ export class CatalogRepository {
   }
 
   // Brands
-  async listBrands(orgId = 'org_default', client?: DatabaseClient): Promise<BrandRecord[]> {
+  async listBrands(orgId: string, client?: DatabaseClient): Promise<BrandRecord[]> {
+    const validOrg = this.assertOrgId(orgId, 'list brands');
     const db = this.getClient(client);
     const res = await db.query<BrandRecord>(
       'SELECT * FROM brands WHERE organization_id = $1 ORDER BY name ASC',
-      [orgId]
+      [validOrg]
     );
     return res.rows;
   }
 
-  async findBrandById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<BrandRecord | null> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
-    const query = orgId
-      ? 'SELECT * FROM brands WHERE id = $1 AND organization_id = $2'
-      : 'SELECT * FROM brands WHERE id = $1';
-    const params = orgId ? [id, orgId] : [id];
-    const res = await db.query<BrandRecord>(query, params);
+  async findBrandById(id: string, orgId: string, client?: DatabaseClient): Promise<BrandRecord | null> {
+    const validOrg = this.assertOrgId(orgId, 'find brand');
+    const db = this.getClient(client);
+    const res = await db.query<BrandRecord>(
+      'SELECT * FROM brands WHERE id = $1 AND organization_id = $2',
+      [id, validOrg]
+    );
     return res.rows[0] || null;
   }
 
   async createBrand(data: BrandRecord, client?: DatabaseClient): Promise<BrandRecord> {
+    const validOrg = this.assertOrgId(data.organization_id, 'create brand');
     const db = this.getClient(client);
     const res = await db.query<BrandRecord>(
       `INSERT INTO brands (
@@ -174,7 +183,7 @@ export class CatalogRepository {
       RETURNING *`,
       [
         data.id,
-        data.organization_id || 'org_default',
+        validOrg,
         data.name,
         data.slug,
         data.logo_url || null,
@@ -190,19 +199,20 @@ export class CatalogRepository {
   // Products & Variants
   async listProducts(
     options: {
-      orgId?: string;
+      orgId: string;
       categoryId?: string;
       brandId?: string;
       status?: string;
       search?: string;
       limit?: number;
       offset?: number;
-    } = {},
+    },
     client?: DatabaseClient
   ): Promise<ProductRecord[]> {
+    const validOrg = this.assertOrgId(options?.orgId, 'list products');
     const db = this.getClient(client);
     const conditions: string[] = ['organization_id = $1'];
-    const params: any[] = [options.orgId || 'org_default'];
+    const params: any[] = [validOrg];
 
     if (options.categoryId) {
       params.push(options.categoryId);
@@ -236,22 +246,22 @@ export class CatalogRepository {
     return res.rows;
   }
 
-  async findProductById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<ProductRecord | null> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
-    const query = orgId
-      ? 'SELECT * FROM products WHERE id = $1 AND organization_id = $2'
-      : 'SELECT * FROM products WHERE id = $1';
-    const params = orgId ? [id, orgId] : [id];
-    const res = await db.query<ProductRecord>(query, params);
+  async findProductById(id: string, orgId: string, client?: DatabaseClient): Promise<ProductRecord | null> {
+    const validOrg = this.assertOrgId(orgId, 'find product');
+    const db = this.getClient(client);
+    const res = await db.query<ProductRecord>(
+      'SELECT * FROM products WHERE id = $1 AND organization_id = $2',
+      [id, validOrg]
+    );
     return res.rows[0] || null;
   }
 
-  async findProductBySlug(slug: string, orgId = 'org_default', client?: DatabaseClient): Promise<ProductRecord | null> {
+  async findProductBySlug(slug: string, orgId: string, client?: DatabaseClient): Promise<ProductRecord | null> {
+    const validOrg = this.assertOrgId(orgId, 'find product by slug');
     const db = this.getClient(client);
     const res = await db.query<ProductRecord>(
       'SELECT * FROM products WHERE slug = $1 AND organization_id = $2',
-      [slug, orgId]
+      [slug, validOrg]
     );
     return res.rows[0] || null;
   }
@@ -261,6 +271,7 @@ export class CatalogRepository {
     variants: ProductVariantRecord[],
     client?: DatabaseClient
   ): Promise<{ product: ProductRecord; variants: ProductVariantRecord[] }> {
+    const validOrg = this.assertOrgId(product.organization_id, 'create product');
     const db = this.getClient(client);
 
     return db.withTransaction(async (tx) => {
@@ -277,7 +288,7 @@ export class CatalogRepository {
         ) RETURNING *`,
         [
           product.id,
-          product.organization_id || 'org_default',
+          validOrg,
           product.category_id || null,
           product.brand_id || null,
           product.name,
@@ -311,6 +322,11 @@ export class CatalogRepository {
 
       const createdVariants: ProductVariantRecord[] = [];
       for (const variant of variants) {
+        const variantOrg = this.assertOrgId(variant.organization_id || validOrg, 'create variant');
+        if (variantOrg !== validOrg) {
+          throw new Error('TENANT_MISMATCH: Variant organization must match product organization.');
+        }
+
         const varRes = await tx.query<ProductVariantRecord>(
           `INSERT INTO product_variants (
             id, organization_id, product_id, sku, barcode, qr_code, name, attributes,
@@ -321,7 +337,7 @@ export class CatalogRepository {
           ) RETURNING *`,
           [
             variant.id,
-            variant.organization_id || product.organization_id || 'org_default',
+            validOrg,
             product.id,
             variant.sku,
             variant.barcode,
@@ -349,31 +365,32 @@ export class CatalogRepository {
     });
   }
 
-  async findVariantsByProductId(productId: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<ProductVariantRecord[]> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
-    const query = orgId
-      ? 'SELECT * FROM product_variants WHERE product_id = $1 AND organization_id = $2 ORDER BY name ASC'
-      : 'SELECT * FROM product_variants WHERE product_id = $1 ORDER BY name ASC';
-    const params = orgId ? [productId, orgId] : [productId];
-    const res = await db.query<ProductVariantRecord>(query, params);
+  async findVariantsByProductId(productId: string, orgId: string, client?: DatabaseClient): Promise<ProductVariantRecord[]> {
+    const validOrg = this.assertOrgId(orgId, 'find variants');
+    const db = this.getClient(client);
+    const res = await db.query<ProductVariantRecord>(
+      'SELECT * FROM product_variants WHERE product_id = $1 AND organization_id = $2 ORDER BY name ASC',
+      [productId, validOrg]
+    );
     return res.rows;
   }
 
-  async findVariantBySku(sku: string, orgId = 'org_default', client?: DatabaseClient): Promise<ProductVariantRecord | null> {
+  async findVariantBySku(sku: string, orgId: string, client?: DatabaseClient): Promise<ProductVariantRecord | null> {
+    const validOrg = this.assertOrgId(orgId, 'find variant by sku');
     const db = this.getClient(client);
     const res = await db.query<ProductVariantRecord>(
       'SELECT * FROM product_variants WHERE sku = $1 AND organization_id = $2',
-      [sku, orgId]
+      [sku, validOrg]
     );
     return res.rows[0] || null;
   }
 
-  async findVariantByBarcode(barcode: string, orgId = 'org_default', client?: DatabaseClient): Promise<ProductVariantRecord | null> {
+  async findVariantByBarcode(barcode: string, orgId: string, client?: DatabaseClient): Promise<ProductVariantRecord | null> {
+    const validOrg = this.assertOrgId(orgId, 'find variant by barcode');
     const db = this.getClient(client);
     const res = await db.query<ProductVariantRecord>(
       'SELECT * FROM product_variants WHERE barcode = $1 AND organization_id = $2',
-      [barcode, orgId]
+      [barcode, validOrg]
     );
     return res.rows[0] || null;
   }

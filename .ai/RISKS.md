@@ -17,7 +17,7 @@
 | **RISK-004** | Missing Trusted Auth & RBAC Boundary | **High** | Any client can invoke mutating endpoints without credentials | Mitigated via `SEC-001` |
 | **RISK-005** | Client-Side Financial Calculations | **High** | Price tampering, erroneous tax or discount math in browser | **Fully Mitigated (POS-001)** |
 | **RISK-006** | Inventory Integrity & Race Conditions | **High** | Overselling possible under concurrent checkouts; desync | `INV-001` |
-| **RISK-007** | API Validation & Mass-Assignment Risk | **Medium** | Unvalidated JSON accepted on Express endpoints | `API-001` |
+| **RISK-007** | API Validation & Mass-Assignment Risk | **Medium** | Unvalidated JSON accepted on Express endpoints | **Fully Mitigated (API-001)** |
 | **RISK-008** | Simulated Payment Tender Processing | **Medium** | No real-world gateway verification or idempotent settlement | `POS-001`, `PROD-001` |
 | **RISK-009** | Absence of Automated Test Suite | **Medium** | Manual testing required; regressions can go unnoticed | `QA-001` |
 | **RISK-010** | Absence of CI Quality Gates | **Medium** | Potential broken builds or type errors deployed unnoticed | `QA-001`, `PROD-001` |
@@ -72,8 +72,8 @@
 
 ### RISK-007: API Validation & Mass-Assignment Risk
 - **Description**: Express handlers parse raw JSON bodies with `express.json({ limit: '10mb' })` without passing fields through a strict schema validation library.
-- **Vulnerability**: Unexpected or dangerous fields could be injected into stored records, potentially causing runtime crashes or unintended field mutation.
-- **Planned Mitigation**: Implement Zod request schemas and DTO validation middleware (`API-001`).
+- **Vulnerability**: Unexpected or dangerous fields could be injected into stored records, potentially causing runtime crashes, role tampering, or unauthorized tenant assignments.
+- **Mitigation Status**: **Fully Mitigated (API-001)**. Implemented strict DTO validation middleware (`validateBody`), anti-spoofing client key stripping (`stripForbiddenClientKeys`), exact-decimal string formatting, and centralized non-leaking error sanitizers (`classifyApiError`, `sanitizeApiErrorMessage`). All endpoints enforce strict types, authenticated tenant scoping, and structured HTTP error responses.
 
 ---
 

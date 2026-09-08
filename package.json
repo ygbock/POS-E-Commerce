@@ -19,7 +19,8 @@
     "test:inventory": "tsx tests/inventory.test.ts",
     "test:transfer": "tsx tests/transfer.test.ts",
     "test:pos": "tsx tests/pos.test.ts",
-    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos"
+    "test:api": "tsx tests/api_hardening.test.ts",
+    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

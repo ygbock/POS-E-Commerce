@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import { VALID_ROLES } from '../auth/roles';
 
 /**
- * Runtime Input Validation & Anti-Spoofing Layer (SEC-001)
+ * Runtime Input Validation & Anti-Spoofing Layer (SEC-001 / API-001)
  * 
  * Enforces strict boundaries on external inputs.
  * Strips or rejects attempts to inject identity, role, or tenant overrides via request bodies.
@@ -25,7 +26,7 @@ export class ValidationError extends Error {
  * Anti-Spoofing Filter:
  * Strips client-provided fields that attempt to control identity, tenant, or privileges.
  */
-const FORBIDDEN_CLIENT_KEYS = [
+export const FORBIDDEN_CLIENT_KEYS = [
   'role',
   'roles',
   'permissions',
@@ -45,8 +46,9 @@ const FORBIDDEN_CLIENT_KEYS = [
   'actorRole',
 ];
 
-const DANGEROUS_PROTO_KEYS = ['__proto__', 'constructor', 'prototype'];
-const IMMUTABLE_RECORD_KEYS = [
+export const DANGEROUS_PROTO_KEYS = ['__proto__', 'constructor', 'prototype'];
+
+export const IMMUTABLE_RECORD_KEYS = [
   'id',
   'created_at',
   'updated_at',
@@ -60,7 +62,7 @@ export function stripImmutableFields<T extends Record<string, any>>(obj: T): Par
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   const cleaned: Record<string, any> = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (!IMMUTABLE_RECORD_KEYS.includes(key)) {
+    if (!IMMUTABLE_RECORD_KEYS.includes(key) && !DANGEROUS_PROTO_KEYS.includes(key)) {
       cleaned[key] = value;
     }
   }
@@ -136,6 +138,153 @@ export function validateLoginPayload(body: any): { email: string; password: stri
 }
 
 /**
+ * User Creation Request Validator
+ */
+export function validateUserPayload(body: any): {
+  email: string;
+  name: string;
+  password: string;
+  role: string;
+  locationId?: string | null;
+  organizationId?: string;
+} {
+  const errors: ValidationErrorDetail[] = [];
+
+  if (!body || typeof body !== 'object') {
+    throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
+  }
+
+  if (!body.email || typeof body.email !== 'string' || !body.email.includes('@')) {
+    errors.push({ field: 'email', message: 'A valid email address is required' });
+  }
+
+  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
+    errors.push({ field: 'name', message: 'User name is required' });
+  }
+
+  if (!body.password || typeof body.password !== 'string' || body.password.length < 8) {
+    errors.push({ field: 'password', message: 'Password is required and must be at least 8 characters' });
+  }
+
+  if (!body.role || !VALID_ROLES.includes(body.role)) {
+    errors.push({ field: 'role', message: `Role must be one of: ${VALID_ROLES.join(', ')}` });
+  }
+
+  if (errors.length > 0) {
+    throw new ValidationError('User validation failed', errors);
+  }
+
+  return {
+    email: String(body.email).toLowerCase().trim(),
+    name: String(body.name).trim(),
+    password: String(body.password),
+    role: body.role,
+    locationId: body.locationId ? String(body.locationId).trim() : null,
+    organizationId: body.organizationId ? String(body.organizationId).trim() : undefined,
+  };
+}
+
+/**
+ * Customer Creation / Update Validator
+ */
+export function validateCustomerPayload(body: any, isUpdate = false): Record<string, any> {
+  const errors: ValidationErrorDetail[] = [];
+
+  if (!body || typeof body !== 'object') {
+    throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
+  }
+
+  if (!isUpdate && (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0)) {
+    errors.push({ field: 'name', message: 'Customer name is required' });
+  }
+
+  if (body.email !== undefined && body.email !== null && (typeof body.email !== 'string' || !body.email.includes('@'))) {
+    errors.push({ field: 'email', message: 'Email must be a valid email address' });
+  }
+
+  if (body.store_credit_balance !== undefined && body.store_credit_balance !== null) {
+    if (typeof body.store_credit_balance !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(body.store_credit_balance)) {
+      errors.push({ field: 'store_credit_balance', message: 'Store credit balance must be a valid non-negative decimal string (up to 2 decimals)' });
+    }
+  }
+
+  if (body.credit_limit !== undefined && body.credit_limit !== null) {
+    if (typeof body.credit_limit !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(body.credit_limit)) {
+      errors.push({ field: 'credit_limit', message: 'Credit limit must be a valid non-negative decimal string (up to 2 decimals)' });
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new ValidationError('Customer validation failed', errors);
+  }
+
+  return sanitizeClientBody(body);
+}
+
+/**
+ * Category Creation / Update Validator
+ */
+export function validateCategoryPayload(body: any): Record<string, any> {
+  const errors: ValidationErrorDetail[] = [];
+
+  if (!body || typeof body !== 'object') {
+    throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
+  }
+
+  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
+    errors.push({ field: 'name', message: 'Category name is required' });
+  }
+
+  if (errors.length > 0) {
+    throw new ValidationError('Category validation failed', errors);
+  }
+
+  return sanitizeClientBody(body);
+}
+
+/**
+ * Brand Creation / Update Validator
+ */
+export function validateBrandPayload(body: any): Record<string, any> {
+  const errors: ValidationErrorDetail[] = [];
+
+  if (!body || typeof body !== 'object') {
+    throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
+  }
+
+  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
+    errors.push({ field: 'name', message: 'Brand name is required' });
+  }
+
+  if (errors.length > 0) {
+    throw new ValidationError('Brand validation failed', errors);
+  }
+
+  return sanitizeClientBody(body);
+}
+
+/**
+ * Attribute Creation Validator
+ */
+export function validateAttributePayload(body: any): Record<string, any> {
+  const errors: ValidationErrorDetail[] = [];
+
+  if (!body || typeof body !== 'object') {
+    throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
+  }
+
+  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
+    errors.push({ field: 'name', message: 'Attribute name is required' });
+  }
+
+  if (errors.length > 0) {
+    throw new ValidationError('Attribute validation failed', errors);
+  }
+
+  return sanitizeClientBody(body);
+}
+
+/**
  * Product Create / Update Validator
  */
 export function validateProductPayload(body: any, isUpdate = false): Record<string, any> {
@@ -143,13 +292,6 @@ export function validateProductPayload(body: any, isUpdate = false): Record<stri
 
   if (!body || typeof body !== 'object') {
     throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
-  }
-
-  // Anti-spoofing check
-  for (const forbiddenKey of FORBIDDEN_CLIENT_KEYS) {
-    if (body[forbiddenKey] !== undefined) {
-      // In strict mode, we strip or reject. Here we sanitize.
-    }
   }
 
   if (!isUpdate && (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0)) {
@@ -188,6 +330,7 @@ export function validateBody(validator: (body: any) => any) {
       req.body = validator(req.body);
       next();
     } catch (err: any) {
+      const requestId = (req as any)?.id || (req?.headers?.['x-request-id'] as string) || undefined;
       if (err instanceof ValidationError) {
         return res.status(422).json({
           success: false,
@@ -195,6 +338,7 @@ export function validateBody(validator: (body: any) => any) {
             code: 'VALIDATION_ERROR',
             message: err.message,
             details: err.details,
+            ...(requestId ? { requestId } : {}),
           },
         });
       }
@@ -203,6 +347,7 @@ export function validateBody(validator: (body: any) => any) {
         error: {
           code: 'BAD_REQUEST',
           message: err.message || 'Invalid request format',
+          ...(requestId ? { requestId } : {}),
         },
       });
     }

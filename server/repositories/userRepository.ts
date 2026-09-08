@@ -44,9 +44,13 @@ export class UserRepository {
     },
     client?: DatabaseClient
   ): Promise<UserRecord> {
+    const orgId = user.organization_id || user.organizationId;
+    if (!orgId || typeof orgId !== 'string' || orgId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organization_id is required to create user.');
+    }
+
     const db = this.getClient(client);
     const userId = user.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const orgId = user.organization_id || user.organizationId || 'org_default';
     const passHash = user.password_hash || user.passwordHash || '';
     const passSalt = user.password_salt || user.passwordSalt || 'default_salt';
     const locId = user.location_id || user.locationId || null;
@@ -73,6 +77,9 @@ export class UserRepository {
   }
 
   async findByEmail(organizationId: string, email: string, client?: DatabaseClient): Promise<UserRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organizationId is required to find user by email.');
+    }
     const db = this.getClient(client);
     const res = await db.query<UserRecord>(
       `SELECT * FROM users WHERE organization_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
@@ -81,18 +88,22 @@ export class UserRepository {
     return res.rows[0] || null;
   }
 
-  async findById(id: string, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<UserRecord | null> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
-    const query = orgId
-      ? `SELECT * FROM users WHERE id = $1 AND organization_id = $2 LIMIT 1`
-      : `SELECT * FROM users WHERE id = $1 LIMIT 1`;
-    const params = orgId ? [id, orgId] : [id];
-    const res = await db.query<UserRecord>(query, params);
+  async findById(id: string, organizationId: string, client?: DatabaseClient): Promise<UserRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organizationId is required to find user.');
+    }
+    const db = this.getClient(client);
+    const res = await db.query<UserRecord>(
+      `SELECT * FROM users WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+      [id, organizationId]
+    );
     return res.rows[0] || null;
   }
 
   async listByOrg(organizationId: string, client?: DatabaseClient): Promise<UserRecord[]> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organizationId is required to list users.');
+    }
     const db = this.getClient(client);
     const res = await db.query<UserRecord>(
       `SELECT * FROM users WHERE organization_id = $1 ORDER BY name ASC`,
@@ -101,10 +112,17 @@ export class UserRepository {
     return res.rows;
   }
 
-  async updateUser(id: string, updates: Partial<UserRecord>, orgIdOrClient?: string | DatabaseClient, client?: DatabaseClient): Promise<UserRecord | null> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const db = this.getClient(typeof orgIdOrClient === 'object' ? orgIdOrClient : client);
-    const existing = await this.findById(id, orgId, db);
+  async updateUser(
+    id: string,
+    organizationId: string,
+    updates: Partial<UserRecord>,
+    client?: DatabaseClient
+  ): Promise<UserRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organizationId is required to update user.');
+    }
+    const db = this.getClient(client);
+    const existing = await this.findById(id, organizationId, db);
     if (!existing) return null;
 
     const merged = {
@@ -116,33 +134,19 @@ export class UserRepository {
       password_salt: updates.password_salt ?? existing.password_salt,
     };
 
-    const query = orgId
-      ? `UPDATE users SET
-          name = $1,
-          role = $2,
-          location_id = $3,
-          is_active = $4,
-          password_hash = $5,
-          password_salt = $6,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $7 AND organization_id = $8
-        RETURNING *`
-      : `UPDATE users SET
-          name = $1,
-          role = $2,
-          location_id = $3,
-          is_active = $4,
-          password_hash = $5,
-          password_salt = $6,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $7
-        RETURNING *`;
-
-    const params = orgId
-      ? [merged.name, merged.role, merged.location_id, merged.is_active, merged.password_hash, merged.password_salt, id, orgId]
-      : [merged.name, merged.role, merged.location_id, merged.is_active, merged.password_hash, merged.password_salt, id];
-
-    const res = await db.query<UserRecord>(query, params);
+    const res = await db.query<UserRecord>(
+      `UPDATE users SET
+        name = $1,
+        role = $2,
+        location_id = $3,
+        is_active = $4,
+        password_hash = $5,
+        password_salt = $6,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7 AND organization_id = $8
+      RETURNING *`,
+      [merged.name, merged.role, merged.location_id, merged.is_active, merged.password_hash, merged.password_salt, id, organizationId]
+    );
     return res.rows[0] || null;
   }
 
