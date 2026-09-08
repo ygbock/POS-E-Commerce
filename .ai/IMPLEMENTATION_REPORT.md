@@ -357,3 +357,60 @@
    - Command: `npm run build`
    - Output: Build succeeded successfully.
 
+
+---
+
+## POS-001R2 — Point of Sale Exact-Decimal & Idempotency Race Hardening
+
+- **Status**: `POS-001R2 — READY FOR INDEPENDENT REVIEW`
+- **Authority**: Independent human supervisor review / peer-review gate.
+- **Objective**: Close remaining findings from independent review of `POS-001R1`, eliminating JavaScript `Number()` types from all order/payment repository boundaries, and implementing robust cryptographic fingerprinting for race-safe idempotency handling.
+
+---
+
+### 1. Technical Accomplishments & Rework Evidence
+
+#### Complete Elimination of Number Types at DB/Repository Boundary
+- **Order, Item, and Payment Records**: Refactored the interfaces `OrderRecord`, `OrderItemRecord`, and `PaymentRecord` to use standard exact decimal `string` types for all prices, costs, quantities, discounts, and tax rates.
+- **Removed Floating-Point Mappers**: Rewrote `mapOrderRow`, `mapOrderItemRow`, and `mapPaymentRow` in `/server/repositories/orderRepository.ts` to process database `NUMERIC` values through `parseExactMoney()` and `parseExactQuantity()`, completely removing `Number()` conversions.
+- **Explicit Tenant Isolation**: Hardened `/server/repositories/orderRepository.ts` with explicit, authenticated `organization_id` filters on all database queries and transactions.
+- **Terminal ID Session Validation**: Refactored `getActiveSession` in `/server/repositories/posRepository.ts` to locate active sessions matching both the specific `location_id` AND `terminal_id`, eliminating cross-register checkout leakage.
+
+#### Stable Cryptographic Request Fingerprinting
+- **Stable Fingerprints**: Implemented `computeCanonicalRequestFingerprint()` (for orders) and `computeCanonicalReturnFingerprint()` (for returns) in `/server/services/posService.ts`. Requests are parsed, sorted by `variant_id` to guarantee order-insensitivity, and hashed using SHA-256 into a 64-character hex string.
+- **Secure Fingerprint Storage**: Persists the fingerprint as a prefix inside the database: prefixed as `[FINGERPRINT:<hash>]` inside the `notes` column for orders and the `reason` column for returns.
+- **Replay Mismatch Protection**: When an idempotency key is matched, the service extracts the stored fingerprint and compares it to the incoming request's fingerprint. If they match, the original result is returned; if they mismatch, a clean `IDEMPOTENCY_CONFLICT` exception is thrown.
+
+#### Graceful Database Unique Constraint Handling
+- **Idempotency Race Protection**: When multiple simultaneous checkouts or returns race with the same idempotency key, only one request acquires the transaction database insert. The losing requests encounter a unique index constraint violation (`23505`).
+- **Race Resolution**: The `catch` block intercepts database `23505` exceptions, reloads the existing record by idempotency key, verifies the request fingerprint matches, and gracefully returns the original response to the caller without failing or duplicating records.
+- **Strict Transaction Rollback**: All transactional operations utilize database-level rollback guarantees, ensuring zero partial mutations of inventory, orders, or payments on any database failure.
+
+---
+
+### 2. POS-001R2 Acceptance Matrix
+
+| Acceptance Area | Status | Evidence |
+| :--- | :--- | :--- |
+| **Exact Decimal Mapping & Types** | PASS | `tests/pos.test.ts` (Test 10) |
+| **Replay Protection & Stable Fingerprint** | PASS | `tests/pos.test.ts` (Test 11) |
+| **Idempotency Race Conflict Resolution (23505)** | PASS | `tests/pos.test.ts` (Test 12) |
+| **Strict Transaction Rollback Guarantee** | PASS | `tests/pos.test.ts` (Test 13) |
+
+---
+
+### 3. Comprehensive Verification Results
+
+1. **Entire Automated Test Suite (`npm test`)**:
+   - **All 87 tests passing cleanly with 0 failures!**
+     - `test:db` (Persistence Tests): **15/15 passed**
+     - `test:security` (Auth/RBAC Security): **22/22 passed**
+     - `test:inventory` (Inventory Ledger): **24/24 passed**
+     - `test:transfer` (Inter-location Transfers): **13/13 passed**
+     - `test:pos` (Checkout/Idempotency/Concurrency): **13/13 passed**
+2. **TypeScript & Linting (`npm run lint`)**:
+   - **0 errors / 0 warnings**
+3. **Production Compilation (`npm run build`)**:
+   - **Build Succeeded Successfully**
+
+

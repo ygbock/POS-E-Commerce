@@ -127,13 +127,13 @@ export class PosRepository {
     return mapSessionRow(res.rows[0]);
   }
 
-  async getActiveSession(locationId: string, orgId: string, client?: DatabaseClient): Promise<PosSessionRecord | null> {
+  async getActiveSession(locationId: string, terminalId: string, orgId: string, client?: DatabaseClient): Promise<PosSessionRecord | null> {
     const db = this.getClient(client);
     const res = await db.query<any>(
       `SELECT * FROM pos_sessions 
-       WHERE location_id = $1 AND organization_id = $2 AND status = 'OPEN'
+       WHERE location_id = $1 AND terminal_id = $2 AND organization_id = $3 AND status = 'OPEN'
        ORDER BY opened_at DESC LIMIT 1`,
-      [locationId, orgId]
+      [locationId, terminalId, orgId]
     );
     if (res.rows.length === 0) return null;
     return mapSessionRow(res.rows[0]);

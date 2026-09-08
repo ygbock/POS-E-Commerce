@@ -262,11 +262,12 @@ async function main() {
           source: 'POS',
           channel: 'POS Register 1',
           fulfillment_method: 'POS Walk-in',
-          subtotal: 39.98,
-          discount_amount: 0,
-          tax_amount: 5.0,
-          shipping_fee: 0,
-          total_amount: 44.98,
+          subtotal: '39.98',
+          discount_amount: '0.00',
+          tax_amount: '5.00',
+          shipping_fee: '0.00',
+          total_amount: '44.98',
+          total_cost_amount: '24.68',
           payment_status: 'Paid',
           status: 'Completed',
           cashier_name: 'John Doe',
@@ -279,12 +280,12 @@ async function main() {
             product_name: 'Unique Test Product',
             variant_name: 'Variant 1',
             sku: 'SKU-UNIQUE-TEST',
-            unit_price: 19.99,
-            cost_price: 12.34,
-            quantity: 2,
-            discount_amount: 0,
-            tax_rate: 15.0,
-            total_amount: 39.98,
+            unit_price: '19.99',
+            cost_price: '12.34',
+            quantity: '2.0000',
+            discount_amount: '0.00',
+            tax_rate: '15.0000',
+            total_amount: '39.98',
           },
         ],
         {
@@ -292,7 +293,7 @@ async function main() {
           organization_id: 'test_org',
           order_id: 'ord_test_001',
           payment_method: 'Cash',
-          amount: 44.98,
+          amount: '44.98',
           currency: 'SLE',
           status: 'Completed',
           reference: 'CASH-TENDER-001',
@@ -301,7 +302,7 @@ async function main() {
 
       assert.strictEqual(created.order.order_number, 'ORD-2026-TEST-001');
       assert.strictEqual(created.items.length, 1);
-      assert.strictEqual(created.payment?.amount, 44.98);
+      assert.strictEqual(created.payment?.amount, '44.98');
 
       // Record Audit Event
       const auditLog = await auditRepo.recordEvent({

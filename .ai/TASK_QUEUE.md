@@ -263,25 +263,29 @@ PROD-001 (NOT STARTED)
 
 ---
 
-### Task 6: POS-001 / POS-001R1 — Exact Financial Arithmetic, Concurrency & Idempotency Hardening
-- **Status**: `REWORK REQUIRED`
+### Task 6: POS-001 / POS-001R1 / POS-001R2 — Exact Financial Arithmetic, Concurrency & Idempotency Hardening
+- **Status**: `POS-001R2 — READY FOR INDEPENDENT REVIEW`
 - **Supervisor Gate**: Under independent supervisor review. Do NOT self-approve.
-- **Objective**: Harden the POS transactional processing engine by completely eliminating floating-point math, applying strict exact-decimal arithmetic, locking session states during cash operations, preventing session-opening race conditions, and enforcing tenant-isolated idempotency with concurrent integration verification.
+- **Objective**: Harden the POS transactional processing engine by completely eliminating floating-point math, applying strict exact-decimal arithmetic, locking session states during cash operations, preventing session-opening race conditions, enforcing tenant-isolated idempotency with concurrent integration verification, and eliminating JS number representations from all Order/Payment/OrderItem repository structures.
 - **Scope**:
   - [x] Implement BigInt exact-decimal financial arithmetic (scale factors 10,000 and 100) using `inventoryPolicies.ts` helpers, removing all JS floats, `parseFloat`, `Math.round`, and `Number` castings from calculations.
   - [x] Enforce session-locking via pessimistic `SELECT ... FOR UPDATE` row locks during checkout, cash movements, and closing operations.
   - [x] Prevent duplicate active sessions at both the database schema layer (unique index constraint) and the service layer.
   - [x] Secure idempotency via tenant-scoped unique index constraints for `orders` and `pos_returns`.
   - [x] Implement robust validation routines validating money strings, quantities, and discount percentages before reaching domain logic.
-  - [x] Expand integration testing with thorough multi-threaded concurrent integration tests verifying race prevention, stock locks, and double-return protection.
+  - [x] Eliminate all JavaScript floating point representations in the database/repository boundaries for OrderRecord, OrderItemRecord, and PaymentRecord.
+  - [x] Build robust cryptographic fingerprint checking during checkout and processReturn for stable idempotency replay and mismatch verification.
+  - [x] Handle DB-level unique constraint violations (`23505`) gracefully in a race-safe manner, reloading the record and checking the stable request fingerprint.
+  - [x] Expand integration testing with thorough multi-threaded concurrent integration tests verifying race prevention, stock locks, double-return protection, exact mapping, stable fingerprint validation, and strict database transaction rollbacks (all 13/13 POS tests passing successfully).
 - **Dependencies**: `INV-001`, `INV-001R6`.
 - **Acceptance Criteria**:
   - [x] All POS transactions utilize BigInt scaled arithmetic.
   - [x] Concurrent checkout requests safely serialize under row locks.
   - [x] Double active session opening is impossible under concurrent race conditions.
-  - [x] Safe idempotent replays match request payloads and reject mismatching parameters.
+  - [x] Safe idempotent replays match request fingerprints and reject mismatching parameters.
+  - [x] Gracefully resolve unique index constraints during high-concurrency race conditions.
   - [x] Concurrent return requests targeting the same original order cannot cause double-refunds.
-  - [x] Complete automated test suite executes cleanly (`npm run test:pos` -> 9/9 passed).
+  - [x] Complete automated test suite executes cleanly (`npm run test:pos` -> 13/13 passed).
 
 ---
 

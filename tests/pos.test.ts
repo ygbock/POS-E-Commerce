@@ -1,5 +1,6 @@
 process.env.NODE_ENV = 'test';
 import assert from 'node:assert';
+import crypto from 'node:crypto';
 import { getDatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
 import { PosService } from '../server/services/posService';
@@ -153,9 +154,9 @@ async function runPosTests() {
       amount_paid: '25.00', // Cost is (2 * 10 * 0.9) + 4 = 18 + 4 = 22.00
     });
 
-    assert.strictEqual(checkoutResult.order.total_amount, 22.00);
-    assert.strictEqual(checkoutResult.order.subtotal, 24.00);
-    assert.strictEqual(checkoutResult.order.discount_amount, 2.00);
+    assert.strictEqual(checkoutResult.order.total_amount, '22.00');
+    assert.strictEqual(checkoutResult.order.subtotal, '24.00');
+    assert.strictEqual(checkoutResult.order.discount_amount, '2.00');
 
     // Verify stock deduction
     const appleBalance = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
@@ -491,6 +492,160 @@ async function runPosTests() {
     markPassed('Concurrent Return Double-Refund Lock Protection');
   } catch (err) {
     markFailed('Concurrent Return Double-Refund Lock Protection', err);
+  }
+
+  // Test 10: Exact decimal mapping assertions
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+
+    const checkoutRes = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '10.00',
+    });
+
+    assert.strictEqual(typeof checkoutRes.order.total_amount, 'string');
+    assert.strictEqual(checkoutRes.order.total_amount, '10.00');
+    assert.strictEqual(typeof checkoutRes.items[0].quantity, 'string');
+    assert.strictEqual(checkoutRes.items[0].quantity, '1.0000');
+    assert.strictEqual(typeof checkoutRes.payment?.amount, 'string');
+    assert.strictEqual(checkoutRes.payment?.amount, '10.00');
+
+    markPassed('Exact decimal mapping and types verification');
+  } catch (err) {
+    markFailed('Exact decimal mapping and types verification', err);
+  }
+
+  // Test 11: Idempotency stable fingerprint and replay protection
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+    const testIdempotencyKey = `idem_${crypto.randomUUID()}`;
+
+    // First call (successful checkout)
+    const firstCall = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '10.00',
+      idempotency_key: testIdempotencyKey,
+    });
+
+    // Replay call (same key, same request -> should return identical result)
+    const replayCall = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '10.00',
+      idempotency_key: testIdempotencyKey,
+    });
+
+    assert.strictEqual(replayCall.order.id, firstCall.order.id);
+
+    // Mismatched call (same key, different request -> should throw IDEMPOTENCY_CONFLICT)
+    await assert.rejects(
+      async () => {
+        await posService.checkout({
+          organization_id: 'org_pos_a',
+          location_id: 'loc_store_a',
+          session_id: openSession.id,
+          cashier_name: 'cashier_a',
+          cart_items: [{ variant_id: 'var_apple', quantity: '2.0000' }], // different quantity!
+          payment_method: 'Cash',
+          amount_paid: '20.00',
+          idempotency_key: testIdempotencyKey,
+        });
+      },
+      (err: any) => err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    markPassed('Idempotency stable fingerprint and conflict detection');
+  } catch (err) {
+    markFailed('Idempotency stable fingerprint and conflict detection', err);
+  }
+
+  // Test 12: Concurrent checkout idempotency race safety (unique constraint violation catching)
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+    const raceIdempotencyKey = `idem_race_${crypto.randomUUID()}`;
+
+    // Fire 5 identical requests simultaneously using the same idempotency key
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }).map(() =>
+        posService.checkout({
+          organization_id: 'org_pos_a',
+          location_id: 'loc_store_a',
+          session_id: openSession.id,
+          cashier_name: 'cashier_a',
+          cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+          payment_method: 'Cash',
+          amount_paid: '10.00',
+          idempotency_key: raceIdempotencyKey,
+        })
+      )
+    );
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled') as PromiseFulfilledResult<any>[];
+    const rejected = results.filter((r) => r.status === 'rejected');
+
+    // ALL of them must succeed because the losing ones catch 23505, reload, verify identical, and return the same order successfully!
+    assert.strictEqual(fulfilled.length, 5, 'All concurrent identical idempotency requests must succeed.');
+    assert.strictEqual(rejected.length, 0, 'No request should fail due to race conditions.');
+
+    // Ensure they all returned the exact same order ID
+    const firstOrderId = fulfilled[0].value.order.id;
+    for (const res of fulfilled) {
+      assert.strictEqual(res.value.order.id, firstOrderId);
+    }
+
+    markPassed('Concurrent checkout race-safe unique index handling');
+  } catch (err) {
+    markFailed('Concurrent checkout race-safe unique index handling', err);
+  }
+
+  // Test 13: Rollback guarantees on failure
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+
+    // Capture inventory level of apple before failing checkout
+    const balBefore = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
+
+    // Trigger checkout with an invalid location_id to force database transaction rollback
+    await assert.rejects(
+      async () => {
+        await posService.checkout({
+          organization_id: 'org_pos_a',
+          location_id: 'loc_invalid_rollback_test',
+          session_id: openSession.id,
+          cashier_name: 'cashier_a',
+          cart_items: [{ variant_id: 'var_apple', quantity: '5.0000' }],
+          payment_method: 'Cash',
+          amount_paid: '50.00',
+        });
+      },
+      (err: any) => err.message.includes('LOCATION_MISMATCH')
+    );
+
+    // Verify inventory level has not changed (strict rollback)
+    const balAfter = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
+    assert.strictEqual(balAfter?.on_hand, balBefore?.on_hand);
+
+    markPassed('Transaction rollback on checkout failure');
+  } catch (err) {
+    markFailed('Transaction rollback on checkout failure', err);
   }
 
   console.log('\n------------------------------------------------------');

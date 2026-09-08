@@ -1,4 +1,5 @@
 import { DatabaseClient, getDatabaseClient } from '../db/client';
+import { parseExactMoney, parseExactQuantity } from '../inventory/inventoryPolicies';
 
 export interface OrderRecord {
   id: string;
@@ -9,13 +10,13 @@ export interface OrderRecord {
   source: 'POS' | 'ECOMMERCE' | 'PHONE' | 'WHOLESALE';
   channel: string;
   fulfillment_method: 'In-Store Pickup' | 'Standard Delivery' | 'Express Delivery' | 'POS Walk-in';
-  subtotal: number;
-  discount_amount: number;
+  subtotal: string;
+  discount_amount: string;
   discount_code?: string | null;
-  tax_amount: number;
-  shipping_fee: number;
-  total_amount: number;
-  total_cost_amount?: number;
+  tax_amount: string;
+  shipping_fee: string;
+  total_amount: string;
+  total_cost_amount?: string | null;
   payment_status: 'Pending' | 'Partial' | 'Paid' | 'Partially Refunded' | 'Refunded' | 'Failed';
   status:
     | 'Pending'
@@ -45,12 +46,12 @@ export interface OrderItemRecord {
   product_name: string;
   variant_name: string;
   sku: string;
-  unit_price: number;
-  cost_price: number;
-  quantity: number;
-  discount_amount: number;
-  tax_rate: number;
-  total_amount: number;
+  unit_price: string;
+  cost_price: string;
+  quantity: string;
+  discount_amount: string;
+  tax_rate: string;
+  total_amount: string;
   created_at?: string;
 }
 
@@ -59,7 +60,7 @@ export interface PaymentRecord {
   organization_id?: string;
   order_id?: string | null;
   payment_method: string;
-  amount: number;
+  amount: string;
   currency: string;
   status: string;
   reference?: string | null;
@@ -71,31 +72,33 @@ export interface PaymentRecord {
 function mapOrderRow(row: any): OrderRecord {
   return {
     ...row,
-    subtotal: Number(row.subtotal),
-    discount_amount: Number(row.discount_amount || 0),
-    tax_amount: Number(row.tax_amount || 0),
-    shipping_fee: Number(row.shipping_fee || 0),
-    total_amount: Number(row.total_amount),
-    total_cost_amount: Number(row.total_cost_amount || 0),
+    subtotal: parseExactMoney(row.subtotal?.toString(), 'subtotal', { allowNegative: true }),
+    discount_amount: parseExactMoney((row.discount_amount ?? 0).toString(), 'discount_amount', { allowNegative: true }),
+    tax_amount: parseExactMoney((row.tax_amount ?? 0).toString(), 'tax_amount', { allowNegative: true }),
+    shipping_fee: parseExactMoney((row.shipping_fee ?? 0).toString(), 'shipping_fee', { allowNegative: true }),
+    total_amount: parseExactMoney(row.total_amount?.toString(), 'total_amount', { allowNegative: true }),
+    total_cost_amount: row.total_cost_amount !== undefined && row.total_cost_amount !== null
+      ? parseExactMoney(row.total_cost_amount.toString(), 'total_cost_amount', { allowNegative: true })
+      : null,
   };
 }
 
 function mapOrderItemRow(row: any): OrderItemRecord {
   return {
     ...row,
-    unit_price: Number(row.unit_price),
-    cost_price: Number(row.cost_price || 0),
-    quantity: Number(row.quantity),
-    discount_amount: Number(row.discount_amount || 0),
-    tax_rate: Number(row.tax_rate || 0),
-    total_amount: Number(row.total_amount),
+    unit_price: parseExactMoney(row.unit_price?.toString(), 'unit_price', { allowNegative: true }),
+    cost_price: parseExactMoney((row.cost_price ?? 0).toString(), 'cost_price', { allowNegative: true }),
+    quantity: parseExactQuantity(row.quantity?.toString(), 'quantity', { allowNegative: true }),
+    discount_amount: parseExactMoney((row.discount_amount ?? 0).toString(), 'discount_amount', { allowNegative: true }),
+    tax_rate: parseExactQuantity((row.tax_rate ?? 0).toString(), 'tax_rate', { allowNegative: true }),
+    total_amount: parseExactMoney(row.total_amount?.toString(), 'total_amount', { allowNegative: true }),
   };
 }
 
 function mapPaymentRow(row: any): PaymentRecord {
   return {
     ...row,
-    amount: Number(row.amount),
+    amount: parseExactMoney(row.amount?.toString(), 'amount', { allowNegative: true }),
   };
 }
 
@@ -118,6 +121,10 @@ export class OrderRepository {
   ): Promise<{ order: OrderRecord; items: OrderItemRecord[]; payment?: PaymentRecord }> {
     const db = this.getClient(client);
 
+    if (!order.organization_id) {
+      throw new Error('TENANT_REQUIRED: organization_id is required to create an order.');
+    }
+
     return db.withTransaction(async (tx) => {
       // 1. Insert order
       const orderRes = await tx.query<any>(
@@ -137,7 +144,7 @@ export class OrderRepository {
                     pos_session_id, idempotency_key, created_at, updated_at`,
         [
           order.id,
-          order.organization_id || 'org_default',
+          order.organization_id,
           order.location_id,
           order.customer_id || null,
           order.order_number,
@@ -145,12 +152,12 @@ export class OrderRepository {
           order.channel,
           order.fulfillment_method,
           order.subtotal,
-          order.discount_amount || 0,
+          order.discount_amount,
           order.discount_code || null,
-          order.tax_amount || 0,
-          order.shipping_fee || 0,
+          order.tax_amount,
+          order.shipping_fee,
           order.total_amount,
-          order.total_cost_amount || 0,
+          order.total_cost_amount || '0.00',
           order.payment_status || 'Pending',
           order.status || 'Pending',
           order.cashier_name || null,
@@ -181,10 +188,10 @@ export class OrderRepository {
             item.variant_name,
             item.sku,
             item.unit_price,
-            item.cost_price || 0,
+            item.cost_price,
             item.quantity,
-            item.discount_amount || 0,
-            item.tax_rate || 0,
+            item.discount_amount,
+            item.tax_rate,
             item.total_amount,
           ]
         );
@@ -194,6 +201,10 @@ export class OrderRepository {
       // 3. Optional payment record
       let createdPayment: PaymentRecord | undefined;
       if (payment) {
+        const paymentOrgId = payment.organization_id || order.organization_id;
+        if (!paymentOrgId) {
+          throw new Error('TENANT_REQUIRED: organization_id is required for payment.');
+        }
         const payRes = await tx.query<any>(
           `INSERT INTO payments (
             id, organization_id, order_id, payment_method, amount, currency, status, reference, provider, transaction_payload
@@ -201,7 +212,7 @@ export class OrderRepository {
           RETURNING id, organization_id, order_id, payment_method, amount, currency, status, reference, provider, created_at`,
           [
             payment.id,
-            payment.organization_id || order.organization_id || 'org_default',
+            paymentOrgId,
             order.id,
             payment.payment_method,
             payment.amount,
@@ -282,8 +293,11 @@ export class OrderRepository {
     client?: DatabaseClient
   ): Promise<OrderRecord[]> {
     const db = this.getClient(client);
+    if (!options.orgId) {
+      throw new Error('TENANT_REQUIRED: orgId is required to list orders.');
+    }
     const conditions: string[] = ['organization_id = $1'];
-    const params: any[] = [options.orgId || 'org_default'];
+    const params: any[] = [options.orgId];
 
     if (options.locationId) {
       params.push(options.locationId);
