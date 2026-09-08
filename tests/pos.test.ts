@@ -61,6 +61,11 @@ async function runPosTests() {
       ('var_milk', 'org_pos_a', 'prod_pos_2', 'SKU-MILK', '22222', '1L Carton', 2.00, 4.00),
       ('var_sneaker', 'org_pos_b', 'prod_pos_3', 'SKU-SNEAKER', '33333', 'Size 10', 40.00, 80.00)
     ON CONFLICT (id) DO NOTHING;
+
+    INSERT INTO customers (id, organization_id, name, email) VALUES
+      ('cust_pos_1', 'org_pos_a', 'Customer One', 'cust1@example.com'),
+      ('cust_pos_2', 'org_pos_a', 'Customer Two', 'cust2@example.com')
+    ON CONFLICT (id) DO NOTHING;
   `);
 
   const posRepo = new PosRepository(db);
@@ -646,6 +651,229 @@ async function runPosTests() {
     markPassed('Transaction rollback on checkout failure');
   } catch (err) {
     markFailed('Transaction rollback on checkout failure', err);
+  }
+
+  // Test 14: OrderRepository tenant requirement and cross-tenant boundaries (POS-001R3 Finding A)
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+
+    // Create an order under org_pos_a
+    const orderRes = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '10.00',
+    });
+
+    // 1. Mandatory tenant context: missing orgId throws TENANT_REQUIRED
+    await assert.rejects(
+      async () => {
+        await orderRepo.findOrderById(orderRes.order.id, '' as any);
+      },
+      (err: any) => err.message.includes('TENANT_REQUIRED')
+    );
+
+    // 2. Same tenant lookup succeeds
+    const foundOrder = await orderRepo.findOrderById(orderRes.order.id, 'org_pos_a');
+    assert.ok(foundOrder);
+    assert.strictEqual(foundOrder.order.id, orderRes.order.id);
+    assert.strictEqual(foundOrder.order.organization_id, 'org_pos_a');
+
+    // 3. Cross-tenant lookup returns null
+    const crossTenantOrder = await orderRepo.findOrderById(orderRes.order.id, 'org_pos_b');
+    assert.strictEqual(crossTenantOrder, null, 'Cross-tenant order lookup must return null');
+
+    // 4. Payment lookup mandatory tenant check
+    await assert.rejects(
+      async () => {
+        await orderRepo.findPaymentByOrderId(orderRes.order.id, '' as any);
+      },
+      (err: any) => err.message.includes('TENANT_REQUIRED')
+    );
+
+    // 5. Cross-tenant payment lookup returns null
+    const crossPayment = await orderRepo.findPaymentByOrderId(orderRes.order.id, 'org_pos_b');
+    assert.strictEqual(crossPayment, null, 'Cross-tenant payment lookup must return null');
+
+    markPassed('OrderRepository tenant requirement and cross-tenant boundaries');
+  } catch (err) {
+    markFailed('OrderRepository tenant requirement and cross-tenant boundaries', err);
+  }
+
+  // Test 15: Payment tenant consistency in createOrderWithItems (POS-001R3 Finding B)
+  try {
+    const dummyOrderId = `ord_test_mismatch_${crypto.randomUUID()}`;
+    const dummyPaymentId = `pay_test_mismatch_${crypto.randomUUID()}`;
+
+    // Attempt to create order with order under org_pos_a and payment under org_pos_b
+    await assert.rejects(
+      async () => {
+        await orderRepo.createOrderWithItems(
+          {
+            id: dummyOrderId,
+            organization_id: 'org_pos_a',
+            location_id: 'loc_store_a',
+            order_number: 'ORD-TEST-FAIL',
+            source: 'POS',
+            channel: 'POS Checkout',
+            fulfillment_method: 'POS Walk-in',
+            subtotal: '10.00',
+            discount_amount: '0.00',
+            tax_amount: '0.00',
+            shipping_fee: '0.00',
+            total_amount: '10.00',
+            total_cost_amount: '5.00',
+            payment_status: 'Paid',
+            status: 'Completed',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          [],
+          {
+            id: dummyPaymentId,
+            organization_id: 'org_pos_b', // MISMATCH!
+            order_id: dummyOrderId,
+            payment_method: 'Cash',
+            amount: '10.00',
+            currency: 'SLE',
+            status: 'Completed',
+            created_at: new Date().toISOString(),
+          }
+        );
+      },
+      (err: any) => err.message.includes('TENANT_MISMATCH')
+    );
+
+    markPassed('Payment tenant consistency enforcement in createOrderWithItems');
+  } catch (err) {
+    markFailed('Payment tenant consistency enforcement in createOrderWithItems', err);
+  }
+
+  // Test 16: Idempotent replay returns mapped PaymentRecord with exact decimal amount (POS-001R3 Finding C)
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+    const replayKey = `idem_exact_pay_${crypto.randomUUID()}`;
+
+    const original = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '2.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '20.00',
+      idempotency_key: replayKey,
+    });
+
+    assert.ok(original.payment);
+    assert.strictEqual(typeof original.payment.amount, 'string');
+    assert.strictEqual(original.payment.amount, '20.00');
+
+    // Replay call
+    const replayed = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '2.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '20.00',
+      idempotency_key: replayKey,
+    });
+
+    assert.ok(replayed.payment);
+    assert.strictEqual(replayed.order.id, original.order.id);
+    assert.strictEqual(replayed.payment.id, original.payment.id);
+    assert.strictEqual(typeof replayed.payment.amount, 'string');
+    assert.strictEqual(replayed.payment.amount, '20.00');
+    assert.strictEqual(replayed.payment.organization_id, 'org_pos_a');
+
+    markPassed('Idempotent replay returns mapped PaymentRecord with exact decimal amount');
+  } catch (err) {
+    markFailed('Idempotent replay returns mapped PaymentRecord with exact decimal amount', err);
+  }
+
+  // Test 17: Comprehensive Idempotency Conflict Scenarios (different amount, customer, discount)
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+    const multiConflictKey = `idem_conflict_${crypto.randomUUID()}`;
+
+    // Base call
+    await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      customer_id: 'cust_pos_1',
+      cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '10.00',
+      idempotency_key: multiConflictKey,
+    });
+
+    // 1. Conflict on different customer_id
+    await assert.rejects(
+      async () => {
+        await posService.checkout({
+          organization_id: 'org_pos_a',
+          location_id: 'loc_store_a',
+          session_id: openSession.id,
+          cashier_name: 'cashier_a',
+          customer_id: 'cust_pos_2',
+          cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+          payment_method: 'Cash',
+          amount_paid: '10.00',
+          idempotency_key: multiConflictKey,
+        });
+      },
+      (err: any) => err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    // 2. Conflict on different discount
+    await assert.rejects(
+      async () => {
+        await posService.checkout({
+          organization_id: 'org_pos_a',
+          location_id: 'loc_store_a',
+          session_id: openSession.id,
+          cashier_name: 'cashier_a',
+          customer_id: 'cust_pos_1',
+          cart_items: [{ variant_id: 'var_apple', quantity: '1.0000', discount_percentage: '10.00' }],
+          payment_method: 'Cash',
+          amount_paid: '9.00',
+          idempotency_key: multiConflictKey,
+        });
+      },
+      (err: any) => err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    // 3. Conflict on different amount_paid
+    await assert.rejects(
+      async () => {
+        await posService.checkout({
+          organization_id: 'org_pos_a',
+          location_id: 'loc_store_a',
+          session_id: openSession.id,
+          cashier_name: 'cashier_a',
+          customer_id: 'cust_pos_1',
+          cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+          payment_method: 'Cash',
+          amount_paid: '15.00',
+          idempotency_key: multiConflictKey,
+        });
+      },
+      (err: any) => err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    markPassed('Comprehensive Idempotency Conflict Scenarios');
+  } catch (err) {
+    markFailed('Comprehensive Idempotency Conflict Scenarios', err);
   }
 
   console.log('\n------------------------------------------------------');

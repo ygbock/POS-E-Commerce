@@ -125,6 +125,12 @@ export class OrderRepository {
       throw new Error('TENANT_REQUIRED: organization_id is required to create an order.');
     }
 
+    if (payment) {
+      if (payment.organization_id && payment.organization_id !== order.organization_id) {
+        throw new Error('TENANT_MISMATCH: Payment organization does not match order organization.');
+      }
+    }
+
     return db.withTransaction(async (tx) => {
       // 1. Insert order
       const orderRes = await tx.query<any>(
@@ -201,7 +207,10 @@ export class OrderRepository {
       // 3. Optional payment record
       let createdPayment: PaymentRecord | undefined;
       if (payment) {
-        const paymentOrgId = payment.organization_id || order.organization_id;
+        if (payment.organization_id && payment.organization_id !== order.organization_id) {
+          throw new Error('TENANT_MISMATCH: Payment organization does not match order organization.');
+        }
+        const paymentOrgId = order.organization_id;
         if (!paymentOrgId) {
           throw new Error('TENANT_REQUIRED: organization_id is required for payment.');
         }
@@ -236,48 +245,64 @@ export class OrderRepository {
 
   async findOrderById(
     id: string,
-    orgIdOrClient?: string | DatabaseClient,
+    organizationId: string,
     client?: DatabaseClient
   ): Promise<{ order: OrderRecord; items: OrderItemRecord[] } | null> {
-    const orgId = typeof orgIdOrClient === 'string' ? orgIdOrClient : undefined;
-    const activeClient = typeof orgIdOrClient !== 'string' ? (orgIdOrClient as DatabaseClient) : client;
-    const db = this.getClient(activeClient);
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organization_id is required to find an order.');
+    }
+    const db = this.getClient(client);
 
-    const querySql = orgId
-      ? `SELECT id, organization_id, location_id, customer_id, order_number,
+    const querySql = `SELECT id, organization_id, location_id, customer_id, order_number,
                 source, channel, fulfillment_method,
                 subtotal, discount_amount, discount_code,
                 tax_amount, shipping_fee, total_amount, total_cost_amount,
                 payment_status, status, cashier_name, tracking_number, carrier_name, notes,
                 pos_session_id, idempotency_key, created_at, updated_at
-         FROM orders WHERE id = $1 AND organization_id = $2`
-      : `SELECT id, organization_id, location_id, customer_id, order_number,
-                source, channel, fulfillment_method,
-                subtotal, discount_amount, discount_code,
-                tax_amount, shipping_fee, total_amount, total_cost_amount,
-                payment_status, status, cashier_name, tracking_number, carrier_name, notes,
-                pos_session_id, idempotency_key, created_at, updated_at
-         FROM orders WHERE id = $1`;
+         FROM orders WHERE id = $1 AND organization_id = $2`;
 
-    const params = orgId ? [id, orgId] : [id];
-    const orderRes = await db.query<any>(querySql, params);
+    const orderRes = await db.query<any>(querySql, [id, organizationId]);
 
     if (orderRes.rows.length === 0) {
       return null;
     }
 
     const itemsRes = await db.query<any>(
-      `SELECT id, order_id, variant_id, product_name, variant_name, sku,
-              unit_price, cost_price, quantity,
-              discount_amount, tax_rate, total_amount, created_at
-       FROM order_items WHERE order_id = $1`,
-      [id]
+      `SELECT oi.id, oi.order_id, oi.variant_id, oi.product_name, oi.variant_name, oi.sku,
+              oi.unit_price, oi.cost_price, oi.quantity,
+              oi.discount_amount, oi.tax_rate, oi.total_amount, oi.created_at
+       FROM order_items oi
+       JOIN orders o ON oi.order_id = o.id
+       WHERE oi.order_id = $1 AND o.organization_id = $2`,
+      [id, organizationId]
     );
 
     return {
       order: mapOrderRow(orderRes.rows[0]),
       items: itemsRes.rows.map(mapOrderItemRow),
     };
+  }
+
+  async findPaymentByOrderId(
+    orderId: string,
+    organizationId: string,
+    client?: DatabaseClient
+  ): Promise<PaymentRecord | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organization_id is required to find payment.');
+    }
+    const db = this.getClient(client);
+    const payRes = await db.query<any>(
+      `SELECT id, organization_id, order_id, payment_method, amount, currency, status, reference, provider, transaction_payload, created_at
+       FROM payments
+       WHERE order_id = $1 AND organization_id = $2`,
+      [orderId, organizationId]
+    );
+
+    if (payRes.rows.length === 0) {
+      return null;
+    }
+    return mapPaymentRow(payRes.rows[0]);
   }
 
   async listOrders(

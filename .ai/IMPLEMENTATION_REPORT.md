@@ -413,4 +413,66 @@
 3. **Production Compilation (`npm run build`)**:
    - **Build Succeeded Successfully**
 
+---
+
+## POS-001R3 — Order Tenant Boundary & Replay Mapping Hardening
+
+- **Status**: `POS-001R3 — READY FOR INDEPENDENT REVIEW`
+- **Authority**: Independent human supervisor review / peer-review gate.
+- **Objective**: Remediate the three specific findings from the independent review of POS-001R2:
+  1. Mandatory tenant scoping in `OrderRepository.findOrderById()`.
+  2. Payment tenant consistency in `OrderRepository.createOrderWithItems()`.
+  3. Properly mapped `PaymentRecord` return type in idempotent replay pathways.
+
+---
+
+### 1. Technical Accomplishments & Rework Evidence
+
+#### Finding A — Mandatory Tenant Scoping in `OrderRepository.findOrderById()`
+- **Method Signature**: Refactored signature to `findOrderById(id: string, organizationId: string, client?: DatabaseClient): Promise<OrderWithItems | null>`.
+- **Elimination of Unscoped Paths**: Removed the overload that permitted `findOrderById(id, client)`. Unscoped reads are completely banned at the repository boundary.
+- **Fail-Closed Validation**: If `organizationId` is missing or empty, throws `TENANT_REQUIRED: organization_id is required to find an order.`
+- **Database Query**: Query is strictly scoped: `SELECT ... FROM orders WHERE id = $1 AND organization_id = $2`.
+- **Cross-Tenant Lookups**: When an order ID exists under Tenant A, querying with Tenant B returns `null`.
+
+#### Finding B — Payment Tenant Consistency in `OrderRepository.createOrderWithItems()`
+- **Upfront Validation**: Validates `if (payment.organization_id && payment.organization_id !== order.organization_id)` before any database mutation or transaction execution.
+- **Fail-Closed Mismatch**: Mismatched payment tenant throws `TENANT_MISMATCH: Payment organization does not match order organization.`
+- **Query Scoping**: Payment insert forces `order.organization_id`: `INSERT INTO payments (id, organization_id, order_id, ...)` using `order.organization_id`.
+
+#### Finding C — Mapped Payment Replay in `PosService`
+- **Method `findPaymentByOrderId`**: Implemented `orderRepo.findPaymentByOrderId(orderId: string, organizationId: string, client?: DatabaseClient): Promise<PaymentRecord | null>`. Uses `mapPaymentRow` ensuring all monetary fields (`amount`) are exact decimal strings.
+- **Replay Pathways**: Updated `checkout` idempotency replay (both initial check and concurrent `23505` catch handler) to fetch payments using `findPaymentByOrderId(existingOrder.order.id, organization_id, tx)`.
+- **Return Type Integrity**: The returned payment in idempotent replays is a fully typed `PaymentRecord` where `amount` is an exact decimal string (e.g., `'10.00'`), preserving zero-float guarantees.
+
+#### Session Cash Reconciliation Queries Scoped by Tenant
+- In `posService.closeSession`, cash sales and cash returns queries now strictly join with `orders o` and filter by `AND p.organization_id = $2 AND o.organization_id = $2` and `AND pr.organization_id = $2 AND o.organization_id = $2`.
+
+---
+
+### 2. POS-001R3 Acceptance Matrix
+
+| Acceptance Area | Status | Evidence |
+| :--- | :--- | :--- |
+| **Finding A: Mandatory Tenant in findOrderById** | PASS | `tests/pos.test.ts` (Test 14) |
+| **Finding B: Payment Tenant Consistency Enforcement** | PASS | `tests/pos.test.ts` (Test 15) |
+| **Finding C: Mapped Payment Record on Idempotent Replay** | PASS | `tests/pos.test.ts` (Test 16) |
+| **Comprehensive Idempotency Conflict Scenarios** | PASS | `tests/pos.test.ts` (Test 17) |
+
+---
+
+### 3. Verification Results
+
+1. **Full Automated Test Suite (`npm test`)**:
+   - **All 91 tests passing cleanly with 0 failures!**
+     - `test:db` (Persistence Tests): **15/15 passed**
+     - `test:security` (Auth/RBAC Security): **22/22 passed**
+     - `test:inventory` (Inventory Ledger): **24/24 passed**
+     - `test:transfer` (Inter-location Transfers): **13/13 passed**
+     - `test:pos` (Checkout/Idempotency/Concurrency/Tenant): **17/17 passed**
+2. **TypeScript & Linting (`npm run lint`)**:
+   - **0 errors / 0 warnings** (`tsc --noEmit`)
+3. **Production Compilation (`npm run build`)**:
+   - **Build Succeeded Successfully** (`vite build` + server bundle)
+
 

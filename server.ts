@@ -1258,16 +1258,31 @@ export async function createApp(options: CreateAppOptions = {}) {
         const isSuperAdmin = req.auth!.role === 'super_admin';
         const callerOrg = req.auth!.organizationId;
 
-        // Scoped directly at repository level
-        const order = await orderRepo.findOrderById(
-          req.params.id,
-          isSuperAdmin ? undefined : callerOrg
-        );
+        let targetOrg = callerOrg;
+        if (isSuperAdmin) {
+          if (req.query.orgId && typeof req.query.orgId === 'string') {
+            targetOrg = req.query.orgId;
+          } else {
+            const orgLookup = await db.query<any>(
+              `SELECT organization_id FROM orders WHERE id = $1`,
+              [req.params.id]
+            );
+            if (orgLookup.rows.length > 0) {
+              targetOrg = orgLookup.rows[0].organization_id;
+            }
+          }
+        }
+
+        // Scoped directly at repository level with mandatory organizationId
+        const order = await orderRepo.findOrderById(req.params.id, targetOrg);
 
         if (!order) {
           // If the resource belongs to another tenant, return explicit 403 TENANT_ACCESS_DENIED
-          const anyOrder = await orderRepo.findOrderById(req.params.id);
-          if (anyOrder && anyOrder.order.organization_id !== callerOrg) {
+          const orgLookup = await db.query<any>(
+            `SELECT organization_id FROM orders WHERE id = $1`,
+            [req.params.id]
+          );
+          if (orgLookup.rows.length > 0 && orgLookup.rows[0].organization_id !== callerOrg) {
             return res.status(403).json({
               success: false,
               error: {

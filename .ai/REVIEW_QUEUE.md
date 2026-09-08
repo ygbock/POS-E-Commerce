@@ -177,3 +177,17 @@ Status: READY FOR REVIEW
     - **R6 (POS Scope Discipline)**: `POS-001` remains `NOT STARTED`. `POS files modified: NONE`.
 - **Supervisor Action Required**: Final independent review and approval of INV-002R3.
 
+---
+## POS-001R3: Order Tenant Boundary & Replay Mapping Hardening
+- **Task ID**: POS-001R3
+- **Status**: PENDING REVIEW
+- **Agent Notes**:
+  - Remediated all three findings from independent review of POS-001R2:
+    - **Finding A (Mandatory Tenant Scoping in findOrderById)**: Refactored `OrderRepository.findOrderById(id, organizationId, client?)`. Eliminated unscoped overload. Fails closed with `TENANT_REQUIRED` if organizationId is missing. Scoped SQL query with `AND organization_id = $2`. Verified with Test 14.
+    - **Finding B (Payment Tenant Consistency Enforcement)**: Enforced `payment.organization_id === order.organization_id` in `OrderRepository.createOrderWithItems()`. Fails closed with `TENANT_MISMATCH`. Verified with Test 15.
+    - **Finding C (Mapped Payment Record on Replay)**: Implemented `orderRepo.findPaymentByOrderId(orderId, organizationId, client?)` with row mapping. Used in all checkout idempotency replays. Verified with Test 16.
+    - **Cash Session Tenant Scoping**: Added explicit `p.organization_id = $2` and `pr.organization_id = $2` joins in `posService.closeSession`.
+    - **Automated Tests**: 17/17 POS tests passing (`npm run test:pos`). Full suite 91/91 tests passing (`npm test`). `npm run lint` (0 errors), `npm run build` succeeded.
+- **Supervisor Action Required**: Independent review of POS-001R3.
+
+

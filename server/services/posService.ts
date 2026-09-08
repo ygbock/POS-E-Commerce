@@ -231,25 +231,27 @@ export class PosService {
       // Calculate authoritative expected cash:
       // Expected = opening_cash + cash_sales + cash_in - cash_out - cash_refunds
       const cashSalesRes = await tx.query<any>(
-        `SELECT COALESCE(SUM(p.amount), 0) as total FROM payments p 
-         JOIN orders o ON p.order_id = o.id 
-         WHERE o.pos_session_id = $1 AND p.payment_method = 'Cash' AND p.status = 'Completed'`,
-         [sessionId]
+        `SELECT COALESCE(SUM(p.amount), 0) as total FROM payments p
+         JOIN orders o ON p.order_id = o.id
+         WHERE o.pos_session_id = $1 AND p.payment_method = 'Cash' AND p.status = 'Completed'
+           AND p.organization_id = $2 AND o.organization_id = $2`,
+        [sessionId, orgId]
       );
       const cashSalesCents = parseMoneyToCents(cashSalesRes.rows[0].total.toString());
 
       const cashMoveRes = await tx.query<any>(
-        `SELECT COALESCE(SUM(CASE WHEN type = 'Cash In' THEN amount ELSE -amount END), 0) as total 
+        `SELECT COALESCE(SUM(CASE WHEN type = 'Cash In' THEN amount ELSE -amount END), 0) as total
          FROM pos_cash_movements WHERE session_id = $1`,
-         [sessionId]
+        [sessionId]
       );
       const cashMoveCents = parseMoneyToCents(cashMoveRes.rows[0].total.toString(), { allowNegative: true });
 
       const cashRefundRes = await tx.query<any>(
-        `SELECT COALESCE(SUM(refund_amount), 0) as total FROM pos_returns pr 
-         JOIN orders o ON pr.order_id = o.id 
-         WHERE o.pos_session_id = $1 AND pr.refund_method = 'Cash'`,
-         [sessionId]
+        `SELECT COALESCE(SUM(refund_amount), 0) as total FROM pos_returns pr
+         JOIN orders o ON pr.order_id = o.id
+         WHERE o.pos_session_id = $1 AND pr.refund_method = 'Cash'
+           AND pr.organization_id = $2 AND o.organization_id = $2`,
+        [sessionId, orgId]
       );
       const cashRefundCents = parseMoneyToCents(cashRefundRes.rows[0].total.toString());
 
@@ -397,11 +399,7 @@ export class PosService {
         if (storedFingerprint === currentFingerprint) {
           const fullOrder = await this.orderRepo.findOrderById(orderId, organization_id);
           if (fullOrder) {
-            const payRes = await this.db.query<any>(
-              `SELECT * FROM payments WHERE order_id = $1`,
-              [orderId]
-            );
-            const payment = payRes.rows.length > 0 ? payRes.rows[0] : undefined;
+            const payment = (await this.orderRepo.findPaymentByOrderId(orderId, organization_id)) || undefined;
             return {
               order: fullOrder.order,
               items: fullOrder.items,
@@ -643,11 +641,7 @@ export class PosService {
           if (storedFingerprint === currentFingerprint) {
             const fullOrder = await this.orderRepo.findOrderById(orderId, organization_id);
             if (fullOrder) {
-              const payRes = await this.db.query<any>(
-                `SELECT * FROM payments WHERE order_id = $1`,
-                [orderId]
-              );
-              const payment = payRes.rows.length > 0 ? payRes.rows[0] : undefined;
+              const payment = (await this.orderRepo.findPaymentByOrderId(orderId, organization_id)) || undefined;
               return {
                 order: fullOrder.order,
                 items: fullOrder.items,

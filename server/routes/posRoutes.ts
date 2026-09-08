@@ -517,16 +517,13 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
           throw new Error(`SALE_NOT_FOUND: POS Sale with ID '${id}' was not found.`);
         }
 
-        const paymentsRes = await db.query<any>(
-          `SELECT * FROM payments WHERE order_id = $1`,
-          [id]
-        );
+        const payment = (await orderRepo.findPaymentByOrderId(id, orgId)) || undefined;
 
         res.json({
           success: true,
           order: sale.order,
           items: sale.items,
-          payment: paymentsRes.rows.length > 0 ? paymentsRes.rows[0] : undefined,
+          payment,
         });
       } catch (err) {
         handlePosRouteError(res, err);
@@ -608,10 +605,7 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
           throw new Error(`SALE_NOT_FOUND: Receipt transaction '${id}' was not found.`);
         }
 
-        const paymentsRes = await db.query<any>(
-          `SELECT * FROM payments WHERE order_id = $1`,
-          [id]
-        );
+        const payment = await orderRepo.findPaymentByOrderId(id, orgId);
 
         const orgRes = await db.query<any>(
           `SELECT * FROM organizations WHERE id = $1`,
@@ -619,8 +613,8 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
         );
 
         const locRes = await db.query<any>(
-          `SELECT * FROM locations WHERE id = $1`,
-          [sale.order.location_id]
+          `SELECT * FROM locations WHERE id = $1 AND organization_id = $2`,
+          [sale.order.location_id, orgId]
         );
 
         res.json({
@@ -636,9 +630,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
             discount: sale.order.discount_amount,
             tax: sale.order.tax_amount,
             total: sale.order.total_amount,
-            payment_method: paymentsRes.rows[0]?.payment_method || 'N/A',
-            amount_received: paymentsRes.rows[0]?.transaction_payload?.amount_paid || sale.order.total_amount,
-            change_due: paymentsRes.rows[0]?.transaction_payload?.change_due || 0,
+            payment_method: payment?.payment_method || 'N/A',
+            amount_received: payment?.transaction_payload?.amount_paid || sale.order.total_amount,
+            change_due: payment?.transaction_payload?.change_due || '0.00',
             status: sale.order.status,
           },
         });
