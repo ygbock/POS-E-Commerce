@@ -5,6 +5,92 @@ import { PosService } from '../services/posService';
 import { PosRepository } from '../repositories/posRepository';
 import { OrderRepository } from '../repositories/orderRepository';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
+import { parseExactMoney, parseExactQuantity, parseQtyToScaled } from '../inventory/inventoryPolicies';
+
+// ============================================================================
+// STRICT INPUT VALIDATION UTILITIES (Rejects non-strings and whitespace)
+// ============================================================================
+
+export function validateHTTPMoney(value: unknown, fieldName: string, options?: { allowNegative?: boolean }): string {
+  if (value === null || value === undefined) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' is required and cannot be null or undefined.`);
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' must be supplied as a decimal string.`);
+  }
+  if (!value) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' cannot be empty.`);
+  }
+  const regex = options?.allowNegative ? /^-?\d+(?:\.\d+)?$/ : /^\d+(?:\.\d+)?$/;
+  if (!regex.test(value)) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' has invalid decimal format (no whitespace or floats allowed).`);
+  }
+  const parts = value.split('.');
+  if (parts[1] && parts[1].length > 2) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' precision exceeds maximum supported 2 decimal places.`);
+  }
+  return value;
+}
+
+export function validateHTTPQuantity(value: unknown, fieldName: string): string {
+  if (value === null || value === undefined) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' is required and cannot be null or undefined.`);
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' must be supplied as a decimal string.`);
+  }
+  if (!value) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' cannot be empty.`);
+  }
+  if (!/^\d+(?:\.\d+)?$/.test(value)) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' has invalid decimal format.`);
+  }
+  const parts = value.split('.');
+  if (parts[1] && parts[1].length > 4) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' precision exceeds maximum supported 4 decimal places.`);
+  }
+  return value;
+}
+
+export function validateHTTPPositiveQuantity(value: unknown, fieldName: string): string {
+  const str = validateHTTPQuantity(value, fieldName);
+  const scaled = parseQtyToScaled(str);
+  if (scaled <= 0n) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' must be greater than zero.`);
+  }
+  return str;
+}
+
+export function validateHTTPDiscountPercentage(value: unknown, fieldName: string): string {
+  if (value === undefined || value === null) {
+    return '0.00';
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' must be supplied as a decimal string.`);
+  }
+  if (!value) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' cannot be empty.`);
+  }
+  if (!/^\d+(?:\.\d+)?$/.test(value)) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' has invalid decimal format.`);
+  }
+  const parts = value.split('.');
+  if (parts[1] && parts[1].length > 2) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' precision exceeds maximum supported 2 decimal places.`);
+  }
+  
+  const whole = BigInt(parts[0]);
+  let fracStr = parts[1] || '';
+  while (fracStr.length < 2) {
+    fracStr += '0';
+  }
+  const frac = BigInt(fracStr);
+  const scaled = whole * 100n + frac;
+  if (scaled < 0n || scaled > 10000n) {
+    throw new Error(`VALIDATION_ERROR: '${fieldName}' must be between 0.00 and 100.00 inclusive.`);
+  }
+  return value;
+}
 
 export function sanitizePosErrorMessage(rawMessage: string): string {
   if (!rawMessage) return 'Unknown POS error';
@@ -29,6 +115,16 @@ export function sanitizePosErrorMessage(rawMessage: string): string {
 export function handlePosRouteError(res: Response, err: any): Response {
   const msg: string = err?.message || 'Unknown POS error';
   const safeMessage = sanitizePosErrorMessage(msg);
+
+  if (msg.includes('VALIDATION_ERROR') || msg.includes('IDEMPOTENCY_CONFLICT')) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: msg.includes('IDEMPOTENCY_CONFLICT') ? 'IDEMPOTENCY_CONFLICT' : 'VALIDATION_ERROR',
+        message: safeMessage,
+      },
+    });
+  }
 
   if (
     msg.includes('TENANT_ACCESS_DENIED') ||
@@ -173,9 +269,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
           success: true,
           products: results.rows.map((row) => ({
             ...row,
-            cost_price: Number(row.cost_price),
-            retail_price: Number(row.retail_price),
-            tax_rate: Number(row.tax_rate),
+            cost_price: parseExactMoney(row.cost_price),
+            retail_price: parseExactMoney(row.retail_price),
+            tax_rate: parseExactQuantity(row.tax_rate, 'tax_rate', { maxDecimals: 4 }),
           })),
         });
       } catch (err) {
@@ -229,8 +325,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
           });
         }
 
+        const validOpeningCash = validateHTTPMoney(openingCash, 'openingCash');
         const cashierName = req.auth!.email || 'Cashier';
-        const session = await posService.openSession(orgId, locationId, terminalId, cashierName, Number(openingCash));
+        const session = await posService.openSession(orgId, locationId, terminalId, cashierName, validOpeningCash);
 
         res.json({ success: true, session });
       } catch (err) {
@@ -289,8 +386,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
           });
         }
 
+        const validCountedCash = validateHTTPMoney(countedCash, 'countedCash');
         const closingActor = req.auth!.email || 'Store Manager';
-        const session = await posService.closeSession(id, orgId, Number(countedCash), closingActor);
+        const session = await posService.closeSession(id, orgId, validCountedCash, closingActor);
 
         res.json({ success: true, session });
       } catch (err) {
@@ -328,8 +426,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
           });
         }
 
+        const validAmount = validateHTTPMoney(amount, 'amount');
         const performedBy = req.auth!.email || 'Cashier';
-        const movement = await posService.recordCashMovement(id, orgId, type, Number(amount), reason, performedBy);
+        const movement = await posService.recordCashMovement(id, orgId, type, validAmount, reason, performedBy);
 
         res.json({ success: true, movement });
       } catch (err) {
@@ -352,12 +451,29 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
         const orgId = req.auth!.organizationId;
         const { locationId, sessionId, customerId, cartItems, paymentMethod, amountPaid, notes } = req.body;
 
-        if (!locationId || !sessionId || !cartItems || !paymentMethod || amountPaid === undefined) {
+        if (!locationId || !sessionId || !cartItems || !Array.isArray(cartItems) || !paymentMethod || amountPaid === undefined) {
           return res.status(400).json({
             success: false,
             error: { code: 'VALIDATION_ERROR', message: 'locationId, sessionId, cartItems, paymentMethod, and amountPaid are required.' },
           });
         }
+
+        const validAmountPaid = validateHTTPMoney(amountPaid, 'amountPaid');
+        const validatedCartItems = cartItems.map((item: any, idx: number) => {
+          if (!item || typeof item !== 'object') {
+            throw new Error(`VALIDATION_ERROR: cartItems[${idx}] must be an object.`);
+          }
+          if (!item.variant_id || typeof item.variant_id !== 'string') {
+            throw new Error(`VALIDATION_ERROR: cartItems[${idx}].variant_id must be a string.`);
+          }
+          const quantityStr = validateHTTPPositiveQuantity(item.quantity, `cartItems[${idx}].quantity`);
+          const discountStr = validateHTTPDiscountPercentage(item.discount_percentage, `cartItems[${idx}].discount_percentage`);
+          return {
+            variant_id: item.variant_id,
+            quantity: quantityStr,
+            discount_percentage: discountStr,
+          };
+        });
 
         const cashierName = req.auth!.email || 'Cashier';
         const idempotencyKey = req.headers['idempotency-key']?.toString();
@@ -368,9 +484,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
           session_id: sessionId,
           cashier_name: cashierName,
           customer_id: customerId,
-          cart_items: cartItems,
+          cart_items: validatedCartItems,
           payment_method: paymentMethod,
-          amount_paid: Number(amountPaid),
+          amount_paid: validAmountPaid,
           notes,
           idempotency_key: idempotencyKey,
         });
@@ -432,21 +548,38 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
         const orgId = req.auth!.organizationId;
         const { orderId, refundMethod, reason, returnItems } = req.body;
 
-        if (!orderId || !refundMethod || !reason || !returnItems) {
+        if (!orderId || !refundMethod || !reason || !returnItems || !Array.isArray(returnItems)) {
           return res.status(400).json({
             success: false,
             error: { code: 'VALIDATION_ERROR', message: 'orderId, refundMethod, reason, and returnItems are required.' },
           });
         }
 
+        const validatedReturnItems = returnItems.map((item: any, idx: number) => {
+          if (!item || typeof item !== 'object') {
+            throw new Error(`VALIDATION_ERROR: returnItems[${idx}] must be an object.`);
+          }
+          if (!item.variant_id || typeof item.variant_id !== 'string') {
+            throw new Error(`VALIDATION_ERROR: returnItems[${idx}].variant_id must be a string.`);
+          }
+          const quantityStr = validateHTTPPositiveQuantity(item.quantity, `returnItems[${idx}].quantity`);
+          return {
+            variant_id: item.variant_id,
+            quantity: quantityStr,
+          };
+        });
+
         const performedBy = req.auth!.email || 'Store Manager';
+        const idempotencyKey = req.headers['idempotency-key']?.toString();
+
         const result = await posService.processReturn({
           organization_id: orgId,
           order_id: orderId,
           refund_method: refundMethod,
           performed_by: performedBy,
           reason,
-          return_items: returnItems,
+          return_items: validatedReturnItems,
+          idempotency_key: idempotencyKey,
         });
 
         res.json({ success: true, ...result });

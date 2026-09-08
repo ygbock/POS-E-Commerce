@@ -263,25 +263,25 @@ PROD-001 (NOT STARTED)
 
 ---
 
-### Task 6: POS-001 — Server-Authoritative POS Checkout & Financial Calculation Engine
-- **Status**: `READY FOR REVIEW`
-- **Supervisor Gate**: Approved and complete. Ready for final independent peer review.
-- **Objective**: Shift POS checkout, price calculations, tax lookups, and discount validations from the browser into transactional server API operations.
+### Task 6: POS-001 / POS-001R1 — Exact Financial Arithmetic, Concurrency & Idempotency Hardening
+- **Status**: `REWORK REQUIRED`
+- **Supervisor Gate**: Under independent supervisor review. Do NOT self-approve.
+- **Objective**: Harden the POS transactional processing engine by completely eliminating floating-point math, applying strict exact-decimal arithmetic, locking session states during cash operations, preventing session-opening race conditions, and enforcing tenant-isolated idempotency with concurrent integration verification.
 - **Scope**:
-  - Implement `POST /api/pos/checkout` executing within an atomic database transaction.
-  - Server recomputes all item line prices, discounts, and taxes.
-  - Atomic stock deduction and automated General Ledger journal entry generation on successful checkout.
-  - Shift management APIs (open float, cash drops, close shift reconciliation).
-- **Dependencies**: `INV-001`.
+  - [x] Implement BigInt exact-decimal financial arithmetic (scale factors 10,000 and 100) using `inventoryPolicies.ts` helpers, removing all JS floats, `parseFloat`, `Math.round`, and `Number` castings from calculations.
+  - [x] Enforce session-locking via pessimistic `SELECT ... FOR UPDATE` row locks during checkout, cash movements, and closing operations.
+  - [x] Prevent duplicate active sessions at both the database schema layer (unique index constraint) and the service layer.
+  - [x] Secure idempotency via tenant-scoped unique index constraints for `orders` and `pos_returns`.
+  - [x] Implement robust validation routines validating money strings, quantities, and discount percentages before reaching domain logic.
+  - [x] Expand integration testing with thorough multi-threaded concurrent integration tests verifying race prevention, stock locks, and double-return protection.
+- **Dependencies**: `INV-001`, `INV-001R6`.
 - **Acceptance Criteria**:
-  - [x] Client-submitted totals are ignored; backend computes authoritative final totals.
-  - [x] Order, stock movement, and financial journal entries committed atomically.
-  - [x] Failed payments or stock shortages roll back entire transaction.
-  - [x] Barcode product/variant lookup and session state tracking (open/closed validations) handled server-side.
-  - [x] Full sales returns & restocking support with over-return prevention and exact refund/restock logic.
-  - [x] Double session opens and closed session actions strictly blocked with custom errors.
-- **Security Requirements**: Prevent client price tampering; audit trail for price overrides; zero database leak on error.
-- **Validation Requirements**: Automated integration tests verifying atomic commit, rollback, idempotency, returns, and tenant isolation (6/6 POS tests passing).
+  - [x] All POS transactions utilize BigInt scaled arithmetic.
+  - [x] Concurrent checkout requests safely serialize under row locks.
+  - [x] Double active session opening is impossible under concurrent race conditions.
+  - [x] Safe idempotent replays match request payloads and reject mismatching parameters.
+  - [x] Concurrent return requests targeting the same original order cannot cause double-refunds.
+  - [x] Complete automated test suite executes cleanly (`npm run test:pos` -> 9/9 passed).
 
 ---
 

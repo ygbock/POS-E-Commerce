@@ -238,14 +238,14 @@ export class OrderRepository {
                 subtotal, discount_amount, discount_code,
                 tax_amount, shipping_fee, total_amount, total_cost_amount,
                 payment_status, status, cashier_name, tracking_number, carrier_name, notes,
-                created_at, updated_at
+                pos_session_id, idempotency_key, created_at, updated_at
          FROM orders WHERE id = $1 AND organization_id = $2`
       : `SELECT id, organization_id, location_id, customer_id, order_number,
                 source, channel, fulfillment_method,
                 subtotal, discount_amount, discount_code,
                 tax_amount, shipping_fee, total_amount, total_cost_amount,
                 payment_status, status, cashier_name, tracking_number, carrier_name, notes,
-                created_at, updated_at
+                pos_session_id, idempotency_key, created_at, updated_at
          FROM orders WHERE id = $1`;
 
     const params = orgId ? [id, orgId] : [id];

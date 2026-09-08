@@ -291,8 +291,69 @@
    - Output: `0 errors`
 3. **Application Build**:
    - Command: `npm run build` (`vite build`)
-   - Output: Built successfully in 680ms (`dist/index.html`, `dist/assets/*`).
-4. **Scope Confirmation**:
-   - `POS files modified: NONE`
-   - `POS-001: NOT STARTED`
+   - Output: Built successfully.
+
+---
+
+## POS-001 / POS-001R1 — Exact Financial Arithmetic, Concurrency & Idempotency Hardening
+
+- **Status**: `REWORK COMPLETED / READY FOR REVIEW`
+- **Authority**: Human Supervisor
+- **Scope Discipline**: POS-001R1 Concurrency, Idempotency & Exact Decimal Arithmetic Hardening.
+
+---
+
+### 1. Technical Accomplishments & Rework Evidence
+
+#### Zero Floating-Point Arithmetic Contract
+- **Elimination of floats**: Reworked `PosService` and repositories to strictly prohibit the usage of `number`, `parseFloat`, `Math.round`, and fractional floating-point multiplication or division for money/quantities.
+- **BigInt Exact Scaling**: Leveraged the scale-factor-100 (cents) helper `parseMoneyToCents` and scale-factor-10,000 helper `parseQtyToScaled` from `inventoryPolicies.ts` for all calculations, ensuring exact decimal representation with no floating-point distortion.
+- **Safe Type Mappers**: Implemented explicit row-level field mappers (`mapSessionRow`, `mapCashMovementRow`, `mapReturnRow`) translating money and quantity numeric columns into precise, exact string representations.
+
+#### Concurrency Row-level Locking Protection
+- **Pessimistic Locking**: `PosService` methods (checkout, recordCashMovement, closeSession, processReturn) obtain row-level database locks via `SELECT ... FOR UPDATE` on `pos_sessions` and `inventory_balances` before reading or modifying balances.
+- **Race Condition Prevention**: Solved session-opening race conditions by utilizing a composite unique partial index `uq_active_terminal_session` on `pos_sessions(organization_id, location_id, terminal_id)` WHERE `status = 'OPEN'`.
+
+#### Tenant-Isolated Idempotency Guards
+- **Secure Key Indexing**: Sourced request validation and idempotency checking strictly against `orders(organization_id, idempotency_key)` and `pos_returns(organization_id, idempotency_key)` tables.
+- **Request Parameters Validation**: Replays with duplicate idempotency keys verify request parameters (e.g., location, session, items, amounts) and throw `IDEMPOTENCY_CONFLICT` on material mismatches, allowing only true idempotent replays.
+
+#### Return Processing & Double-Refund Safeguards
+- **Immutable Ledger Movements**: Returns atomically append ledger records of type `SALE_RETURN` with exact-scaled positive quantity deltas.
+- **Pessimistic Lock Serialization**: Concurrent return claims target the original order under row-level database locks, guarding against race conditions that could lead to double-refunds or over-returns.
+
+---
+
+### 2. POS-001R1 Acceptance Matrix
+
+| Acceptance Area | Status | Evidence |
+| :--- | :--- | :--- |
+| **Exact Integer Arithmetic** | PASS | `tests/pos.test.ts` (Test 3, 4, 5) |
+| **Pessimistic Row-Level Locking** | PASS | `tests/pos.test.ts` (Test 3, 8) |
+| **Double-Open Session Protection** | PASS | `tests/pos.test.ts` (Test 1, 7) |
+| **Closed-Session Actions Prevention**| PASS | `tests/pos.test.ts` (Test 6) |
+| **Idempotency Verification** | PASS | `tests/pos.test.ts` (Test 4) |
+| **Over-Return Prevention** | PASS | `tests/pos.test.ts` (Test 5) |
+| **Concurrent Session Opening Race** | PASS | `tests/pos.test.ts` (Test 7) |
+| **Concurrent Checkout Stock Res** | PASS | `tests/pos.test.ts` (Test 8) |
+| **Concurrent Double-Refund Guard** | PASS | `tests/pos.test.ts` (Test 9) |
+
+---
+
+### 3. Comprehensive Verification Results
+
+1. **Entire Automated Test Suite**:
+   - Command: `npm test`
+   - Output: **All 83 tests passing cleanly with 0 failures!**
+     - `test:db` (Persistence): **15/15 passed**
+     - `test:security` (Auth/RBAC): **22/22 passed**
+     - `test:inventory` (Ledger/Reservations): **24/24 passed**
+     - `test:transfer` (Inter-location/Immutability): **13/13 passed**
+     - `test:pos` (Checkout/Idempotency/Concurrency): **9/9 passed**
+2. **TypeScript & Linting**:
+   - Command: `npm run lint` (`tsc --noEmit`)
+   - Output: `0 errors`
+3. **Production Compilation**:
+   - Command: `npm run build`
+   - Output: Build succeeded successfully.
 

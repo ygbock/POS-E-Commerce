@@ -7,7 +7,6 @@ import { PosRepository } from '../server/repositories/posRepository';
 import { OrderRepository } from '../server/repositories/orderRepository';
 import { InventoryRepository } from '../server/repositories/inventoryRepository';
 import { AuditRepository } from '../server/repositories/auditRepository';
-import { toQtyString } from '../server/inventory/inventoryPolicies';
 
 async function runPosTests() {
   console.log('======================================================');
@@ -37,25 +36,30 @@ async function runPosTests() {
   await db.exec(`
     INSERT INTO organizations (id, name, code, is_active) VALUES 
       ('org_pos_a', 'POS Org A', 'POS_ORG_A', TRUE),
-      ('org_pos_b', 'POS Org B', 'POS_ORG_B', TRUE);
+      ('org_pos_b', 'POS Org B', 'POS_ORG_B', TRUE)
+    ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO locations (id, organization_id, code, name, type) VALUES
       ('loc_store_a', 'org_pos_a', 'STA', 'Store A', 'Retail Store'),
-      ('loc_store_b', 'org_pos_b', 'STB', 'Store B', 'Retail Store');
+      ('loc_store_b', 'org_pos_b', 'STB', 'Store B', 'Retail Store')
+    ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO units_of_measure (id, organization_id, code, name, category) VALUES
       ('uom_kg_a', 'org_pos_a', 'KG', 'Kilogram', 'Weight'),
-      ('uom_kg_b', 'org_pos_b', 'KG', 'Kilogram', 'Weight');
+      ('uom_kg_b', 'org_pos_b', 'KG', 'Kilogram', 'Weight')
+    ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO products (id, organization_id, name, slug, status, product_type, unit_code) VALUES
       ('prod_pos_1', 'org_pos_a', 'Organic Apples', 'organic-apples', 'active', 'standard', 'KG'),
       ('prod_pos_2', 'org_pos_a', 'Dairy Milk', 'dairy-milk', 'active', 'standard', 'KG'),
-      ('prod_pos_3', 'org_pos_b', 'Sneakers', 'sneakers', 'active', 'standard', 'KG');
+      ('prod_pos_3', 'org_pos_b', 'Sneakers', 'sneakers', 'active', 'standard', 'KG')
+    ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO product_variants (id, organization_id, product_id, sku, barcode, name, cost_price, retail_price) VALUES
       ('var_apple', 'org_pos_a', 'prod_pos_1', 'SKU-APPLE', '11111', '1kg Box', 5.00, 10.00),
       ('var_milk', 'org_pos_a', 'prod_pos_2', 'SKU-MILK', '22222', '1L Carton', 2.00, 4.00),
-      ('var_sneaker', 'org_pos_b', 'prod_pos_3', 'SKU-SNEAKER', '33333', 'Size 10', 40.00, 80.00);
+      ('var_sneaker', 'org_pos_b', 'prod_pos_3', 'SKU-SNEAKER', '33333', 'Size 10', 40.00, 80.00)
+    ON CONFLICT (id) DO NOTHING;
   `);
 
   const posRepo = new PosRepository(db);
@@ -64,7 +68,7 @@ async function runPosTests() {
   const auditRepo = new AuditRepository(db);
   const posService = new PosService(posRepo, orderRepo, invRepo, auditRepo, db);
 
-  // Set initial inventory stock
+  // Set initial inventory stock using exact strings
   await invRepo.recordMovement({
     organization_id: 'org_pos_a',
     location_id: 'loc_store_a',
@@ -94,17 +98,17 @@ async function runPosTests() {
       'loc_store_a',
       'term_01',
       'cashier_a',
-      100.00
+      '100.00'
     );
 
     assert.strictEqual(session.status, 'OPEN');
-    assert.strictEqual(session.opening_cash, 100.00);
-    assert.strictEqual(session.expected_cash, 100.00);
+    assert.strictEqual(session.opening_cash, '100.00');
+    assert.strictEqual(session.expected_cash, '100.00');
 
     // Double session open must fail
     await assert.rejects(
       async () => {
-        await posService.openSession('org_pos_a', 'loc_store_a', 'term_01', 'cashier_b', 150.00);
+        await posService.openSession('org_pos_a', 'loc_store_a', 'term_01', 'cashier_b', '150.00');
       },
       (err: any) => err.message.includes('DUPLICATE_SESSION')
     );
@@ -119,11 +123,11 @@ async function runPosTests() {
     const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
     const openSession = sessions.find((s) => s.status === 'OPEN')!;
 
-    await posService.recordCashMovement(openSession.id, 'org_pos_a', 'Cash In', 35.50, 'Starting Float Add', 'cashier_a');
-    await posService.recordCashMovement(openSession.id, 'org_pos_a', 'Cash Out', 12.00, 'Vendor Pay Out', 'cashier_a');
+    await posService.recordCashMovement(openSession.id, 'org_pos_a', 'Cash In', '35.50', 'Starting Float Add', 'cashier_a');
+    await posService.recordCashMovement(openSession.id, 'org_pos_a', 'Cash Out', '12.00', 'Vendor Pay Out', 'cashier_a');
 
     const updated = await posRepo.findSessionById(openSession.id, 'org_pos_a');
-    assert.strictEqual(Number(updated?.expected_cash), 123.50); // 100 + 35.50 - 12.00
+    assert.strictEqual(updated?.expected_cash, '123.50'); // 100 + 35.50 - 12.00
 
     markPassed('Cash Movements (In/Out)');
   } catch (err) {
@@ -142,11 +146,11 @@ async function runPosTests() {
       session_id: openSession.id,
       cashier_name: 'cashier_a',
       cart_items: [
-        { variant_id: 'var_apple', quantity: 2, discount_percentage: 10 },
-        { variant_id: 'var_milk', quantity: 1 },
+        { variant_id: 'var_apple', quantity: '2.0000', discount_percentage: '10.00' },
+        { variant_id: 'var_milk', quantity: '1.0000' },
       ],
       payment_method: 'Cash',
-      amount_paid: 25.00, // Cost is (2 * 10 * 0.9) + 4 = 18 + 4 = 22.00
+      amount_paid: '25.00', // Cost is (2 * 10 * 0.9) + 4 = 18 + 4 = 22.00
     });
 
     assert.strictEqual(checkoutResult.order.total_amount, 22.00);
@@ -162,7 +166,7 @@ async function runPosTests() {
 
     // Verify session expected cash is updated
     const finalSession = await posRepo.findSessionById(openSession.id, 'org_pos_a');
-    assert.strictEqual(Number(finalSession?.expected_cash), 145.50); // 123.50 + 22.00
+    assert.strictEqual(finalSession?.expected_cash, '145.50'); // 123.50 + 22.00
 
     // Test negative stock prevention: try to checkout 60 Milks (only 49 left)
     await assert.rejects(
@@ -172,9 +176,9 @@ async function runPosTests() {
           location_id: 'loc_store_a',
           session_id: openSession.id,
           cashier_name: 'cashier_a',
-          cart_items: [{ variant_id: 'var_milk', quantity: 60 }],
+          cart_items: [{ variant_id: 'var_milk', quantity: '60.0000' }],
           payment_method: 'Cash',
-          amount_paid: 300.00,
+          amount_paid: '300.00',
         });
       },
       (err: any) => err.message.includes('INSUFFICIENT_STOCK')
@@ -196,9 +200,9 @@ async function runPosTests() {
       location_id: 'loc_store_a',
       session_id: openSession.id,
       cashier_name: 'cashier_a',
-      cart_items: [{ variant_id: 'var_milk', quantity: 1 }],
+      cart_items: [{ variant_id: 'var_milk', quantity: '1.0000' }],
       payment_method: 'Cash',
-      amount_paid: 10.00,
+      amount_paid: '10.00',
       idempotency_key: testKey,
     });
 
@@ -209,9 +213,9 @@ async function runPosTests() {
       location_id: 'loc_store_a',
       session_id: openSession.id,
       cashier_name: 'cashier_a',
-      cart_items: [{ variant_id: 'var_milk', quantity: 1 }],
+      cart_items: [{ variant_id: 'var_milk', quantity: '1.0000' }],
       payment_method: 'Cash',
-      amount_paid: 10.00,
+      amount_paid: '10.00',
       idempotency_key: testKey,
     });
 
@@ -238,9 +242,9 @@ async function runPosTests() {
       location_id: 'loc_store_a',
       session_id: openSession.id,
       cashier_name: 'cashier_a',
-      cart_items: [{ variant_id: 'var_milk', quantity: 10 }],
+      cart_items: [{ variant_id: 'var_milk', quantity: '10.0000' }],
       payment_method: 'Cash',
-      amount_paid: 100.00,
+      amount_paid: '100.00',
     });
 
     const stockBefore = Number((await invRepo.getBalance('loc_store_a', 'var_milk', 'org_pos_a'))?.on_hand);
@@ -252,10 +256,10 @@ async function runPosTests() {
       refund_method: 'Cash',
       performed_by: 'manager_a',
       reason: 'Slightly spoiled packaging',
-      return_items: [{ variant_id: 'var_milk', quantity: 3 }],
+      return_items: [{ variant_id: 'var_milk', quantity: '3.0000' }],
     });
 
-    assert.strictEqual(returnRes.returnRecord.refund_amount, 12.00); // 3 * 4.00
+    assert.strictEqual(returnRes.returnRecord.refund_amount, '12.00'); // 3 * 4.00
 
     const stockAfter = Number((await invRepo.getBalance('loc_store_a', 'var_milk', 'org_pos_a'))?.on_hand);
     assert.strictEqual(stockAfter, stockBefore + 3); // Restocked 3 items successfully!
@@ -269,7 +273,7 @@ async function runPosTests() {
           refund_method: 'Cash',
           performed_by: 'manager_a',
           reason: 'Excess returns',
-          return_items: [{ variant_id: 'var_milk', quantity: 8 }],
+          return_items: [{ variant_id: 'var_milk', quantity: '8.0000' }],
         });
       },
       (err: any) => err.message.includes('RETURN_INVALID')
@@ -282,7 +286,7 @@ async function runPosTests() {
       refund_method: 'Cash',
       performed_by: 'manager_a',
       reason: 'Refund rest',
-      return_items: [{ variant_id: 'var_milk', quantity: 7 }],
+      return_items: [{ variant_id: 'var_milk', quantity: '7.0000' }],
     });
 
     const orderStatusCheck = await db.query<any>('SELECT payment_status FROM orders WHERE id = $1', [saleRes.order.id]);
@@ -307,16 +311,16 @@ async function runPosTests() {
           location_id: 'loc_store_a',
           session_id: openSession.id,
           cashier_name: 'cashier_a',
-          cart_items: [{ variant_id: 'var_sneaker', quantity: 1 }], // var_sneaker belongs to org_pos_b!
+          cart_items: [{ variant_id: 'var_sneaker', quantity: '1.0000' }], // var_sneaker belongs to org_pos_b!
           payment_method: 'Cash',
-          amount_paid: 100.00,
+          amount_paid: '100.00',
         });
       },
       (err: any) => err.message.includes('PRODUCT_NOT_FOUND')
     );
 
     // Close session
-    const closedSession = await posService.closeSession(openSession.id, 'org_pos_a', 150.00, 'manager_a');
+    const closedSession = await posService.closeSession(openSession.id, 'org_pos_a', '150.00', 'manager_a');
     assert.strictEqual(closedSession.status, 'CLOSED');
 
     // Checkout with closed session must fail
@@ -327,9 +331,9 @@ async function runPosTests() {
           location_id: 'loc_store_a',
           session_id: openSession.id,
           cashier_name: 'cashier_a',
-          cart_items: [{ variant_id: 'var_milk', quantity: 1 }],
+          cart_items: [{ variant_id: 'var_milk', quantity: '1.0000' }],
           payment_method: 'Cash',
-          amount_paid: 10.00,
+          amount_paid: '10.00',
         });
       },
       (err: any) => err.message.includes('SESSION_CLOSED')
@@ -338,6 +342,155 @@ async function runPosTests() {
     markPassed('Tenant Isolation & Session Life Cycle Safeguards');
   } catch (err) {
     markFailed('Tenant Isolation & Session Life Cycle Safeguards', err);
+  }
+
+  // ==========================================================================
+  // CONCURRENT INTEGRATION TESTS (Simulating Real-World Races & Locks)
+  // ==========================================================================
+
+  // Test 7: Concurrent Session-Opening requests (Only one must succeed)
+  try {
+    const results = await Promise.allSettled([
+      posService.openSession('org_pos_a', 'loc_store_a', 'term_01', 'cashier_x', '100.00'),
+      posService.openSession('org_pos_a', 'loc_store_a', 'term_01', 'cashier_y', '100.00'),
+      posService.openSession('org_pos_a', 'loc_store_a', 'term_01', 'cashier_z', '100.00'),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+
+    assert.strictEqual(fulfilled.length, 1, 'Only exactly one session opening must succeed.');
+    assert.strictEqual(rejected.length, 2, 'Exactly two concurrent session requests must fail.');
+
+    const error1 = (rejected[0] as PromiseRejectedResult).reason;
+    const error2 = (rejected[1] as PromiseRejectedResult).reason;
+
+    assert.ok(error1.message.includes('DUPLICATE_SESSION'));
+    assert.ok(error2.message.includes('DUPLICATE_SESSION'));
+
+    markPassed('Concurrent Session Opening Race Prevention');
+  } catch (err) {
+    markFailed('Concurrent Session Opening Race Prevention', err);
+  }
+
+  // Test 8: Concurrent checkout requests vying for the same stock under pessimistic locks
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+
+    // Restock milk to exactly 5 cartons
+    await db.query(`UPDATE inventory_balances SET on_hand = 5.0000 WHERE location_id = 'loc_store_a' AND variant_id = 'var_milk'`);
+
+    // Fire 3 simultaneous checkouts each requesting 2 cartons (Total = 6, which exceeds on-hand 5!)
+    const results = await Promise.allSettled([
+      posService.checkout({
+        organization_id: 'org_pos_a',
+        location_id: 'loc_store_a',
+        session_id: openSession.id,
+        cashier_name: 'cashier_a',
+        cart_items: [{ variant_id: 'var_milk', quantity: '2.0000' }],
+        payment_method: 'Cash',
+        amount_paid: '20.00',
+      }),
+      posService.checkout({
+        organization_id: 'org_pos_a',
+        location_id: 'loc_store_a',
+        session_id: openSession.id,
+        cashier_name: 'cashier_a',
+        cart_items: [{ variant_id: 'var_milk', quantity: '2.0000' }],
+        payment_method: 'Cash',
+        amount_paid: '20.00',
+      }),
+      posService.checkout({
+        organization_id: 'org_pos_a',
+        location_id: 'loc_store_a',
+        session_id: openSession.id,
+        cashier_name: 'cashier_a',
+        cart_items: [{ variant_id: 'var_milk', quantity: '2.0000' }],
+        payment_method: 'Cash',
+        amount_paid: '20.00',
+      }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+
+    // Exactly two checkouts should succeed (2 * 2 = 4), and the third must fail with INSUFFICIENT_STOCK
+    assert.strictEqual(fulfilled.length, 2, 'Exactly two checkouts of quantity 2 should succeed.');
+    assert.strictEqual(rejected.length, 1, 'Exactly one checkout must fail due to stock depletion.');
+
+    const errorMsg = (rejected[0] as PromiseRejectedResult).reason.message;
+    assert.ok(errorMsg.includes('INSUFFICIENT_STOCK'), 'The failed checkout must fail due to insufficient stock.');
+
+    // Remaining stock should be exactly 1 carton (5 - 4)
+    const milkBal = await invRepo.getBalance('loc_store_a', 'var_milk', 'org_pos_a');
+    assert.strictEqual(milkBal?.on_hand, '1.0000');
+
+    markPassed('Concurrent Checkout Stock Reservation & Lock Protection');
+  } catch (err) {
+    markFailed('Concurrent Checkout Stock Reservation & Lock Protection', err);
+  }
+
+  // Test 9: Concurrent returns targeting the same order (preventing double-refund)
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+
+    // Create a pristine sale of 3 items
+    const sale = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '3.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '30.00',
+    });
+
+    // Fire 3 simultaneous returns, each attempting to return 2 items (Total 6, exceeds purchase quantity of 3!)
+    const results = await Promise.allSettled([
+      posService.processReturn({
+        organization_id: 'org_pos_a',
+        order_id: sale.order.id,
+        refund_method: 'Cash',
+        performed_by: 'manager_x',
+        reason: 'Concurrent Return 1',
+        return_items: [{ variant_id: 'var_apple', quantity: '2.0000' }],
+      }),
+      posService.processReturn({
+        organization_id: 'org_pos_a',
+        order_id: sale.order.id,
+        refund_method: 'Cash',
+        performed_by: 'manager_y',
+        reason: 'Concurrent Return 2',
+        return_items: [{ variant_id: 'var_apple', quantity: '2.0000' }],
+      }),
+      posService.processReturn({
+        organization_id: 'org_pos_a',
+        order_id: sale.order.id,
+        refund_method: 'Cash',
+        performed_by: 'manager_z',
+        reason: 'Concurrent Return 3',
+        return_items: [{ variant_id: 'var_apple', quantity: '2.0000' }],
+      }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+
+    // Only exactly one return should succeed (returning 2 items), the other two must be blocked because remaining returnable is 1 item.
+    assert.strictEqual(fulfilled.length, 1, 'Only one return request of quantity 2 must succeed.');
+    assert.strictEqual(rejected.length, 2, 'The other two return requests must fail.');
+
+    const error1 = (rejected[0] as PromiseRejectedResult).reason.message;
+    const error2 = (rejected[1] as PromiseRejectedResult).reason.message;
+
+    assert.ok(error1.includes('RETURN_INVALID'));
+    assert.ok(error2.includes('RETURN_INVALID'));
+
+    markPassed('Concurrent Return Double-Refund Lock Protection');
+  } catch (err) {
+    markFailed('Concurrent Return Double-Refund Lock Protection', err);
   }
 
   console.log('\n------------------------------------------------------');

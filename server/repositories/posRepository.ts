@@ -1,4 +1,5 @@
 import { DatabaseClient, getDatabaseClient } from '../db/client';
+import { toQtyString, parseExactMoney } from '../inventory/inventoryPolicies';
 
 export interface PosSessionRecord {
   id: string;
@@ -6,11 +7,11 @@ export interface PosSessionRecord {
   location_id: string;
   terminal_id: string;
   cashier_name: string;
-  status: 'OPEN' | 'SUSPENDED' | 'CLOSING' | 'CLOSED';
-  opening_cash: number;
-  expected_cash: number;
-  counted_cash?: number | null;
-  variance?: number | null;
+  status: 'OPEN' | 'CLOSED';
+  opening_cash: string;
+  expected_cash: string;
+  counted_cash?: string | null;
+  variance?: string | null;
   closing_actor?: string | null;
   opened_at: string;
   closed_at?: string | null;
@@ -22,7 +23,7 @@ export interface PosCashMovementRecord {
   id: string;
   session_id: string;
   type: 'Cash In' | 'Cash Out';
-  amount: number;
+  amount: string;
   reason: string;
   performed_by: string;
   created_at?: string;
@@ -32,51 +33,52 @@ export interface PosReturnRecord {
   id: string;
   organization_id: string;
   order_id: string;
-  refund_amount: number;
+  refund_amount: string;
   refund_method: string;
   performed_by: string;
   reason?: string | null;
   created_at?: string;
+  idempotency_key?: string | null;
 }
 
 export interface PosReturnItemRecord {
   id: string;
   return_id: string;
   variant_id: string;
-  quantity: number;
-  refund_amount: number;
+  quantity: string;
+  refund_amount: string;
   created_at?: string;
 }
 
 function mapSessionRow(row: any): PosSessionRecord {
   return {
     ...row,
-    opening_cash: Number(row.opening_cash),
-    expected_cash: Number(row.expected_cash),
-    counted_cash: row.counted_cash !== null ? Number(row.counted_cash) : null,
-    variance: row.variance !== null ? Number(row.variance) : null,
+    opening_cash: parseExactMoney(row.opening_cash),
+    expected_cash: parseExactMoney(row.expected_cash),
+    counted_cash: row.counted_cash !== null && row.counted_cash !== undefined ? parseExactMoney(row.counted_cash) : null,
+    variance: row.variance !== null && row.variance !== undefined ? parseExactMoney(row.variance, 'variance', { allowNegative: true }) : null,
   };
 }
 
 function mapCashMovementRow(row: any): PosCashMovementRecord {
   return {
     ...row,
-    amount: Number(row.amount),
+    amount: parseExactMoney(row.amount),
   };
 }
 
 function mapReturnRow(row: any): PosReturnRecord {
   return {
     ...row,
-    refund_amount: Number(row.refund_amount),
+    refund_amount: parseExactMoney(row.refund_amount),
   };
 }
 
 function mapReturnItemRow(row: any): PosReturnItemRecord {
   return {
     ...row,
-    quantity: Number(row.quantity),
-    refund_amount: Number(row.refund_amount),
+    quantity: toQtyString(row.quantity),
+    refund_amount: parseExactMoney(row.refund_amount),
   };
 }
 
@@ -164,7 +166,7 @@ export class PosRepository {
     return res.rows.map(mapSessionRow);
   }
 
-  async updateSessionExpectedCash(id: string, newExpected: number, client?: DatabaseClient): Promise<void> {
+  async updateSessionExpectedCash(id: string, newExpected: string, client?: DatabaseClient): Promise<void> {
     const db = this.getClient(client);
     await db.query(
       `UPDATE pos_sessions SET expected_cash = $1, updated_at = NOW() WHERE id = $2`,
@@ -175,10 +177,10 @@ export class PosRepository {
   async closeSession(
     id: string,
     params: {
-      counted_cash: number;
-      variance: number;
+      counted_cash: string;
+      variance: string;
       closing_actor: string;
-      expected_cash: number;
+      expected_cash: string;
     },
     client?: DatabaseClient
   ): Promise<PosSessionRecord> {
@@ -226,8 +228,8 @@ export class PosRepository {
     return db.withTransaction(async (tx) => {
       // 1. Check if return already exists (using unique transaction constraint)
       const retRes = await tx.query<any>(
-        `INSERT INTO pos_returns (id, organization_id, order_id, refund_amount, refund_method, performed_by, reason)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO pos_returns (id, organization_id, order_id, refund_amount, refund_method, performed_by, reason, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [
           returnRec.id,
@@ -237,6 +239,7 @@ export class PosRepository {
           returnRec.refund_method,
           returnRec.performed_by,
           returnRec.reason || null,
+          returnRec.idempotency_key || null,
         ]
       );
       const savedReturn = mapReturnRow(retRes.rows[0]);
