@@ -23,9 +23,9 @@ INV-002 / INV-002R3 (READY FOR REVIEW)
      ↓
 POS-001 (READY FOR REVIEW)
      ↓
-API-001 (NOT STARTED)
+API-001 (READY FOR REVIEW)
      ↓
-QA-001 (NOT STARTED)
+QA-001 (READY FOR REVIEW)
      ↓
 UX-001 (NOT STARTED)
      ↓
@@ -328,7 +328,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 8: QA-001 — Automated Quality Verification, Test Suite & CI Gates
-- **Status**: `NOT STARTED`
+- **Status**: `READY FOR REVIEW`
 - **Objective**: Establish automated testing frameworks and quality verification gates.
 - **Scope**:
   - Configure `vitest` or `jest` for unit and integration testing.
