@@ -871,5 +871,39 @@ In accordance with supervisor directives and the engineering contract, `API-001`
 5. **Supervisor Directive**:
    - Stopped at completion of API-001R1 as mandated. QA-001 remains `NOT STARTED`.
 
+---
+
+## QA-001R1 — Remediation & Bug Fixes (QA Verification Suite Resolution)
+
+- **Status**: `IMPLEMENTED` / `READY FOR REVIEW`
+- **Parent Task**: `QA-001`
+- **Scope Discipline**: Root cause analysis and resolution of QA verification test failures, including Express middleware factory instantiation and cross-tenant super admin auditing support.
+
+### 1. Root Cause Analysis & Technical Resolutions
+
+#### A. Express Middleware Factory Bug in POS Route Mountings
+- **The Issue**: In `/server/routes/posRoutes.ts`, `requireAuth` and `requireTenantAccess` are exported as factory functions (meaning they must be executed like `requireAuth()` to return the middleware function). However, in POS routes, they were mounted without being executed (`requireAuth`, `requireTenantAccess`). As a result, Express registered the factory itself as the middleware, returning the handler function without ever calling `next()`, which caused the request to hang indefinitely on any POS API call (e.g. `POST /api/pos/sessions`).
+- **The Fix**: Appended correct parenthesis invocation to both `requireAuth()` and `requireTenantAccess()` across all 10 route registrations in `/server/routes/posRoutes.ts`.
+
+#### B. Super Admin Cross-Tenant Balance Read Auditing
+- **The Issue**: The `SUPER_ADMIN_CROSS_TENANT_READ` auditing logic was previously only triggered by `resolveAuthorizedTenant()` within `/server.ts` routes. The inventory balances route (`/api/inventory/balances/:locationId`) directly extracted `orgId = req.auth!.organizationId`, completely bypassing the super-admin cross-tenant parameter (`?orgId=`) and not registering any audit events when queried by super admins targeting other tenants.
+- **The Fix**: Implemented a secure `resolveTenant` helper in `/server/routes/inventoryRoutes.ts` that dynamically handles both ordinary tenant validation and super admin cross-tenant selection (with proper, automated insertion of `SUPER_ADMIN_CROSS_TENANT_READ` events into the database's `audit_events` ledger).
+
+### 2. Verification Outcomes
+
+1. **All 5/5 QA Verification Scenarios Pass Cleanly (`npm run test:qa`)**:
+   - **Immutable Inventory Ledger & Conservation Invariants**: **PASSED**
+   - **Genuine Concurrency & Race-Safe Constraints**: **PASSED**
+   - **Transaction Rollback & Atomicity**: **PASSED**
+   - **POS Checkout Integration Scenario**: **PASSED**
+   - **Security Regression Coverages (Tenant, RBAC, Super Admin)**: **PASSED**
+
+2. **Full Suite Execution (`npm test`)**:
+   - **All 102/102 test cases pass perfectly with 0 errors/failures.**
+
+3. **Compilation and Code Integrity**:
+   - `npm run lint`: **0 errors**
+   - `npm run build`: **Succeeded cleanly with 0 warnings/errors** (bundles the Express backend into `dist/server.cjs` and compiles Vite client assets to `dist/`).
+
 
 

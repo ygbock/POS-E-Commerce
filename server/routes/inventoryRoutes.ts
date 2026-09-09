@@ -7,6 +7,7 @@ import { ReservationService } from '../inventory/reservationService';
 import { TransferService } from '../inventory/transferService';
 import { StockCountService } from '../inventory/stockCountService';
 import { DatabaseClient } from '../db/client';
+import { AuditRepository } from '../repositories/auditRepository';
 import { parseExactQuantity, parseExactMoney } from '../inventory/inventoryPolicies';
 
 /**
@@ -184,6 +185,44 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
   const transferService = new TransferService(repo, undefined, db);
   const stockCountService = new StockCountService(repo, undefined, db);
 
+  const resolveTenant = async (req: Request, entityType = 'INVENTORY'): Promise<string> => {
+    const callerOrg = req.auth!.organizationId;
+    const isSuperAdmin = req.auth!.role === 'super_admin';
+    const targetOrgParam = (req.query.orgId || req.query.organizationId) as string | undefined;
+
+    if (!isSuperAdmin) {
+      if (targetOrgParam && targetOrgParam.trim() !== '' && targetOrgParam.trim() !== callerOrg) {
+        throw new Error('TENANT_ACCESS_DENIED: Cross-tenant access forbidden.');
+      }
+      return callerOrg;
+    }
+
+    if (targetOrgParam && targetOrgParam.trim() !== '') {
+      const targetOrg = targetOrgParam.trim();
+      if (targetOrg !== callerOrg) {
+        const auditRepo = new AuditRepository(db);
+        await auditRepo.recordEvent({
+          organization_id: targetOrg,
+          actor_id: req.auth!.userId,
+          actor_name: req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: 'SUPER_ADMIN_CROSS_TENANT_READ',
+          entity_type: entityType,
+          entity_id: targetOrg,
+          metadata: {
+            homeOrganization: callerOrg,
+            targetOrganization: targetOrg,
+            path: req.originalUrl || req.url,
+            method: req.method,
+          },
+        });
+        return targetOrg;
+      }
+    }
+
+    return callerOrg;
+  };
+
   // ------------------------------------------------------------------
   // 1. BALANCES & MOVEMENTS (Read-Only)
   // ------------------------------------------------------------------
@@ -194,7 +233,7 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
-        const orgId = req.auth!.organizationId;
+        const orgId = await resolveTenant(req, 'INVENTORY_BALANCE');
         if (!orgId) {
           return res.status(400).json({
             success: false,

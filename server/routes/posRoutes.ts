@@ -240,9 +240,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.get(
     '/products/search',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_VIEW),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -286,9 +286,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.get(
     '/sessions',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_VIEW),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -310,9 +310,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.post(
     '/sessions',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_SESSION_OPEN),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -342,9 +342,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.get(
     '/sessions/:id',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_VIEW),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -370,9 +370,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.post(
     '/sessions/:id/close',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_SESSION_CLOSE),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -403,9 +403,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.post(
     '/sessions/:id/cash-movement',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_SELL),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -443,9 +443,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.post(
     '/checkout',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_SELL),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -504,9 +504,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.get(
     '/sales/:id',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_VIEW),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -537,9 +537,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.post(
     '/returns',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_RETURN),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
@@ -592,9 +592,9 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
    */
   router.get(
     '/receipts/:id',
-    requireAuth,
+    requireAuth(),
     requirePermission(PERMISSIONS.POS_VIEW),
-    requireTenantAccess,
+    requireTenantAccess(),
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;

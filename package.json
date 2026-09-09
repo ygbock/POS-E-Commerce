@@ -20,7 +20,8 @@
     "test:transfer": "tsx tests/transfer.test.ts",
     "test:pos": "tsx tests/pos.test.ts",
     "test:api": "tsx tests/api_hardening.test.ts",
-    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api",
+    "test:qa": "tsx tests/qa_verification.test.ts",
+    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api && npm run test:qa",
     "test:coverage": "c8 --all --src server --lines 70 --branches 60 --functions 75 --statements 70 --reporter=text --reporter=html npm test"
   },
   "dependencies": {
