@@ -40,7 +40,7 @@
 
 ## QA-001R2 — Reconciled Quality Verification & Model B Security Integration
 
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED WITH CONDITIONS` ✅⚠️
 - **Parent Task**: `QA-001` / `QA-001R2`
 - **Authority**: Human Supervisor / Reviewer
 - **Scope Discipline**: High-fidelity quality verification, exact-decimal assertions, harmonized Model B tenant resolution, and thorough cross-tenant query security checking.
@@ -50,7 +50,7 @@
 ### 1. Technical Accomplishments & Quality Assurance Gates
 
 #### Reconciled Test & Scenario Counts
-- **Total Passing Tests**: Combined total of **107 passing tests**, consisting of **102 baseline unit & integration tests** across 6 core domain suites, and **5 comprehensive QA verification scenarios** in `tests/qa_verification.test.ts`.
+- **Total Verification Units**: Combined total of **107 verification units**, consisting of **102 baseline unit & integration tests** across 6 core domain suites, and **5 comprehensive QA verification scenarios** in `tests/qa_verification.test.ts` (executed via custom test harness with 5 `markPassed()` scenario checkpoints).
 - **Factual Documentation**: Corrected all reporting to accurately distinguish and report the baseline test count from the QA verification scenarios.
 
 #### Exact-Decimal Arithmetic Invariants
@@ -66,6 +66,7 @@
   - Nonexistent target tenants are rejected with HTTP 404 (`TENANT_NOT_FOUND`).
   - Inactive target tenants are rejected with HTTP 403 (`TENANT_ACCESS_DENIED`).
   - Ordinary tenants attempting to use `?orgId=` are strictly blocked with HTTP 403 (`TENANT_ACCESS_DENIED`).
+- **Architectural Follow-Up (RISK-014)**: Logged open technical debt to extract tenant resolution into a single centralized authorization service to prevent future divergence between `server.ts` and domain routers.
 
 #### Canonical Coverage Instrumentation
 - **V8-Powered Code Coverage**: Configured `c8` as the canonical coverage engine for the project, utilizing Node's native V8 coverage capabilities for maximum accuracy and speed.
@@ -75,32 +76,35 @@
   - **Ledger Invariant Engine (inventoryPolicies.ts)**: **89.59%**
   - **Order & Cashier Repository Policies**: **94.27% - 95.39%**
 
-#### Factual CI Pipeline Status
-- **Manual Verification Focus**: Explicitly documented that there is no active/functional GitHub Actions CI pipeline running in the sandbox/preview workspace. All quality gates were executed, monitored, and verified manually on the developer container.
+#### Factual CI Status vs. Manual Verification
+- **Manual Verification Status (PASSED)**: Full test suite, QA scenarios, linter, and production build executed manually on the developer container environment, passing with zero errors.
+- **Automated CI Status (NOT INSTALLED / EXECUTED)**: GitHub Actions runner is not attached to this repository environment due to workflow write permission restrictions. Tracked as an open operational risk (`RISK-010`) requiring human configuration.
 
 ---
 
 ### 2. Verification & Quality Gates Summary
 
-1. **Automated Test Suites**:
-   - `npm test`: **All 107 tests passed (0 failures)**:
+1. **Automated Verification Units (Manual Run)**:
+   - `npm test`: **All 102 baseline tests + 5 QA verification scenarios passed (107 verification units, 0 failures)**:
      - `test:db`: 15 passed, 0 failed
      - `test:security`: 22 passed, 0 failed
      - `test:inventory`: 24 passed, 0 failed
      - `test:transfer`: 13 passed, 0 failed
      - `test:pos`: 17 passed, 0 failed
      - `test:api`: 11 passed, 0 failed
-     - `test:qa` (QA Verification Scenarios): 5 passed, 0 failed
+     - `test:qa`: 5 QA verification scenarios passed, 0 failed
 2. **TypeScript Static Analysis**:
    - `npm run lint` (`tsc --noEmit`): **0 errors**
 3. **Application Build**:
    - `npm run build`: **Succeeded cleanly with 0 warnings or errors**.
+4. **CI Status**:
+   - GitHub Actions: **Not installed/executed** (tracked under `RISK-010`).
 
 ---
 
 ## API-001R3 — Fail-Closed Tenant Authorization & API Acceptance Hardening
 
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED`
 - **Parent Task**: `API-001` / `API-001R2`
 - **Authority**: Human Supervisor / Reviewer
 - **Scope Discipline**: Fail-closed tenant validation, strict credential validation, async/await product mutation paths, explicit anti-spoofing rejection, exact-decimal contract enforcement.

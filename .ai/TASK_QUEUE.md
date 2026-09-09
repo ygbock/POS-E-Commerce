@@ -13,19 +13,19 @@ BASELINE-001 (COMPLETED)
      ↓
 ARCH-001 (APPROVED)
      ↓
-DATA-001 (READY FOR REVIEW)
+DATA-001 (APPROVED)
      ↓
 SEC-001 (APPROVED)
      ↓
-INV-001 / INV-001R4 (READY FOR REVIEW)
+INV-001 / INV-001R4 (APPROVED)
      ↓
-INV-002 / INV-002R3 (READY FOR REVIEW)
+INV-002 / INV-002R3 (APPROVED)
      ↓
-POS-001 (READY FOR REVIEW)
+POS-001 (APPROVED)
      ↓
-API-001 (READY FOR REVIEW)
+API-001 / API-001R3 (APPROVED)
      ↓
-QA-001 (READY FOR REVIEW)
+QA-001 / QA-001R2 (APPROVED WITH CONDITIONS)
      ↓
 UX-001 Phase 1 (READY FOR REVIEW)
      ↓
@@ -82,7 +82,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 3: DATA-001 — Establish Authoritative Persistence & Schema Migration
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED`
 - **Objective**: Introduce durable server-side relational database persistence (Cloud SQL / PostgreSQL) to replace ephemeral in-memory arrays and client `localStorage`, with strict production fail-closed driver selection, seed isolation, and migration checksum verification.
 - **Scope**:
   - Define relational schema for Organizations, Locations, Products, Variants, Inventory Balances, Inventory Movements (immutable ledger), Orders, Order Items, Payments, Customers, and Audit Events.
@@ -152,7 +152,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 5: INV-001 — Server-Authoritative Inventory Ledger & Movement Tracking
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED`
 - **Objective**: Replace client-side stock mutation with a server-authoritative double-entry inventory movement ledger.
 - **Scope**:
   - Implement schema migration `003_inventory_domain.sql` (`inventory_balances`, `inventory_movements`, `inventory_reservations`, `inventory_transfers`, `inventory_transfer_items`, `stock_counts`, `stock_count_items`).
@@ -264,8 +264,8 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 6: POS-001 / POS-001R1 / POS-001R2 / POS-001R3 — Order Tenant Boundary & Replay Mapping Hardening
-- **Status**: `POS-001R3 — READY FOR INDEPENDENT REVIEW`
-- **Supervisor Gate**: Under independent supervisor review. Do NOT self-approve.
+- **Status**: `APPROVED`
+- **Supervisor Gate**: APPROVED.
 - **Objective**: Harden the POS transactional processing engine by enforcing tenant isolation across all OrderRepository entry points, ensuring payment tenant consistency, returning mapped PaymentRecord in idempotency replay pathways, and preserving exact-decimal arithmetic.
 - **Scope**:
   - [x] Finding A: Mandatory tenant context for `OrderRepository.findOrderById(id, organizationId, client?)`. Removed unscoped overload. Missing organizationId fails closed with `TENANT_REQUIRED`.
@@ -328,7 +328,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 8: QA-001 — Automated Quality Verification, Test Suite & CI Gates
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED WITH CONDITIONS`
 - **Objective**: Establish automated testing frameworks and quality verification gates.
 - **Scope**:
   - Configure `vitest` or `jest` for unit and integration testing.
@@ -421,7 +421,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 5.7: INV-002R3 — Final Inventory Verification & Targeted Remediation
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED`
 - **Parent Task**: `INV-002R2` → `INV-002`
 - **Objective**: Complete the final targeted remediation, verification, and proof of INV-002 Inventory Business Logic & Acceptance. Close remaining independently identified evidence/implementation gaps: strict whitespace rejection on exact money strings (`parseExactMoney`), explicit E1-E5 reservation expiration state validations, explicit T1-T3 transfer concurrency invariants with zero duplicate events/movements, endpoint-level & unit-level error sanitization against raw DB leak, and reproducible git/test evidence.
 - **Scope**: Targeted inventory verification and remediation only. POS-001 remains NOT STARTED. POS files modified: NONE.
@@ -438,7 +438,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 7.3: API-001R3 — Fail-Closed Tenant Authorization & API Acceptance Hardening
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED`
 - **Parent Task**: `API-001` / `API-001R2`
 - **Objective**: Correct security and acceptance defects identified during independent supervisor review of API-001R2.
 - **Scope**:

@@ -19,10 +19,12 @@
 | **RISK-006** | Inventory Integrity & Race Conditions | **High** | Overselling possible under concurrent checkouts; desync | `INV-001` |
 | **RISK-007** | API Validation & Mass-Assignment Risk | **Medium** | Unvalidated JSON accepted on Express endpoints | **Fully Mitigated (API-001)** |
 | **RISK-008** | Simulated Payment Tender Processing | **Medium** | No real-world gateway verification or idempotent settlement | `POS-001`, `PROD-001` |
-| **RISK-009** | Absence of Automated Test Suite | **Medium** | Manual testing required; regressions can go unnoticed | `QA-001` |
-| **RISK-010** | Absence of CI Quality Gates | **Medium** | Potential broken builds or type errors deployed unnoticed | `QA-001`, `PROD-001` |
+| **RISK-009** | Absence of Automated Test Suite | **Medium** | Manual testing required; regressions can go unnoticed | **Fully Mitigated (QA-001)** (102 tests + 5 QA verification scenarios) |
+| **RISK-010** | Absence of Automated CI Status Checks | **Medium** | Manual verification passed, but no automated GitHub Actions runner attached | Open Operational Risk (Requires human with workflow permissions to install `.github/workflows/ci.yml`) |
 | **RISK-011** | Coexistence Window Between In-Memory and DB | **Medium** | Potential read desync during transitional phased rollout | `SEC-001`, `INV-001`, `POS-001` |
 | **RISK-012** | Single-Instance Revocation Cache | **Low** | In-memory token blacklist cache is local to container instance | Multi-instance Redis in `PROD-001` |
+| **RISK-013** | Process-Local Rate Limiting Limitation | **Low** | Rate limit counters local to process; not distributed across pods | Multi-instance Redis / WAF in `PROD-001` |
+| **RISK-014** | Duplicated Tenant Resolution Implementations | **Low** | Divergence risk between `server.ts` `resolveAuthorizedTenant` and `inventoryRoutes.ts` `resolveTenant` | Shared authorization service extraction (architectural follow-up) |
 
 ---
 
@@ -85,16 +87,16 @@
 ---
 
 ### RISK-009: Absence of Automated Test Suite
-- **Description**: The repository does not contain automated unit, integration, or end-to-end tests (`vitest` / `jest` are not installed in `package.json`).
-- **Vulnerability**: Regressions in financial math, catalog synchronization, or inventory calculations can easily escape into production.
-- **Planned Mitigation**: Configure a test framework and write automated regression tests for financial and inventory engines (`QA-001`).
+- **Description**: The repository previously lacked automated regression, integration, and security test suites.
+- **Vulnerability**: Regressions in financial math, catalog synchronization, or inventory calculations could easily escape into production.
+- **Mitigation Status**: **Fully Mitigated (QA-001)**. Configured lightweight, high-speed `tsx` + `node:assert` test engine and comprehensive test harness. Delivered **102 baseline tests across 6 core suites** (`db`, `security`, `inventory`, `transfer`, `pos`, `api`) plus **5 multi-step QA verification scenarios** in `tests/qa_verification.test.ts` (107 verification units total) passing with 100% success rate and **75.74% overall server code coverage** via `c8`.
 
 ---
 
-### RISK-010: Absence of CI Quality Gates
-- **Description**: No automated Continuous Integration (CI) pipeline exists to block merges or deployments if linting or compilation fails.
-- **Vulnerability**: Unchecked code can be deployed or merged, causing production outages.
-- **Planned Mitigation**: Define CI workflows executing `npm run lint` and `npm run build` on every pull request (`QA-001`, `PROD-001`).
+### RISK-010: Absence of Automated CI Status Checks
+- **Description**: No automated Continuous Integration (CI) status check is currently executed on GitHub pull requests or commits.
+- **Vulnerability**: While manual verification (`npm test`, `npm run test:qa`, `npm run lint`, `npm run build`) has passed with 100% success in the developer container environment, these checks are not independently triggered by an automated GitHub Actions runner.
+- **Mitigation Status**: **Open Operational Risk / Partially Mitigated**. Developer-executed manual verification gates pass completely with zero errors. The continuous integration workflow configuration has been authored, but committing `.github/workflows/ci.yml` is constrained by GitHub App workflow write permissions in this environment. A human developer with workflow permissions must install and enable the workflow on GitHub.
 
 ---
 
@@ -116,6 +118,13 @@
 - **Description**: The rate-limiting middleware introduced in SEC-001 maintains sliding-window hit counters in an in-process JavaScript `Map`.
 - **Vulnerability**: It protects only a single process instance from brute-force authentication attacks and resource exhaustion. In multi-instance or horizontally auto-scaled environments (e.g., multiple Cloud Run container instances or Kubernetes pods behind an ingress load balancer), rate limit counters are not synchronized across instances. Attackers distributing requests across nodes could exceed intended operational rate thresholds.
 - **Planned Mitigation**: Implement an external shared rate-limiting store (Redis, Valkey, or Cloud Armor / WAF rate limiting) in `PROD-001` or a dedicated infrastructure task before deploying horizontally scaled multi-instance clusters.
+
+---
+
+### RISK-014: Duplicated Tenant Resolution Implementations
+- **Description**: Tenant resolution logic exists in two locations: `resolveAuthorizedTenant()` in `server.ts` and `resolveTenant()` in `server/routes/inventoryRoutes.ts`.
+- **Vulnerability**: Although both implementations now strictly follow fail-closed behavior (rejecting unauthenticated requests, non-Super Admin cross-tenant attempts, nonexistent tenants via DB lookup, and inactive tenants), maintaining parallel implementations presents a risk of behavioral divergence during future feature additions or refactoring.
+- **Planned Mitigation**: Architectural follow-up to extract tenant resolution into a single, centralized authorization service imported across all route modules.
 
 
 
