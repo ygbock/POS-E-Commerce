@@ -222,14 +222,12 @@ async function runApiHardeningTests() {
           name: 'Alpha Cashier',
           password: 'ValidPassword123!',
           role: 'cashier',
-          // Malicious attempt to create user in another organization
-          organizationId: 'org_api_beta',
         }),
       });
       assert.strictEqual(res2e.status, 201);
       const body2e = await res2e.json();
       assert.strictEqual(body2e.success, true);
-      assert.strictEqual(body2e.data.organizationId, 'org_api_alpha', 'Tenant must be bound to authenticated caller, ignoring body override');
+      assert.strictEqual(body2e.data.organizationId, 'org_api_alpha', 'Tenant must be bound to authenticated caller');
 
       markPassed('2. Strict DTO Validation on POST /api/users');
     } catch (err) {
@@ -664,6 +662,258 @@ async function runApiHardeningTests() {
       markPassed('10. Production Error Envelope Redaction & Hierarchy Standards');
     } catch (err) {
       markFailed('10. Production Error Envelope Redaction & Hierarchy Standards', err);
+    }
+
+    // -----------------------------------------------------------------
+    // TEST 11: API-001R3 Security, Verification, and Exact-Decimal Tests
+    // -----------------------------------------------------------------
+    try {
+      console.log('  Running TEST 11: API-001R3 Scenarios...');
+
+      // Ensure inactive organization exists
+      await db.query(`
+        INSERT INTO organizations (id, name, code, is_active) VALUES 
+          ('org_inactive', 'Inactive Org', 'INACTIVE', FALSE)
+        ON CONFLICT (id) DO UPDATE SET is_active = FALSE;
+      `);
+
+      // --- SCENARIO 1: Super Admin home-tenant query (no query params) ---
+      const resS1 = await fetch(`${baseUrl}/api/customers`, {
+        headers: { 'Authorization': `Bearer ${superToken}` },
+      });
+      assert.strictEqual(resS1.status, 200);
+      const bodyS1 = await resS1.json();
+      assert.ok(bodyS1.data.every((c: any) => c.organization_id === 'org_api_alpha'));
+
+      // --- SCENARIO 2: Super Admin explicit cross-tenant override query ---
+      const resS2 = await fetch(`${baseUrl}/api/customers?orgId=org_api_beta`, {
+        headers: { 'Authorization': `Bearer ${superToken}` },
+      });
+      assert.strictEqual(resS2.status, 200);
+      const bodyS2 = await resS2.json();
+      assert.ok(bodyS2.data.every((c: any) => c.organization_id === 'org_api_beta'));
+
+      // --- SCENARIO 3: Super Admin explicit target tenant mutation ---
+      const resS3 = await fetch(`${baseUrl}/api/products?orgId=org_api_beta`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${superToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Super Cross Product',
+          brand: 'Super',
+          category: 'Hardware',
+        }),
+      });
+      assert.strictEqual(resS3.status, 201);
+      const bodyS3 = await resS3.json();
+      assert.strictEqual(bodyS3.data.organizationId, 'org_api_beta');
+
+      // Verify audit event
+      const auditsS3 = await db.query<any>(
+        'SELECT * FROM audit_events WHERE organization_id = $1 AND action = $2 ORDER BY timestamp DESC LIMIT 1',
+        ['org_api_beta', 'SUPER_ADMIN_CROSS_TENANT_CREATE']
+      );
+      assert.ok(auditsS3.rows.length > 0, 'Must record SUPER_ADMIN_CROSS_TENANT_CREATE audit trail');
+
+      // --- SCENARIO 4: Super Admin mutation without query parameters ---
+      const resS4 = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${superToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Super Home Product',
+          brand: 'Super',
+          category: 'Hardware',
+        }),
+      });
+      assert.strictEqual(resS4.status, 201);
+      const bodyS4 = await resS4.json();
+      assert.strictEqual(bodyS4.data.organizationId, 'org_api_alpha');
+
+      // --- SCENARIO 5: Bypass validation empty/missing organizationId at login ---
+      const resS5a = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'admin.alpha@test.com',
+          password: 'AdminPass123!',
+        }),
+      });
+      assert.strictEqual(resS5a.status, 422);
+      const bodyS5a = await resS5a.json();
+      assert.strictEqual(bodyS5a.error.code, 'VALIDATION_ERROR');
+
+      const resS5b = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'admin.alpha@test.com',
+          password: 'AdminPass123!',
+          organizationId: '',
+        }),
+      });
+      assert.strictEqual(resS5b.status, 422);
+      const bodyS5b = await resS5b.json();
+      assert.strictEqual(bodyS5b.error.code, 'VALIDATION_ERROR');
+
+      // --- SCENARIO 6: Non-super-admin attempting to access another tenant's resources ---
+      const resS6 = await fetch(`${baseUrl}/api/customers/cust_beta_1`, {
+        headers: { 'Authorization': `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(resS6.status, 403);
+      const bodyS6 = await resS6.json();
+      assert.strictEqual(bodyS6.error.code, 'TENANT_ACCESS_DENIED');
+
+      // --- SCENARIO 7: Non-super-admin attempting to pass another orgId as query ---
+      const resS7 = await fetch(`${baseUrl}/api/customers?orgId=org_api_beta`, {
+        headers: { 'Authorization': `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(resS7.status, 403);
+      const bodyS7 = await resS7.json();
+      assert.strictEqual(bodyS7.error.code, 'TENANT_ACCESS_DENIED');
+
+      // --- SCENARIO 8: Target organization not found/inactive ---
+      const resS8a = await fetch(`${baseUrl}/api/customers?orgId=org_not_exist`, {
+        headers: { 'Authorization': `Bearer ${superToken}` },
+      });
+      assert.strictEqual(resS8a.status, 404);
+      const bodyS8a = await resS8a.json();
+      assert.strictEqual(bodyS8a.error.code, 'TENANT_NOT_FOUND');
+
+      const resS8b = await fetch(`${baseUrl}/api/customers?orgId=org_inactive`, {
+        headers: { 'Authorization': `Bearer ${superToken}` },
+      });
+      assert.strictEqual(resS8b.status, 403);
+      const bodyS8b = await resS8b.json();
+      assert.strictEqual(bodyS8b.error.code, 'TENANT_ACCESS_DENIED');
+
+      // --- SCENARIO 9: Database error during target organization verification (fail-closed) ---
+      const originalQuery = db.query;
+      db.query = async (text: string, params?: any[]) => {
+        if (params && params[0] === 'org_db_fail') {
+          throw new Error('Database connection timeout or crash simulated');
+        }
+        return originalQuery.call(db, text, params);
+      };
+
+      try {
+        const resS9 = await fetch(`${baseUrl}/api/customers?orgId=org_db_fail`, {
+          headers: { 'Authorization': `Bearer ${superToken}` },
+        });
+        assert.strictEqual(resS9.status, 403);
+        const bodyS9 = await resS9.json();
+        assert.strictEqual(bodyS9.error.code, 'TENANT_ACCESS_DENIED');
+        assert.strictEqual(bodyS9.error.message, 'Failed to verify target organization status.');
+      } finally {
+        db.query = originalQuery;
+      }
+
+      // --- SCENARIO 10: Strict DTO anti-spoofing rejection ---
+      const resS10 = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Spoofed Product',
+          brand: 'Brand',
+          category: 'Category',
+          organizationId: 'org_api_beta', // Forbidden key
+        }),
+      });
+      assert.strictEqual(resS10.status, 422);
+      const bodyS10 = await resS10.json();
+      assert.strictEqual(bodyS10.error.code, 'VALIDATION_ERROR');
+
+      // --- EXACT-DECIMAL HTTP BOUNDARY ACCEPTANCE TESTS ---
+      // Must accept exact string decimal
+      const resDecGood = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Watch A',
+          brand: 'Watch',
+          category: 'Watch',
+          retailPrice: '249.99',
+        }),
+      });
+      assert.strictEqual(resDecGood.status, 201);
+
+      // Must reject numeric float
+      const resDecFloat = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Watch B',
+          brand: 'Watch',
+          category: 'Watch',
+          retailPrice: 249.99,
+        }),
+      });
+      assert.strictEqual(resDecFloat.status, 422);
+
+      // Must reject leading whitespace
+      const resDecLeadingSpace = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Watch C',
+          brand: 'Watch',
+          category: 'Watch',
+          retailPrice: ' 249.99',
+        }),
+      });
+      assert.strictEqual(resDecLeadingSpace.status, 422);
+
+      // Must reject trailing whitespace
+      const resDecTrailingSpace = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Watch D',
+          brand: 'Watch',
+          category: 'Watch',
+          retailPrice: '249.99 ',
+        }),
+      });
+      assert.strictEqual(resDecTrailingSpace.status, 422);
+
+      // Must reject invalid precision
+      const resDecPrecision = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Watch E',
+          brand: 'Watch',
+          category: 'Watch',
+          retailPrice: '249.999',
+        }),
+      });
+      assert.strictEqual(resDecPrecision.status, 422);
+
+      markPassed('11. API-001R3 Security, Verification, and Exact-Decimal Tests');
+    } catch (err) {
+      markFailed('11. API-001R3 Security, Verification, and Exact-Decimal Tests', err);
     }
 
   } finally {

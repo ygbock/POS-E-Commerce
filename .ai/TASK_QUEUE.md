@@ -304,7 +304,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 7.2: API-001R2 — Tenant Model Resolution, Strict DTO Enforcement & API Acceptance Completion
-- **Status**: `READY FOR REVIEW`
+- **Status**: `SUPERSEDED BY API-001R3`
 - **Parent Task**: `API-001` / `API-001R1`
 - **Objective**: Complete all remaining API hardening, tenant model resolution, and DTO enforcement requirements to achieve full production API security and acceptance closure.
 - **Scope**:
@@ -433,4 +433,21 @@ PROD-001 (NOT STARTED)
   - [x] R5: Test Execution & Verification: Full suite (74/74 tests: 15 db, 22 security, 24 inventory, 13 transfer) passes cleanly with 0 failures; `npm run lint` (`tsc --noEmit`) passes with 0 errors; `npm run build` succeeds cleanly.
   - [x] R6: POS Scope Discipline: `POS-001` remains `NOT STARTED`. POS files modified: `NONE`.
 - **Supervisor Gate**: Marked READY FOR REVIEW for final human supervisor approval. Ready for independent review.
+
+---
+
+### Task 7.3: API-001R3 — Fail-Closed Tenant Authorization & API Acceptance Hardening
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `API-001` / `API-001R2`
+- **Objective**: Correct security and acceptance defects identified during independent supervisor review of API-001R2.
+- **Scope**:
+  - [x] Fail-Closed Tenant Handling: Refactored `resolveAuthorizedTenant()` to be fully fail-closed. It now strictly rejects any access if database queries fail, timeout, or return an inactive/deleted organization, returning a 403 `TENANT_ACCESS_DENIED` immediately without swallowing exceptions or defaulting to `org_default`.
+  - [x] Fail-Closed Login Endpoint Semantics: Handled empty/missing `organizationId` with a 422 `VALIDATION_ERROR` (matching missing email/password schemas), and invalid credentials with a 401 `UNAUTHORIZED` code.
+  - [x] Product Route Refactoring: Ported `POST /api/products`, `PUT /api/products/:id`, and `DELETE /api/products/:id` to `async/await` try-catch blocks with explicit invocation of `resolveAuthorizedTenant()` for secure stamping and cross-tenant isolation enforcement.
+  - [x] Strict DTO Anti-Spoofing Rejection: Configured validators for `users` and `products` to strictly reject requests containing identity/tenant keys (such as `organizationId`, `userId`, `role`, `actorId`, etc.) in mutation bodies with a 422 `VALIDATION_ERROR` rather than silently stripping them.
+  - [x] Exact-Decimal Contract Verification: Ensured exact decimal string matching for monetary and numeric fields. Non-string types, leading/trailing whitespace, and incorrect precision decimals are strictly rejected with 422 validation errors.
+  - [x] Verification: Added 11 extensive integration tests to `tests/api_hardening.test.ts` to verify all 10 target scenarios and exact-decimal checks.
+  - [x] Full Quality Gates: Verified all 102 tests across 6 test suites pass 100% cleanly (`npm test`). `npm run lint` passes with 0 errors. `npm run build` compiles with 0 warnings.
+- **Dependencies**: `API-001R2`
+- **Supervisor Gate**: Marked READY FOR REVIEW for final independent human supervisor approval.
 

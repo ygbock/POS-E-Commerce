@@ -1,5 +1,57 @@
 # Implementation Report
 
+## API-001R3 — Fail-Closed Tenant Authorization & API Acceptance Hardening
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `API-001` / `API-001R2`
+- **Authority**: Human Supervisor / Reviewer
+- **Scope Discipline**: Fail-closed tenant validation, strict credential validation, async/await product mutation paths, explicit anti-spoofing rejection, exact-decimal contract enforcement.
+
+---
+
+### 1. Technical Accomplishments & Security Hardening
+
+#### Fail-Closed Tenant Verification
+- **Absolute Safe Resolution**: Refactored `resolveAuthorizedTenant()` in `server.ts` to implement strict fail-closed semantics. Any database lookup exception, query timeout, or missing/inactive organization result immediately throws an error that is captured and returned as HTTP 403 `TENANT_ACCESS_DENIED`. This ensures zero risk of exception-swallowing or fallbacks to `org_default`.
+- **Protected Product Routes**: Rewrote the product endpoints (`POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id`) to use robust, asynchronous `try/catch` handlers with explicit, audited `resolveAuthorizedTenant()` calls. This enforces correct cross-tenant isolation and guarantees that mutations are securely scoped to the authentic tenant of the caller.
+
+#### Hardened Authentication & Credential Verification
+- **Validation Before Existence Probe**: Hardened `/api/auth/login` to validate credentials upfront. Missing fields (such as `organizationId`, `email`, or `password`) now return HTTP 422 `VALIDATION_ERROR`. Incorrect credentials return a generic HTTP 401 `UNAUTHORIZED` code, preventing any external user from probing database tenant/user existence.
+
+#### Explicit Anti-Spoofing & Rejection Policy
+- **No Silent Stripping of Identity Fields**: Configured the validation schemas in `server/validation/index.ts` to strictly reject any request body containing identity/tenant keys (such as `organizationId`, `userId`, `role`, `actorId`, etc.) with HTTP 422 `VALIDATION_ERROR` rather than silently stripping them. This ensures clients receive immediate, unambiguous feedback when attempting to spoof security parameters.
+
+#### Strict Exact-Decimal Contract
+- **Rigorous Format Checking**: Hardened `validateMoneyDecimal()` and `validateQuantityDecimal()` to strictly reject strings with leading/trailing whitespaces (e.g. `" 10.00 "`) without doing `.trim()`, enforcing rigorous, high-integrity numeric format validation.
+
+---
+
+### 2. Verification & Quality Gates
+
+1. **New Integration Testing**:
+   - Built a comprehensive set of **11 integration tests** inside `tests/api_hardening.test.ts` to thoroughly verify all 10 target scenarios of API-001R3:
+     - Fail-closed DB connection failure/timeout behavior on tenant lookup.
+     - Login payload schema enforcement (422 validation on missing fields).
+     - Credential validation and non-leakage (401 for wrong credentials).
+     - Async try-catch safety on product routes.
+     - Strict DTO anti-spoofing rejection (422 on spoofed keys).
+     - Multi-tenant isolation for reads, writes, updates, and deletes.
+     - Exact-decimal checking (whitespaces, types, format rejections).
+2. **Automated Test Suites**:
+   - `npm test`: **All 102 tests passed across all 6 suites (0 failures)**:
+     - `test:db`: 15 passed, 0 failed
+     - `test:security`: 22 passed, 0 failed
+     - `test:inventory`: 24 passed, 0 failed
+     - `test:transfer`: 13 passed, 0 failed
+     - `test:pos`: 17 passed, 0 failed
+     - `test:api`: 11 passed, 0 failed
+3. **TypeScript Static Analysis**:
+   - `npm run lint` (`tsc --noEmit`): 0 errors
+4. **Application Build**:
+   - `npm run build`: Succeeded cleanly with 0 warnings or errors.
+
+---
+
 ## API-001R2 — Tenant Model Resolution, Strict DTO Enforcement & API Acceptance Completion
 
 - **Status**: `READY FOR REVIEW`

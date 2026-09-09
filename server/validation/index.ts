@@ -179,19 +179,6 @@ export function sanitizeInput<T>(input: T): T {
   return input;
 }
 
-export function sanitizeClientBody<T extends Record<string, any>>(body: T): Partial<T> {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return body;
-  }
-  const cleaned: Record<string, any> = {};
-  for (const [key, value] of Object.entries(body)) {
-    if (!DANGEROUS_PROTO_KEYS.includes(key)) {
-      cleaned[key] = value;
-    }
-  }
-  return cleaned as Partial<T>;
-}
-
 /**
  * Login Request Validator
  */
@@ -250,7 +237,7 @@ export function validateUserPayload(body: any): {
 
   const allowlistErrors = assertAllowedKeys(
     body,
-    ['email', 'name', 'password', 'role', 'locationId', 'organizationId', 'organization_id'],
+    ['email', 'name', 'password', 'role', 'locationId'],
     'user payload'
   );
   if (allowlistErrors.length > 0) {
@@ -530,8 +517,7 @@ export function validateProductPayload(body: any, isUpdate = false): Record<stri
     'description', 'shortDescription', 'unit', 'unitCode', 'productType', 'status',
     'channels', 'taxRate', 'rating', 'reviewCount', 'tags', 'images', 'featured',
     'variants', 'sku', 'barcode', 'costPrice', 'retailPrice', 'wholesalePrice',
-    'memberPrice', 'minSellingPrice', 'stockByLocation', 'lowStockThreshold',
-    'organizationId', 'organization_id', 'userId', 'user_id', 'role', 'actorId', 'actorRole'
+    'memberPrice', 'minSellingPrice', 'stockByLocation', 'lowStockThreshold'
   ];
 
   const allowlistErrors = assertAllowedKeys(body, allowedProductKeys, 'product payload');

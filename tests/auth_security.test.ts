@@ -13,7 +13,7 @@ import { OrderRepository } from '../server/repositories/orderRepository';
 import { CustomerRepository } from '../server/repositories/customerRepository';
 import { InventoryRepository } from '../server/repositories/inventoryRepository';
 import { AuthService } from '../server/services/authService';
-import { sanitizeInput, validateProductPayload, stripImmutableFields, sanitizeClientBody } from '../server/validation';
+import { sanitizeInput, validateProductPayload, stripImmutableFields } from '../server/validation';
 import {
   AuthContext,
   createAuthenticateMiddleware,
@@ -463,7 +463,7 @@ async function main() {
     await runTest('9. Input Validation & Prototype Pollution Defense', async () => {
       // Prototype pollution attempt
       const maliciousPayload = JSON.parse('{"__proto__": {"polluted": true}, "name": "Normal Product"}');
-      const sanitized = sanitizeClientBody(maliciousPayload);
+      const sanitized = sanitizeInput(maliciousPayload);
 
       assert.strictEqual((Object.prototype as any).polluted, undefined, 'Prototype must not be polluted');
       assert.strictEqual(sanitized.name, 'Normal Product');
@@ -1053,7 +1053,7 @@ async function main() {
           assert.strictEqual(evt.organization_id, 'org_company_a', 'Audit logs must remain strictly scoped to Org A');
         }
 
-        // 10. Tenant ID Spoofing in body -> client sends { "organizationId": "org_company_b" }
+        // 10. Tenant ID Spoofing in body -> client sends { "organizationId": "org_company_b" } -> must reject with 422
         const spoofedCreateRes = await fetch(`${baseUrl}/api/products`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${userOrgAToken}`, 'Content-Type': 'application/json' },
@@ -1063,10 +1063,9 @@ async function main() {
             organization_id: 'org_company_b',
           }),
         });
-        assert.strictEqual(spoofedCreateRes.status, 201);
+        assert.strictEqual(spoofedCreateRes.status, 422, 'Strict DTO must reject organizationId in body');
         const spoofedCreateBody = await spoofedCreateRes.json();
-        // Product MUST be created under caller's organization 'org_company_a', ignoring client body
-        assert.strictEqual(spoofedCreateBody.data.organizationId, 'org_company_a', 'Product must remain scoped to authenticated org A');
+        assert.strictEqual(spoofedCreateBody.success, false);
 
         // 11. Tenant ID Spoofing in query param -> client sends ?orgId=org_company_b
         const spoofedQueryRes = await fetch(`${baseUrl}/api/orders?orgId=org_company_b`, {
@@ -1126,15 +1125,11 @@ async function main() {
           body: JSON.stringify(spoofedPayload),
         });
 
-        assert.strictEqual(res.status, 201, 'Product creation should succeed');
+        assert.strictEqual(res.status, 422, 'Product creation with spoofed fields must reject with 422');
         const body = await res.json();
-        assert.strictEqual(body.data.organizationId, 'org_default', 'Product must belong to token organization');
+        assert.strictEqual(body.success, false);
 
-        // Verify sync audit log recorded authentic token actor, NOT spoofed payload
-        const lastAuditLog = stores.syncAuditLogs[stores.syncAuditLogs.length - 1];
-        assert.strictEqual(lastAuditLog.actorId, 'usr_legitimate_manager', 'Audit log must record token userId');
-        assert.strictEqual(lastAuditLog.actorRole, ROLES.STORE_MANAGER, 'Audit log must record token role');
-        assert.strictEqual(lastAuditLog.organizationId, 'org_default', 'Audit log must record token organizationId');
+        // Rejected request, nothing to audit
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
@@ -1574,7 +1569,7 @@ async function main() {
         });
         assert.strictEqual(unauthCreateUserRes.status, 403, 'Store manager lacking USERS_CREATE must receive 403');
 
-        // 8. Tenant A Admin attempts to create a user specifying organizationId: "org_company_b" -> Pinned to org_company_a
+        // 8. Tenant A Admin attempts to create a user specifying organizationId: "org_company_b" -> strictly rejected with 422
         const createUserRes = await fetch(`${baseUrl}/api/users`, {
           method: 'POST',
           headers: {
@@ -1589,13 +1584,9 @@ async function main() {
             organizationId: 'org_company_b',
           }),
         });
-        assert.strictEqual(createUserRes.status, 201);
+        assert.strictEqual(createUserRes.status, 422, 'Strict DTO must reject organizationId in user creation');
         const createdUserBody = await createUserRes.json();
-        assert.strictEqual(
-          createdUserBody.data.organizationId,
-          'org_company_a',
-          'Non-super-admin user creation must strictly pin user to caller organizationId'
-        );
+        assert.strictEqual(createdUserBody.success, false);
 
         // 9. Tenant A Admin requests /api/users with ?orgId=org_company_b -> 403 TENANT_ACCESS_DENIED
         const crossListUsersRes = await fetch(`${baseUrl}/api/users?orgId=org_company_b`, {

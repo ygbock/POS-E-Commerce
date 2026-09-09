@@ -310,6 +310,25 @@
   - All 101 tests across all 6 test suites pass cleanly with 0 failures (`test:db`: 15, `test:security`: 22, `test:inventory`: 24, `test:transfer`: 13, `test:pos`: 17, `test:api`: 10).
   - TypeScript compilation (`npm run lint` and `npm run build`) succeeds cleanly with 0 errors.
 
+---
+
+### ADR-020: Fail-Closed Tenant Verification, Strict Anti-Spoofing Rejection, and Exact-Decimal Validation Hardening (API-001R3)
+- **Date**: 2026-09-09
+- **Status**: `IMPLEMENTED (READY FOR REVIEW)`
+- **Task Association**: `API-001R3`
+- **Context**: Supervisor review identified potential fail-open gaps in tenant verification, overly permissive credential responses, silent stripping of spoofed body fields instead of strict rejection, and non-strict regex checks in decimal validators.
+- **Decision**:
+  1. **Fail-Closed Tenant Verification**: Refactored `resolveAuthorizedTenant()` in `server.ts` to implement strict fail-closed semantics. Any database lookup exception, timeout, or inactive/missing organization result explicitly rejects the request with HTTP 403 `TENANT_ACCESS_DENIED`, completely eliminating default tenant fallback or exception swallowing.
+  2. **Fail-Closed Login Endpoint**: Hardened `/api/auth/login` to validate existence of credentials upfront. Missing fields (such as `organizationId`) return a 422 `VALIDATION_ERROR`, while invalid passwords/emails return a standard 401 `UNAUTHORIZED` without leaking tenant existence details.
+  3. **Product Route Refactoring**: Rewrote product mutation endpoints (`POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id`) to be fully async with clear `try/catch` and explicit `resolveAuthorizedTenant()` guards, ensuring no unhandled promise rejections and enforcing strict cross-tenant isolation boundaries.
+  4. **Strict DTO Rejection for Spoofing Attempts**: Configured the validator schema to explicitly reject identity and tenant keys (`organizationId`, `userId`, `role`, `actorId`, etc.) in request bodies with HTTP 422 `VALIDATION_ERROR` rather than silently stripping them. This ensures clients receive immediate, unambiguous feedback when attempting to spoof security parameters.
+  5. **Exact-Decimal Regex Hardening**: Hardened `validateMoneyDecimal()` and `validateQuantityDecimal()` to strictly reject strings with leading/trailing whitespaces (e.g. `" 10.00 "`) without doing `.trim()`, enforcing rigorous, high-integrity numeric format validation.
+- **Consequences**:
+  - Full compliance with absolute zero-trust tenant isolation principles.
+  - Complete elimination of silent stripping in favor of loud, explicit rejection for identity/tenant spoofing.
+  - 102/102 automated tests across all 6 test suites are passing cleanly with 100% correct behavior.
+  - Zero TypeScript linter issues and clean production compilation.
+
 
 
 

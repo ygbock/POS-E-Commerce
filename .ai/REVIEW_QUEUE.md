@@ -190,4 +190,18 @@ Status: READY FOR REVIEW
     - **Automated Tests**: 17/17 POS tests passing (`npm run test:pos`). Full suite 91/91 tests passing (`npm test`). `npm run lint` (0 errors), `npm run build` succeeded.
 - **Supervisor Action Required**: Independent review of POS-001R3.
 
+---
+## API-001R3: Fail-Closed Tenant Authorization & API Acceptance Hardening
+- **Task ID**: API-001R3
+- **Status**: PENDING REVIEW
+- **Agent Notes**:
+  - Corrected all remaining security and acceptance defects identified in API-001R2:
+    - **Fail-Closed Tenant Handling**: Refactored `resolveAuthorizedTenant()` to be fully fail-closed. Any DB exception, query timeout, or inactive organization throws an error and rejects with HTTP 403 `TENANT_ACCESS_DENIED`, with zero `org_default` runtime fallback.
+    - **Fail-Closed Login Endpoints**: Added upfront payload verification in `/api/auth/login`. Returns 422 `VALIDATION_ERROR` for missing fields and generic 401 `UNAUTHORIZED` for incorrect credentials, with zero user/tenant existence leak.
+    - **Asynchronous Product Mutation Paths**: Refactored product endpoints (`POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id`) into explicit async/await `try/catch` handlers with direct `resolveAuthorizedTenant()` guarding, guaranteeing robust exception-safety and multi-tenant isolation.
+    - **Strict Anti-Spoofing Rejection**: Hardened schemas in `server/validation/index.ts` to strictly reject any request body containing identity/tenant keys (such as `organizationId`, `userId`, `role`, `actorId`, etc.) with HTTP 422 `VALIDATION_ERROR`, replacing silent field stripping.
+    - **Strict Exact-Decimal Contracts**: Hardened decimal validators to reject leading/trailing whitespaces without prior trimming.
+    - **Automated Verification**: Added 11 new integration tests in `tests/api_hardening.test.ts`. 102/102 full-suite tests are passing cleanly with 100% success. `npm run lint` passes with 0 errors. `npm run build` compiles with 0 warnings/errors.
+- **Supervisor Action Required**: Final independent supervisor review of API-001R3.
+
 

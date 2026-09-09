@@ -263,12 +263,15 @@ export async function createApp(options: CreateAppOptions = {}) {
         // Fail-closed: Ensure the target tenant exists and is active
         try {
           const orgRes = await db.query<any>('SELECT id, is_active FROM organizations WHERE id = $1', [targetOrg]);
-          if (orgRes.rows.length === 0 || !orgRes.rows[0].is_active) {
-            throw new ApiError('TENANT_NOT_FOUND', `Target organization '${targetOrg}' not found or inactive.`, 404);
+          if (orgRes.rows.length === 0) {
+            throw new ApiError('TENANT_NOT_FOUND', `Target organization '${targetOrg}' not found.`, 404);
+          }
+          if (!orgRes.rows[0].is_active) {
+            throw new ApiError('TENANT_ACCESS_DENIED', `Target organization '${targetOrg}' is inactive.`, 403);
           }
         } catch (err: any) {
           if (err instanceof ApiError) throw err;
-          // In case DB ping error or unseeded in unit test
+          throw new ApiError('TENANT_ACCESS_DENIED', 'Failed to verify target organization status.', 403);
         }
 
         if (auditRepository) {
@@ -326,12 +329,22 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response) => {
       try {
         const result = await authService.login(req.body);
-        res.json({
+        return res.json({
           success: true,
           data: result,
         });
-      } catch {
-        res.status(401).json({
+      } catch (err: any) {
+        const msg = err?.message || '';
+        if (msg.includes('ORGANIZATION_REQUIRED')) {
+          return res.status(422).json({
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'organizationId is required and must be a non-empty string',
+            },
+          });
+        }
+        return res.status(401).json({
           success: false,
           error: {
             code: 'INVALID_CREDENTIALS',
@@ -662,17 +675,18 @@ export async function createApp(options: CreateAppOptions = {}) {
     requirePermission(PERMISSIONS.PRODUCTS_CREATE),
     requireTenantAccess(),
     validateBody(validateProductPayload),
-    (req: Request, res: Response) => {
-      const body = req.body;
-      const id = `prod-${randomUUID().slice(0, 8)}`;
-      const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const body = req.body;
+        const id = `prod-${randomUUID().slice(0, 8)}`;
+        const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-      // Server-authoritative tenant assignment: stamped from authenticated context
-      const authoritativeOrg = req.auth!.organizationId;
+        // Server-authoritative tenant assignment: stamped from authenticated context
+        const authoritativeOrg = await resolveAuthorizedTenant(req, auditRepo, 'PRODUCT');
 
-      const newProduct: Product = {
-        id,
-        organizationId: authoritativeOrg,
+        const newProduct: Product = {
+          id,
+          organizationId: authoritativeOrg,
         name: body.name,
         slug,
         brand: body.brand || 'Generic',
@@ -751,6 +765,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
 
       res.status(201).json({ success: true, message: 'Product created successfully in Master Catalog', data: newProduct });
+      } catch (err) {
+        next(err);
+      }
     }
   );
 
@@ -761,26 +778,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
     requireTenantAccess(),
     validateBody((b: any) => validateProductPayload(b, true)),
-    (req: Request, res: Response) => {
-      const index = masterProductsStore.findIndex((p) => p.id === req.params.id);
-      if (index === -1) {
-        return res.status(404).json({ success: false, error: 'Product not found in master catalog' });
-      }
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const index = masterProductsStore.findIndex((p) => p.id === req.params.id);
+        if (index === -1) {
+          return res.status(404).json({ success: false, error: 'Product not found in master catalog' });
+        }
 
-      const existing = masterProductsStore[index];
-      const isSuperAdmin = req.auth!.role === 'super_admin';
-      const existingOrg = existing.organizationId || 'org_default';
+        const existing = masterProductsStore[index];
+        const existingOrg = existing.organizationId || 'org_default';
 
-      // Enforce tenant boundary: cannot modify another tenant's product
-      if (!isSuperAdmin && existingOrg !== req.auth!.organizationId) {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: 'TENANT_ACCESS_DENIED',
-            message: 'Cross-tenant resource modification forbidden.',
-          },
-        });
-      }
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'PRODUCT');
+
+        // Enforce tenant boundary: cannot modify another tenant's product
+        if (existingOrg !== orgId) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'TENANT_ACCESS_DENIED',
+              message: 'Cross-tenant resource modification forbidden.',
+            },
+          });
+        }
 
       const updated: Product = {
         ...existing,
@@ -805,6 +824,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
 
       res.json({ success: true, message: 'Master Product updated successfully', data: updated });
+      } catch (err) {
+        next(err);
+      }
     }
   );
 
@@ -814,26 +836,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.PRODUCTS_DELETE),
     requireTenantAccess(),
-    (req: Request, res: Response) => {
-      const index = masterProductsStore.findIndex((p) => p.id === req.params.id);
-      if (index === -1) {
-        return res.status(404).json({ success: false, error: 'Product not found' });
-      }
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const index = masterProductsStore.findIndex((p) => p.id === req.params.id);
+        if (index === -1) {
+          return res.status(404).json({ success: false, error: 'Product not found' });
+        }
 
-      const existing = masterProductsStore[index];
-      const isSuperAdmin = req.auth!.role === 'super_admin';
-      const existingOrg = existing.organizationId || 'org_default';
+        const existing = masterProductsStore[index];
+        const existingOrg = existing.organizationId || 'org_default';
 
-      // Enforce tenant boundary: cannot delete another tenant's product
-      if (!isSuperAdmin && existingOrg !== req.auth!.organizationId) {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: 'TENANT_ACCESS_DENIED',
-            message: 'Cross-tenant resource deletion forbidden.',
-          },
-        });
-      }
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'PRODUCT');
+
+        // Enforce tenant boundary: cannot delete another tenant's product
+        if (existingOrg !== orgId) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'TENANT_ACCESS_DENIED',
+              message: 'Cross-tenant resource deletion forbidden.',
+            },
+          });
+        }
 
       const removed = masterProductsStore.splice(index, 1)[0];
 
@@ -850,6 +874,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
 
       res.json({ success: true, message: 'Product deleted from Master Catalog', deletedId: req.params.id });
+      } catch (err) {
+        next(err);
+      }
     }
   );
 
