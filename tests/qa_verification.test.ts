@@ -18,6 +18,7 @@ import { ReservationService } from '../server/inventory/reservationService';
 import { TransferService } from '../server/inventory/transferService';
 import { PosService } from '../server/services/posService';
 import { hashPassword } from '../server/auth/password';
+import { parseQtyToScaled, formatScaledToQtyString } from '../server/inventory/inventoryPolicies';
 
 async function runQaVerificationTests() {
   console.log('======================================================');
@@ -162,8 +163,8 @@ async function runQaVerificationTests() {
     // Formula Verification: previous_balance + quantity_delta = new_balance
     // 0.0000 + 100.0000 = 100.0000
     assert.strictEqual(
-      (parseFloat(openRes.movement.previous_balance) + parseFloat(openRes.movement.quantity_change)).toFixed(4),
-      parseFloat(openRes.movement.new_balance).toFixed(4),
+      formatScaledToQtyString(parseQtyToScaled(openRes.movement.previous_balance) + parseQtyToScaled(openRes.movement.quantity_change)),
+      formatScaledToQtyString(parseQtyToScaled(openRes.movement.new_balance)),
       'ledger conservation invariant formula verified'
     );
 
@@ -183,8 +184,8 @@ async function runQaVerificationTests() {
     assert.strictEqual(adjUp.movement.previous_balance, '100.0000');
     assert.strictEqual(adjUp.movement.new_balance, '120.0000');
     assert.strictEqual(
-      (parseFloat(adjUp.movement.previous_balance) + parseFloat(adjUp.movement.quantity_change)).toFixed(4),
-      parseFloat(adjUp.movement.new_balance).toFixed(4),
+      formatScaledToQtyString(parseQtyToScaled(adjUp.movement.previous_balance) + parseQtyToScaled(adjUp.movement.quantity_change)),
+      formatScaledToQtyString(parseQtyToScaled(adjUp.movement.new_balance)),
       'Upward adjustment ledger conservation verified'
     );
 
@@ -223,8 +224,8 @@ async function runQaVerificationTests() {
     assert.strictEqual(wOff.movement.previous_balance, '120.0000');
     assert.strictEqual(wOff.movement.new_balance, '115.0000');
     assert.strictEqual(
-      (parseFloat(wOff.movement.previous_balance) + parseFloat(wOff.movement.quantity_change)).toFixed(4),
-      parseFloat(wOff.movement.new_balance).toFixed(4),
+      formatScaledToQtyString(parseQtyToScaled(wOff.movement.previous_balance) + parseQtyToScaled(wOff.movement.quantity_change)),
+      formatScaledToQtyString(parseQtyToScaled(wOff.movement.new_balance)),
       'Write-off ledger conservation verified'
     );
 
@@ -276,8 +277,8 @@ async function runQaVerificationTests() {
     assert.strictEqual(item.received_quantity, '35.0000');
     assert.strictEqual(item.variance_quantity, '-5.0000');
     assert.strictEqual(
-      (parseFloat(item.received_quantity) + Math.abs(parseFloat(item.variance_quantity))).toFixed(4),
-      parseFloat(item.dispatched_quantity).toFixed(4),
+      formatScaledToQtyString(parseQtyToScaled(item.received_quantity) - parseQtyToScaled(item.variance_quantity)),
+      formatScaledToQtyString(parseQtyToScaled(item.dispatched_quantity)),
       'Transfer conservation invariant formula verified'
     );
 
@@ -299,8 +300,13 @@ async function runQaVerificationTests() {
     assert.strictEqual(balAfterResv!.reserved, '20.0000');
     assert.strictEqual(balAfterResv!.available, '55.0000');
     assert.strictEqual(
-      (parseFloat(balAfterResv!.on_hand) - parseFloat(balAfterResv!.reserved) - parseFloat(balAfterResv!.damaged) - parseFloat(balAfterResv!.expired)).toFixed(4),
-      parseFloat(balAfterResv!.available).toFixed(4),
+      formatScaledToQtyString(
+        parseQtyToScaled(balAfterResv!.on_hand) -
+        parseQtyToScaled(balAfterResv!.reserved) -
+        parseQtyToScaled(balAfterResv!.damaged) -
+        parseQtyToScaled(balAfterResv!.expired)
+      ),
+      formatScaledToQtyString(parseQtyToScaled(balAfterResv!.available)),
       'Reservation conservation formula verified'
     );
 
@@ -542,6 +548,12 @@ async function runQaVerificationTests() {
       password: 'Password123!',
     })).token;
 
+    const orgAToken = (await authService.login({
+      organizationId: 'org_qa_a',
+      email: 'admin_qa_a@abacha.test',
+      password: 'Password123!',
+    })).token;
+
     const orgBToken = (await authService.login({
       organizationId: 'org_qa_b',
       email: 'admin_qa_b@abacha.test',
@@ -598,18 +610,43 @@ async function runQaVerificationTests() {
       /INACTIVE_ORGANIZATION|INVALID_CREDENTIALS|Invalid email or password/
     );
 
-    // 5. Super Admin Cross-Tenant Target (?orgId=)
-    // Super admin queries Org B's Warehouse B balance
+    // 5. Super Admin Cross-Tenant Target (?orgId=) & Model B Rules Validation
+    // A. Super Admin cross-tenant balance read succeeds for an active target tenant
     const superCrossRes = await fetch(`${baseUrl}/api/inventory/balances/loc_qa_wh_b?orgId=org_qa_b`, {
       headers: { Authorization: `Bearer ${superToken}`, Connection: 'close' },
     });
     assert.strictEqual(superCrossRes.status, 200, 'Super admin cross-tenant selection succeeds');
     
-    // Verify an audit event of type SUPER_ADMIN_CROSS_TENANT_READ is recorded
+    // B. `SUPER_ADMIN_CROSS_TENANT_READ` is created
     const auditEvents = await db.query(
-      `SELECT * FROM audit_events WHERE action = 'SUPER_ADMIN_CROSS_TENANT_READ' AND actor_id = 'usr_qa_super'`
+      `SELECT * FROM audit_events WHERE action = 'SUPER_ADMIN_CROSS_TENANT_READ' AND actor_id = 'usr_qa_super' ORDER BY timestamp DESC LIMIT 1`
     );
     assert.ok(auditEvents.rows.length > 0, 'Super admin cross-tenant reads are fully audited');
+    assert.strictEqual(auditEvents.rows[0].organization_id, 'org_qa_b');
+
+    // C. Nonexistent target tenant is rejected (404)
+    const superCrossNonexistentRes = await fetch(`${baseUrl}/api/inventory/balances/loc_qa_wh_b?orgId=org_qa_nonexistent`, {
+      headers: { Authorization: `Bearer ${superToken}`, Connection: 'close' },
+    });
+    assert.strictEqual(superCrossNonexistentRes.status, 404, 'Super admin targeting nonexistent org is rejected with 404');
+    const nonexistentBody = await superCrossNonexistentRes.json();
+    assert.strictEqual(nonexistentBody.error.code, 'TENANT_NOT_FOUND');
+
+    // D. Inactive target tenant is rejected (403)
+    const superCrossInactiveRes = await fetch(`${baseUrl}/api/inventory/balances/loc_qa_wh_b?orgId=org_qa_inactive`, {
+      headers: { Authorization: `Bearer ${superToken}`, Connection: 'close' },
+    });
+    assert.strictEqual(superCrossInactiveRes.status, 403, 'Super admin targeting inactive org is rejected with 403');
+    const inactiveBody = await superCrossInactiveRes.json();
+    assert.strictEqual(inactiveBody.error.code, 'TENANT_ACCESS_DENIED');
+
+    // E. Ordinary tenant cannot use `?orgId=` to cross tenants
+    const ordCrossRes = await fetch(`${baseUrl}/api/inventory/balances/loc_qa_wh_b?orgId=org_qa_b`, {
+      headers: { Authorization: `Bearer ${orgAToken}`, Connection: 'close' },
+    });
+    assert.strictEqual(ordCrossRes.status, 403, 'Ordinary tenant targeting other org is rejected with 403');
+    const ordCrossBody = await ordCrossRes.json();
+    assert.strictEqual(ordCrossBody.error.code, 'TENANT_ACCESS_DENIED');
 
     markPassed('5. Security Regression Coverages (Tenant, RBAC, Super Admin)');
   } catch (err) {

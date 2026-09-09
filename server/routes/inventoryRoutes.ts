@@ -9,6 +9,7 @@ import { StockCountService } from '../inventory/stockCountService';
 import { DatabaseClient } from '../db/client';
 import { AuditRepository } from '../repositories/auditRepository';
 import { parseExactQuantity, parseExactMoney } from '../inventory/inventoryPolicies';
+import { ApiError } from '../utils/errorSanitizer';
 
 /**
  * Sanitizes error messages to prevent leaking SQL statements, database constraint details,
@@ -53,6 +54,16 @@ export function sanitizeInventoryErrorMessage(rawMessage: string): string {
  * Guarantees safe error classification, status codes, and prevents internal DB leakage.
  */
 export function handleInventoryRouteError(res: Response, err: any): Response {
+  if (err?.name === 'ApiError' || err instanceof ApiError || (err?.status && err?.code)) {
+    return res.status(err.status || 500).json({
+      success: false,
+      error: {
+        code: err.code || 'INVENTORY_ERROR',
+        message: err.message,
+      },
+    });
+  }
+
   const msg: string = err?.message || 'Unknown inventory error';
   const safeMessage = sanitizeInventoryErrorMessage(msg);
 
@@ -186,20 +197,41 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
   const stockCountService = new StockCountService(repo, undefined, db);
 
   const resolveTenant = async (req: Request, entityType = 'INVENTORY'): Promise<string> => {
-    const callerOrg = req.auth!.organizationId;
-    const isSuperAdmin = req.auth!.role === 'super_admin';
+    if (!req.auth?.organizationId) {
+      throw new ApiError('TENANT_REQUIRED', 'Authenticated tenant context is required.', 403);
+    }
+    const callerOrg = req.auth.organizationId;
+    const isSuperAdmin = req.auth.role === 'super_admin';
     const targetOrgParam = (req.query.orgId || req.query.organizationId) as string | undefined;
 
     if (!isSuperAdmin) {
-      if (targetOrgParam && targetOrgParam.trim() !== '' && targetOrgParam.trim() !== callerOrg) {
-        throw new Error('TENANT_ACCESS_DENIED: Cross-tenant access forbidden.');
+      if (targetOrgParam && typeof targetOrgParam === 'string' && targetOrgParam.trim() !== '') {
+        const targetOrg = targetOrgParam.trim();
+        if (targetOrg !== callerOrg) {
+          throw new ApiError('TENANT_ACCESS_DENIED', 'Cross-tenant access forbidden.', 403);
+        }
       }
       return callerOrg;
     }
 
-    if (targetOrgParam && targetOrgParam.trim() !== '') {
+    if (targetOrgParam && typeof targetOrgParam === 'string' && targetOrgParam.trim() !== '') {
       const targetOrg = targetOrgParam.trim();
       if (targetOrg !== callerOrg) {
+        // Fail-closed: Ensure the target tenant exists and is active
+        try {
+          const orgRes = await db!.query<any>('SELECT id, is_active FROM organizations WHERE id = $1', [targetOrg]);
+          if (orgRes.rows.length === 0) {
+            throw new ApiError('TENANT_NOT_FOUND', `Target organization '${targetOrg}' not found.`, 404);
+          }
+          if (!orgRes.rows[0].is_active) {
+            throw new ApiError('TENANT_ACCESS_DENIED', `Target organization '${targetOrg}' is inactive.`, 403);
+          }
+        } catch (err: any) {
+          if (err instanceof ApiError) throw err;
+          throw new ApiError('TENANT_ACCESS_DENIED', 'Failed to verify target organization status.', 403);
+        }
+
+        // Audited after validating existence and active status
         const auditRepo = new AuditRepository(db);
         await auditRepo.recordEvent({
           organization_id: targetOrg,
