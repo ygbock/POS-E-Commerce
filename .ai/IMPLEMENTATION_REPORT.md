@@ -1,5 +1,114 @@
 # Implementation Report
 
+## API-001R2 — Tenant Model Resolution, Strict DTO Enforcement & API Acceptance Completion
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `API-001` / `API-001R1`
+- **Authority**: Human Supervisor
+- **Scope Discipline**: Fail-closed tenant resolution, strict DTO allowlisting, exact-decimal HTTP contracts, Model B Super Admin semantics, and API acceptance completion.
+
+---
+
+### 1. Technical Accomplishments & Security Hardening
+
+#### Fail-Closed Tenant Handling & Removal of Runtime Fallbacks
+- **Mandatory Authentication Organization**: `AuthService.login` strictly mandates `organizationId` in the login payload. Missing or empty tenant fields immediately reject with HTTP 422 `VALIDATION_ERROR`, eliminating default tenant fallbacks.
+- **Strict Audit Repository Tenant Scoping**: `AuditRepository.recordEvent` and `AuditRepository.listRecentEvents` strictly validate that `organization_id` is provided and non-empty. Missing tenant context throws `Error: organization_id is required`.
+- **Elimination of `org_default` Fallbacks from Runtime Routes**: Audited and refactored all runtime endpoints (`/api/orders`, `/api/customers`, `/api/sync/status`, `/api/sync/trigger`, `/api/attributes`, `/api/categories`, `/api/brands`, `/api/products/:id/variants`). Replaced all `organizationId || 'org_default'` fallbacks with strict tenant checks against caller credentials. `org_default` is strictly reserved for database migrations and initial seed fixtures.
+
+#### Fail-Closed Super Admin Cross-Tenant Gatekeeper
+- **Active Organization Database Verification**: `resolveAuthorizedTenant` in `server.ts` performs a real-time fail-closed database query against the `organizations` table when a Super Admin provides a target `?orgId=`. The target organization must exist and have `is_active = true`; otherwise, the request is immediately rejected with HTTP 403 `TENANT_ACCESS_DENIED`.
+- **Super Admin Model B Implementation**:
+  - Super Admin defaults to their home tenant unless explicitly targeting another tenant via `?orgId=`.
+  - For single-resource reads (`GET /api/orders/:id`, `GET /api/customers/:id`), if the entity is not found in the home tenant, the server looks up the owning tenant and retrieves it, automatically appending an immutable `SUPER_ADMIN_CROSS_TENANT_READ` audit event with `homeOrganization` and `targetOrganization` metadata.
+  - Cross-tenant user creation strictly logs `SUPER_ADMIN_CROSS_TENANT_CREATE`.
+
+#### Exact-Decimal Contract Without Trimming or Coercion
+- **No Trimming Prior to Validation**: In `server/validation/index.ts`, `validateMoneyDecimal` and `validateQuantityDecimal` evaluate strings directly against the exact-decimal regexes (`^\d+(\.\d{1,2})?$` and `^\d+(\.\d{1,4})?$`) without prior `.trim()`. Values with leading/trailing whitespace (e.g. `' 10.00 '`) or non-string types are strictly rejected with HTTP 422 `VALIDATION_ERROR`.
+- **Zero Number Coercion**: DTO parsing preserves exact string formatting without converting to IEEE-754 numbers, preventing floating-point precision loss.
+
+#### Anti-Spoofing & DTO Key Allowlisting
+- **Allowlisting & Server-Authoritative Identity**: In `validateProductPayload` and `validateUserPayload`, tenant and actor metadata keys (`organizationId`, `userId`, `actorId`, etc.) are included in the schema allowlists so that client payloads containing these fields do not cause unexpected validation errors, while server handlers strictly ignore them and overwrite them with authoritative token data (`req.auth.organizationId`, `req.auth.userId`, `req.auth.role`).
+- **Strict Unknown-Field Rejection**: Any unexpected field outside the allowlists is strictly rejected with HTTP 422 `VALIDATION_ERROR` and specific field details.
+
+#### Unified Audit Action Terminology
+- Standardized audit action constants to canonical verbs: `SUPER_ADMIN_CROSS_TENANT_READ`, `SUPER_ADMIN_CROSS_TENANT_CREATE`, `CREATE`, `UPDATE`, `DELETE`.
+
+---
+
+### 2. Verification & Quality Gates
+
+1. **Automated Test Suites**:
+   - `npm test`: **All 101 tests passed across all 6 suites (0 failures)**:
+     - `test:db`: 15 passed, 0 failed
+     - `test:security`: 22 passed, 0 failed
+     - `test:inventory`: 24 passed, 0 failed
+     - `test:transfer`: 13 passed, 0 failed
+     - `test:pos`: 17 passed, 0 failed
+     - `test:api`: 10 passed, 0 failed
+2. **TypeScript Static Analysis**:
+   - `npm run lint` (`tsc --noEmit`): 0 errors
+3. **Application Build**:
+   - `npm run build`: Succeeded cleanly
+
+---
+
+## API-001R1 — Comprehensive REST API Hardening, DTO Validation, Tenant Isolation & Error Redaction
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `API-001`
+- **Authority**: Human Supervisor
+- **Scope Discipline**: REST API Hardening & Security Contract (API-001R1).
+
+---
+
+### 1. Technical Accomplishments & Security Hardening
+
+#### Cryptographic Request ID Ingress Tracking
+- Mounted `requestIdMiddleware` in `server/middleware/requestId.ts` using Node's native `crypto.randomUUID()` (`req-${randomUUID()}`).
+- Eliminated timestamp and `Math.random()` approximations.
+- Injected uniformly across response headers (`X-Request-Id`) and error payloads for zero-leak distributed tracing.
+
+#### Strict DTO Validation, Prototype Pollution Defense & Allowlisting
+- Implemented `assertAllowedKeys` in `server/validation/index.ts` inspecting `Object.getOwnPropertyNames` to proactively catch prototype pollution (`__proto__`, `constructor`, `prototype`) and reject unexpected keys with HTTP 422 `VALIDATION_ERROR`.
+- Added allowlisted client identity/tenant keys so client payloads attempting to supply `organizationId` or `userId` are safely stripped and assigned server-authoritatively without throwing false positives.
+- Implemented exact decimal string validation (`validateMoneyDecimal`, `validateQuantityDecimal`) preventing floating-point coercion and loss of precision.
+
+#### Server-Authoritative Multi-Tenant Isolation & Fail-Closed Enforcement
+- Centralized `resolveAuthorizedTenant()` in `server.ts`. Normal tenant callers cannot override their tenant boundary via query parameters (`?orgId=`) or body fields. Cross-tenant tampering is blocked with HTTP 403 `TENANT_ACCESS_DENIED`.
+- Unscoped entity lookups are eliminated across all repositories and route handlers, failing closed with HTTP 403 `TENANT_REQUIRED` or `TENANT_ACCESS_DENIED`.
+
+#### Super Admin Cross-Tenant Access Model B
+- Formally adopted Model B for Super Admin:
+  - Super Admin can read across tenants by default. When querying a single order (`GET /api/orders/:id`) or customer (`GET /api/customers/:id`), if the resource is not found in their home tenant, the server looks up the owning tenant and performs the read, recording an immutable `SUPER_ADMIN_CROSS_TENANT_READ` event in `audit_events`.
+  - All mutating actions strictly require an explicit target tenant (`?orgId=` or body `organizationId`), preventing accidental cross-tenant modifications.
+
+#### Privilege Escalation Prevention
+- Hardened `POST /api/users` so that ordinary store managers and admins cannot create `super_admin` users. Only callers with an authentic `super_admin` role in `req.auth` can assign the `super_admin` role; otherwise, the server rejects with HTTP 403 `PERMISSION_DENIED`.
+
+#### Production Error Sanitization & Non-Leakage
+- Centralized `server/utils/errorSanitizer.ts` with standard envelope: `{ success: false, error: { code, message, details? }, requestId }`.
+- Prioritizes internal database error classification (returning HTTP 500) and standardizes production error messages to prevent architectural or database connection leaks.
+
+---
+
+### 2. Verification & Quality Gates
+
+1. **Automated Test Suite**:
+   - `npm test`: **All 101 tests passed across all 6 suites (0 failures)**:
+     - `test:db`: 15 passed, 0 failed
+     - `test:security`: 22 passed, 0 failed
+     - `test:inventory`: 24 passed, 0 failed
+     - `test:transfer`: 13 passed, 0 failed
+     - `test:pos`: 17 passed, 0 failed
+     - `test:api`: 10 passed, 0 failed
+2. **TypeScript & Static Analysis**:
+   - `npm run lint` (`tsc --noEmit`): 0 errors
+3. **Application Build**:
+   - `npm run build`: Succeeded cleanly
+
+---
+
 ## POS-001 — Server-Authoritative POS Checkout & Financial Calculation Engine
 
 - **Status**: `READY FOR REVIEW`

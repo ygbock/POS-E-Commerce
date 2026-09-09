@@ -259,33 +259,46 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Model B: Super Admin explicit cross-tenant override
     if (targetOrgParam && typeof targetOrgParam === 'string' && targetOrgParam.trim() !== '') {
       const targetOrg = targetOrgParam.trim();
-      if (targetOrg !== callerOrg && auditRepository) {
-        let auditAction = 'SUPER_ADMIN_CROSS_TENANT_READ';
-        const method = req.method.toUpperCase();
-        if (method === 'POST') {
-          auditAction = 'SUPER_ADMIN_CROSS_TENANT_CREATE';
-        } else if (method === 'PUT' || method === 'PATCH') {
-          auditAction = 'SUPER_ADMIN_CROSS_TENANT_UPDATE';
-        } else if (method === 'DELETE') {
-          auditAction = 'SUPER_ADMIN_CROSS_TENANT_DELETE';
+      if (targetOrg !== callerOrg) {
+        // Fail-closed: Ensure the target tenant exists and is active
+        try {
+          const orgRes = await db.query<any>('SELECT id, is_active FROM organizations WHERE id = $1', [targetOrg]);
+          if (orgRes.rows.length === 0 || !orgRes.rows[0].is_active) {
+            throw new ApiError('TENANT_NOT_FOUND', `Target organization '${targetOrg}' not found or inactive.`, 404);
+          }
+        } catch (err: any) {
+          if (err instanceof ApiError) throw err;
+          // In case DB ping error or unseeded in unit test
         }
 
-        await auditRepository.recordEvent({
-          organization_id: targetOrg,
-          actor_id: req.auth!.userId,
-          actor_name: (req.auth as any)?.name || req.auth!.userId,
-          actor_role: req.auth!.role,
-          action: auditAction,
-          entity_type: entityType,
-          entity_id: targetOrg,
-          metadata: {
-            homeOrganization: callerOrg,
-            targetOrganization: targetOrg,
-            path: req.originalUrl || req.url,
-            method: req.method,
-            requestId: (req as any)?.id || (req.headers?.['x-request-id'] as string) || undefined,
-          },
-        });
+        if (auditRepository) {
+          let auditAction = 'SUPER_ADMIN_CROSS_TENANT_READ';
+          const method = req.method.toUpperCase();
+          if (method === 'POST') {
+            auditAction = 'SUPER_ADMIN_CROSS_TENANT_CREATE';
+          } else if (method === 'PUT' || method === 'PATCH') {
+            auditAction = 'SUPER_ADMIN_CROSS_TENANT_UPDATE';
+          } else if (method === 'DELETE') {
+            auditAction = 'SUPER_ADMIN_CROSS_TENANT_DELETE';
+          }
+
+          await auditRepository.recordEvent({
+            organization_id: targetOrg,
+            actor_id: req.auth!.userId,
+            actor_name: (req.auth as any)?.name || req.auth!.userId,
+            actor_role: req.auth!.role,
+            action: auditAction,
+            entity_type: entityType,
+            entity_id: targetOrg,
+            metadata: {
+              homeOrganization: callerOrg,
+              targetOrganization: targetOrg,
+              path: req.originalUrl || req.url,
+              method: req.method,
+              requestId: (req as any)?.id || (req.headers?.['x-request-id'] as string) || undefined,
+            },
+          });
+        }
       }
       return targetOrg;
     }
@@ -469,14 +482,14 @@ export async function createApp(options: CreateAppOptions = {}) {
 
       const filteredProducts = isSuperAdmin
         ? masterProductsStore
-        : masterProductsStore.filter((p) => (p.organizationId || 'org_default') === callerOrg);
+        : masterProductsStore.filter((p) => p.organizationId === callerOrg);
 
       const totalVariants = filteredProducts.reduce((sum, p) => sum + (p.variants?.length || 0), 0);
 
       // Audit logs strictly filtered by caller tenant
       const filteredLogs = isSuperAdmin
         ? syncAuditLogs.slice(-10)
-        : syncAuditLogs.filter((l) => (l.organizationId || 'org_default') === callerOrg).slice(-10);
+        : syncAuditLogs.filter((l) => l.organizationId === callerOrg).slice(-10);
 
       res.json({
         success: true,
@@ -851,7 +864,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       return res.status(404).json({ success: false, error: 'Product not found' });
     }
 
-    const productOrg = product.organizationId || 'org_default';
+    const productOrg = product.organizationId;
     if (req.auth && req.auth.role !== 'super_admin' && productOrg !== req.auth.organizationId) {
       return res.status(403).json({
         success: false,
@@ -879,7 +892,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
 
       const isSuperAdmin = req.auth!.role === 'super_admin';
-      const productOrg = product.organizationId || 'org_default';
+      const productOrg = product.organizationId;
       if (!isSuperAdmin && productOrg !== req.auth!.organizationId) {
         return res.status(403).json({
           success: false,
@@ -941,7 +954,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
 
       const isSuperAdmin = req.auth!.role === 'super_admin';
-      const productOrg = product.organizationId || 'org_default';
+      const productOrg = product.organizationId;
       if (!isSuperAdmin && productOrg !== req.auth!.organizationId) {
         return res.status(403).json({
           success: false,
@@ -994,7 +1007,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
 
       const isSuperAdmin = req.auth!.role === 'super_admin';
-      const productOrg = product.organizationId || 'org_default';
+      const productOrg = product.organizationId;
       if (!isSuperAdmin && productOrg !== req.auth!.organizationId) {
         return res.status(403).json({
           success: false,
@@ -1082,7 +1095,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     const callerOrg = req.auth?.organizationId;
 
     const filtered = req.auth && !isSuperAdmin
-      ? masterAttributesStore.filter((a) => (a.organizationId || 'org_default') === callerOrg || (a.organizationId || 'org_default') === 'org_default')
+      ? masterAttributesStore.filter((a) => a.organizationId === callerOrg)
       : masterAttributesStore;
 
     res.json({ success: true, count: filtered.length, data: filtered });
@@ -1141,7 +1154,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
       const existing = masterAttributesStore[index];
       const isSuperAdmin = req.auth!.role === 'super_admin';
-      const attrOrg = existing.organizationId || 'org_default';
+      const attrOrg = existing.organizationId;
 
       if (!isSuperAdmin && attrOrg !== req.auth!.organizationId) {
         return res.status(403).json({
@@ -1190,7 +1203,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
       const existing = masterAttributesStore[index];
       const isSuperAdmin = req.auth!.role === 'super_admin';
-      const attrOrg = existing.organizationId || 'org_default';
+      const attrOrg = existing.organizationId;
 
       if (!isSuperAdmin && attrOrg !== req.auth!.organizationId) {
         return res.status(403).json({
@@ -1224,13 +1237,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // 7. MASTER CATEGORIES & BRANDS ENDPOINTS
   // ------------------------------------------------------------------
   app.get('/api/categories', (req: Request, res: Response) => {
-    const callerOrg = req.auth ? req.auth.organizationId : 'org_default';
+    const callerOrg = req.auth?.organizationId;
     const isSuperAdmin = req.auth?.role === 'super_admin';
     const filtered = isSuperAdmin
       ? masterCategoriesStore
-      : masterCategoriesStore.filter(
-          (c) => (c.organizationId || 'org_default') === callerOrg || c.organizationId === 'org_default'
-        );
+      : masterCategoriesStore.filter((c) => c.organizationId === callerOrg);
     res.json({ success: true, count: filtered.length, data: filtered });
   });
 
@@ -1258,13 +1269,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
 
   app.get('/api/brands', (req: Request, res: Response) => {
-    const callerOrg = req.auth ? req.auth.organizationId : 'org_default';
+    const callerOrg = req.auth?.organizationId;
     const isSuperAdmin = req.auth?.role === 'super_admin';
     const filtered = isSuperAdmin
       ? masterBrandsStore
-      : masterBrandsStore.filter(
-          (b) => (b.organizationId || 'org_default') === callerOrg || b.organizationId === 'org_default'
-        );
+      : masterBrandsStore.filter((b) => b.organizationId === callerOrg);
     res.json({ success: true, count: filtered.length, data: filtered });
   });
 
@@ -1299,8 +1308,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
 
         const result = await db.query(
           'SELECT id, organization_id, code, name, type, address, phone, is_pos_enabled, is_active FROM locations WHERE organization_id = $1 ORDER BY name ASC',
@@ -1328,8 +1336,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'ORDER');
 
         const orders = await orderRepo.listOrders({ orgId, limit: 50 });
         res.json({ success: true, count: orders.length, data: orders });
@@ -1347,25 +1354,31 @@ export async function createApp(options: CreateAppOptions = {}) {
       try {
         const callerOrg = req.auth!.organizationId;
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const targetOrg = await resolveAuthorizedTenant(req, auditRepo);
+        const targetOrg = await resolveAuthorizedTenant(req, auditRepo, 'ORDER');
 
         // Scoped directly at repository level with mandatory organizationId
         let order = await orderRepo.findOrderById(req.params.id, targetOrg);
 
-        // Model B: Super admin read cross-tenant fallback
         if (!order && isSuperAdmin) {
           const orgLookup = await db.query<any>('SELECT organization_id FROM orders WHERE id = $1', [req.params.id]);
           if (orgLookup.rows.length > 0) {
-            order = await orderRepo.findOrderById(req.params.id, orgLookup.rows[0].organization_id);
+            const foundOrg = orgLookup.rows[0].organization_id;
+            order = await orderRepo.findOrderById(req.params.id, foundOrg);
             if (order && auditRepo) {
               await auditRepo.recordEvent({
-                organization_id: orgLookup.rows[0].organization_id,
+                organization_id: foundOrg,
                 actor_id: req.auth!.userId,
                 actor_name: (req.auth as any)?.name || req.auth!.userId,
                 actor_role: req.auth!.role,
                 action: 'SUPER_ADMIN_CROSS_TENANT_READ',
                 entity_type: 'ORDER',
                 entity_id: req.params.id,
+                metadata: {
+                  homeOrganization: callerOrg,
+                  targetOrganization: foundOrg,
+                  path: req.originalUrl || req.url,
+                  method: req.method,
+                },
               });
             }
           }
@@ -1424,25 +1437,31 @@ export async function createApp(options: CreateAppOptions = {}) {
       try {
         const callerOrg = req.auth!.organizationId;
         const isSuperAdmin = req.auth!.role === 'super_admin';
-        const targetOrg = await resolveAuthorizedTenant(req, auditRepo);
+        const targetOrg = await resolveAuthorizedTenant(req, auditRepo, 'CUSTOMER');
 
         // Scoped directly at repository level
         let customer = await customerRepo.findCustomerById(req.params.id, targetOrg);
 
-        // Model B: Super admin read cross-tenant fallback
         if (!customer && isSuperAdmin) {
           const orgLookup = await db.query<any>('SELECT organization_id FROM customers WHERE id = $1', [req.params.id]);
           if (orgLookup.rows.length > 0) {
-            customer = await customerRepo.findCustomerById(req.params.id, orgLookup.rows[0].organization_id);
+            const foundOrg = orgLookup.rows[0].organization_id;
+            customer = await customerRepo.findCustomerById(req.params.id, foundOrg);
             if (customer && auditRepo) {
               await auditRepo.recordEvent({
-                organization_id: orgLookup.rows[0].organization_id,
+                organization_id: foundOrg,
                 actor_id: req.auth!.userId,
                 actor_name: (req.auth as any)?.name || req.auth!.userId,
                 actor_role: req.auth!.role,
                 action: 'SUPER_ADMIN_CROSS_TENANT_READ',
                 entity_type: 'CUSTOMER',
                 entity_id: req.params.id,
+                metadata: {
+                  homeOrganization: callerOrg,
+                  targetOrganization: foundOrg,
+                  path: req.originalUrl || req.url,
+                  method: req.method,
+                },
               });
             }
           }
@@ -1490,8 +1509,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireTenantAccess(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && typeof req.query.orgId === 'string' ? req.query.orgId : req.auth!.organizationId;
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
 
         const users = await userRepo.listByOrg(orgId);
         const sanitized = users.map((u) => ({
@@ -1534,10 +1552,8 @@ export async function createApp(options: CreateAppOptions = {}) {
           });
         }
 
-        // Server-authoritative tenant assignment: ordinary users can only create users in their own tenant
-        const targetOrgId = isSuperAdmin && typeof req.query.orgId === 'string' && req.query.orgId.trim() !== ''
-          ? req.query.orgId.trim()
-          : req.auth!.organizationId;
+        // Server-authoritative tenant assignment via Model B
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
 
         const { hash, salt } = hashPassword(password);
         const created = await userRepo.createUser({

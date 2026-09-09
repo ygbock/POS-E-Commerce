@@ -76,6 +76,10 @@ export class AuditRepository {
   async recordEvent(event: Partial<AuditEventRecord> & { action: string; entity_type?: string; entity_id?: string }, client?: DatabaseClient): Promise<AuditEventRecord> {
     const db = this.getClient(client);
     const eventId = event.id || `aud_${randomUUID()}`;
+    if (!event.organization_id || typeof event.organization_id !== 'string' || event.organization_id.trim().length === 0) {
+      throw new Error('TENANT_REQUIRED: Audit event must include an explicit organization_id');
+    }
+
     const res = await db.query<AuditEventRecord>(
       `INSERT INTO audit_events (
         id, organization_id, actor_id, actor_name, actor_role, action,
@@ -85,7 +89,7 @@ export class AuditRepository {
       RETURNING *`,
       [
         eventId,
-        event.organization_id || 'org_default',
+        event.organization_id.trim(),
         event.actor_id || null,
         event.actor_name || 'System',
         event.actor_role || 'System',
@@ -114,8 +118,11 @@ export class AuditRepository {
     client?: DatabaseClient
   ): Promise<AuditEventRecord[]> {
     const db = this.getClient(client);
+    if (!options.orgId || typeof options.orgId !== 'string' || options.orgId.trim().length === 0) {
+      throw new Error('TENANT_REQUIRED: Audit listing requires an explicit orgId');
+    }
     const conditions: string[] = ['organization_id = $1'];
-    const params: any[] = [options.orgId || 'org_default'];
+    const params: any[] = [options.orgId.trim()];
 
     if (options.entityType) {
       params.push(options.entityType);

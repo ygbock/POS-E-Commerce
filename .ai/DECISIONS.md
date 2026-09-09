@@ -302,10 +302,12 @@
      - Super Admin can read across tenants by default. When querying a single order (`GET /api/orders/:id`) or customer (`GET /api/customers/:id`), if the resource is not found in their home tenant, the server looks up the owning tenant and performs the read, recording a `SUPER_ADMIN_CROSS_TENANT_READ` event in `audit_logs`.
      - All mutations (create, update, delete) strictly require an explicit target tenant (`?orgId=` or body `organizationId`), preventing accidental cross-tenant modifications.
   6. **Privilege Escalation Defense**: In `POST /api/users`, ordinary managers/admins attempting to assign `role: 'super_admin'` are rejected with HTTP 403 `PERMISSION_DENIED`. Only an authenticated `super_admin` can create users with the `super_admin` role.
-  7. **Production Error Non-Leakage & Sanitization**: Error sanitizer enforces `ValidationErrorDetail` format, redacts connection strings (`postgres://`), credentials, SQL syntax, and file paths. In production, 500 errors return sanitized generic envelopes without leaking internal architecture.
+  7. **Production Error Non-Leakage & Sanitization**: Error sanitizer enforces `ValidationErrorDetail` format, redacts connection strings (`postgres://`), credentials, SQL syntax, and file paths. In production, internal server errors return standardized generic envelopes (`An unexpected internal error occurred. Please contact system support.`) without leaking internal architecture or database details.
+  8. **Prototype Pollution & DTO Hardening**: Updated `assertAllowedKeys` to use `Object.getOwnPropertyNames` instead of `Object.keys`, catching non-enumerable or injected prototype modifications (`__proto__`, `constructor`, `prototype`). Allowed identity keys to be safely stripped by server-authoritative assignment without failing client requests.
 - **Consequences**:
   - Full mitigation of RISK-007 (API Validation & Mass-Assignment Risk).
-  - All 98 tests across all 6 test suites pass cleanly with 0 failures (`test:db`: 15, `test:security`: 22, `test:inventory`: 24, `test:transfer`: 13, `test:pos`: 17, `test:api`: 7).
+  - All 10 integration tests in `tests/api_hardening.test.ts` pass cleanly with 100% pass rate.
+  - All 101 tests across all 6 test suites pass cleanly with 0 failures (`test:db`: 15, `test:security`: 22, `test:inventory`: 24, `test:transfer`: 13, `test:pos`: 17, `test:api`: 10).
   - TypeScript compilation (`npm run lint` and `npm run build`) succeeds cleanly with 0 errors.
 
 

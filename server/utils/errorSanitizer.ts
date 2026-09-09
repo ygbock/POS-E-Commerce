@@ -158,6 +158,24 @@ export function classifyApiError(
     };
   }
 
+  // Database internal errors (relation/table does not exist, syntax error, etc.) -> 500
+  if (
+    /relation .* does not exist/i.test(msg) ||
+    /syntax error/i.test(msg) ||
+    /column .* does not exist/i.test(msg) ||
+    errCode === '42P01' ||
+    errCode === '42703' ||
+    errCode === '42601'
+  ) {
+    return {
+      status: 500,
+      code: 'INTERNAL_SERVER_ERROR',
+      message: isProduction
+        ? 'An unexpected internal error occurred. Please contact support.'
+        : sanitizeApiErrorMessage(msg),
+    };
+  }
+
   // 4. Resource Not Found
   if (
     errCode === 'NOT_FOUND' ||
@@ -165,7 +183,6 @@ export function classifyApiError(
     msg.includes('SESSION_NOT_FOUND') ||
     msg.includes('PRODUCT_NOT_FOUND') ||
     /not found/i.test(msg) ||
-    /does not exist/i.test(msg) ||
     status === 404
   ) {
     return {
@@ -223,8 +240,8 @@ export function classifyApiError(
 
   // 9. Unhandled internal server error (500)
   const safeMessage = isProduction
-    ? 'An unexpected internal server error occurred.'
-    : sanitizeApiErrorMessage(msg || 'An unexpected internal server error occurred.');
+    ? 'An unexpected internal error occurred. Please contact support.'
+    : sanitizeApiErrorMessage(msg || 'An unexpected internal error occurred. Please contact support.');
 
   return {
     status: 500,

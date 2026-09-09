@@ -32,15 +32,22 @@ export class AuthService {
   }
 
   /**
-   * Authenticate a user with email, password, and optional organization ID.
-   * If organizationId is not provided, defaults to 'org_default'.
+   * Authenticate a user with email, password, and mandatory organization ID.
+   * Fail-closed: Never falls back to default tenant implicitly.
    */
   async login(credentials: {
     email: string;
     password: string;
-    organizationId?: string;
+    organizationId: string;
   }): Promise<LoginResult> {
-    const orgId = credentials.organizationId || 'org_default';
+    if (
+      !credentials.organizationId ||
+      typeof credentials.organizationId !== 'string' ||
+      credentials.organizationId.trim().length === 0
+    ) {
+      throw new Error('ORGANIZATION_REQUIRED: Valid organizationId is required for authentication');
+    }
+    const orgId = credentials.organizationId.trim();
     const email = credentials.email.toLowerCase().trim();
 
     const user = await this.userRepo.findByEmail(orgId, email);

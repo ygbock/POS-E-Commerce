@@ -297,29 +297,33 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 7.1: API-001R1 — API Boundary Completion & Security Contract Hardening
-- **Status**: `READY FOR REVIEW`
+- **Status**: `SUPERSEDED BY API-001R2`
 - **Parent Task**: `API-001`
-- **Objective**: Correct the API-001 implementation so that its actual source code matches its claimed security architecture across cryptographic request IDs, string-based money/quantity DTOs, strict DTO allowlisting, unknown-field rejection, server-authoritative tenant scoping, Super Admin Model B cross-tenant access, privilege escalation prevention, and non-leaking error sanitization.
+- **Supervisor Gate**: Superseded by API-001R2.
+
+---
+
+### Task 7.2: API-001R2 — Tenant Model Resolution, Strict DTO Enforcement & API Acceptance Completion
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `API-001` / `API-001R1`
+- **Objective**: Complete all remaining API hardening, tenant model resolution, and DTO enforcement requirements to achieve full production API security and acceptance closure.
 - **Scope**:
-  - [x] Cryptographic Request ID Ingress Tracking: Replaced math/timestamp random identifiers with `crypto.randomUUID()` in `server/middleware/requestId.ts`. Attached uniformly to response headers (`X-Request-Id`) and error payloads.
-  - [x] String-Based Money & Quantity DTOs: Eliminated JavaScript `Number()` coercion across mutation paths. Implemented strict string regex validators (`validateMoneyDecimal`, `validateQuantityDecimal`). Catalog variant mutations (`POST /api/products/:productId/variants`, `PUT /api/products/:productId/variants/:variantId`) validate and persist exact decimal strings.
-  - [x] Strict DTO Key Allowlisting & Unknown-Field Rejection: Built `assertAllowedKeys` to reject unexpected keys (`__proto__`, `constructor`, `prototype`, arbitrary fields) with HTTP 422 `VALIDATION_ERROR` containing `{ field, message }` details. Allowlisted client identity/tenant fields so they are safely ignored/stripped server-authoritatively without crashing callers.
-  - [x] Server-Authoritative Tenant Resolution: Built `resolveAuthorizedTenant()` in `server.ts`. Rejects any non-super-admin query/body tenant overrides with HTTP 403 `TENANT_ACCESS_DENIED`.
-  - [x] Super Admin Cross-Tenant Access Model B: Formally adopted Model B: Super Admin can read across tenants by default (falling back to cross-tenant entity lookup if not scoped) with automated `SUPER_ADMIN_CROSS_TENANT_READ` audit logging; mutations strictly require an explicit target tenant or use caller tenant.
-  - [x] Privilege Escalation Guard: Enforced in `POST /api/users` that only super-admin can assign the `super_admin` role; ordinary managers/admins attempting to assign `super_admin` are rejected with HTTP 403 `PERMISSION_DENIED`.
-  - [x] Error Sanitization: Structured `ValidationErrorDetail` contract in `server/utils/errorSanitizer.ts`. All database credentials (`postgres://`), SQL syntax, table names, and stack traces are redacted.
-  - [x] Regression & Quality Verification: All 98 tests pass across all 6 suites (`test:db`: 15, `test:security`: 22, `test:inventory`: 24, `test:transfer`: 13, `test:pos`: 17, `test:api`: 7). TypeScript linting (`tsc --noEmit`) passes with 0 errors. Production compilation succeeds.
-- **Dependencies**: `API-001`.
+  - [x] Fail-Closed Tenant Handling: Removed all `org_default` fallback logic from authentication (`AuthService.login` requires explicit `organizationId`), audit logging (`AuditRepository` requires non-empty `organization_id`), and runtime route handlers (`/api/orders`, `/api/customers`, `/api/sync/status`, `/api/sync/trigger`, `/api/attributes`, `/api/categories`, `/api/brands`, `/api/products/:id/variants`). `org_default` is strictly reserved for fixtures and seed data.
+  - [x] Fail-Closed Organization Verification: `resolveAuthorizedTenant()` verifies the target organization exists and is active in the `organizations` database table before permitting Super Admin cross-tenant access. Unknown or inactive organizations are rejected with HTTP 403 `TENANT_ACCESS_DENIED`.
+  - [x] Super Admin Model B Implementation: Super Admin defaults to their home tenant unless explicitly targeting a tenant via `?orgId=`. On single resource lookups (`/api/orders/:id`, `/api/customers/:id`), if not found in the home tenant, Super Admin can read across tenants, automatically recording a `SUPER_ADMIN_CROSS_TENANT_READ` audit event with `homeOrganization` and `targetOrganization` metadata.
+  - [x] Exact-Decimal Contract Without Trimming or Coercion: `validateMoneyDecimal` and `validateQuantityDecimal` strictly validate string inputs without calling `.trim()` before regex evaluation, strictly rejecting leading/trailing whitespace, non-string types, and numbers.
+  - [x] Anti-Spoofing & DTO Allowlisting: Identity and tenant keys (`organizationId`, `userId`, `actorId`, etc.) are allowlisted in DTO validators and stripped/ignored by server-authoritative assignment from `req.auth`. Unrecognized keys outside the allowlist are strictly rejected with HTTP 422 `VALIDATION_ERROR`.
+  - [x] Unified Audit Action Terminology: Standardized on canonical audit actions (`SUPER_ADMIN_CROSS_TENANT_READ`, `SUPER_ADMIN_CROSS_TENANT_CREATE`, `CREATE`, `UPDATE`, `DELETE`).
+  - [x] Quality & Test Gates: All 101 tests across all 6 test suites pass cleanly with 0 failures (`test:db`: 15, `test:security`: 22, `test:inventory`: 24, `test:transfer`: 13, `test:pos`: 17, `test:api`: 10). `npm run lint` and `npm run build` pass with 0 errors.
+- **Dependencies**: `API-001`, `API-001R1`.
 - **Acceptance Criteria**:
-  - [x] Request IDs are cryptographically generated with `crypto.randomUUID()`.
-  - [x] Authoritative money/quantity DTOs are strictly string-based without floating-point conversion.
-  - [x] Catalog mutation routes enforce strict DTO allowlisting.
-  - [x] Unknown client fields are rejected or explicitly allowlisted and stripped.
-  - [x] Tenant access is explicit and cannot be silently overridden.
-  - [x] Super Admin cross-tenant behavior is explicitly authorized, audited, and documented under Model B.
-  - [x] No authoritative API path reintroduces floating-point financial calculations.
-  - [x] Error details cannot leak internal information.
-- **Supervisor Gate**: Marked READY FOR REVIEW for supervisor review. Do NOT start QA-001 or any subsequent feature.
+  - [x] Authentication strictly requires `organizationId`; missing/invalid tenant fails closed.
+  - [x] Super Admin cross-tenant access enforces Model B semantics with active tenant validation and structured audit trail.
+  - [x] Decimal validators reject non-string and whitespace-padded inputs.
+  - [x] Route handlers eliminate `org_default` runtime fallbacks.
+  - [x] All 101 tests pass cleanly across 6 test suites.
+  - [x] Zero TypeScript errors and successful production compilation.
+- **Supervisor Gate**: Marked READY FOR REVIEW for independent human supervisor review. Do NOT start QA-001 until approved.
 
 ---
 

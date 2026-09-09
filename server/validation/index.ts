@@ -65,7 +65,12 @@ export function assertAllowedKeys(
   const allowedSet = new Set(allowedKeys);
   const errors: ValidationErrorDetail[] = [];
 
-  for (const key of Object.keys(data)) {
+  const allKeys = new Set([
+    ...Object.keys(data || {}),
+    ...Object.getOwnPropertyNames(data || {}),
+  ]);
+
+  for (const key of allKeys) {
     if (DANGEROUS_PROTO_KEYS.includes(key)) {
       errors.push({
         field: key,
@@ -107,8 +112,7 @@ export function validateMoneyDecimal(
     };
   }
 
-  const trimmed = val.trim();
-  if (!MONEY_REGEX.test(trimmed)) {
+  if (!MONEY_REGEX.test(val)) {
     return {
       field: fieldName,
       message: `${fieldName} must be a valid non-negative decimal string with at most 2 decimal places (e.g. "12.50").`,
@@ -140,8 +144,7 @@ export function validateQuantityDecimal(
     };
   }
 
-  const trimmed = val.trim();
-  if (!QUANTITY_REGEX.test(trimmed)) {
+  if (!QUANTITY_REGEX.test(val)) {
     return {
       field: fieldName,
       message: `${fieldName} must be a valid non-negative decimal string with at most 4 decimal places.`,
@@ -192,7 +195,7 @@ export function sanitizeClientBody<T extends Record<string, any>>(body: T): Part
 /**
  * Login Request Validator
  */
-export function validateLoginPayload(body: any): { email: string; password: string; organizationId?: string } {
+export function validateLoginPayload(body: any): { email: string; password: string; organizationId: string } {
   const errors: ValidationErrorDetail[] = [];
 
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -212,8 +215,8 @@ export function validateLoginPayload(body: any): { email: string; password: stri
     errors.push({ field: 'password', message: 'Password is required' });
   }
 
-  if (body.organizationId !== undefined && (typeof body.organizationId !== 'string' || body.organizationId.trim().length === 0)) {
-    errors.push({ field: 'organizationId', message: 'organizationId must be a non-empty string if supplied' });
+  if (!body.organizationId || typeof body.organizationId !== 'string' || body.organizationId.trim().length === 0) {
+    errors.push({ field: 'organizationId', message: 'organizationId is required and must be a non-empty string' });
   }
 
   if (errors.length > 0) {
@@ -223,7 +226,7 @@ export function validateLoginPayload(body: any): { email: string; password: stri
   return {
     email: body.email.toLowerCase().trim(),
     password: body.password,
-    organizationId: body.organizationId ? String(body.organizationId).trim() : undefined,
+    organizationId: String(body.organizationId).trim(),
   };
 }
 
@@ -247,7 +250,7 @@ export function validateUserPayload(body: any): {
 
   const allowlistErrors = assertAllowedKeys(
     body,
-    ['email', 'name', 'password', 'role', 'locationId'],
+    ['email', 'name', 'password', 'role', 'locationId', 'organizationId', 'organization_id'],
     'user payload'
   );
   if (allowlistErrors.length > 0) {
@@ -527,7 +530,8 @@ export function validateProductPayload(body: any, isUpdate = false): Record<stri
     'description', 'shortDescription', 'unit', 'unitCode', 'productType', 'status',
     'channels', 'taxRate', 'rating', 'reviewCount', 'tags', 'images', 'featured',
     'variants', 'sku', 'barcode', 'costPrice', 'retailPrice', 'wholesalePrice',
-    'memberPrice', 'minSellingPrice', 'stockByLocation', 'lowStockThreshold'
+    'memberPrice', 'minSellingPrice', 'stockByLocation', 'lowStockThreshold',
+    'organizationId', 'organization_id', 'userId', 'user_id', 'role', 'actorId', 'actorRole'
   ];
 
   const allowlistErrors = assertAllowedKeys(body, allowedProductKeys, 'product payload');

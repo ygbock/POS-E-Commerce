@@ -10,7 +10,8 @@ import { CustomerRepository } from '../server/repositories/customerRepository';
 import { CatalogRepository } from '../server/repositories/catalogRepository';
 import { AuditRepository } from '../server/repositories/auditRepository';
 import { hashPassword } from '../server/auth/password';
-import { classifyApiError, sanitizeApiErrorMessage, buildApiErrorResponse } from '../server/utils/errorSanitizer';
+import { signToken } from '../server/auth/token';
+import { classifyApiError, sanitizeApiErrorMessage, buildApiErrorResponse, ApiError } from '../server/utils/errorSanitizer';
 
 async function runApiHardeningTests() {
   console.log('======================================================');
@@ -90,6 +91,30 @@ async function runApiHardeningTests() {
     organizationId: 'org_api_beta',
   });
   const betaToken = betaLogin.token;
+
+  const superAdminHash = hashPassword('SuperAdminPass123!');
+  await userRepo.createUser({
+    organizationId: 'org_api_alpha',
+    email: 'superadmin@test.com',
+    name: 'Super Admin',
+    passwordHash: superAdminHash.hash,
+    passwordSalt: superAdminHash.salt,
+    role: 'super_admin',
+  });
+  const superLogin = await authService.login({
+    email: 'superadmin@test.com',
+    password: 'SuperAdminPass123!',
+    organizationId: 'org_api_alpha',
+  });
+  const superToken = superLogin.token;
+
+  // Forged/malformed token without organizationId to test fail-closed enforcement
+  const noTenantToken = signToken({
+    userId: 'usr_no_tenant',
+    email: 'no_tenant@test.com',
+    organizationId: '',
+    role: 'admin',
+  });
 
   // Create Express App
   const { app } = await createApp({ db, authService, skipVite: true });
@@ -419,6 +444,226 @@ async function runApiHardeningTests() {
       markPassed('7. Error Sanitizer Defense (No DB Leaks, Standard Envelopes)');
     } catch (err) {
       markFailed('7. Error Sanitizer Defense (No DB Leaks, Standard Envelopes)', err);
+    }
+
+    // -----------------------------------------------------------------
+    // TEST 8: Super Admin Cross-Tenant Access Model B & Fail-Closed Enforcement
+    // -----------------------------------------------------------------
+    try {
+      // 8a: Non-super-admin attempting cross-tenant query on /api/customers
+      const res8a = await fetch(`${baseUrl}/api/customers?orgId=org_api_beta`, {
+        headers: { 'Authorization': `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(res8a.status, 403, 'Non-super admin cross-tenant query must be rejected with 403');
+      const body8a = await res8a.json();
+      assert.strictEqual(body8a.success, false);
+      assert.strictEqual(body8a.error.code, 'TENANT_ACCESS_DENIED');
+
+      // 8b: Non-super-admin attempting cross-tenant query on /api/users
+      const res8b = await fetch(`${baseUrl}/api/users?orgId=org_api_beta`, {
+        headers: { 'Authorization': `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(res8b.status, 403);
+      const body8b = await res8b.json();
+      assert.strictEqual(body8b.error.code, 'TENANT_ACCESS_DENIED');
+
+      // 8c: Non-super-admin attempting cross-tenant creation on /api/users
+      const res8c = await fetch(`${baseUrl}/api/users?orgId=org_api_beta`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'hacker.cashier@test.com',
+          name: 'Hacker Cashier',
+          password: 'ValidPassword123!',
+          role: 'cashier',
+        }),
+      });
+      assert.strictEqual(res8c.status, 403);
+      const body8c = await res8c.json();
+      assert.strictEqual(body8c.error.code, 'TENANT_ACCESS_DENIED');
+
+      // 8d: Super Admin accessing without ?orgId defaults to home tenant (org_api_alpha)
+      const res8d = await fetch(`${baseUrl}/api/customers`, {
+        headers: { 'Authorization': `Bearer ${superToken}` },
+      });
+      assert.strictEqual(res8d.status, 200);
+      const body8d = await res8d.json();
+      assert.strictEqual(body8d.success, true);
+      assert.ok(body8d.data.every((c: any) => c.organization_id === 'org_api_alpha'));
+
+      // 8e: Super Admin cross-tenant read via ?orgId=org_api_beta returns beta customers and logs audit
+      const res8e = await fetch(`${baseUrl}/api/customers?orgId=org_api_beta`, {
+        headers: {
+          'Authorization': `Bearer ${superToken}`,
+          'x-request-id': 'super-audit-read-req-1',
+        },
+      });
+      assert.strictEqual(res8e.status, 200);
+      const body8e = await res8e.json();
+      assert.strictEqual(body8e.success, true);
+      assert.ok(body8e.data.length > 0);
+      assert.ok(body8e.data.every((c: any) => c.organization_id === 'org_api_beta'));
+
+      // Verify audit trail for cross-tenant read
+      const readAudits = await db.query<any>(
+        'SELECT * FROM audit_events WHERE organization_id = $1 AND action = $2 ORDER BY timestamp DESC LIMIT 10',
+        ['org_api_beta', 'SUPER_ADMIN_CROSS_TENANT_READ']
+      );
+      assert.ok(readAudits.rows.length > 0, 'Cross-tenant read audit must be recorded in target organization');
+      assert.strictEqual(readAudits.rows[0].actor_role, 'super_admin');
+      const meta = typeof readAudits.rows[0].metadata === 'string'
+        ? JSON.parse(readAudits.rows[0].metadata)
+        : readAudits.rows[0].metadata;
+      assert.strictEqual(meta?.homeOrganization, 'org_api_alpha');
+      assert.strictEqual(meta?.targetOrganization, 'org_api_beta');
+
+      // 8f: Super Admin cross-tenant user creation via ?orgId=org_api_beta
+      const res8f = await fetch(`${baseUrl}/api/users?orgId=org_api_beta`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${superToken}`,
+          'Content-Type': 'application/json',
+          'x-request-id': 'super-audit-create-req-1',
+        },
+        body: JSON.stringify({
+          email: 'beta.supercreated@test.com',
+          name: 'Beta Super Created',
+          password: 'ValidPassword123!',
+          role: 'cashier',
+        }),
+      });
+      assert.strictEqual(res8f.status, 201);
+      const body8f = await res8f.json();
+      assert.strictEqual(body8f.success, true);
+      assert.strictEqual(body8f.data.organizationId, 'org_api_beta');
+
+      // Verify audit trail for cross-tenant create
+      const createAudits = await db.query<any>(
+        'SELECT * FROM audit_events WHERE organization_id = $1 AND action = $2 ORDER BY timestamp DESC LIMIT 10',
+        ['org_api_beta', 'SUPER_ADMIN_CROSS_TENANT_CREATE']
+      );
+      assert.ok(createAudits.rows.length > 0, 'Cross-tenant create audit must be recorded');
+      assert.strictEqual(createAudits.rows[0].actor_role, 'super_admin');
+
+      // 8g: Token without organizationId is rejected by cryptographic verification as UNAUTHORIZED
+      const res8g = await fetch(`${baseUrl}/api/customers`, {
+        headers: { 'Authorization': `Bearer ${noTenantToken}` },
+      });
+      assert.strictEqual(res8g.status, 401);
+      const body8g = await res8g.json();
+      assert.strictEqual(body8g.error.code, 'UNAUTHORIZED');
+
+      markPassed('8. Super Admin Cross-Tenant Access Model B & Fail-Closed Enforcement');
+    } catch (err) {
+      markFailed('8. Super Admin Cross-Tenant Access Model B & Fail-Closed Enforcement', err);
+    }
+
+    // -----------------------------------------------------------------
+    // TEST 9: Strict Product & Attribute DTO Validation & Prototype Pollution Defense
+    // -----------------------------------------------------------------
+    try {
+      // 9a: Reject Prototype Pollution attempts
+      const res9a = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{"name":"Exploit Product","__proto__":{"admin":true}}',
+      });
+      assert.strictEqual(res9a.status, 422, 'Prototype pollution attempt must be rejected with 422');
+      const body9a = await res9a.json();
+      assert.strictEqual(body9a.success, false);
+      assert.strictEqual(body9a.error.code, 'VALIDATION_ERROR');
+
+      // 9b: Reject unknown/unrecognized attributes outside allowlist
+      const res9b = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Unknown Field Product',
+          unauthorized_secret_flag: true,
+        }),
+      });
+      assert.strictEqual(res9b.status, 422, 'Unknown fields must be rejected with 422');
+      const body9b = await res9b.json();
+      assert.strictEqual(body9b.error.code, 'VALIDATION_ERROR');
+      assert.ok(body9b.error.details.some((d: any) => d.field === 'unauthorized_secret_flag'));
+
+      // 9c: Valid Product payload succeeds with server-authoritative ID & tenant
+      const res9c = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Validated Precision Wireless Mouse',
+          brand: 'LogiPrecision',
+          category: 'Peripherals',
+          retailPrice: '49.99',
+          costPrice: '20.00',
+        }),
+      });
+      assert.strictEqual(res9c.status, 201);
+      const body9c = await res9c.json();
+      assert.strictEqual(body9c.success, true);
+      assert.ok(body9c.data.id.startsWith('prod-'), 'Authoritative prod- ID prefix');
+      assert.strictEqual(body9c.data.organizationId, 'org_api_alpha', 'Tenant stamped from authenticated caller');
+
+      // 9d: Reject unknown fields on PUT /api/attributes/:id
+      const res9d = await fetch(`${baseUrl}/api/attributes/attr_test_update`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Updated Attribute',
+          illegal_extra_param: 999,
+        }),
+      });
+      assert.strictEqual(res9d.status, 422);
+      const body9d = await res9d.json();
+      assert.strictEqual(body9d.error.code, 'VALIDATION_ERROR');
+
+      markPassed('9. Strict Product & Attribute DTO Validation & Prototype Pollution Defense');
+    } catch (err) {
+      markFailed('9. Strict Product & Attribute DTO Validation & Prototype Pollution Defense', err);
+    }
+
+    // -----------------------------------------------------------------
+    // TEST 10: Production Error Envelope Redaction & Hierarchy Standards
+    // -----------------------------------------------------------------
+    try {
+      // 10a: In production mode, database internal errors are completely sanitized to generic message
+      const dbInternalErr = new Error('relation "secret_internal_table" does not exist at character 42');
+      const prodRes = buildApiErrorResponse(dbInternalErr, undefined, true);
+      assert.strictEqual(prodRes.status, 500);
+      assert.strictEqual(prodRes.body.error.code, 'INTERNAL_SERVER_ERROR');
+      assert.strictEqual(prodRes.body.error.message, 'An unexpected internal error occurred. Please contact support.');
+      assert.strictEqual((prodRes.body as any).stack, undefined);
+
+      // 10b: ApiError adheres to contract
+      const customApiErr = new ApiError('FORBIDDEN_OPERATION', 'Action not permitted on locked batch', 403, [
+        { field: 'batchId', message: 'Batch is locked' },
+      ]);
+      const customRes = buildApiErrorResponse(customApiErr);
+      assert.strictEqual(customRes.status, 403);
+      assert.strictEqual(customRes.body.error.code, 'FORBIDDEN_OPERATION');
+      assert.strictEqual(customRes.body.error.message, 'Action not permitted on locked batch');
+      assert.strictEqual(customRes.body.error.details?.length, 1);
+      assert.strictEqual(customRes.body.error.details?.[0].field, 'batchId');
+
+      markPassed('10. Production Error Envelope Redaction & Hierarchy Standards');
+    } catch (err) {
+      markFailed('10. Production Error Envelope Redaction & Hierarchy Standards', err);
     }
 
   } finally {

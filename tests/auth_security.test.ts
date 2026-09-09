@@ -1206,7 +1206,7 @@ async function main() {
           const res = await fetch(`${baseUrl}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'admin@abacha.internal', password: 'WrongPassword!' }),
+            body: JSON.stringify({ email: 'admin@abacha.internal', password: 'WrongPassword!', organizationId: 'org_default' }),
           });
 
           if (res.status === 429) {
