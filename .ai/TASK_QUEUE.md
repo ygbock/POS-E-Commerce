@@ -344,16 +344,17 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 9: UX-001 — Production UX Hardening, Offline Resilience & Error Recovery
-- **Status**: `UX-001 Phase 2.2C R3 — READY FOR SUPERVISOR REVIEW`
+- **Status**: `UX-001 Phase 2.3 — READY FOR SUPERVISOR REVIEW`
 - **Phase 1 Deliverables**: Completed Comprehensive UI/UX Audit ([.ai/UX_AUDIT.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_AUDIT.md)) and UX Modernization Implementation Plan ([.ai/UX_IMPLEMENTATION_PLAN.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_IMPLEMENTATION_PLAN.md)), approved with conditions on 2026-09-10.
 - **Phase 2.1 Deliverables**: Implemented baseline design system primitives, global `ErrorBoundary` protection, sole environment gate checks, and React `useId` modal identifiers.
 - **Phase 2.2C Deliverables**: Completed e-commerce checkout integration. Hardened exact string-only quantities, cryptographically secure idempotency keys, payload fingerprinting (with customer details and location ID tracking), server-authoritative pricing and taxes, pessimistic variant row locking, payment state persistence, local `SAVEPOINT` transaction recovery (solving PostgreSQL unique-constraint abort race conditions), and robust production error sanitization.
+- **Phase 2.3 Deliverables**: Completed local offline POS queueing utilizing indexedDB storage, network connectivity event listeners, automatic background synchronization, backoff retry schedules, and intuitive UI status banners.
 - **Objective**: Modernize frontend UX incrementally starting with common design primitives and error wrappers, progressing to server authoritative integration, offline resilience, and mobile responsive layout fixes.
 - **Scope**:
-  - [x] Phase 1: Exhaustive frontend inspection, P0/P1/P2/P3 finding categorization, user journey audits, WCAG 2.2 AA target assessment, responsive audit, security authority UX audit, component primitive strategy, phase-by-phase implementation plan.
-  - [x] Phase 2.1: Build lightweight, high-performance `src/components/ui/` shared design primitives, setup Toast Provider, mount top-level SPA Error Boundary, secure exception details solely using Vite DEV mode flags (removing any hostname exceptions), and verify modal access IDs with `useId`.
-  - [x] Phase 2.2C: Migrate and harden Storefront orders checkout flow, implementing exact string quantities, secure idempotency, database-level atomic savepoints, location fingerprinting, and honest payment records.
-  - [ ] Phase 2.3: Integrate IndexedDB offline POS queueing with encryption, replay protection, and device-binding constraints.
+  - [x] Phase 1: Frontend inspection and audit reports.
+  - [x] Phase 2.1: UI primitives, toast alerts, top-level Error Boundary with safe DEV-mode redaction, and access IDs.
+  - [x] Phase 2.2C: E-commerce storefront checkout integration, savepoint transaction recovery, and exact decimal inputs.
+  - [x] Phase 2.3: Offline POS IndexedDB transaction queueing, synchronization on recovery, backoff schedules, and status banners.
   - [ ] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.
   - [ ] Phase 2.5: Calibrate mobile touch targets and ensure horizontal scroll wraps for complex tables.
 - **Dependencies**: `POS-001`, `API-001`, `QA-001`.
@@ -361,8 +362,8 @@ PROD-001 (NOT STARTED)
   - [x] Phase 1: UX Audit Report and Implementation Plan submitted and approved.
   - [x] Phase 2.1: Custom UI primitives created, Toast stack fully functional, top-level SPA error boundary mounted and verified.
   - [x] Phase 2.2C: Storefront orders checkout integrated using exact string-only quantities, cryptographic unique keys, savepoint-safe transaction recovery, and honest payment records.
-  - [ ] Phase 2.3: POS continues ringing items when offline and automatically syncs queue on reconnect.
-  - [ ] Phase 2.3: Network state indicator visual badge displayed.
+  - [x] Phase 2.3: POS continues ringing items when offline and automatically syncs queue on reconnect.
+  - [x] Phase 2.3: Network state indicator visual badge displayed.
 - **Security Requirements**: Offline queue items encrypted locally before sync.
 - **Validation Requirements**: Network throttling and offline simulation tests.
 

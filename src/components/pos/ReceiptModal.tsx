@@ -3,7 +3,7 @@ import { Order } from '../../types';
 import { ReceiptTemplateConfig, DEFAULT_RECEIPT_CONFIG, ReceiptTemplateType, QrCodeTargetType } from '../../types/receipt';
 import { ReceiptTemplateEngine } from './ReceiptTemplateEngine';
 import { QrVerificationModal } from './QrVerificationModal';
-import { Printer, Check, X, QrCode, Settings, Code2, Eye, Sparkles, Sliders, ChevronDown, ChevronUp, Copy, CheckCircle2 } from 'lucide-react';
+import { Printer, Check, X, QrCode, Settings, Code2, Eye, Sparkles, Sliders, ChevronDown, ChevronUp, Copy, CheckCircle2, Clock } from 'lucide-react';
 
 interface ReceiptModalProps {
   order: Order | null;
@@ -44,12 +44,22 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
           {/* Top Control Bar (Hidden on Print) */}
           <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0 print:hidden">
             <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
-                <Check className="w-4 h-4" />
-              </div>
+              {order.isPendingSync ? (
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center animate-pulse">
+                  <Clock className="w-4 h-4" />
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                  <Check className="w-4 h-4" />
+                </div>
+              )}
               <div>
-                <h3 className="font-black text-sm tracking-tight">Receipt Generator & Thermal Printer Engine</h3>
-                <p className="text-[11px] text-slate-400">Transaction #{order.orderNumber}</p>
+                <h3 className="font-black text-sm tracking-tight">
+                  {order.isPendingSync ? 'Offline - Sale Queued' : 'Receipt Generator & Thermal Printer Engine'}
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  {order.isPendingSync ? 'Transaction queued — awaiting server synchronization.' : `Transaction #${order.orderNumber}`}
+                </p>
               </div>
             </div>
 

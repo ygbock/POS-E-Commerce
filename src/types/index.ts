@@ -440,6 +440,8 @@ export interface Order {
   whatsappOptIn?: boolean;
   smsUpdatesLog?: { timestamp: string; channel: 'SMS' | 'WhatsApp'; message: string; status: 'Sent' | 'Delivered' }[];
   notes?: string;
+  isPendingSync?: boolean;
+  isSyncFailed?: boolean;
   createdAt: string;
   updatedAt: string;
   loyaltyPointsEarned: number;
@@ -634,4 +636,20 @@ export const SUPPORTED_CURRENCIES: Currency[] = [
   { code: 'CNY', symbol: '¥', name: 'Chinese Yuan', rate: 7.23, flag: '🇨🇳' },
   { code: 'JPY', symbol: '¥', name: 'Japanese Yen', rate: 155.00, flag: '🇯🇵' },
 ];
+
+export type OfflineTransaction = {
+  id: string;
+  idempotencyKey: string;
+  tenantId: string;
+  posSessionId: string;
+  registerId?: string;
+  operation: string; // e.g., 'pos_checkout'
+  payload: any;
+  createdAt: string;
+  attempts: number;
+  status: 'pending' | 'syncing' | 'failed';
+  lastError?: string;
+  lastAttemptAt?: string;
+};
+
 

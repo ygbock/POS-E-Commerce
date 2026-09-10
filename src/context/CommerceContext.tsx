@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authClient } from '../services/authClient';
+import { OfflineQueue, generateSecureUUID } from '../services/offlineQueue';
+import { syncService } from '../services/syncService';
 import {
   BranchLocation,
   BranchLocationId,
@@ -159,7 +161,7 @@ interface CommerceContextType {
   holdCurrentPosCart: (note?: string) => void;
   resumeHeldPosCart: (heldId: string) => void;
   removeHeldPosCart: (heldId: string) => void;
-  processPosCheckout: (payments: PaymentRecord[], discountCode?: string) => Order;
+  processPosCheckout: (payments: PaymentRecord[], discountCode?: string) => Promise<Order>;
   processPosReturn: (orderId: string, returnItems: { variantId: string; quantity: number; reason: string; restock: boolean }[], refundAmount: number) => void;
   openPosShift: (openingCash: number, cashierName: string) => void;
   addPosCashMovement: (type: 'Cash In' | 'Cash Out', amount: number, reason: string, approvedBy?: string) => void;
@@ -1315,7 +1317,56 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setHeldCarts((prev) => prev.filter((h) => h.id !== heldId));
   };
 
-  const processPosCheckout = (payments: PaymentRecord[], discountCode?: string): Order => {
+  const mapServerOrderToClientOrder = (srvOrder: any, srvItems: any[], srvPayment?: any): Order => {
+    return {
+      id: srvOrder.id,
+      orderNumber: srvOrder.order_number,
+      source: (srvOrder.source || 'POS') as any,
+      channel: srvOrder.channel || 'POS',
+      locationId: srvOrder.location_id,
+      locationName: srvOrder.location_name || currentLocation.name,
+      customerId: srvOrder.customer_id,
+      customerName: srvOrder.customer_name || 'Walk-in Retail Customer',
+      customerEmail: srvOrder.customer_email,
+      customerPhone: srvOrder.customer_phone,
+      fulfillmentMethod: (srvOrder.fulfillment_method || 'POS Walk-in') as any,
+      items: srvItems.map((item: any) => ({
+        productId: item.product_id,
+        variantId: item.variant_id,
+        productName: item.product_name || 'Product',
+        variantName: item.variant_name || 'Variant',
+        sku: item.sku || '',
+        price: parseFloat(item.unit_price || '0'),
+        quantity: parseFloat(item.quantity || '0'),
+        discountPercentage: parseFloat(item.discount_percentage || '0'),
+        taxRate: parseFloat(item.tax_rate || '15'),
+        costPrice: parseFloat(item.cost_price || '0'),
+        unit: item.unit || 'pcs',
+      })),
+      subtotal: parseFloat(srvOrder.subtotal || '0'),
+      discountAmount: parseFloat(srvOrder.discount_amount || '0'),
+      discountCode: srvOrder.discount_code,
+      taxAmount: parseFloat(srvOrder.tax_amount || '0'),
+      shippingFee: parseFloat(srvOrder.shipping_fee || '0'),
+      totalAmount: parseFloat(srvOrder.total_amount || '0'),
+      totalCostAmount: parseFloat(srvOrder.total_cost_amount || '0'),
+      payments: srvPayment ? [{
+        method: srvPayment.payment_method,
+        amount: parseFloat(srvPayment.amount || '0'),
+        reference: srvPayment.reference_number,
+        timestamp: srvPayment.payment_date || srvOrder.created_at,
+      }] : [],
+      paymentStatus: (srvOrder.payment_status || 'Paid') as any,
+      status: (srvOrder.status || 'Completed') as any,
+      cashierName: srvOrder.cashier_name,
+      createdAt: srvOrder.created_at || new Date().toISOString(),
+      updatedAt: srvOrder.updated_at || new Date().toISOString(),
+      loyaltyPointsEarned: srvOrder.loyalty_points_earned ? parseInt(srvOrder.loyalty_points_earned, 10) : 0,
+      loyaltyPointsRedeemed: srvOrder.loyalty_points_redeemed ? parseInt(srvOrder.loyalty_points_redeemed, 10) : 0,
+    };
+  };
+
+  const processPosCheckout = async (payments: PaymentRecord[], discountCode?: string): Promise<Order> => {
     const now = new Date().toISOString();
     const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -1340,159 +1391,363 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const totalAmount = Math.max(0, subtotal - extraDiscount + totalTax);
 
-    // Deduct stock from current POS location
-    const movementsToAdd: StockMovement[] = [];
-    const updatedProducts = products.map((prod) => {
-      const newVariants = prod.variants.map((v) => {
-        const cartItem = posCart.find((ci) => ci.variantId === v.id);
-        if (cartItem) {
-          const currentStock = v.stockByLocation[currentLocationId] || 0;
-          const newStock = Math.max(0, currentStock - cartItem.quantity);
-
-          movementsToAdd.push({
-            id: `mov-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-            timestamp: now,
-            productId: prod.id,
-            productName: prod.name,
-            variantId: v.id,
-            variantName: v.name,
-            sku: v.sku,
-            locationId: currentLocationId,
-            locationName: currentLocation.name,
-            type: 'POS_SALE',
-            quantityChange: -cartItem.quantity,
-            previousStock: currentStock,
-            newStock,
-            referenceId: orderNumber,
-            reason: `In-store checkout by ${posShift.cashierName}`,
-            performedBy: posShift.cashierName,
-          });
-
-          return {
-            ...v,
-            stockByLocation: {
-              ...v.stockByLocation,
-              [currentLocationId]: newStock,
-            },
-          };
-        }
-        return v;
-      });
-      return { ...prod, variants: newVariants };
-    });
-
-    setProducts(updatedProducts);
-    setStockMovements((prev) => [...movementsToAdd, ...prev]);
-
-    // Loyalty points (1 point per $10 spent)
-    const pointsEarned = Math.floor(totalAmount / 10);
-
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber,
-      source: 'POS',
-      channel: `${currentLocation.name} (Term 1)`,
+    const checkoutPayload = {
       locationId: currentLocationId,
-      locationName: currentLocation.name,
-      customerId: selectedPosCustomer?.id,
-      customerName: selectedPosCustomer?.name || 'Walk-in Retail Customer',
-      customerEmail: selectedPosCustomer?.email,
-      customerTier: selectedPosCustomer?.tier,
-      fulfillmentMethod: 'POS Walk-in',
-      items: [...posCart],
-      subtotal,
-      discountAmount: extraDiscount,
-      discountCode,
-      taxAmount: totalTax,
-      shippingFee: 0,
-      totalAmount,
-      totalCostAmount: totalCost,
-      payments,
-      paymentStatus: 'Paid',
-      status: 'Completed',
-      cashierName: posShift.cashierName,
-      createdAt: now,
-      updatedAt: now,
-      loyaltyPointsEarned: pointsEarned,
-      loyaltyPointsRedeemed: 0,
+      sessionId: posShift.id,
+      customerId: selectedPosCustomer?.id || null,
+      cartItems: posCart.map((item) => ({
+        variant_id: item.variantId,
+        quantity: item.quantity.toString(),
+        discount_percentage: (item.discountPercentage || 0).toString(),
+      })),
+      paymentMethod: payments[0]?.method || 'Cash',
+      amountPaid: payments.reduce((sum, p) => sum + p.amount, 0).toString(),
+      notes: `POS checkout by ${posShift.cashierName}`,
     };
 
-    setOrders((prev) => [newOrder, ...prev]);
+    const isOfflineMode = syncService.getState() === 'offline';
 
-    // Update customer loyalty and spent totals if identified
-    if (selectedPosCustomer) {
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.id === selectedPosCustomer.id
-            ? {
-                ...c,
-                totalSpent: c.totalSpent + totalAmount,
-                ordersCount: c.ordersCount + 1,
-                loyaltyPoints: c.loyaltyPoints + pointsEarned,
-              }
-            : c
-        )
+    if (isOfflineMode) {
+      // Create local offline Order
+      const pointsEarned = Math.floor(totalAmount / 10);
+      const newOrder: Order = {
+        id: `ord-offline-${Date.now()}`,
+        orderNumber: `ORD-OFF-${Math.floor(1000 + Math.random() * 9000)}`,
+        source: 'POS',
+        channel: `${currentLocation.name} (Term 1) [Offline]`,
+        locationId: currentLocationId,
+        locationName: currentLocation.name,
+        customerId: selectedPosCustomer?.id,
+        customerName: selectedPosCustomer?.name || 'Walk-in Retail Customer',
+        customerEmail: selectedPosCustomer?.email,
+        customerTier: selectedPosCustomer?.tier,
+        fulfillmentMethod: 'POS Walk-in',
+        items: [...posCart],
+        subtotal,
+        discountAmount: extraDiscount,
+        discountCode,
+        taxAmount: totalTax,
+        shippingFee: 0,
+        totalAmount,
+        totalCostAmount: totalCost,
+        payments,
+        paymentStatus: 'Pending',
+        status: 'Completed',
+        cashierName: posShift.cashierName,
+        createdAt: now,
+        updatedAt: now,
+        loyaltyPointsEarned: pointsEarned,
+        loyaltyPointsRedeemed: 0,
+        isPendingSync: true,
+      };
+
+      // Queue the transaction intent
+      await OfflineQueue.enqueue(
+        'pos_checkout',
+        checkoutPayload,
+        authClient.getUser()?.organizationId || 'org_default',
+        posShift.id
       );
+
+      // Apply stock deduction locally to keep UI updated
+      const movementsToAdd: StockMovement[] = [];
+      const updatedProducts = products.map((prod) => {
+        const newVariants = prod.variants.map((v) => {
+          const cartItem = posCart.find((ci) => ci.variantId === v.id);
+          if (cartItem) {
+            const currentStock = v.stockByLocation[currentLocationId] || 0;
+            const newStock = Math.max(0, currentStock - cartItem.quantity);
+
+            movementsToAdd.push({
+              id: `mov-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              timestamp: now,
+              productId: prod.id,
+              productName: prod.name,
+              variantId: v.id,
+              variantName: v.name,
+              sku: v.sku,
+              locationId: currentLocationId,
+              locationName: currentLocation.name,
+              type: 'POS_SALE',
+              quantityChange: -cartItem.quantity,
+              previousStock: currentStock,
+              newStock,
+              referenceId: newOrder.orderNumber,
+              reason: `In-store checkout by ${posShift.cashierName} [Offline]`,
+              performedBy: posShift.cashierName,
+            });
+
+            return {
+              ...v,
+              stockByLocation: {
+                ...v.stockByLocation,
+                [currentLocationId]: newStock,
+              },
+            };
+          }
+          return v;
+        });
+        return { ...prod, variants: newVariants };
+      });
+
+      setProducts(updatedProducts);
+      setStockMovements((prev) => [...movementsToAdd, ...prev]);
+      setOrders((prev) => [newOrder, ...prev]);
+
+      // Update POS Shift Totals (Display purposes only)
+      const cashPaid = payments.filter((p) => p.method === 'Cash').reduce((s, p) => s + p.amount, 0);
+      const cardPaid = payments.filter((p) => p.method === 'Credit Card').reduce((s, p) => s + p.amount, 0);
+      const mobilePaid = payments.filter((p) => p.method === 'Mobile Money').reduce((s, p) => s + p.amount, 0);
+      const walletPaid = payments.filter((p) => p.method === 'Fintech Wallet' || p.method === 'Store Credit').reduce((s, p) => s + p.amount, 0);
+
+      setPosShift((prev) => ({
+        ...prev,
+        totalSales: prev.totalSales + totalAmount,
+        totalCashSales: prev.totalCashSales + cashPaid,
+        totalCardSales: prev.totalCardSales + cardPaid,
+        totalMobileSales: prev.totalMobileSales + mobilePaid,
+        totalWalletSales: prev.totalWalletSales + walletPaid,
+        closingCashCalculated: prev.closingCashCalculated + cashPaid,
+        transactionsCount: prev.transactionsCount + 1,
+      }));
+
+      // Double-entry displays
+      const newLedgers: LedgerEntry[] = [
+        {
+          id: `ledg-${Date.now()}-1`,
+          timestamp: now,
+          transactionNumber: `TX-${newOrder.orderNumber}-REV`,
+          source: 'POS_SALE',
+          description: `POS Revenue for ${newOrder.orderNumber} [Offline]`,
+          referenceId: newOrder.orderNumber,
+          accountDebited: cashPaid > 0 ? 'Cash in Drawer (POS)' : 'Card/Payment Processor Clearing',
+          accountCredited: 'Gross Sales Revenue',
+          amount: subtotal - extraDiscount,
+        },
+      ];
+      setLedgerEntries((prev) => [...newLedgers, ...prev]);
+
+      addNotification('Transaction Queued', `POS sale queued for synchronization.`, 'info', 'pos');
+      clearPosCart();
+      return newOrder;
     }
 
-    // Update POS Shift Totals
-    const cashPaid = payments.filter((p) => p.method === 'Cash').reduce((s, p) => s + p.amount, 0);
-    const cardPaid = payments.filter((p) => p.method === 'Credit Card').reduce((s, p) => s + p.amount, 0);
-    const mobilePaid = payments.filter((p) => p.method === 'Mobile Money').reduce((s, p) => s + p.amount, 0);
-    const walletPaid = payments.filter((p) => p.method === 'Fintech Wallet' || p.method === 'Store Credit').reduce((s, p) => s + p.amount, 0);
+    // ONLINE MODE: Fetch from server
+    try {
+      const response = await fetch('/api/pos/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authClient.getAuthHeaders(),
+          'idempotency-key': generateSecureUUID(),
+        },
+        body: JSON.stringify(checkoutPayload),
+      });
 
-    setPosShift((prev) => ({
-      ...prev,
-      totalSales: prev.totalSales + totalAmount,
-      totalCashSales: prev.totalCashSales + cashPaid,
-      totalCardSales: prev.totalCardSales + cardPaid,
-      totalMobileSales: prev.totalMobileSales + mobilePaid,
-      totalWalletSales: prev.totalWalletSales + walletPaid,
-      closingCashCalculated: prev.closingCashCalculated + cashPaid,
-      transactionsCount: prev.transactionsCount + 1,
-    }));
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        // If it is a transient error (5xx or connection loss), we can fall back to offline queue!
+        if (response.status >= 500 && response.status <= 599) {
+          throw new Error(`SERVER_ERROR: ${errorData?.error?.message || response.status}`);
+        }
+        throw new Error(`VALIDATION_ERROR: ${errorData?.error?.message || 'Checkout failed'}`);
+      }
 
-    // Record Double-Entry General Ledger Entries
-    const newLedgers: LedgerEntry[] = [
-      {
-        id: `ledg-${Date.now()}-1`,
-        timestamp: now,
-        transactionNumber: `TX-${orderNumber}-REV`,
-        source: 'POS_SALE',
-        description: `POS Revenue for ${orderNumber}`,
-        referenceId: orderNumber,
-        accountDebited: cashPaid > 0 ? 'Cash in Drawer (POS)' : 'Card/Payment Processor Clearing',
-        accountCredited: 'Gross Sales Revenue',
-        amount: subtotal - extraDiscount,
-      },
-      {
-        id: `ledg-${Date.now()}-2`,
-        timestamp: now,
-        transactionNumber: `TX-${orderNumber}-TAX`,
-        source: 'POS_SALE',
-        description: `Sales Tax for ${orderNumber}`,
-        referenceId: orderNumber,
-        accountDebited: cashPaid > 0 ? 'Cash in Drawer (POS)' : 'Card/Payment Processor Clearing',
-        accountCredited: 'Sales Tax Payable',
-        amount: totalTax,
-      },
-      {
-        id: `ledg-${Date.now()}-3`,
-        timestamp: now,
-        transactionNumber: `TX-${orderNumber}-COGS`,
-        source: 'POS_SALE',
-        description: `COGS for ${orderNumber}`,
-        referenceId: orderNumber,
-        accountDebited: 'Cost of Goods Sold (COGS)',
-        accountCredited: `Inventory Asset (${currentLocation.name})`,
-        amount: totalCost,
-      },
-    ];
-    setLedgerEntries((prev) => [...newLedgers, ...prev]);
+      const resData = await response.json();
+      const finalOrder = mapServerOrderToClientOrder(resData.order, resData.items, resData.payment);
 
-    logAuditAction(`POS Checkout ${orderNumber}`, 'POS', orderNumber, undefined, `Total: ${formatCurrency(totalAmount)}`);
-    clearPosCart();
-    return newOrder;
+      // Local stock movement and products update
+      const movementsToAdd: StockMovement[] = [];
+      const updatedProducts = products.map((prod) => {
+        const newVariants = prod.variants.map((v) => {
+          const cartItem = posCart.find((ci) => ci.variantId === v.id);
+          if (cartItem) {
+            const currentStock = v.stockByLocation[currentLocationId] || 0;
+            const newStock = Math.max(0, currentStock - cartItem.quantity);
+
+            movementsToAdd.push({
+              id: `mov-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              timestamp: now,
+              productId: prod.id,
+              productName: prod.name,
+              variantId: v.id,
+              variantName: v.name,
+              sku: v.sku,
+              locationId: currentLocationId,
+              locationName: currentLocation.name,
+              type: 'POS_SALE',
+              quantityChange: -cartItem.quantity,
+              previousStock: currentStock,
+              newStock,
+              referenceId: finalOrder.orderNumber,
+              reason: `In-store checkout by ${posShift.cashierName}`,
+              performedBy: posShift.cashierName,
+            });
+
+            return {
+              ...v,
+              stockByLocation: {
+                ...v.stockByLocation,
+                [currentLocationId]: newStock,
+              },
+            };
+          }
+          return v;
+        });
+        return { ...prod, variants: newVariants };
+      });
+
+      setProducts(updatedProducts);
+      setStockMovements((prev) => [...movementsToAdd, ...prev]);
+      setOrders((prev) => [finalOrder, ...prev]);
+
+      if (selectedPosCustomer) {
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === selectedPosCustomer.id
+              ? {
+                  ...c,
+                  totalSpent: c.totalSpent + finalOrder.totalAmount,
+                  ordersCount: c.ordersCount + 1,
+                  loyaltyPoints: c.loyaltyPoints + finalOrder.loyaltyPointsEarned,
+                }
+              : c
+          )
+        );
+      }
+
+      // Update POS Shift Totals
+      const cashPaid = payments.filter((p) => p.method === 'Cash').reduce((s, p) => s + p.amount, 0);
+      const cardPaid = payments.filter((p) => p.method === 'Credit Card').reduce((s, p) => s + p.amount, 0);
+      const mobilePaid = payments.filter((p) => p.method === 'Mobile Money').reduce((s, p) => s + p.amount, 0);
+      const walletPaid = payments.filter((p) => p.method === 'Fintech Wallet' || p.method === 'Store Credit').reduce((s, p) => s + p.amount, 0);
+
+      setPosShift((prev) => ({
+        ...prev,
+        totalSales: prev.totalSales + finalOrder.totalAmount,
+        totalCashSales: prev.totalCashSales + cashPaid,
+        totalCardSales: prev.totalCardSales + cardPaid,
+        totalMobileSales: prev.totalMobileSales + mobilePaid,
+        totalWalletSales: prev.totalWalletSales + walletPaid,
+        closingCashCalculated: prev.closingCashCalculated + cashPaid,
+        transactionsCount: prev.transactionsCount + 1,
+      }));
+
+      // Double-entry displays
+      const newLedgers: LedgerEntry[] = [
+        {
+          id: `ledg-${Date.now()}-1`,
+          timestamp: now,
+          transactionNumber: `TX-${finalOrder.orderNumber}-REV`,
+          source: 'POS_SALE',
+          description: `POS Revenue for ${finalOrder.orderNumber}`,
+          referenceId: finalOrder.orderNumber,
+          accountDebited: cashPaid > 0 ? 'Cash in Drawer (POS)' : 'Card/Payment Processor Clearing',
+          accountCredited: 'Gross Sales Revenue',
+          amount: finalOrder.subtotal - finalOrder.discountAmount,
+        },
+      ];
+      setLedgerEntries((prev) => [...newLedgers, ...prev]);
+
+      logAuditAction(`POS Checkout ${finalOrder.orderNumber}`, 'POS', finalOrder.orderNumber, undefined, `Total: ${formatCurrency(finalOrder.totalAmount)}`);
+      clearPosCart();
+      return finalOrder;
+
+    } catch (err: any) {
+      if (err.message.includes('VALIDATION_ERROR') || err.message.includes('SESSION_CLOSED') || err.message.includes('SESSION_NOT_FOUND')) {
+        // Non-retryable error, throw directly
+        throw err;
+      }
+
+      // Handle transient fetch failures by queueing offline
+      const pointsEarned = Math.floor(totalAmount / 10);
+      const fallbackOrder: Order = {
+        id: `ord-offline-${Date.now()}`,
+        orderNumber: `ORD-OFF-${Math.floor(1000 + Math.random() * 9000)}`,
+        source: 'POS',
+        channel: `${currentLocation.name} (Term 1) [Offline-Fallback]`,
+        locationId: currentLocationId,
+        locationName: currentLocation.name,
+        customerId: selectedPosCustomer?.id,
+        customerName: selectedPosCustomer?.name || 'Walk-in Retail Customer',
+        customerEmail: selectedPosCustomer?.email,
+        customerTier: selectedPosCustomer?.tier,
+        fulfillmentMethod: 'POS Walk-in',
+        items: [...posCart],
+        subtotal,
+        discountAmount: extraDiscount,
+        discountCode,
+        taxAmount: totalTax,
+        shippingFee: 0,
+        totalAmount,
+        totalCostAmount: totalCost,
+        payments,
+        paymentStatus: 'Pending',
+        status: 'Completed',
+        cashierName: posShift.cashierName,
+        createdAt: now,
+        updatedAt: now,
+        loyaltyPointsEarned: pointsEarned,
+        loyaltyPointsRedeemed: 0,
+        isPendingSync: true,
+      };
+
+      await OfflineQueue.enqueue(
+        'pos_checkout',
+        checkoutPayload,
+        authClient.getUser()?.organizationId || 'org_default',
+        posShift.id
+      );
+
+      // Local stock movement and products update
+      const movementsToAdd: StockMovement[] = [];
+      const updatedProducts = products.map((prod) => {
+        const newVariants = prod.variants.map((v) => {
+          const cartItem = posCart.find((ci) => ci.variantId === v.id);
+          if (cartItem) {
+            const currentStock = v.stockByLocation[currentLocationId] || 0;
+            const newStock = Math.max(0, currentStock - cartItem.quantity);
+
+            movementsToAdd.push({
+              id: `mov-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              timestamp: now,
+              productId: prod.id,
+              productName: prod.name,
+              variantId: v.id,
+              variantName: v.name,
+              sku: v.sku,
+              locationId: currentLocationId,
+              locationName: currentLocation.name,
+              type: 'POS_SALE',
+              quantityChange: -cartItem.quantity,
+              previousStock: currentStock,
+              newStock,
+              referenceId: fallbackOrder.orderNumber,
+              reason: `In-store checkout by ${posShift.cashierName} [Offline-Fallback]`,
+              performedBy: posShift.cashierName,
+            });
+
+            return {
+              ...v,
+              stockByLocation: {
+                ...v.stockByLocation,
+                [currentLocationId]: newStock,
+              },
+            };
+          }
+          return v;
+        });
+        return { ...prod, variants: newVariants };
+      });
+
+      setProducts(updatedProducts);
+      setStockMovements((prev) => [...movementsToAdd, ...prev]);
+      setOrders((prev) => [fallbackOrder, ...prev]);
+
+      addNotification('Offline Queued', 'Network request failed. Checkout has been queued for synchronization.', 'info', 'pos');
+      clearPosCart();
+      return fallbackOrder;
+    }
   };
 
   const processPosReturn = (

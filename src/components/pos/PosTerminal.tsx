@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   Barcode,
@@ -31,6 +31,9 @@ import {
   Lock,
   ShieldAlert,
   Zap,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Product, PaymentMethod, PaymentRecord, Order, Customer, CartItem } from '../../types';
@@ -40,6 +43,7 @@ import { PriceOverrideModal } from './PriceOverrideModal';
 import { CashMovementModal } from './CashMovementModal';
 import { QuickSaleView } from './QuickSaleView';
 import { BarcodeQrScannerModal } from './BarcodeQrScannerModal';
+import { syncService, NetworkState } from '../../services/syncService';
 
 export const PosTerminal: React.FC = () => {
   const {
@@ -117,6 +121,17 @@ export const PosTerminal: React.FC = () => {
   const [returnItemsState, setReturnItemsState] = useState<{ [variantId: string]: { qty: number; restock: boolean; reason: string } }>({});
 
   const categories = ['All', 'Electronics', 'Home & Kitchen', 'Food & Beverage', 'Apparel'];
+
+  const [networkState, setNetworkState] = useState<NetworkState>('online');
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
+  useEffect(() => {
+    const unsubscribe = syncService.subscribe((state, count) => {
+      setNetworkState(state);
+      setPendingCount(count);
+    });
+    return unsubscribe;
+  }, []);
 
   // Calculations
   let cartSubtotal = 0;
@@ -274,7 +289,7 @@ export const PosTerminal: React.FC = () => {
   };
 
   // Execute Checkout
-  const handleExecuteCheckout = () => {
+  const handleExecuteCheckout = async () => {
     const payments: PaymentRecord[] = [];
     const now = new Date().toISOString();
 
@@ -294,10 +309,14 @@ export const PosTerminal: React.FC = () => {
       if (m > 0) payments.push({ method: 'Mobile Money', amount: m, reference: 'SPLIT-MOMO', timestamp: now });
     }
 
-    const order = processPosCheckout(payments, appliedPromoCode);
-    setShowCheckoutModal(false);
-    setAppliedPromoCode('');
-    setCompletedOrder(order);
+    try {
+      const order = await processPosCheckout(payments, appliedPromoCode);
+      setShowCheckoutModal(false);
+      setAppliedPromoCode('');
+      setCompletedOrder(order);
+    } catch (err: any) {
+      alert(`Checkout failed: ${err.message || err}`);
+    }
   };
 
   // Handle Search Return Order
@@ -389,6 +408,59 @@ export const PosTerminal: React.FC = () => {
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Location: <strong className="text-slate-800 dark:text-slate-200">{currentLocation.name}</strong> • Cashier: <strong className="text-slate-800 dark:text-slate-200">{posShift.cashierName}</strong>
             </p>
+          </div>
+        </div>
+
+        {/* Offline / Synchronization Status Indicator */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs">
+          {networkState === 'online' && (
+            <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-bold gap-1.5">
+              <Wifi className="w-4 h-4" />
+              <span>Online</span>
+            </span>
+          )}
+          {networkState === 'offline' && (
+            <span className="flex items-center text-rose-600 dark:text-rose-400 font-bold gap-1.5">
+              <WifiOff className="w-4 h-4 animate-pulse" />
+              <span>Offline</span>
+            </span>
+          )}
+          {networkState === 'syncing' && (
+            <span className="flex items-center text-sky-600 dark:text-sky-400 font-bold gap-1.5 animate-pulse">
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span>Syncing ({pendingCount} pending)</span>
+            </span>
+          )}
+          {networkState === 'synced' && (
+            <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-bold gap-1.5">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Synced</span>
+            </span>
+          )}
+          {networkState === 'sync_failed' && (
+            <span className="flex items-center text-amber-600 dark:text-amber-400 font-bold gap-1.5 animate-pulse">
+              <ShieldAlert className="w-4 h-4" />
+              <span>Sync Failed ({pendingCount} pending)</span>
+            </span>
+          )}
+
+          {pendingCount > 0 && networkState !== 'syncing' && networkState !== 'offline' && (
+            <button
+              onClick={() => syncService.sync()}
+              className="px-2 py-0.5 bg-sky-500 hover:bg-sky-400 text-white text-[10px] font-bold rounded-md transition-all cursor-pointer"
+            >
+              Sync Now
+            </button>
+          )}
+
+          <div className="pl-3 border-l border-slate-200 dark:border-slate-700 flex items-center space-x-1.5">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">Simulate Offline</span>
+            <input
+              type="checkbox"
+              checked={networkState === 'offline'}
+              onChange={(e) => syncService.setMockOffline(e.target.checked)}
+              className="w-3.5 h-3.5 rounded bg-slate-200 border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+            />
           </div>
         </div>
 
