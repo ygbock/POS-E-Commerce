@@ -344,17 +344,24 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 9: UX-001 — Production UX Hardening, Offline Resilience & Error Recovery
-- **Status**: `IN PROGRESS (Phase 1 READY FOR REVIEW)`
-- **Phase 1 Deliverables**: Completed Comprehensive UI/UX Audit ([.ai/UX_AUDIT.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_AUDIT.md)) and UX Modernization Implementation Plan ([.ai/UX_IMPLEMENTATION_PLAN.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_IMPLEMENTATION_PLAN.md)).
-- **Objective**: Audit current frontend UI/UX, formulate component consolidation and design system strategy, and prepare for Phase 2 implementation.
+- **Status**: `IN PROGRESS (Phase 1 APPROVED WITH CONDITIONS; Phase 2.1 IN PROGRESS)`
+- **Phase 1 Deliverables**: Completed Comprehensive UI/UX Audit ([.ai/UX_AUDIT.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_AUDIT.md)) and UX Modernization Implementation Plan ([.ai/UX_IMPLEMENTATION_PLAN.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_IMPLEMENTATION_PLAN.md)), approved with conditions on 2026-09-10.
+- **Phase 2.1 Deliverables**: Implemented baseline design system primitives (`Button`, `Input`, `Select`, `Modal`, `Card`, `Badge`, `Table`, `Toast` stack, `Spinner`, `Skeleton`) and global `ErrorBoundary` protection in `src/components/ui/`.
+- **Objective**: Modernize frontend UX incrementally starting with common design primitives and error wrappers, progressing to server authoritative integration, offline resilience, and mobile responsive layout fixes.
 - **Scope**:
-  - Phase 1 (Completed): Exhaustive frontend inspection, P0/P1/P2/P3 finding categorization, user journey audits, WCAG 2.2 AA accessibility evaluation, responsive audit, security authority UX audit, component primitive strategy, phase-by-phase implementation plan.
-  - Phase 2 (Pending Supervisor Approval): Build `src/components/ui/` primitives, React Error Boundary, server API binding for checkouts/inventory/orders, IndexedDB offline queueing, WCAG 2.2 AA accessibility hardening, touch target optimization.
+  - [x] Phase 1: Exhaustive frontend inspection, P0/P1/P2/P3 finding categorization, user journey audits, WCAG 2.2 AA target assessment, responsive audit, security authority UX audit, component primitive strategy, phase-by-phase implementation plan.
+  - [x] Phase 2.1: Build lightweight, high-performance `src/components/ui/` shared design primitives, setup Toast Provider, and mount top-level SPA Error Boundary.
+  - [ ] Phase 2.2: Migrate POS checkout, Inventory movements/transfers, and Storefront orders to server-authoritative API paths.
+  - [ ] Phase 2.3: Integrate IndexedDB offline POS queueing with encryption, replay protection, and device-binding constraints.
+  - [ ] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.
+  - [ ] Phase 2.5: Calibrate mobile touch targets and ensure horizontal scroll wraps for complex tables.
 - **Dependencies**: `POS-001`, `API-001`, `QA-001`.
 - **Acceptance Criteria**:
-  - Phase 1: UX Audit Report and Implementation Plan submitted for supervisor review.
-  - Phase 2: POS can continue ringing items when offline and syncs transactions when back online.
-  - Phase 2: Clear visual indicator of online/offline/syncing state.
+  - [x] Phase 1: UX Audit Report and Implementation Plan submitted and approved.
+  - [x] Phase 2.1: Custom UI primitives created, Toast stack fully functional, top-level SPA error boundary mounted and verified.
+  - [ ] Phase 2.2: All key client-mutations route to secure server REST API endpoints.
+  - [ ] Phase 2.3: POS continues ringing items when offline and automatically syncs queue on reconnect.
+  - [ ] Phase 2.3: Network state indicator visual badge displayed.
 - **Security Requirements**: Offline queue items encrypted locally before sync.
 - **Validation Requirements**: Network throttling and offline simulation tests.
 

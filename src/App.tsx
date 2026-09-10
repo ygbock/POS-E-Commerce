@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { CommerceProvider, useCommerce } from './context/CommerceContext';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { ToastProvider } from './components/ui/Toast';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { AdminMobileBottomNav } from './components/layout/AdminMobileBottomNav';
@@ -102,8 +104,12 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   return (
-    <CommerceProvider>
-      <MainLayout />
-    </CommerceProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <CommerceProvider>
+          <MainLayout />
+        </CommerceProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
