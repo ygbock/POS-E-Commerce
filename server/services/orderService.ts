@@ -141,18 +141,30 @@ export class OrderService {
       throw new DomainError('VALIDATION_ERROR', 'Cart items must be a non-empty array.');
     }
 
-    const qtyRegex = /^\d+(\.\d{1,4})?$/;
     for (const item of cart_items) {
+      if (!item || typeof item !== 'object') {
+        throw new DomainError('VALIDATION_ERROR', 'Cart items must contain valid item objects.');
+      }
       if (!item.variant_id || typeof item.variant_id !== 'string' || item.variant_id.trim() === '') {
         throw new DomainError('VALIDATION_ERROR', 'Each item must have a valid non-empty variant_id string.');
       }
-      if (typeof item.quantity !== 'string') {
-        throw new DomainError('VALIDATION_ERROR', 'Quantity must be a string representation of a decimal.');
+      const quantity = item.quantity;
+      if (typeof quantity !== 'string') {
+        throw new DomainError('VALIDATION_ERROR', 'Quantity must be supplied as a decimal string.');
       }
-      if (!qtyRegex.test(item.quantity) || item.quantity === '' || item.quantity.includes('-')) {
-        throw new DomainError('VALIDATION_ERROR', `Quantity '${item.quantity}' is malformed or has excessive precision (max 4 decimal places).`);
+      if (quantity.trim() === '') {
+        throw new DomainError('VALIDATION_ERROR', 'Quantity cannot be empty or whitespace.');
       }
-      const qtyScaled = parseQtyToScaled(item.quantity);
+
+      // Enforce the exact quantity parser directly against the original value without Number() or toFixed() repairs
+      let validatedQtyStr: string;
+      try {
+        validatedQtyStr = parseExactQuantity(quantity, 'quantity', { allowNegative: false });
+      } catch (err: any) {
+        throw new DomainError('VALIDATION_ERROR', err.message);
+      }
+
+      const qtyScaled = parseQtyToScaled(validatedQtyStr);
       if (qtyScaled <= 0n) {
         throw new DomainError('VALIDATION_ERROR', 'Quantity must be greater than zero.');
       }
@@ -171,36 +183,6 @@ export class OrderService {
     });
 
     // ------------------------------------------------------------------
-    // IDEMPOTENCY PRE-CHECK outside transaction
-    // ------------------------------------------------------------------
-    const existingOrderRes = await this.db.query<any>(
-      `SELECT id, notes FROM orders WHERE organization_id = $1 AND idempotency_key = $2`,
-      [organization_id, idempotency_key]
-    );
-    if (existingOrderRes.rows.length > 0) {
-      const orderId = existingOrderRes.rows[0].id;
-      const storedNotes = existingOrderRes.rows[0].notes;
-      const storedFingerprint = extractFingerprint(storedNotes);
-
-      if (storedFingerprint === currentFingerprint) {
-        const fullOrder = await this.orderRepo.findOrderById(orderId, organization_id);
-        if (fullOrder) {
-          const payments = await this.db.query<any>(
-            `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2`,
-            [orderId, organization_id]
-          );
-          return {
-            order: fullOrder.order,
-            items: fullOrder.items,
-            payments: payments.rows,
-          };
-        }
-      } else {
-        throw new DomainError('IDEMPOTENCY_CONFLICT', `An order with idempotency key '${idempotency_key}' already exists with different request parameters.`);
-      }
-    }
-
-    // ------------------------------------------------------------------
     // STOPS ON UNSAFE DB CONFIGS / DEPENDENCIES
     // ------------------------------------------------------------------
     if (discount_code) {
@@ -217,7 +199,7 @@ export class OrderService {
             [fulfillmentLocId, organization_id]
           );
           if (locRes.rows.length === 0) {
-            throw new DomainError('VALIDATION_ERROR', `Fulfillment location with ID '${fulfillmentLocId}' not found.`);
+            throw new DomainError('VALIDATION_ERROR', `Fulfillment location with ID '${fulfillmentLocId}' not found under this organization.`);
           }
           if (!locRes.rows[0].is_active) {
             throw new DomainError('VALIDATION_ERROR', `Fulfillment location '${locRes.rows[0].name}' is inactive.`);
@@ -426,12 +408,24 @@ export class OrderService {
         };
       });
     } catch (err: any) {
-      if (err?.code === '23505' || err?.message?.includes('uq_orders_org_idempotency') || err?.message?.includes('orders_idempotency_key_key')) {
+      const errCode = String(err?.code || '');
+      const errMsg = String(err?.message || '');
+      if (
+        errCode === '23505' ||
+        errMsg.includes('uq_orders_org_idempotency') ||
+        errMsg.includes('orders_idempotency_key_key') ||
+        errMsg.includes('duplicate key') ||
+        errMsg.includes('violates unique constraint')
+      ) {
         const raceOrderRes = await this.db.query<any>(
-          `SELECT id, notes FROM orders WHERE organization_id = $1 AND idempotency_key = $2`,
-          [organization_id, idempotency_key]
+          `SELECT id, notes, organization_id FROM orders WHERE idempotency_key = $1`,
+          [idempotency_key]
         );
         if (raceOrderRes.rows.length > 0) {
+          const orderOrgId = raceOrderRes.rows[0].organization_id;
+          if (orderOrgId !== organization_id) {
+            throw new DomainError('IDEMPOTENCY_CONFLICT', `Idempotency key '${idempotency_key}' is already claimed.`);
+          }
           const orderId = raceOrderRes.rows[0].id;
           const storedNotes = raceOrderRes.rows[0].notes;
           const storedFingerprint = extractFingerprint(storedNotes);

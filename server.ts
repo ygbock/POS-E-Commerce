@@ -1441,53 +1441,37 @@ export async function createApp(options: CreateAppOptions = {}) {
           },
         });
       } catch (err: any) {
+        let code = 'INTERNAL_SERVER_ERROR';
+        let status = 500;
+        let message = 'An internal server error occurred while processing the order. Please try again later.';
+
         if (err instanceof DomainError) {
-          const status = err.code === 'IDEMPOTENCY_CONFLICT' ? 409 : 400;
-          return res.status(status).json({
-            success: false,
-            error: {
-              code: err.code,
-              message: err.message,
-            },
+          code = err.code;
+          message = err.message;
+          if (code === 'IDEMPOTENCY_CONFLICT') {
+            status = 409;
+          } else if (code === 'PRODUCT_NOT_FOUND') {
+            status = 404;
+          } else if (code === 'VALIDATION_ERROR' || code === 'INSUFFICIENT_STOCK') {
+            status = 400;
+          } else if (code === 'FORBIDDEN') {
+            status = 403;
+          } else {
+            status = 400;
+          }
+        } else {
+          // It is an arbitrary exception (database error, etc.). DO NOT return err.message!
+          console.error('[Storefront Checkout Internal Error]:', {
+            message: err?.message,
+            stack: err?.stack,
           });
         }
 
-        const errMsg = err.message || '';
-        if (
-          errMsg.includes('VALIDATION_ERROR') ||
-          errMsg.includes('PRODUCT_NOT_FOUND') ||
-          errMsg.includes('INSUFFICIENT_STOCK') ||
-          errMsg.includes('IDEMPOTENCY_CONFLICT')
-        ) {
-          const code = errMsg.includes('VALIDATION_ERROR')
-            ? 'VALIDATION_ERROR'
-            : errMsg.includes('PRODUCT_NOT_FOUND')
-            ? 'PRODUCT_NOT_FOUND'
-            : errMsg.includes('INSUFFICIENT_STOCK')
-            ? 'INSUFFICIENT_STOCK'
-            : 'IDEMPOTENCY_CONFLICT';
-          const status = code === 'IDEMPOTENCY_CONFLICT' ? 409 : 400;
-          const cleanMsg = errMsg.substring(errMsg.indexOf(':') + 1).trim();
-          return res.status(status).json({
-            success: false,
-            error: {
-              code,
-              message: cleanMsg || errMsg,
-            },
-          });
-        }
-
-        console.error('[Storefront Checkout Internal Error]:', {
-          message: err.message,
-          stack: err.stack,
-          code: err.code,
-        });
-
-        return res.status(500).json({
+        return res.status(status).json({
           success: false,
           error: {
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'An internal server error occurred while processing the order. Please try again later.',
+            code,
+            message,
           },
         });
       }
