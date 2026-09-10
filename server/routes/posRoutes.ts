@@ -117,10 +117,11 @@ export function handlePosRouteError(res: Response, err: any): Response {
   const safeMessage = sanitizePosErrorMessage(msg);
 
   if (msg.includes('VALIDATION_ERROR') || msg.includes('IDEMPOTENCY_CONFLICT')) {
-    return res.status(400).json({
+    const isConflict = msg.includes('IDEMPOTENCY_CONFLICT');
+    return res.status(isConflict ? 409 : 400).json({
       success: false,
       error: {
-        code: msg.includes('IDEMPOTENCY_CONFLICT') ? 'IDEMPOTENCY_CONFLICT' : 'VALIDATION_ERROR',
+        code: isConflict ? 'IDEMPOTENCY_CONFLICT' : 'VALIDATION_ERROR',
         message: safeMessage,
       },
     });

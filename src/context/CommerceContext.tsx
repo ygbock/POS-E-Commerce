@@ -366,6 +366,49 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshExchangeRates();
   }, []);
 
+  // Post-sync server inventory reconciliation
+  useEffect(() => {
+    const unregister = syncService.registerReconciliationHandler(async (tx) => {
+      if (tx.payload?.cartItems && Array.isArray(tx.payload.cartItems)) {
+        try {
+          const locId = tx.payload.locationId || currentLocationId;
+          for (const ci of tx.payload.cartItems) {
+            const variantId = ci.variant_id;
+            const balRes = await fetch(`/api/inventory/balances/${locId}/${variantId}`, {
+              headers: authClient.getAuthHeaders(),
+            }).catch(() => null);
+
+            if (balRes && balRes.ok) {
+              const balJson = await balRes.json();
+              const authQuantity = parseFloat(balJson.data?.available_quantity ?? balJson.data?.on_hand_quantity);
+              if (!isNaN(authQuantity)) {
+                setProducts((prev) =>
+                  prev.map((p) => ({
+                    ...p,
+                    variants: p.variants.map((v) =>
+                      v.id === variantId
+                        ? {
+                            ...v,
+                            stockByLocation: {
+                              ...v.stockByLocation,
+                              [locId]: authQuantity,
+                            },
+                          }
+                        : v
+                    ),
+                  }))
+                );
+              }
+            }
+          }
+        } catch (recErr) {
+          console.warn('[CommerceContext] Post-sync inventory reconciliation error:', recErr);
+        }
+      }
+    });
+    return unregister;
+  }, [currentLocationId]);
+
   // Global Theme Mode (light / dark)
   const [theme, setThemeState] = useState<'light' | 'dark'>(() => loadStored<'light' | 'dark'>('theme', 'light'));
   const isDarkMode = theme === 'dark';
@@ -1391,6 +1434,12 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const totalAmount = Math.max(0, subtotal - extraDiscount + totalTax);
 
+    const authUser = authClient.getUser();
+    if (!authUser || !authUser.organizationId || authUser.organizationId.trim() === '' || authUser.organizationId === 'org_default') {
+      throw new Error('AUTHENTICATION_REQUIRED: A valid authenticated organization session is required for POS checkout.');
+    }
+    const currentOrgId = authUser.organizationId.trim();
+
     const checkoutPayload = {
       locationId: currentLocationId,
       sessionId: posShift.id,
@@ -1405,6 +1454,7 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       notes: `POS checkout by ${posShift.cashierName}`,
     };
 
+    const idempotencyKey = generateSecureUUID();
     const isOfflineMode = syncService.getState() === 'offline';
 
     if (isOfflineMode) {
@@ -1441,12 +1491,14 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isPendingSync: true,
       };
 
-      // Queue the transaction intent
+      // Durably queue the transaction intent before clearing cart or changing state
       await OfflineQueue.enqueue(
         'pos_checkout',
         checkoutPayload,
-        authClient.getUser()?.organizationId || 'org_default',
-        posShift.id
+        currentOrgId,
+        posShift.id,
+        undefined,
+        idempotencyKey
       );
 
       // Apply stock deduction locally to keep UI updated
@@ -1539,18 +1591,15 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         headers: {
           'Content-Type': 'application/json',
           ...authClient.getAuthHeaders(),
-          'idempotency-key': generateSecureUUID(),
+          'idempotency-key': idempotencyKey,
         },
         body: JSON.stringify(checkoutPayload),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        // If it is a transient error (5xx or connection loss), we can fall back to offline queue!
-        if (response.status >= 500 && response.status <= 599) {
-          throw new Error(`SERVER_ERROR: ${errorData?.error?.message || response.status}`);
-        }
-        throw new Error(`VALIDATION_ERROR: ${errorData?.error?.message || 'Checkout failed'}`);
+        const safeErrMsg = errorData?.error?.message || `HTTP_ERROR_${response.status}`;
+        throw new Error(safeErrMsg);
       }
 
       const resData = await response.json();
@@ -1654,12 +1703,26 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return finalOrder;
 
     } catch (err: any) {
-      if (err.message.includes('VALIDATION_ERROR') || err.message.includes('SESSION_CLOSED') || err.message.includes('SESSION_NOT_FOUND')) {
-        // Non-retryable error, throw directly
+      // Check for genuine transport / network failures
+      const isTransportFailure =
+        err instanceof TypeError ||
+        err?.name === 'TypeError' ||
+        err?.name === 'AbortError' ||
+        err?.message?.includes('Failed to fetch') ||
+        err?.message?.includes('NetworkError') ||
+        err?.message?.includes('fetch failed') ||
+        err?.message?.includes('ECONNREFUSED') ||
+        err?.message?.includes('ETIMEDOUT') ||
+        err?.message?.includes('Network request failed') ||
+        syncService.getState() === 'offline';
+
+      if (!isTransportFailure) {
+        // Application, authorization, validation or server error response: DO NOT treat as offline!
+        // Do NOT clear cart; throw directly to caller.
         throw err;
       }
 
-      // Handle transient fetch failures by queueing offline
+      // Genuine network transport failure: enqueue transaction intent with PRESERVED idempotency key
       const pointsEarned = Math.floor(totalAmount / 10);
       const fallbackOrder: Order = {
         id: `ord-offline-${Date.now()}`,
@@ -1692,11 +1755,14 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isPendingSync: true,
       };
 
+      // Durably place into offline queue before clearing cart
       await OfflineQueue.enqueue(
         'pos_checkout',
         checkoutPayload,
-        authClient.getUser()?.organizationId || 'org_default',
-        posShift.id
+        currentOrgId,
+        posShift.id,
+        undefined,
+        idempotencyKey
       );
 
       // Local stock movement and products update

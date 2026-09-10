@@ -42,17 +42,65 @@ function getIDB(): Promise<IDBDatabase | null> {
 }
 
 export class OfflineQueue {
+  /**
+   * Migrate any transactions currently in memoryQueue into IndexedDB.
+   * Removes successfully stored entries from memoryQueue only after persistence.
+   */
+  static async migrateMemoryToIDB(dbInstance?: IDBDatabase | null): Promise<void> {
+    if (memoryQueue.length === 0) return;
+    const db = dbInstance || (await getIDB());
+    if (!db) return;
+
+    const itemsToMigrate = [...memoryQueue];
+    const successfullyMigratedIds: string[] = [];
+
+    await new Promise<void>((resolve) => {
+      try {
+        const transaction = db.transaction(STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+
+        transaction.oncomplete = () => {
+          memoryQueue = memoryQueue.filter((t) => !successfullyMigratedIds.includes(t.id));
+          resolve();
+        };
+        transaction.onerror = () => {
+          resolve();
+        };
+        transaction.onabort = () => {
+          resolve();
+        };
+
+        for (const item of itemsToMigrate) {
+          const req = store.put(item);
+          req.onsuccess = () => {
+            successfullyMigratedIds.push(item.id);
+          };
+          req.onerror = () => {
+            // failed for this specific item, keep in memory
+          };
+        }
+      } catch {
+        resolve();
+      }
+    });
+  }
+
   static async enqueue(
     operation: string,
     payload: any,
     tenantId: string,
     posSessionId: string,
-    registerId?: string
+    registerId?: string,
+    idempotencyKey?: string
   ): Promise<OfflineTransaction> {
+    if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '' || tenantId === 'org_default') {
+      throw new Error('TENANT_REQUIRED: A valid authenticated tenant identifier is required to enqueue offline transactions.');
+    }
+
     const tx: OfflineTransaction = {
       id: generateSecureUUID(),
-      idempotencyKey: generateSecureUUID(),
-      tenantId,
+      idempotencyKey: idempotencyKey || generateSecureUUID(),
+      tenantId: tenantId.trim(),
       posSessionId,
       registerId,
       operation,
@@ -68,14 +116,19 @@ export class OfflineQueue {
       return tx;
     }
 
-    return new Promise((resolve, reject) => {
+    // If IndexedDB is available, migrate any prior memory items first
+    if (memoryQueue.length > 0) {
+      await this.migrateMemoryToIDB(db);
+    }
+
+    return new Promise((resolve) => {
       try {
         const transaction = db.transaction(STORE_NAME, 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
         const request = store.add(tx);
         request.onsuccess = () => resolve(tx);
         request.onerror = () => {
-          memoryQueue.push(tx); // rollback/fallback to memory on failure
+          memoryQueue.push(tx); // fallback to memory on failure
           resolve(tx);
         };
       } catch (err) {
@@ -85,39 +138,66 @@ export class OfflineQueue {
     });
   }
 
-  static async getTransactions(): Promise<OfflineTransaction[]> {
+  static async getTransactions(organizationId?: string): Promise<OfflineTransaction[]> {
     const db = await getIDB();
+    let allTransactions: OfflineTransaction[] = [];
+
     if (!db) {
-      return [...memoryQueue].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      allTransactions = [...memoryQueue];
+    } else {
+      // Migrate pending memory transactions into IndexedDB
+      if (memoryQueue.length > 0) {
+        await this.migrateMemoryToIDB(db);
+      }
+
+      const idbTransactions = await new Promise<OfflineTransaction[]>((resolve) => {
+        try {
+          const transaction = db.transaction(STORE_NAME, 'readonly');
+          const store = transaction.objectStore(STORE_NAME);
+          const request = store.getAll();
+          request.onsuccess = () => {
+            const results = (request.result as OfflineTransaction[]) || [];
+            resolve(results);
+          };
+          request.onerror = () => {
+            resolve([]);
+          };
+        } catch {
+          resolve([]);
+        }
+      });
+
+      // Combine IDB transactions with any unmigrated memory items, deduplicating by ID
+      const seenIds = new Set<string>();
+      for (const tx of idbTransactions) {
+        seenIds.add(tx.id);
+        allTransactions.push(tx);
+      }
+      for (const tx of memoryQueue) {
+        if (!seenIds.has(tx.id)) {
+          seenIds.add(tx.id);
+          allTransactions.push(tx);
+        }
+      }
     }
 
-    return new Promise((resolve) => {
-      try {
-        const transaction = db.transaction(STORE_NAME, 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.getAll();
-        request.onsuccess = () => {
-          const results = (request.result as OfflineTransaction[]) || [];
-          resolve(results.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
-        };
-        request.onerror = () => {
-          resolve([...memoryQueue].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
-        };
-      } catch {
-        resolve([...memoryQueue].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
-      }
-    });
+    // Filter strictly by organization if specified
+    if (organizationId) {
+      allTransactions = allTransactions.filter((t) => t.tenantId === organizationId);
+    }
+
+    return allTransactions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
   static async updateTransaction(tx: OfflineTransaction): Promise<void> {
-    const db = await getIDB();
-    if (!db) {
-      const idx = memoryQueue.findIndex((t) => t.id === tx.id);
-      if (idx !== -1) {
-        memoryQueue[idx] = { ...tx };
-      }
-      return;
+    // Update in memoryQueue if present
+    const idx = memoryQueue.findIndex((t) => t.id === tx.id);
+    if (idx !== -1) {
+      memoryQueue[idx] = { ...tx };
     }
+
+    const db = await getIDB();
+    if (!db) return;
 
     return new Promise((resolve) => {
       try {
@@ -125,29 +205,19 @@ export class OfflineQueue {
         const store = transaction.objectStore(STORE_NAME);
         const request = store.put(tx);
         request.onsuccess = () => resolve();
-        request.onerror = () => {
-          const idx = memoryQueue.findIndex((t) => t.id === tx.id);
-          if (idx !== -1) {
-            memoryQueue[idx] = { ...tx };
-          }
-          resolve();
-        };
+        request.onerror = () => resolve();
       } catch {
-        const idx = memoryQueue.findIndex((t) => t.id === tx.id);
-        if (idx !== -1) {
-          memoryQueue[idx] = { ...tx };
-        }
         resolve();
       }
     });
   }
 
   static async removeTransaction(id: string): Promise<void> {
+    // Remove from memoryQueue
+    memoryQueue = memoryQueue.filter((t) => t.id !== id);
+
     const db = await getIDB();
-    if (!db) {
-      memoryQueue = memoryQueue.filter((t) => t.id !== id);
-      return;
-    }
+    if (!db) return;
 
     return new Promise((resolve) => {
       try {
@@ -155,12 +225,8 @@ export class OfflineQueue {
         const store = transaction.objectStore(STORE_NAME);
         const request = store.delete(id);
         request.onsuccess = () => resolve();
-        request.onerror = () => {
-          memoryQueue = memoryQueue.filter((t) => t.id !== id);
-          resolve();
-        };
+        request.onerror = () => resolve();
       } catch {
-        memoryQueue = memoryQueue.filter((t) => t.id !== id);
         resolve();
       }
     });

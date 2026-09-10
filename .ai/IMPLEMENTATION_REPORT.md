@@ -1,8 +1,104 @@
 # Implementation Report
 
-## UX-001 Phase 2.3 — Offline POS Resilience & Synchronization
+## UX-001 Phase 2.3 R1 — Offline POS Resilience & Security Hardening
 
 - **Status**: `READY FOR SUPERVISOR REVIEW`
+- **Parent Task**: `UX-001` (Phase 2.3 R1)
+- **Authority**: Human Supervisor / Reviewer
+- **Scope Discipline**: Targeted corrective rework addressing all 7 findings of the independent security and architecture audit on UX-001 Phase 2.3. No unapproved features, unauthorized dependencies, or modifications to server financial math were introduced.
+
+---
+
+### 1. Corrective Deliverables Completed
+
+#### A. Dual-Layer Storage Split-Brain Prevention & In-Memory Migration (Finding 1)
+- **Problem Addressed**: If IndexedDB was temporarily blocked or failed to open at boot, transactions were enqueued into the in-memory fallback queue. If IndexedDB became accessible later, in-memory transactions could be stranded or lost.
+- **Implementation in `src/services/offlineQueue.ts`**:
+  - Implemented `migrateMemoryToIDB(dbInstance?: IDBDatabase)`: When IndexedDB opens or when `enqueue()` is called, any transactions existing in `memoryQueue` are migrated to IndexedDB using a readwrite transaction, deduplicating on `tx.id`.
+  - Upon successful IDB write, the items are cleared from `memoryQueue`.
+  - `getTransactions(organizationId?)`: Queries both IndexedDB and `memoryQueue`, merges them deduplicated by transaction `id`, and strictly filters by `organizationId`.
+  - `updateTransaction()` and `removeTransaction()`: Apply mutations across both IndexedDB and the in-memory queue to maintain parity across storage tiers.
+
+#### B. Fail-Closed Tenant Validation in Sync Daemon (Finding 2)
+- **Problem Addressed**: Sync daemon did not strictly check authentication or tenant validity before initiating replay of offline transactions, presenting a risk of using placeholder tenants (`org_default`) or leaking records across tenant boundaries.
+- **Implementation in `src/services/syncService.ts`**:
+  - `syncService.sync()` now queries `AuthService.getCurrentUser()` at the start of synchronization.
+  - Fail-Closed Check: If `!currentUser` or `currentUser.organizationId === 'org_default'`, the sync process aborts immediately, returning `false`.
+  - Zero transactions are read from the queue, zero network calls are made, and zero queue deletions occur under unauthenticated or default tenant states.
+
+#### C. Tenant-Scoped Queue Operations (Finding 3)
+- **Problem Addressed**: Offline transactions must be strictly partitioned by tenant so that a cashier or user in Tenant A cannot sync or see transactions created by Tenant B.
+- **Implementation in `src/services/offlineQueue.ts` and `src/services/syncService.ts`**:
+  - `OfflineQueue.getTransactions(organizationId)` enforces filtering by `tx.organizationId === organizationId`.
+  - `OfflineQueue.enqueue()` rejects transactions without a valid `organizationId` or with placeholder `'org_default'`.
+  - `syncService.sync()` passes the authenticated user's `organizationId` into `OfflineQueue.getTransactions(currentTenantId)` to guarantee that only transactions belonging to the authenticated tenant are processed.
+
+#### D. Strict 409 Conflict vs. Idempotency Replay Semantics (Finding 4)
+- **Problem Addressed**: In Phase 2.3, HTTP 409 responses were classified as successful idempotency replays and removed from the queue. Under REST standards and project API contracts, a 409 Conflict (`IDEMPOTENCY_CONFLICT`) indicates a cryptographic payload mismatch or state collision, not a successful replay.
+- **Implementation in `src/services/syncService.ts` and `server/routes/posRoutes.ts`**:
+  - In `server/routes/posRoutes.ts`, `handlePosRouteError` returns HTTP 409 for `IDEMPOTENCY_CONFLICT`.
+  - In `syncService.ts`:
+    - HTTP 200 / 201: Verified server acceptance (including duplicate order returns with identical fingerprint); transaction is safely removed from `OfflineQueue`.
+    - HTTP 409 or `IDEMPOTENCY_CONFLICT`: Transaction status is marked `'failed'`, annotated with `lastError = "IDEMPOTENCY_CONFLICT: " + error.message`, and kept in the queue with retries halted so that the cashier/manager can investigate without data loss.
+    - HTTP 4xx (e.g. 400, 422): Marked `'failed'` and kept in queue for inspection.
+    - Transient HTTP errors (5xx, network drops): Kept as `'pending'` with exponential backoff.
+
+#### E. Idempotency Key Continuity & Safe Offline Fallback (Finding 5)
+- **Problem Addressed**: If a POS checkout failed due to network disruption, falling back to offline queue generation could create a new, second idempotency key or prematurely clear the cart before durable queueing.
+- **Implementation in `src/context/CommerceContext.tsx`**:
+  - `processPosCheckout`: Generates a cryptographically secure `idempotencyKey` (`crypto.randomUUID()`) upfront and attaches it to the checkout payload.
+  - If network request fails due to genuine transport errors (`TypeError: Failed to fetch` or connection drop), `processPosCheckout` preserves the exact same `idempotencyKey` and passes it to `OfflineQueue.enqueue()`.
+  - Cart is cleared ONLY after either:
+    1. The server confirms acceptance (online path), OR
+    2. `OfflineQueue.enqueue()` successfully completes and returns a stored transaction ID (offline fallback).
+  - If the server rejects the request with a business or validation error (HTTP 4xx), the error is thrown, the cart is preserved, and the transaction is NOT queued.
+
+#### F. Server-Authoritative Post-Sync Inventory Reconciliation (Finding 6)
+- **Problem Addressed**: Client-side optimistic decrement of product stock violates the server-authoritative inventory rule.
+- **Implementation in `src/context/CommerceContext.tsx` and `src/services/syncService.ts`**:
+  - `syncService.ts` provides a listener registration hook: `registerReconciliationHandler(handler: () => Promise<void>)`.
+  - When background synchronization successfully replays queued transactions, it invokes all registered reconciliation handlers.
+  - `CommerceContext` registers a reconciliation handler that queries the authoritative server balance endpoint `/api/inventory/balances/:locationId/:variantId` for all affected variants, updating the UI cache with exact server balances.
+
+#### G. Decoupled Simulator UX (Finding 7)
+- **Problem Addressed**: Real network drops were setting `isMockOffline = true`, causing the "Simulate Offline" checkbox in the POS terminal to appear checked during genuine network failures.
+- **Implementation in `src/services/syncService.ts` and `src/components/pos/PosTerminal.tsx`**:
+  - Separated `isMockOffline` (user toggle) from `isRealNetworkOnline` (browser `navigator.onLine` and event listeners).
+  - Exposed `isMockingOffline()` and `isRealOffline()`.
+  - In `PosTerminal.tsx`, the "Simulate Offline" checkbox binds exclusively to `isMockOffline`. A real network drop displays the "Offline" status banner while leaving the simulator toggle unchecked.
+
+---
+
+### 2. Verification & Automated Test Matrix
+
+#### Dedicated Test Suite: `tests/ux_offline_pos.test.ts` (14/14 Passed)
+The automated test suite was expanded from 6 baseline tests to 14 comprehensive test scenarios verifying all audit checkpoints:
+
+| Test ID | Test Scenario | Result |
+| :--- | :--- | :--- |
+| **Test 1** | Offline Queue Enqueueing: Enqueue transaction when offline into durable storage | **PASSED** |
+| **Test 2** | Sync Blocked When Offline: Background sync aborts without sending when offline | **PASSED** |
+| **Test 3** | Sync Retry on Transient Server Failure: 500 error increments attempts & schedules backoff | **PASSED** |
+| **Test 4** | Sync Exponential Backoff Triggers: Transactions in cooldown window skipped on next cycle | **PASSED** |
+| **Test 5** | Permanent Failure Handling (400): Validation error marked 'failed' and retries halted | **PASSED** |
+| **Test 6** | Successful Synchronization: HTTP 200/201 removes transaction from queue | **PASSED** |
+| **Test 7 (R1)** | Split-Brain Storage Migration: Memory queue automatically flushes to IDB on recovery | **PASSED** |
+| **Test 8 (R2)** | Fail-Closed Tenant Validation: Missing or 'org_default' tenant aborts sync immediately | **PASSED** |
+| **Test 9 (R3)** | Tenant-Scoped Queue: getTransactions(orgId) strictly isolates tenant records | **PASSED** |
+| **Test 10 (R4)**| 409 Conflict Semantics: Conflict rejections marked 'failed' with error, not purged | **PASSED** |
+| **Test 11 (R4)**| Idempotency Replay Semantics: Genuine replay (HTTP 200/201 duplicate) purged from queue | **PASSED** |
+| **Test 12 (R5)**| Idempotency Key Continuity: Pre-computed key preserved on transport drop fallback | **PASSED** |
+| **Test 13 (R6)**| Post-Sync Inventory Reconciliation: Sync trigger invokes balance reconciliation listener | **PASSED** |
+| **Test 14 (R7)**| Decoupled Simulator UX: Real network drop does not alter mock offline toggle | **PASSED** |
+
+Execution Command: `npm run test:offline-pos` -> **14 passed, 0 failed**.  
+Static UX & Accessibility: `npm run test:ux` -> **3 passed, 0 failed**.  
+
+---
+
+## UX-001 Phase 2.3 — Offline POS Resilience & Synchronization (SUPERSEDED)
+
+- **Status**: `SUPERSEDED BY UX-001 Phase 2.3 R1`
 - **Parent Task**: `UX-001` (Phase 2.3)
 - **Authority**: Human Supervisor / Reviewer
 - **Scope Discipline**: Implementation of IndexedDB offline queueing, event listeners, automatic synchronization, exponential backoff triggers, and user-facing status indicators on the POS. No unrequested features or modifications to financial math were introduced.

@@ -48,10 +48,41 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
-### Queue Item: UX-001 Phase 2.1 R2 — Design System Baseline & Error Boundary
+### Queue Item: UX-001 Phase 2.3 R1 — Offline POS Resilience & Security Hardening
 - **Submitted By**: Senior Software Engineer / Implementation Lead (Gemini)
 - **Submission Date**: 2026-09-10
 - **Current Status**: `READY FOR SUPERVISOR REVIEW`
+- **Scope**:
+  - Implemented targeted corrective rework resolving all 7 findings from independent security and architecture audit of UX-001 Phase 2.3.
+  - **Finding 1 (Storage Split-Brain Prevention)**: Added `migrateMemoryToIDB(dbInstance?)` to automatically migrate pending transactions from in-memory queue to IndexedDB with deduplication upon storage availability or write operations.
+  - **Finding 2 (Fail-Closed Tenant Isolation in Sync)**: Refactored `syncService.sync()` to fail closed immediately (return `false`, zero transactions sent, zero queue removals) if caller is unauthenticated or `organizationId === 'org_default'`.
+  - **Finding 3 (Tenant-Scoped Queue Operations)**: Enforced `OfflineQueue.getTransactions(organizationId)` parameter throughout `syncService` to strictly scope sync operations to the active user's authenticated tenant.
+  - **Finding 4 (409 Conflict vs. Idempotency Replay Semantics)**: Refactored response handling to distinguish 409 conflict errors (`IDEMPOTENCY_CONFLICT`) from genuine replays. Conflict rejections are marked `'failed'`, annotated with `lastError`, stopped from retrying, and kept in queue for cashier attention. Only genuine replays (HTTP 200/201 or matching fingerprint) are purged from queue.
+  - **Finding 5 (Idempotency Key Continuity & Safe Offline Fallback)**: `CommerceContext.processPosCheckout` generates a cryptographically secure `idempotencyKey` upfront; if genuine transport failure occurs (`Failed to fetch`, network drop), passes the exact same `idempotencyKey` to `OfflineQueue.enqueue()`. Cart is only cleared after server confirmation or durable queue placement.
+  - **Finding 6 (Server-Authoritative Stock Reconciliation)**: Replaced client-side optimistic stock mutations with post-sync server balance reconciliation. Registered listener invokes `/api/inventory/balances/:locationId/:variantId` upon successful sync to update UI stock with authoritative server balances.
+  - **Finding 7 (Decoupled Simulator UX)**: Decoupled "Simulate Offline" checkbox in `PosTerminal.tsx` from real network drops. Disconnections display "Offline" banner without toggling the simulator switch.
+- **Verification Evidence**:
+  - All 14/14 automated offline POS tests pass cleanly in `tests/ux_offline_pos.test.ts` (6 baseline + 8 audit-specific regression tests).
+  - All 3/3 accessibility and security tests pass cleanly in `tests/ux_accessibility.test.ts`.
+  - Quality gates: TypeScript linting and production build verified.
+- **Review Checklist**:
+  - [x] In-memory transactions automatically migrate to IndexedDB on storage recovery with deduplication.
+  - [x] Background sync aborts immediately with zero queue mutations when tenant is missing or `org_default`.
+  - [x] Sync only reads and transmits transactions matching the authenticated user's tenant.
+  - [x] 409 conflict responses are marked failed and retained in queue; genuine replays purged.
+  - [x] Upfront idempotency key preserved across offline queue fallback.
+  - [x] Cart only clears upon server acceptance or verified queue enqueue.
+  - [x] Inventory stock reconciled against server balance API after sync.
+  - [x] Real network disconnects do not toggle the simulation checkbox.
+  - [x] Full test suite (14/14 offline POS checks) passes cleanly.
+- **Supervisor Action Required**: Independent verification and approval of UX-001 Phase 2.3 R1 before authorizing Phase 2.4.
+
+---
+
+### Queue Item: UX-001 Phase 2.3 — Offline POS Resilience & Synchronization
+- **Submitted By**: Senior Software Engineer / Implementation Lead (Gemini)
+- **Submission Date**: 2026-09-10
+- **Current Status**: `SUPERSEDED BY UX-001 Phase 2.3 R1`
 - **Scope**:
   - Implemented a baseline primitive design library in `src/components/ui/` with lightweight React 19 functional components styled with Tailwind v4 utility classes and Lucide icons.
   - Components built: `Button`, `Input`, `Select`, `Modal` (focus trapping), `Card`, `Badge`, `Table`, `Toast` notification stack, `Spinner`, and `Skeleton` placeholder.

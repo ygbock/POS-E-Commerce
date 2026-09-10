@@ -5,10 +5,14 @@ import { authClient } from './authClient';
 export type NetworkState = 'online' | 'offline' | 'syncing' | 'synced' | 'sync_failed';
 
 export type SyncStateListener = (state: NetworkState, pendingCount: number) => void;
+export type PostSyncReconciliationHandler = (tx: OfflineTransaction, responseData: any) => Promise<void> | void;
 
 class SyncService {
   private state: NetworkState = 'online';
+  private isMockOffline = false;
+  private isRealNetworkOnline = true;
   private listeners: Set<SyncStateListener> = new Set();
+  private reconciliationHandlers: Set<PostSyncReconciliationHandler> = new Set();
   private syncLock = false;
   private MAX_ATTEMPTS = 5;
   private INITIAL_BACKOFF_MS = 1000;
@@ -16,32 +20,55 @@ class SyncService {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      // Determine initial state (do not trust navigator.onLine completely, but use as a starting point)
-      this.state = navigator.onLine ? 'online' : 'offline';
+      this.isRealNetworkOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      this.state = this.isRealNetworkOnline ? 'online' : 'offline';
 
       window.addEventListener('online', () => {
-        this.updateState('online');
-        this.sync();
+        this.isRealNetworkOnline = true;
+        if (!this.isMockOffline) {
+          this.updateState('online');
+          this.sync();
+        }
       });
 
       window.addEventListener('offline', () => {
+        this.isRealNetworkOnline = false;
         this.updateState('offline');
       });
     }
   }
 
-  // Allow manual override for testing and UI control
+  // Allow manual override for testing and UI simulation
   setMockOffline(isOffline: boolean) {
-    this.updateState(isOffline ? 'offline' : 'online');
+    this.isMockOffline = isOffline;
+    if (isOffline) {
+      this.updateState('offline');
+    } else {
+      this.updateState(this.isRealNetworkOnline ? 'online' : 'offline');
+    }
+  }
+
+  isMockingOffline(): boolean {
+    return this.isMockOffline;
+  }
+
+  isRealOffline(): boolean {
+    return !this.isRealNetworkOnline;
   }
 
   getState(): NetworkState {
     return this.state;
   }
 
+  registerReconciliationHandler(handler: PostSyncReconciliationHandler): () => void {
+    this.reconciliationHandlers.add(handler);
+    return () => {
+      this.reconciliationHandlers.delete(handler);
+    };
+  }
+
   subscribe(listener: SyncStateListener): () => void {
     this.listeners.add(listener);
-    // Call immediately with current state
     this.getPendingCount().then((count) => {
       listener(this.state, count);
     });
@@ -51,7 +78,9 @@ class SyncService {
   }
 
   private async getPendingCount(): Promise<number> {
-    const txs = await OfflineQueue.getTransactions();
+    const user = authClient.getUser();
+    const orgId = user?.organizationId && user.organizationId !== 'org_default' ? user.organizationId : undefined;
+    const txs = await OfflineQueue.getTransactions(orgId);
     return txs.filter((t) => t.status !== 'failed').length;
   }
 
@@ -65,9 +94,6 @@ class SyncService {
     this.notifyListeners();
   }
 
-  /**
-   * Determine if the HTTP error / response is retryable or permanent.
-   */
   isRetryable(status: number): boolean {
     // 5xx errors or server timeout/unreachable (status 0) are retryable
     if (status === 0 || (status >= 500 && status <= 599)) {
@@ -83,17 +109,27 @@ class SyncService {
       return false;
     }
 
-    // Do not attempt syncing if explicitly offline
-    if (this.state === 'offline') {
+    // Do not attempt syncing if offline (either simulated or real)
+    if (this.state === 'offline' || this.isMockOffline || !this.isRealNetworkOnline) {
       return false;
     }
+
+    // Strict Tenant Isolation: Must have an authenticated user with a valid organizationId
+    const currentUser = authClient.getUser();
+    if (!currentUser || !currentUser.organizationId || currentUser.organizationId.trim() === '' || currentUser.organizationId === 'org_default') {
+      // Fail closed! Do not guess a tenant or use org_default
+      return false;
+    }
+
+    const currentTenantId = currentUser.organizationId.trim();
 
     this.syncLock = true;
     this.updateState('syncing');
 
     let allSuccessful = true;
     try {
-      const txs = await OfflineQueue.getTransactions();
+      // Retrieve ONLY transactions belonging to the authenticated tenant
+      const txs = await OfflineQueue.getTransactions(currentTenantId);
       const now = Date.now();
       const eligibleTxs = txs.filter((t) => {
         if (t.status === 'failed') {
@@ -121,8 +157,7 @@ class SyncService {
         let fetchError: Error | null = null;
 
         try {
-          // Re-verify if we are mock-offline before actually hitting API
-          if (this.getState() === 'offline') {
+          if (this.isMockOffline || !this.isRealNetworkOnline) {
             throw new Error('Offline');
           }
 
@@ -149,19 +184,35 @@ class SyncService {
 
         // Processing response
         if (!fetchError) {
-          // 1. Success! Delete from queue
+          // 1. Success (Fresh checkout or genuine idempotent replay returning 200/201)
           await OfflineQueue.removeTransaction(tx.id);
+
+          // Invoke post-sync reconciliation handlers (reconciling inventory/catalog)
+          for (const handler of this.reconciliationHandlers) {
+            try {
+              await handler(tx, responseData);
+            } catch (recErr) {
+              console.warn('[SyncService] Post-sync reconciliation error:', recErr);
+            }
+          }
         } else {
-          // Check for idempotency conflict. If the error code is IDEMPOTENCY_CONFLICT,
-          // it means this order was already processed on the server, so we can safely treat it as a success!
-          const isIdempotencyConflict = 
+          // STEP 3: Check for Idempotency Conflict vs Genuine Replay
+          const isConflictRejection = 
             responseStatus === 409 || 
             responseData?.error?.code === 'IDEMPOTENCY_CONFLICT' ||
             fetchError.message.includes('IDEMPOTENCY_CONFLICT');
 
-          if (isIdempotencyConflict) {
-            // Already processed by server! Treat as success.
-            await OfflineQueue.removeTransaction(tx.id);
+          if (isConflictRejection) {
+            // Actual conflict/rejection: The server rejected this because the idempotency key
+            // was reused with different parameters/fingerprint.
+            // DO NOT delete the queued transaction!
+            // Mark it as failed, preserve error metadata for cashier reconciliation, and do not retry.
+            tx.status = 'failed';
+            const code = responseData?.error?.code || 'IDEMPOTENCY_CONFLICT';
+            const rawMsg = responseData?.error?.message || fetchError.message || 'Key reused with different parameters';
+            tx.lastError = rawMsg.includes('IDEMPOTENCY_CONFLICT') ? rawMsg : `${code}: ${rawMsg}`;
+            await OfflineQueue.updateTransaction(tx);
+            allSuccessful = false;
             continue;
           }
 
@@ -185,8 +236,8 @@ class SyncService {
         }
       }
 
-      // Check if there are any remaining pending or syncing transactions
-      const remaining = await OfflineQueue.getTransactions();
+      // Check if there are any remaining pending or syncing transactions for this tenant
+      const remaining = await OfflineQueue.getTransactions(currentTenantId);
       const unresolvedCount = remaining.filter((t) => t.status !== 'failed').length;
 
       if (unresolvedCount === 0) {
@@ -206,3 +257,4 @@ class SyncService {
 }
 
 export const syncService = new SyncService();
+

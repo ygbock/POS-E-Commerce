@@ -124,11 +124,13 @@ export const PosTerminal: React.FC = () => {
 
   const [networkState, setNetworkState] = useState<NetworkState>('online');
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const [isMockOffline, setIsMockOffline] = useState<boolean>(syncService.isMockingOffline());
 
   useEffect(() => {
     const unsubscribe = syncService.subscribe((state, count) => {
       setNetworkState(state);
       setPendingCount(count);
+      setIsMockOffline(syncService.isMockingOffline());
     });
     return unsubscribe;
   }, []);
@@ -413,34 +415,35 @@ export const PosTerminal: React.FC = () => {
 
         {/* Offline / Synchronization Status Indicator */}
         <div className="flex flex-wrap items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs">
-          {networkState === 'online' && (
-            <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-bold gap-1.5">
-              <Wifi className="w-4 h-4" />
-              <span>Online</span>
+          {isMockOffline ? (
+            <span className="flex items-center text-amber-600 dark:text-amber-400 font-bold gap-1.5">
+              <WifiOff className="w-4 h-4 animate-pulse" />
+              <span>Simulated Offline</span>
             </span>
-          )}
-          {networkState === 'offline' && (
+          ) : networkState === 'offline' ? (
             <span className="flex items-center text-rose-600 dark:text-rose-400 font-bold gap-1.5">
               <WifiOff className="w-4 h-4 animate-pulse" />
               <span>Offline</span>
             </span>
-          )}
-          {networkState === 'syncing' && (
+          ) : networkState === 'syncing' ? (
             <span className="flex items-center text-sky-600 dark:text-sky-400 font-bold gap-1.5 animate-pulse">
               <RefreshCw className="w-4 h-4 animate-spin" />
               <span>Syncing ({pendingCount} pending)</span>
             </span>
-          )}
-          {networkState === 'synced' && (
+          ) : networkState === 'synced' ? (
             <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-bold gap-1.5">
               <CheckCircle2 className="w-4 h-4" />
               <span>Synced</span>
             </span>
-          )}
-          {networkState === 'sync_failed' && (
+          ) : networkState === 'sync_failed' ? (
             <span className="flex items-center text-amber-600 dark:text-amber-400 font-bold gap-1.5 animate-pulse">
               <ShieldAlert className="w-4 h-4" />
               <span>Sync Failed ({pendingCount} pending)</span>
+            </span>
+          ) : (
+            <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-bold gap-1.5">
+              <Wifi className="w-4 h-4" />
+              <span>Online</span>
             </span>
           )}
 
@@ -457,8 +460,12 @@ export const PosTerminal: React.FC = () => {
             <span className="text-[10px] text-slate-500 dark:text-slate-400">Simulate Offline</span>
             <input
               type="checkbox"
-              checked={networkState === 'offline'}
-              onChange={(e) => syncService.setMockOffline(e.target.checked)}
+              checked={isMockOffline}
+              onChange={(e) => {
+                const val = e.target.checked;
+                setIsMockOffline(val);
+                syncService.setMockOffline(val);
+              }}
               className="w-3.5 h-3.5 rounded bg-slate-200 border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
             />
           </div>

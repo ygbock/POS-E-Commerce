@@ -344,17 +344,25 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 9: UX-001 — Production UX Hardening, Offline Resilience & Error Recovery
-- **Status**: `UX-001 Phase 2.3 — READY FOR SUPERVISOR REVIEW`
+- **Status**: `UX-001 Phase 2.3 R1 — READY FOR SUPERVISOR REVIEW`
 - **Phase 1 Deliverables**: Completed Comprehensive UI/UX Audit ([.ai/UX_AUDIT.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_AUDIT.md)) and UX Modernization Implementation Plan ([.ai/UX_IMPLEMENTATION_PLAN.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_IMPLEMENTATION_PLAN.md)), approved with conditions on 2026-09-10.
 - **Phase 2.1 Deliverables**: Implemented baseline design system primitives, global `ErrorBoundary` protection, sole environment gate checks, and React `useId` modal identifiers.
 - **Phase 2.2C Deliverables**: Completed e-commerce checkout integration. Hardened exact string-only quantities, cryptographically secure idempotency keys, payload fingerprinting (with customer details and location ID tracking), server-authoritative pricing and taxes, pessimistic variant row locking, payment state persistence, local `SAVEPOINT` transaction recovery (solving PostgreSQL unique-constraint abort race conditions), and robust production error sanitization.
 - **Phase 2.3 Deliverables**: Completed local offline POS queueing utilizing indexedDB storage, network connectivity event listeners, automatic background synchronization, backoff retry schedules, and intuitive UI status banners.
+- **Phase 2.3 R1 Deliverables**: Hardened offline POS resilience architecture against independent security/architecture audit findings:
+  - Dual-layer storage synchronization: automatic migration of in-memory queue to IndexedDB upon recovery with deduplication (`migrateMemoryToIDB`).
+  - Fail-closed tenant isolation in sync daemon: aborts immediately with zero queue mutations if unauthenticated or tenant is `org_default`; scopes sync strictly to caller's authenticated `organizationId`.
+  - Server-authoritative checkout with offline fallback: generates cryptographic idempotency key upfront, preserves key on transport failures (`Failed to fetch`), clears cart only upon server acceptance or durable queue placement.
+  - Strict 409 conflict vs replay semantics: conflict rejections (HTTP 409, `IDEMPOTENCY_CONFLICT`) marked failed with error details, stopped from retrying, kept in queue; genuine replays (HTTP 200/201) purged from queue.
+  - Replaced optimistic stock mutations with post-sync server balance reconciliation.
+  - Decoupled simulator UI from real network state.
 - **Objective**: Modernize frontend UX incrementally starting with common design primitives and error wrappers, progressing to server authoritative integration, offline resilience, and mobile responsive layout fixes.
 - **Scope**:
   - [x] Phase 1: Frontend inspection and audit reports.
   - [x] Phase 2.1: UI primitives, toast alerts, top-level Error Boundary with safe DEV-mode redaction, and access IDs.
   - [x] Phase 2.2C: E-commerce storefront checkout integration, savepoint transaction recovery, and exact decimal inputs.
   - [x] Phase 2.3: Offline POS IndexedDB transaction queueing, synchronization on recovery, backoff schedules, and status banners.
+  - [x] Phase 2.3 R1: Offline POS security, multi-tenant isolation, 409 conflict semantics, storage split-brain migration, and server-authoritative reconciliation.
   - [ ] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.
   - [ ] Phase 2.5: Calibrate mobile touch targets and ensure horizontal scroll wraps for complex tables.
 - **Dependencies**: `POS-001`, `API-001`, `QA-001`.
@@ -364,8 +372,15 @@ PROD-001 (NOT STARTED)
   - [x] Phase 2.2C: Storefront orders checkout integrated using exact string-only quantities, cryptographic unique keys, savepoint-safe transaction recovery, and honest payment records.
   - [x] Phase 2.3: POS continues ringing items when offline and automatically syncs queue on reconnect.
   - [x] Phase 2.3: Network state indicator visual badge displayed.
-- **Security Requirements**: Offline queue items encrypted locally before sync.
-- **Validation Requirements**: Network throttling and offline simulation tests.
+  - [x] Phase 2.3 R1: Offline queue storage migration prevents data loss on IDB recovery.
+  - [x] Phase 2.3 R1: Sync fails closed without valid tenant; cross-tenant queue leakage prevented.
+  - [x] Phase 2.3 R1: 409 conflict errors marked failed and kept in queue; genuine replays purged.
+  - [x] Phase 2.3 R1: Pre-computed idempotency keys preserved on offline queue fallback.
+  - [x] Phase 2.3 R1: Cart cleared only upon successful server acceptance or durable queue placement.
+  - [x] Phase 2.3 R1: Server-authoritative post-sync inventory reconciliation replaces client stock mutations.
+  - [x] Phase 2.3 R1: Simulator UI separated from real network drops.
+- **Security Requirements**: Offline queue items encrypted locally before sync; fail-closed tenant validation; zero cross-tenant queue sync; server-authoritative pricing and inventory.
+- **Validation Requirements**: 14/14 offline POS regression tests in `tests/ux_offline_pos.test.ts`.
 
 ---
 
