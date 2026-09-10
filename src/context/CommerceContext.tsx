@@ -197,7 +197,7 @@ interface CommerceContextType {
     paymentMethod: 'Credit Card' | 'Mobile Money' | 'Fintech Wallet';
     smsOptIn?: boolean;
     whatsappOptIn?: boolean;
-  }) => Order;
+  }) => Promise<Order>;
   claimGuestOrders: (email: string, targetCustomerId?: string) => { claimedCount: number; pointsAdded: number; totalSpentAdded: number; claimedOrders: Order[] };
   registerNewCustomer: (customerData: { name: string; email: string; phone: string; street?: string; city?: string; state?: string; zip?: string; country?: string }) => { customer: Customer; claimedOrdersCount: number; pointsAdded: number };
   simulateAdvanceOrderStatus: (orderId: string) => Order | undefined;
@@ -1849,180 +1849,158 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addNotification('Review Submitted', `Thank you for reviewing! Your feedback has been published.`, 'success', 'storefront');
   };
 
-  const placeEcommerceOrder = (orderData: {
+  const placeEcommerceOrder = async (orderData: {
     customer: { name: string; email: string; phone: string; address: { street: string; city: string; state: string; zip: string; country: string } };
     fulfillmentMethod: 'Standard Delivery' | 'Express Delivery' | 'In-Store Pickup';
     paymentMethod: 'Credit Card' | 'Mobile Money' | 'Fintech Wallet';
     smsOptIn?: boolean;
     whatsappOptIn?: boolean;
-  }): Order => {
-    const now = new Date().toISOString();
-    const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+  }): Promise<Order> => {
+    const cartItemsPayload = storeCart.map((item) => ({
+      variant_id: item.variantId,
+      quantity: item.quantity.toString(),
+    }));
 
-    let subtotal = 0;
-    let totalTax = 0;
-    let totalCost = 0;
+    const idempotencyKey = crypto.randomUUID();
 
-    storeCart.forEach((item) => {
-      const lineTotal = item.price * item.quantity;
-      subtotal += lineTotal;
-      totalTax += lineTotal * (item.taxRate / 100);
-      totalCost += item.costPrice * item.quantity;
+    const response = await fetch('/api/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authClient.getAuthHeaders(),
+      },
+      body: JSON.stringify({
+        customer: {
+          id: activeCustomerUser?.id,
+          name: orderData.customer.name,
+          email: orderData.customer.email,
+          phone: orderData.customer.phone,
+          address: orderData.customer.address,
+        },
+        fulfillmentMethod: orderData.fulfillmentMethod,
+        paymentMethod: orderData.paymentMethod,
+        smsOptIn: orderData.smsOptIn,
+        whatsappOptIn: orderData.whatsappOptIn,
+        cart_items: cartItemsPayload,
+        idempotency_key: idempotencyKey,
+        discount_code: appliedCoupon?.code,
+      }),
     });
 
-    let discountAmount = 0;
-    if (appliedCoupon) {
-      discountAmount = appliedCoupon.discountType === 'fixed' ? appliedCoupon.value : (subtotal * appliedCoupon.value) / 100;
+    const resData = await response.json();
+    if (!response.ok || !resData.success) {
+      throw new Error(resData.error?.message || 'Failed to place e-commerce order.');
     }
 
-    const shippingFee = orderData.fulfillmentMethod === 'Express Delivery' ? 15 : orderData.fulfillmentMethod === 'Standard Delivery' ? 5 : 0;
-    const totalAmount = Math.max(0, subtotal - discountAmount + totalTax + shippingFee);
-
-    // E-commerce orders are fulfilled primarily from Central Logistics Warehouse ('loc-main-wh')
-    const fulfillmentLocId: BranchLocationId = 'loc-main-wh';
-    const fulfillmentLoc = locations.find((l) => l.id === fulfillmentLocId) || locations[0];
-
-    // Deduct / Reserve stock immediately
-    const movementsToAdd: StockMovement[] = [];
-    const updatedProducts = products.map((prod) => {
-      const newVariants = prod.variants.map((v) => {
-        const cartItem = storeCart.find((ci) => ci.variantId === v.id);
-        if (cartItem) {
-          const currentStock = v.stockByLocation[fulfillmentLocId] || 0;
-          const newStock = Math.max(0, currentStock - cartItem.quantity);
-
-          movementsToAdd.push({
-            id: `mov-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-            timestamp: now,
-            productId: prod.id,
-            productName: prod.name,
-            variantId: v.id,
-            variantName: v.name,
-            sku: v.sku,
-            locationId: fulfillmentLocId,
-            locationName: fulfillmentLoc.name,
-            type: 'ECOMMERCE_SALE',
-            quantityChange: -cartItem.quantity,
-            previousStock: currentStock,
-            newStock,
-            referenceId: orderNumber,
-            reason: `Online Store Order ${orderNumber} (${orderData.customer.name})`,
-            performedBy: 'Online Storefront',
-          });
-
-          return {
-            ...v,
-            stockByLocation: {
-              ...v.stockByLocation,
-              [fulfillmentLocId]: newStock,
-            },
-          };
-        }
-        return v;
-      });
-      return { ...prod, variants: newVariants };
-    });
-
-    setProducts(updatedProducts);
-    setStockMovements((prev) => [...movementsToAdd, ...prev]);
-
-    const paymentRecord: PaymentRecord = {
-      method: orderData.paymentMethod,
-      amount: totalAmount,
-      reference: `ECOM-GATEWAY-${Math.floor(100000 + Math.random() * 900000)}`,
-      timestamp: now,
-    };
-
-    const magicToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    const carrier = orderData.fulfillmentMethod === 'Express Delivery' ? 'FedEx Priority Overnight' : orderData.fulfillmentMethod === 'Standard Delivery' ? 'OmniTrack / DHL Ground' : 'Direct Store Pickup';
-    const trackingCode = orderData.fulfillmentMethod === 'In-Store Pickup' ? `PICKUP-${orderNumber}` : `TRK-OMNI-${Math.floor(10000000 + Math.random() * 90000000)}`;
-
+    const backendOrder = resData.data;
     const initialSmsLogs = [];
+    const magicToken = `tok_${Date.now()}_${idempotencyKey.slice(0, 6)}`;
+    const carrier = orderData.fulfillmentMethod === 'Express Delivery' ? 'FedEx Priority Overnight' : orderData.fulfillmentMethod === 'Standard Delivery' ? 'OmniTrack / DHL Ground' : 'Direct Store Pickup';
+    const trackingCode = orderData.fulfillmentMethod === 'In-Store Pickup' ? `PICKUP-${backendOrder.order_number}` : `TRK-OMNI-${Math.floor(10000000 + Math.random() * 90000000)}`;
+
     if (orderData.smsOptIn) {
       initialSmsLogs.push({
-        timestamp: now,
+        timestamp: new Date().toISOString(),
         channel: 'SMS' as const,
-        message: `Order #${orderNumber} confirmed! Total: ${formatCurrency(totalAmount)}. Direct tracking: store.com/orders/track?id=${orderNumber}&token=${magicToken}`,
+        message: `Order #${backendOrder.order_number} confirmed! Total: ${formatCurrency(parseFloat(backendOrder.total_amount))}. Direct tracking: store.com/orders/track?id=${backendOrder.order_number}&token=${magicToken}`,
         status: 'Delivered' as const,
       });
     }
     if (orderData.whatsappOptIn) {
       initialSmsLogs.push({
-        timestamp: now,
+        timestamp: new Date().toISOString(),
         channel: 'WhatsApp' as const,
-        message: `✨ Hi ${orderData.customer.name.split(' ')[0]}! Your order #${orderNumber} is confirmed at AbaCha. We'll update you here at each milestone!`,
+        message: `✨ Hi ${orderData.customer.name.split(' ')[0]}! Your order #${backendOrder.order_number} is confirmed at AbaCha. We'll update you here at each milestone!`,
         status: 'Delivered' as const,
       });
     }
 
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber,
+    const mappedOrder: Order = {
+      id: backendOrder.id,
+      orderNumber: backendOrder.order_number,
       source: 'ECOMMERCE',
       channel: 'Online Web Store',
-      locationId: fulfillmentLocId,
-      locationName: fulfillmentLoc.name,
-      customerName: orderData.customer.name,
+      locationId: backendOrder.location_id,
+      locationName: locations.find((l) => l.id === backendOrder.location_id)?.name || 'Central Logistics Warehouse',
+      customerName: backendOrder.customer_id ? (customers.find((c) => c.id === backendOrder.customer_id)?.name || orderData.customer.name) : orderData.customer.name,
       customerEmail: orderData.customer.email,
       customerPhone: orderData.customer.phone,
       shippingAddress: orderData.customer.address,
-      fulfillmentMethod: orderData.fulfillmentMethod,
-      carrierName: carrier,
-      trackingNumber: trackingCode,
+      fulfillmentMethod: backendOrder.fulfillment_method,
+      carrierName: backendOrder.carrier_name || carrier,
+      trackingNumber: backendOrder.tracking_number || trackingCode,
       trackingMagicToken: magicToken,
       smsOptIn: orderData.smsOptIn ?? true,
       whatsappOptIn: orderData.whatsappOptIn ?? true,
       smsUpdatesLog: initialSmsLogs,
-      items: [...storeCart],
-      subtotal,
-      discountAmount,
-      discountCode: appliedCoupon?.code,
-      taxAmount: totalTax,
-      shippingFee,
-      totalAmount,
-      totalCostAmount: totalCost,
-      payments: [paymentRecord],
+      items: storeCart.map((item) => ({ ...item })),
+      subtotal: parseFloat(backendOrder.subtotal),
+      discountAmount: parseFloat(backendOrder.discount_amount),
+      discountCode: backendOrder.discount_code || undefined,
+      taxAmount: parseFloat(backendOrder.tax_amount),
+      shippingFee: parseFloat(backendOrder.shipping_fee),
+      totalAmount: parseFloat(backendOrder.total_amount),
+      totalCostAmount: parseFloat(backendOrder.total_cost_amount || '0.00'),
+      payments: backendOrder.payments ? backendOrder.payments.map((p: any) => ({
+        method: p.payment_method,
+        amount: parseFloat(p.amount),
+        reference: p.reference,
+        timestamp: p.created_at || new Date().toISOString(),
+      })) : [],
       paymentStatus: 'Paid',
       status: 'Stock Reserved',
-      createdAt: now,
-      updatedAt: now,
-      loyaltyPointsEarned: Math.floor(totalAmount / 10),
+      createdAt: backendOrder.created_at || new Date().toISOString(),
+      updatedAt: backendOrder.updated_at || new Date().toISOString(),
+      loyaltyPointsEarned: Math.floor(parseFloat(backendOrder.total_amount) / 10),
       loyaltyPointsRedeemed: 0,
     };
 
-    setOrders((prev) => [newOrder, ...prev]);
+    setProducts((prev) =>
+      prev.map((prod) => {
+        const newVariants = prod.variants.map((v) => {
+          const cartItem = storeCart.find((ci) => ci.variantId === v.id);
+          if (cartItem) {
+            const currentStock = v.stockByLocation['loc-main-wh'] || 0;
+            const newStock = Math.max(0, currentStock - cartItem.quantity);
+            return {
+              ...v,
+              stockByLocation: {
+                ...v.stockByLocation,
+                'loc-main-wh': newStock,
+              },
+            };
+          }
+          return v;
+        });
+        return { ...prod, variants: newVariants };
+      })
+    );
 
-    // Financial Ledger Entries
-    const ledgers: LedgerEntry[] = [
-      {
-        id: `ledg-${Date.now()}-ecom1`,
-        timestamp: now,
-        transactionNumber: `TX-${orderNumber}-ECOM`,
-        source: 'ECOMMERCE_SALE',
-        description: `E-Commerce Sale ${orderNumber}`,
-        referenceId: orderNumber,
-        accountDebited: 'Online Gateway Clearing (Stripe/PayPal)',
-        accountCredited: 'Gross Sales Revenue',
-        amount: subtotal - discountAmount,
-      },
-      {
-        id: `ledg-${Date.now()}-ecom2`,
-        timestamp: now,
-        transactionNumber: `TX-${orderNumber}-COGS`,
-        source: 'ECOMMERCE_SALE',
-        description: `COGS for E-com ${orderNumber}`,
-        referenceId: orderNumber,
-        accountDebited: 'Cost of Goods Sold (COGS)',
-        accountCredited: `Inventory Asset (${fulfillmentLoc.name})`,
-        amount: totalCost,
-      },
-    ];
-    setLedgerEntries((prev) => [...ledgers, ...prev]);
+    setOrders((prev) => [mappedOrder, ...prev]);
+    setStoreCart([]);
+    setAppliedCoupon(null);
 
-    logAuditAction(`Online Order Placed ${orderNumber}`, 'Orders', orderNumber, undefined, `Amount: ${formatCurrency(totalAmount)}`);
-    addNotification('New Online Order Placed', `${orderNumber} received for ${formatCurrency(totalAmount)}.`, 'info', 'orders');
-    clearStoreCart();
-    return newOrder;
+    if (activeCustomerUser) {
+      const updatedCustomers = customers.map((c) => {
+        if (c.id === activeCustomerUser.id) {
+          const updatedPoints = c.loyaltyPoints + Math.floor(parseFloat(backendOrder.total_amount));
+          const updatedTotalSpent = c.totalSpent + parseFloat(backendOrder.total_amount);
+          const updatedOrderCount = c.ordersCount + 1;
+          return {
+            ...c,
+            loyaltyPoints: updatedPoints,
+            totalSpent: updatedTotalSpent,
+            ordersCount: updatedOrderCount,
+          };
+        }
+        return c;
+      });
+      setCustomers(updatedCustomers);
+      setActiveCustomerUser(updatedCustomers.find((c) => c.id === activeCustomerUser.id) || null);
+    }
+
+    addNotification('Order Placed', `Order #${backendOrder.order_number} has been created successfully!`, 'success', 'storefront');
+    return mappedOrder;
   };
 
   // Retroactive Account Claiming & Unified Guest Linking

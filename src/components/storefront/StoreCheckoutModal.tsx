@@ -98,6 +98,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
   // Submitting state
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   // Live Timer (15 minutes countdown)
   const [timeLeftSeconds, setTimeLeftSeconds] = useState(899);
@@ -184,10 +185,11 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     if (res.success) setCouponInput('');
   };
 
-  const handleExpressPay = (provider: string) => {
+  const handleExpressPay = async (provider: string) => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      const order = placeEcommerceOrder({
+    setErrorMsg('');
+    try {
+      const order = await placeEcommerceOrder({
         customer: {
           name: customerName,
           email: customerEmail,
@@ -210,23 +212,27 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         // ignore
       }
 
-      setIsSubmitting(false);
       onOrderSuccess(order);
       onClose();
-    }, 1000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An error occurred while placing the order.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agreeTerms) return;
 
     setIsSubmitting(true);
+    setErrorMsg('');
 
-    setTimeout(() => {
+    try {
       const selectedPayment: 'Credit Card' | 'Mobile Money' | 'Fintech Wallet' =
         paymentMethod === 'Store Credit' || paymentMethod === 'BNPL' ? 'Fintech Wallet' : paymentMethod;
 
-      const order = placeEcommerceOrder({
+      const order = await placeEcommerceOrder({
         customer: {
           name: customerName,
           email: customerEmail,
@@ -249,10 +255,13 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         // ignore
       }
 
-      setIsSubmitting(false);
       onOrderSuccess(order);
       onClose();
-    }, 800);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An error occurred while placing the order.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -912,6 +921,13 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                   </label>
                 </div>
               </div>
+
+              {errorMsg && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-2 text-rose-600 dark:text-rose-400 text-xs">
+                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
 
               {/* Submit Main Order Button */}
               <div className="pt-4">
