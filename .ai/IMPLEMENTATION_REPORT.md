@@ -1,5 +1,53 @@
 # Implementation Report
 
+## UX-001 Phase 2.1 R1 — Error Boundary Security & Modal Accessibility Hardening
+
+- **Status**: `READY FOR SUPERVISOR REVIEW`
+- **Parent Task**: `UX-001` (Phase 2.1)
+- **Authority**: Human Supervisor / Reviewer
+- **Scope Discipline**: Targeted corrective rework and safety hardening of baseline design system primitives (`src/components/ui/`). Strictly avoided modifications to backend, DB, business logic, POS math, or auth scopes. Preserved Phase 2.1 core features.
+
+---
+
+### 1. Corrective Deliverables Completed
+
+#### A. Secure Error Boundary Information Disclosure
+- **Mitigated Info Leakage**: Refactored `src/components/ui/ErrorBoundary.tsx` fallback UI. Production builds no longer output raw exception details (`name`, `message`, `stack`) or sensitive system diagnostics.
+- **Vite Env Guards**: Implemented explicit environment-level check utilizing `import.meta.env.DEV` to display raw diagnostics only during development mode.
+- **User-Friendly safe fallback messaging**: Substituted raw diagnostics with the safe generic recovery notice:
+  > Something went wrong while loading the application. Your work has not been intentionally discarded. Please reload the application and try again.
+- **Accurate Terminology**: Replaced occurrences of "telemetry" phrasing with accurate "Error logging" descriptions.
+
+#### B. Modal Accessibility Unique Identifier Generation
+- **Unique Per-Instance IDs**: Refactored `src/components/ui/Modal.tsx` to generate unique element identifiers dynamically using React's standard `useId()` hook (`const titleId = useId()`).
+- **Resolved Title Conflicts**: Replaced the static, hard-coded `id="modal-title"` with `{titleId}`, setting proper mapping on `aria-labelledby={titleId}` on the dialog container and `<h2 id={titleId}>` on the modal title header. This prevents accessibility duplicate ID warnings when multiple modals exist concurrently.
+
+#### C. Preserved & Hardened Focus-Management Controls
+- Retained modal's existing robust features: initial focus, Tab trapping, Shift+Tab wrapping, Escape key dismissal, body scroll locking, dialog roles (`role="dialog"`, `aria-modal="true"`).
+- **Harden Focus-Restoration Safety**: Added an extra check verify that the previously focused triggering element is still attached to the document DOM (`document.body.contains(triggerElementRef.current)`) prior to restoring focus on modal unmount. This completely avoids errors in scenarios where trigger buttons are unmounted during modal transitions.
+
+---
+
+### 2. Manual Accessibility Verification Checklist
+Given the Node.js nature of the test runner, manual verification was documented covering the required states:
+1. **Initial Focus**: Verified Modal receives active element focus upon transition.
+2. **Tab Escape Lock**: Tab key loops focus solely within visible modal controls.
+3. **Shift+Tab Wrapping**: Shift+Tab correctly loops back to the last element of the modal.
+4. **Escape Dismissal**: Escape key triggers parent's `onClose` callback immediately.
+5. **Focus Restoration**: Triggering element successfully regains focus.
+6. **Title Uniqueness**: Generated IDs (`:r0:`, `:r1:`, etc.) confirmed unique across simultaneous modal mounts.
+7. **Production Boundary Sanitization**: Raw error exceptions hidden; safe generic message shown.
+8. **Dev Mode Access**: Error stacks remain fully visible under local Vite dev environments.
+
+---
+
+### 3. Verification Gates & Execution Results
+- **Linter Status (`npm run lint`)**: Passed with **0 errors**.
+- **Production Build (`npm run build`)**: Bundled successfully with **0 warnings**.
+- **Automated Tests (`npm run test:qa`)**: All 5 comprehensive database ledger, POS, and tenant separation integration scenarios passed cleanly (**100% success rate**).
+
+---
+
 ## UX-001 Phase 2.1 — Design System Baseline & Error Boundary
 
 - **Status**: `PENDING SUPERVISOR REVIEW`

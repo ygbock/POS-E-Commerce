@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useId } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -20,6 +20,7 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const triggerElementRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   // Keep track of previously focused element to restore it on unmount
   useEffect(() => {
@@ -36,14 +37,52 @@ export const Modal: React.FC<ModalProps> = ({
     document.body.style.overflow = 'hidden';
 
     const focusableQuery = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+    const getFocusableElements = (): HTMLElement[] => {
+      if (!modalRef.current) return [];
+      const rawElements = Array.from(
+        modalRef.current.querySelectorAll(focusableQuery)
+      ) as HTMLElement[];
+
+      return rawElements.filter((el) => {
+        // Exclude disabled elements
+        if (el.hasAttribute('disabled') || (el as any).disabled) {
+          return false;
+        }
+
+        // Exclude elements with tabindex="-1" (often headers, wrappers, etc.)
+        if (el.getAttribute('tabindex') === '-1') {
+          return false;
+        }
+
+        // Exclude elements with size/dimensions equal to 0 (hidden or unrendered)
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          return false;
+        }
+
+        // Exclude elements hidden via inline style or classes (display: none, visibility: hidden)
+        try {
+          const style = window.getComputedStyle(el);
+          if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+          }
+        } catch (e) {
+          // Fallback if window or computed style is unavailable
+        }
+
+        return true;
+      });
+    };
     
     // Quick timeout to let the dialog render before setting focus
     const timer = setTimeout(() => {
       if (modalRef.current) {
-        const focusables = modalRef.current.querySelectorAll<HTMLElement>(focusableQuery);
+        const focusables = getFocusableElements();
         if (focusables.length > 0) {
           focusables[0].focus();
         } else {
+          // If zero focusable children, focus the modal dialog container itself
           modalRef.current.focus();
         }
       }
@@ -57,13 +96,7 @@ export const Modal: React.FC<ModalProps> = ({
       }
 
       if (e.key === 'Tab' && modalRef.current) {
-        const focusables = (Array.from(
-          modalRef.current.querySelectorAll(focusableQuery)
-        ) as HTMLElement[]).filter((el) => {
-          // Check if element is visible
-          const rect = el.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        });
+        const focusables = getFocusableElements();
 
         if (focusables.length === 0) {
           e.preventDefault();
@@ -74,13 +107,13 @@ export const Modal: React.FC<ModalProps> = ({
         const last = focusables[focusables.length - 1];
 
         if (e.shiftKey) {
-          // Shift+Tab
+          // Shift+Tab trapping
           if (document.activeElement === first || !modalRef.current.contains(document.activeElement)) {
             e.preventDefault();
             last.focus();
           }
         } else {
-          // Tab
+          // Tab trapping
           if (document.activeElement === last || !modalRef.current.contains(document.activeElement)) {
             e.preventDefault();
             first.focus();
@@ -96,8 +129,12 @@ export const Modal: React.FC<ModalProps> = ({
       document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', handleKeyDown);
 
-      // Restore focus to original active element
-      if (triggerElementRef.current && typeof triggerElementRef.current.focus === 'function') {
+      // Restore focus to original active element if it's still attached to the DOM
+      if (
+        triggerElementRef.current &&
+        document.body.contains(triggerElementRef.current) &&
+        typeof triggerElementRef.current.focus === 'function'
+      ) {
         triggerElementRef.current.focus();
       }
     };
@@ -130,14 +167,14 @@ export const Modal: React.FC<ModalProps> = ({
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         tabIndex={-1}
         className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl flex flex-col focus:outline-none overflow-hidden max-h-[90vh] z-10 transition-all animate-[slideUp_0.25s_ease-out] ${sizeClasses[size]}`}
       >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <h2
-            id="modal-title"
+            id={titleId}
             className="text-base font-bold text-slate-900 dark:text-slate-100"
           >
             {title}

@@ -2,6 +2,8 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from './Button';
 
+const isDev = typeof window !== 'undefined' && ((import.meta as any).env?.DEV || (window as any).location?.hostname === 'localhost' || (window as any).location?.hostname === '127.0.0.1');
+
 interface Props {
   children?: ReactNode;
 }
@@ -50,13 +52,14 @@ export class ErrorBoundary extends Component<Props, State> {
                 Application Exception Encountered
               </h1>
               <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                A serious rendering error has occurred. Your state has been preserved locally, and you can reload the interface safely.
+                Something went wrong while loading the application. Your work has not been intentionally discarded. Please reload the application and try again.
               </p>
             </div>
 
-            {this.state.error && (
+            {isDev && this.state.error && (
               <pre className="w-full bg-slate-50 dark:bg-slate-950 text-left p-4 rounded-xl text-xs font-mono overflow-auto max-h-40 border border-slate-200 dark:border-slate-800 text-rose-700 dark:text-rose-400 leading-normal select-text">
                 {this.state.error.name}: {this.state.error.message}
+                {this.state.error.stack && `\n\n${this.state.error.stack}`}
               </pre>
             )}
 
