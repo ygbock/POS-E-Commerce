@@ -1,8 +1,9 @@
+/// <reference types="vite/client" />
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from './Button';
 
-const isDev = typeof window !== 'undefined' && ((import.meta as any).env?.DEV || (window as any).location?.hostname === 'localhost' || (window as any).location?.hostname === '127.0.0.1');
+const isDev = import.meta.env.DEV;
 
 interface Props {
   children?: ReactNode;

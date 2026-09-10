@@ -344,13 +344,13 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 9: UX-001 — Production UX Hardening, Offline Resilience & Error Recovery
-- **Status**: `UX-001 Phase 2.1 R1 — READY FOR SUPERVISOR REVIEW`
+- **Status**: `UX-001 Phase 2.1 R2 — READY FOR SUPERVISOR REVIEW`
 - **Phase 1 Deliverables**: Completed Comprehensive UI/UX Audit ([.ai/UX_AUDIT.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_AUDIT.md)) and UX Modernization Implementation Plan ([.ai/UX_IMPLEMENTATION_PLAN.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_IMPLEMENTATION_PLAN.md)), approved with conditions on 2026-09-10.
-- **Phase 2.1 Deliverables**: Implemented baseline design system primitives (`Button`, `Input`, `Select`, `Modal`, `Card`, `Badge`, `Table`, `Toast` stack, `Spinner`, `Skeleton`), global `ErrorBoundary` protection in `src/components/ui/`, security hardening for exception handling, and full modal accessibility/focus trapping.
+- **Phase 2.1 Deliverables**: Implemented baseline design system primitives (`Button`, `Input`, `Select`, `Modal`, `Card`, `Badge`, `Table`, `Toast` stack, `Spinner`, `Skeleton`), global `ErrorBoundary` protection in `src/components/ui/`, security hardening for exception handling (using `import.meta.env.DEV` as the sole diagnostic-rendering gate and removing all hostname-based bypasses), and full modal accessibility/focus trapping using React `useId`.
 - **Objective**: Modernize frontend UX incrementally starting with common design primitives and error wrappers, progressing to server authoritative integration, offline resilience, and mobile responsive layout fixes.
 - **Scope**:
   - [x] Phase 1: Exhaustive frontend inspection, P0/P1/P2/P3 finding categorization, user journey audits, WCAG 2.2 AA target assessment, responsive audit, security authority UX audit, component primitive strategy, phase-by-phase implementation plan.
-  - [x] Phase 2.1: Build lightweight, high-performance `src/components/ui/` shared design primitives, setup Toast Provider, mount top-level SPA Error Boundary, secure exception details, and verify modal access IDs.
+  - [x] Phase 2.1: Build lightweight, high-performance `src/components/ui/` shared design primitives, setup Toast Provider, mount top-level SPA Error Boundary, secure exception details solely using Vite DEV mode flags (removing any hostname exceptions), and verify modal access IDs with `useId`.
   - [ ] Phase 2.2: Migrate POS checkout, Inventory movements/transfers, and Storefront orders to server-authoritative API paths.
   - [ ] Phase 2.3: Integrate IndexedDB offline POS queueing with encryption, replay protection, and device-binding constraints.
   - [ ] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.

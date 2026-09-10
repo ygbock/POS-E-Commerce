@@ -20,7 +20,7 @@ async function runTest(name: string, fn: () => Promise<void> | void) {
 
 async function main() {
   console.log('\n======================================================');
-  console.log(' UX-001 Phase 2.1 R1 — Static & Accessibility Verification');
+  console.log(' UX-001 Phase 2.1 R2 — Static & Accessibility Verification');
   console.log('======================================================\n');
 
   console.log('  [INFO] Active Node Environment lacks a browser/DOM engine (no JSDOM/headless browser).');
@@ -43,11 +43,28 @@ async function main() {
       'Must guide the user to reload the application'
     );
 
-    // Check that error.message or error.stack display is guarded by DEV mode check
+    // Required check: must contain import.meta.env.DEV
     assert.ok(
-      content.includes('(import.meta as any).env?.DEV') || content.includes('((import.meta as any).env)?.DEV'),
-      'Raw error details must be guarded by Vite development check'
+      content.includes('import.meta.env.DEV'),
+      'Raw error details must be guarded directly by import.meta.env.DEV'
     );
+
+    // Forbidden checks: must not bypass via hostname checks
+    const forbiddenBypasses = [
+      "hostname === 'localhost'",
+      "hostname === '127.0.0.1'",
+      "location.hostname",
+      "window.location.hostname",
+      "localhost",
+      "127.0.0.1"
+    ];
+
+    for (const bypass of forbiddenBypasses) {
+      assert.ok(
+        !content.includes(bypass),
+        `Must not contain hostname-based bypass pattern: "${bypass}"`
+      );
+    }
   });
 
   // Test 2: Verify Modal.tsx uses useId and doesn't hardcode title ID
@@ -102,7 +119,7 @@ async function main() {
   });
 
   console.log('\n======================================================');
-  console.log(' UX-001 Phase 2.1 R1 — Manual Verification Protocol');
+  console.log(' UX-001 Phase 2.1 R2 — Manual Verification Protocol');
   console.log('======================================================');
   console.log('  Verify these behaviors manually or via a browser-level E2E environment:');
   console.log('  1. Modal Receives Initial Focus:');

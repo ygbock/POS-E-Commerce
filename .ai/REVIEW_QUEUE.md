@@ -48,7 +48,7 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
-### Queue Item: UX-001 Phase 2.1 R1 — Design System Baseline & Error Boundary
+### Queue Item: UX-001 Phase 2.1 R2 — Design System Baseline & Error Boundary
 - **Submitted By**: Senior Software Engineer / Implementation Lead (Gemini)
 - **Submission Date**: 2026-09-10
 - **Current Status**: `READY FOR SUPERVISOR REVIEW`
@@ -57,8 +57,8 @@ Reviewers must evaluate submissions across these ten dimensions:
   - Components built: `Button`, `Input`, `Select`, `Modal` (focus trapping), `Card`, `Badge`, `Table`, `Toast` notification stack, `Spinner`, and `Skeleton` placeholder.
   - Mounted a global `ErrorBoundary` in `src/components/ui/ErrorBoundary.tsx` wrapping the core SPA layout in `src/App.tsx`.
   - Mounted a unified `ToastProvider` at the root layout in `src/App.tsx` protecting state and offering system notification dispatch.
-  - Hardened `ErrorBoundary.tsx` fallback UI to strictly prevent raw exception details (`name`, `message`, `stack`) disclosure in production, explicitly gating developer diagnostics under `import.meta.env.DEV`.
-  - Replaced raw error displays with secure, user-friendly generic fallback message wording.
+  - Hardened `ErrorBoundary.tsx` fallback UI to strictly prevent raw exception details (`name`, `message`, `stack`) disclosure in production, using `import.meta.env.DEV` as the sole environment gate and removing all hostname-based development bypasses (`window.location.hostname` / `localhost` / `127.0.0.1`).
+  - Replaced raw error displays in production with secure, user-friendly generic fallback message wording.
   - Refined `Modal.tsx` to generate unique instance-specific title identifiers using React's `useId()`, resolving duplicate ID hazards.
   - Hardened modal focus-restoration logic to check if the triggering element remains in the document (`document.body.contains`) prior to invoking focus.
   - Zero financial or inventory mutation migrations conducted. Zero backend adjustments.
@@ -66,18 +66,21 @@ Reviewers must evaluate submissions across these ten dimensions:
   - All custom component primitives compiled without warning.
   - Global `ErrorBoundary` and `ToastProvider` integrated cleanly into `src/App.tsx`.
   - Static type verification (`npm run lint`) and production bundling (`npm run build`) pass with 0 errors.
-  - Full automated regression suite (`npm test` via `npm run test:qa`) passes cleanly with 100% success rate (0 failures).
+  - Dedicated static accessibility and security check: `npm run test:ux` passes with 100% success rate.
+  - Full automated regression suite (`npm test`) passes cleanly with 100% success rate (0 failures).
 - **Review Checklist**:
   - [x] Lightweight primitive components implemented in `src/components/ui/`.
   - [x] Modal focus trapping and keyboard navigation handled natively.
   - [x] Toast provider and stack mounted at application root.
   - [x] Global Error Boundary class component created with proper rendering safety and fallback UI.
-  - [x] Secured error information disclosure under environment checks.
+  - [x] Secured error information disclosure under environment checks (`import.meta.env.DEV` as sole gate).
+  - [x] Removed all hostname-based bypasses.
   - [x] Used React's `useId()` for unique modal accessibility IDs.
   - [x] Hardened focus restoration to prevent detached-DOM errors.
+  - [x] WCAG 2.2 AA marked as a target (browser-level testing is a pending manual validation activity, not a compliance claim).
   - [x] Zero backend business logic or DB changes introduced.
   - [x] All integration tests passing cleanly.
-- **Supervisor Action Required**: Independent verification and approval of UX-001 Phase 2.1 R1 prior to authorizing Phase 2.2 server-authoritative mutation migration.
+- **Supervisor Action Required**: Independent verification and approval of UX-001 Phase 2.1 R2 prior to authorizing Phase 2.2 server-authoritative mutation migration.
 
 ---
 
