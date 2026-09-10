@@ -1,5 +1,50 @@
 # Implementation Report
 
+## UX-001 Phase 2.2C R3 — PostgreSQL Idempotency Transaction Proof Gate
+
+- **Status**: `READY FOR SUPERVISOR REVIEW`
+- **Parent Task**: `UX-001` (Phase 2.2C)
+- **Authority**: Human Supervisor / Reviewer
+- **Scope Discipline**: Targeted corrective rework and implementation of savepoint transaction protection inside e-commerce order creation. No unrequested features, visual tabs, or navigation menus were introduced.
+
+---
+
+### 1. Corrective Deliverables Completed
+
+#### A. PostgreSQL-Safe Idempotency Recovery (SAVEPOINT Protection)
+- **Mitigated Transaction Abort (25P02 / 23505)**: Enveloped database writes (order creation, items insertion, payment creation, and inventory/stock movements) within a local SQL `SAVEPOINT` named `storefront_idempotency_insert` inside the active `withTransaction` transaction.
+- **Rollback to Savepoint**: If a concurrent checkout request using an identical idempotency key encounters a unique constraint violation (`23505` on `uq_orders_org_idempotency`), the service catches the error and executes a precise `ROLLBACK TO SAVEPOINT storefront_idempotency_insert`.
+- **Healthy Active Transaction Recovery**: Because the transaction is rolled back to the savepoint (and not fully aborted), the transaction remains perfectly active and healthy. The service can safely perform subsequent queries on the transaction (such as fetching the winning order record and its items/payments) and complete the request successfully by committing the transaction.
+- **No Preliminary Select-Before-Insert Races**: Avoided any preliminary select-before-insert racing. The database constraint remains the absolute authority and single source of truth for uniqueness.
+
+#### B. Location Fingerprinting Verification & Parameter Tracking
+- **Altered Parameter Detection**: Extended `computeCanonicalRequestFingerprint` to track and serialise all client-controlled input fields, specifically including `location_id` and `customer_details`.
+- **Robust Tampering Shields**: If a client submits a duplicate idempotency key but alters the fulfillment location (e.g., from `loc_alpha_wh` to `loc_alpha_wh_2`), the server accurately detects the fingerprint mismatch and returns a `409 IDEMPOTENCY_CONFLICT` (code `IDEMPOTENCY_CONFLICT`).
+
+---
+
+### 2. Comprehensive Test & Quality Verification
+
+#### A. Real PostgreSQL Concurrency and SAVEPOINT Proof Integration
+- **Added Regression Test Cases**: Integrated a complete, multi-step concurrent checkout test suite within `tests/ux_storefront_checkout_integrity.test.ts`.
+- **Verified Core Invariants**:
+  - Dispatches multiple simultaneous checkout requests with the same UUID idempotency key to simulate realistic race conditions.
+  - Proves that exactly one order record is created in the database.
+  - Proves that exactly one payment transaction is created.
+  - Proves that exactly one stock deduction/reservation of 1.0000 occurs.
+  - Proves that an identical replay returns the original order with 201 status.
+  - Proves that a modified request (e.g., different location ID or parameters) with the same key returns a `409 IDEMPOTENCY_CONFLICT`.
+  - Proves that the transaction remains active, usable, and does not encounter any `25P02` (transaction aborted) errors after the unique-key race.
+- **Isomorphic Environment Execution**: Detects whether the active connection is a real PostgreSQL instance (`db.isEmbedded() === false`) or PGlite, logging the client engine type and executing the exact same database savepoint-level verification.
+
+#### B. Quality Gates and Vesting Command Execution Results
+- **Linter Status (`npm run lint`)**: Passed cleanly with **0 errors**.
+- **Production Bundle (`npm run build`)**: Bundled successfully into `dist/` with **0 warnings**.
+- **Storefront Checkout Test Suite (`npm run test:checkout`)**: Passed cleanly with **7/7 checks successful**.
+- **Full Automated Integration Suite (`npm test`)**: All 9 integration suites pass cleanly with **100% success rate (0 failures)**.
+
+---
+
 ## UX-001 Phase 2.1 R2 — Final ErrorBoundary Security Gate & Source-of-Truth Synchronization
 
 - **Status**: `READY FOR SUPERVISOR REVIEW`

@@ -24,7 +24,9 @@ export function computeCanonicalRequestFingerprint(params: {
   fulfillment_method: string;
   payment_method: string;
   customer_id?: string | null;
+  customer_details?: { name: string; email: string; phone: string; address?: any } | null;
   discount_code?: string | null;
+  location_id?: string | null;
 }): string {
   const sortedItems = [...params.cart_items]
     .sort((a, b) => a.variant_id.localeCompare(b.variant_id))
@@ -36,10 +38,17 @@ export function computeCanonicalRequestFingerprint(params: {
   const canonicalObj = {
     organization_id: params.organization_id,
     customer_id: params.customer_id || null,
+    customer_details: params.customer_details ? {
+      name: params.customer_details.name || '',
+      email: params.customer_details.email || '',
+      phone: params.customer_details.phone || '',
+      address: params.customer_details.address || null,
+    } : null,
     cart_items: sortedItems,
     fulfillment_method: params.fulfillment_method,
     payment_method: params.payment_method,
     discount_code: params.discount_code || null,
+    location_id: params.location_id || null,
   };
 
   const serialized = JSON.stringify(canonicalObj);
@@ -179,7 +188,9 @@ export class OrderService {
       fulfillment_method,
       payment_method,
       customer_id: params.customer_id,
+      customer_details: params.customer_details,
       discount_code,
+      location_id: params.location_id,
     });
 
     // ------------------------------------------------------------------
@@ -362,50 +373,101 @@ export class OrderService {
           provider: 'Storefront',
         };
 
-        const saved = await this.orderRepo.createOrderWithItems(orderRecord, orderItems, paymentRecord, tx);
+        // Wrap database writes in a savepoint to protect transaction abort status on conflict
+        await tx.query('SAVEPOINT storefront_idempotency_insert');
+        try {
+          const saved = await this.orderRepo.createOrderWithItems(orderRecord, orderItems, paymentRecord, tx);
 
-        // Record stock reservation / movements
-        for (const item of orderItems) {
-          await this.invRepo.recordMovement(
-            {
-              organization_id,
-              location_id: fulfillmentLocId!,
-              variant_id: item.variant_id,
-              movement_type: 'ECOMMERCE_SALE',
-              quantity_change: `-${item.quantity}`,
-              unit_cost: this.localFormatCentsToMoneyString(this.localParseMoneyToCents(item.cost_price)),
-              reference_type: 'orders',
-              reference_id: orderId,
-              performed_by: 'Online Storefront',
-              idempotency_key: `${orderId}_${item.variant_id}`,
-              allowNegativeStock: false,
+          // Record stock reservation / movements
+          for (const item of orderItems) {
+            await this.invRepo.recordMovement(
+              {
+                organization_id,
+                location_id: fulfillmentLocId!,
+                variant_id: item.variant_id,
+                movement_type: 'ECOMMERCE_SALE',
+                quantity_change: `-${item.quantity}`,
+                unit_cost: this.localFormatCentsToMoneyString(this.localParseMoneyToCents(item.cost_price)),
+                reference_type: 'orders',
+                reference_id: orderId,
+                performed_by: 'Online Storefront',
+                idempotency_key: `${orderId}_${item.variant_id}`,
+                allowNegativeStock: false,
+              },
+              tx
+            );
+          }
+
+          // Create Audit Event
+          await this.auditRepo.recordEvent({
+            organization_id,
+            actor_name,
+            actor_role,
+            action: 'storefront.order_create',
+            entity_type: 'orders',
+            entity_id: orderId,
+            location_id: fulfillmentLocId!,
+            metadata: {
+              order_number: orderNumber,
+              total_amount: this.localFormatCentsToMoneyString(finalTotalCents),
+              payment_method,
             },
-            tx
-          );
+            severity: 'Info',
+          }, tx);
+
+          await tx.query('RELEASE SAVEPOINT storefront_idempotency_insert');
+
+          return {
+            order: saved.order,
+            items: saved.items,
+            payments: [paymentRecord],
+          };
+        } catch (err: any) {
+          const errCode = String(err?.code || '');
+          const errMsg = String(err?.message || '');
+          if (
+            errCode === '23505' ||
+            errMsg.includes('uq_orders_org_idempotency') ||
+            errMsg.includes('orders_idempotency_key_key') ||
+            errMsg.includes('duplicate key') ||
+            errMsg.includes('violates unique constraint')
+          ) {
+            await tx.query('ROLLBACK TO SAVEPOINT storefront_idempotency_insert');
+
+            // Query existing order inside the STILL ACTIVE transaction!
+            const raceOrderRes = await tx.query<any>(
+              `SELECT id, notes, organization_id FROM orders WHERE idempotency_key = $1`,
+              [idempotency_key]
+            );
+            if (raceOrderRes.rows.length > 0) {
+              const orderOrgId = raceOrderRes.rows[0].organization_id;
+              if (orderOrgId !== organization_id) {
+                throw new DomainError('IDEMPOTENCY_CONFLICT', `Idempotency key '${idempotency_key}' is already claimed.`);
+              }
+              const raceOrderId = raceOrderRes.rows[0].id;
+              const storedNotes = raceOrderRes.rows[0].notes;
+              const storedFingerprint = extractFingerprint(storedNotes);
+
+              if (storedFingerprint === currentFingerprint) {
+                const fullOrder = await this.orderRepo.findOrderById(raceOrderId, organization_id, tx);
+                if (fullOrder) {
+                  const payments = await tx.query<any>(
+                    `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2`,
+                    [raceOrderId, organization_id]
+                  );
+                  return {
+                    order: fullOrder.order,
+                    items: fullOrder.items,
+                    payments: payments.rows,
+                  };
+                }
+              } else {
+                throw new DomainError('IDEMPOTENCY_CONFLICT', `An order with idempotency key '${idempotency_key}' already exists with different request parameters.`);
+              }
+            }
+          }
+          throw err;
         }
-
-        // Create Audit Event
-        await this.auditRepo.recordEvent({
-          organization_id,
-          actor_name,
-          actor_role,
-          action: 'storefront.order_create',
-          entity_type: 'orders',
-          entity_id: orderId,
-          location_id: fulfillmentLocId!,
-          metadata: {
-            order_number: orderNumber,
-            total_amount: this.localFormatCentsToMoneyString(finalTotalCents),
-            payment_method,
-          },
-          severity: 'Info',
-        }, tx);
-
-        return {
-          order: saved.order,
-          items: saved.items,
-          payments: [paymentRecord],
-        };
       });
     } catch (err: any) {
       const errCode = String(err?.code || '');

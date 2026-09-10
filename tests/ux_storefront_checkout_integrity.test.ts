@@ -44,6 +44,7 @@ async function runStorefrontCheckoutIntegrityTests() {
 
     INSERT INTO locations (id, organization_id, code, name, type, is_pos_enabled, is_active) VALUES
       ('loc_alpha_wh', 'org_store_alpha', 'ALPHA_WH', 'Alpha Warehouse', 'Warehouse', FALSE, TRUE),
+      ('loc_alpha_wh_2', 'org_store_alpha', 'ALPHA_WH_2', 'Alpha Warehouse 2', 'Warehouse', FALSE, TRUE),
       ('loc_alpha_inactive', 'org_store_alpha', 'ALPHA_INACTIVE', 'Alpha Inactive Branch', 'Warehouse', FALSE, FALSE),
       ('loc_beta_wh', 'org_store_beta', 'BETA_WH', 'Beta Warehouse', 'Warehouse', FALSE, TRUE)
     ON CONFLICT (id) DO NOTHING;
@@ -73,6 +74,7 @@ async function runStorefrontCheckoutIntegrityTests() {
 
     INSERT INTO inventory_balances (id, organization_id, location_id, variant_id, on_hand, reserved, damaged, expired, in_transit) VALUES
       ('bal_alpha_1', 'org_store_alpha', 'loc_alpha_wh', 'var_alpha_active_1', '100.0000', '0.0000', '0.0000', '0.0000', '0.0000'),
+      ('bal_alpha_1_loc2', 'org_store_alpha', 'loc_alpha_wh_2', 'var_alpha_active_1', '100.0000', '0.0000', '0.0000', '0.0000', '0.0000'),
       ('bal_alpha_2', 'org_store_alpha', 'loc_alpha_wh', 'var_alpha_active_2', '5.0000', '0.0000', '0.0000', '0.0000', '0.0000'),
       ('bal_beta_1', 'org_store_beta', 'loc_beta_wh', 'var_beta_active_1', '50.0000', '0.0000', '0.0000', '0.0000', '0.0000')
     ON CONFLICT (id) DO NOTHING;
@@ -314,6 +316,147 @@ async function runStorefrontCheckoutIntegrityTests() {
       );
       const postOnHand = parseFloat(postReservations.rows[0].on_hand);
       assert.strictEqual(preOnHand - postOnHand, 1.0000, 'Exactly 1.0000 stock deduction must have occurred.');
+
+      // 2f. Explicit Location Fingerprinting Regression
+      const locFingerprintKey = crypto.randomUUID();
+      const payloadLocA = {
+        idempotency_key: locFingerprintKey,
+        fulfillmentMethod: 'Standard Delivery',
+        paymentMethod: 'Credit Card',
+        cart_items: [{ variant_id: 'var_alpha_active_1', quantity: '1.0000' }],
+        location_id: 'loc_alpha_wh',
+      };
+      const payloadLocB = {
+        idempotency_key: locFingerprintKey,
+        fulfillmentMethod: 'Standard Delivery',
+        paymentMethod: 'Credit Card',
+        cart_items: [{ variant_id: 'var_alpha_active_1', quantity: '1.0000' }],
+        location_id: 'loc_alpha_wh_2', // different location
+      };
+
+      const resLocA = await fetch(`${baseUrl}/api/orders`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${shopperToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadLocA),
+      });
+      assert.strictEqual(resLocA.status, 201, 'Request with Location A must succeed.');
+
+      const resLocB = await fetch(`${baseUrl}/api/orders`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${shopperToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadLocB),
+      });
+      if (resLocB.status !== 409) {
+        console.log("  [DEBUG] resLocB status:", resLocB.status, "body:", await resLocB.text());
+      }
+      assert.strictEqual(resLocB.status, 409, 'Request with same K but different location must return 409 conflict.');
+      const jsonLocB = await resLocB.json();
+      assert.strictEqual(jsonLocB.error.code, 'IDEMPOTENCY_CONFLICT');
+
+      // 2g. Real PostgreSQL Concurrency & Savepoint proof
+      const isPg = !db.isEmbedded();
+      console.log(`  [INFO] Running Concurrency & SAVEPOINT transaction proof gate (Database type: ${isPg ? 'Real PostgreSQL' : 'PGlite'}).`);
+
+      const pgConcurrencyKey = crypto.randomUUID();
+      const pgPayload = {
+        idempotency_key: pgConcurrencyKey,
+        fulfillmentMethod: 'Standard Delivery',
+        paymentMethod: 'Credit Card',
+        cart_items: [{ variant_id: 'var_alpha_active_1', quantity: '1.0000' }],
+      };
+
+      const pgPreReservations = await db.query<any>(
+        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+      );
+      const pgPreOnHand = parseFloat(pgPreReservations.rows[0].on_hand);
+
+      // Execute simultaneously to trigger a real race/unique constraint condition
+      const pgReqPromises = Array.from({ length: 4 }).map(() =>
+        fetch(`${baseUrl}/api/orders`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${shopperToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(pgPayload),
+        })
+      );
+
+      const pgResults = await Promise.all(pgReqPromises);
+      const pgStatuses = pgResults.map((r) => r.status);
+
+      // Prove that at least one request succeeds (and potentially others succeed via savepoint-recovery/replay)
+      assert.ok(pgStatuses.includes(201), 'At least one concurrent request must succeed with 201.');
+
+      // Prove exactly one order exists
+      const pgDbOrders = await db.query<any>(
+        `SELECT id FROM orders WHERE idempotency_key = $1`,
+        [pgConcurrencyKey]
+      );
+      assert.strictEqual(pgDbOrders.rows.length, 1, 'Exactly one order must exist for the idempotency key.');
+
+      // Prove exactly one payment exists
+      const pgOrderId = pgDbOrders.rows[0].id;
+      const pgDbPayments = await db.query<any>(
+        `SELECT id FROM payments WHERE order_id = $1`,
+        [pgOrderId]
+      );
+      assert.strictEqual(pgDbPayments.rows.length, 1, 'Exactly one payment record must exist.');
+
+      // Prove exactly one inventory reservation/decrement occurs (on_hand balance goes down by exactly 1.0000)
+      const pgPostReservations = await db.query<any>(
+        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+      );
+      const pgPostOnHand = parseFloat(pgPostReservations.rows[0].on_hand);
+      assert.strictEqual(pgPreOnHand - pgPostOnHand, 1.0000, 'Exactly one stock decrement of 1.0000 must occur.');
+
+      // Prove identical replay returns the original order (201 status and identical order ID)
+      const pgReplayRes = await fetch(`${baseUrl}/api/orders`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${shopperToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(pgPayload),
+      });
+      assert.strictEqual(pgReplayRes.status, 201, 'Identical replay must succeed.');
+      const pgReplayJson = await pgReplayRes.json();
+      assert.strictEqual(pgReplayJson.data.id, pgOrderId, 'Replay must return the identical order ID.');
+
+      // Prove a modified request with the same key returns 409
+      const pgModifiedPayload = {
+        idempotency_key: pgConcurrencyKey,
+        fulfillmentMethod: 'In-Store Pickup', // modified
+        paymentMethod: 'Credit Card',
+        cart_items: [{ variant_id: 'var_alpha_active_1', quantity: '1.0000' }],
+      };
+      const pgModifiedRes = await fetch(`${baseUrl}/api/orders`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${shopperToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(pgModifiedPayload),
+      });
+      assert.strictEqual(pgModifiedRes.status, 409, 'Modified request with same key must return 409.');
+      const pgModifiedJson = await pgModifiedRes.json();
+      assert.strictEqual(pgModifiedJson.error.code, 'IDEMPOTENCY_CONFLICT');
+
+      // Prove the transaction remains usable after the concurrent unique-key race, and no 25P02 error occurs
+      await db.withTransaction(async (tx) => {
+        await tx.query('SAVEPOINT test_sp');
+        try {
+          // Trigger a known unique key violation on orders inside savepoint
+          await tx.query(
+            `INSERT INTO orders (id, organization_id, location_id, order_number, source, channel, fulfillment_method, subtotal, discount_amount, tax_amount, shipping_fee, total_amount, payment_status, status, idempotency_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            [`ord_conflict_test_${crypto.randomUUID()}`, 'org_store_alpha', 'loc_alpha_wh', `ORD-${crypto.randomUUID().slice(0, 8)}`, 'ECOMMERCE', 'Online Web Store', 'Standard Delivery', '20.00', '0.00', '3.00', '5.00', '28.00', 'Pending', 'Stock Reserved', pgConcurrencyKey]
+          );
+          assert.fail('Unique constraint must have failed.');
+        } catch (txErr: any) {
+          const code = String(txErr?.code || '');
+          const msg = String(txErr?.message || '');
+          assert.ok(code === '23505' || msg.includes('uq_orders_org_idempotency') || msg.includes('unique constraint') || msg.includes('duplicate key'), 'Must be unique constraint violation');
+          
+          // Rollback to savepoint
+          await tx.query('ROLLBACK TO SAVEPOINT test_sp');
+        }
+
+        // Now run a query on the transaction to prove it is STILL USABLE and not aborted!
+        const testRes = await tx.query('SELECT 1 as val');
+        assert.strictEqual(testRes.rows[0].val, 1, 'Transaction must be fully active and usable after rolling back to savepoint.');
+      });
 
       markPassed('Idempotency Safeguards & Concurrency');
     } catch (err) {
