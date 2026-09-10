@@ -344,18 +344,20 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 9: UX-001 — Production UX Hardening, Offline Resilience & Error Recovery
-- **Status**: `UX-001 Phase 2.3 R1 — READY FOR SUPERVISOR REVIEW`
+- **Status**: `UX-001 Phase 2.4 — READY FOR SUPERVISOR REVIEW`
 - **Phase 1 Deliverables**: Completed Comprehensive UI/UX Audit ([.ai/UX_AUDIT.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_AUDIT.md)) and UX Modernization Implementation Plan ([.ai/UX_IMPLEMENTATION_PLAN.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_IMPLEMENTATION_PLAN.md)), approved with conditions on 2026-09-10.
 - **Phase 2.1 Deliverables**: Implemented baseline design system primitives, global `ErrorBoundary` protection, sole environment gate checks, and React `useId` modal identifiers.
 - **Phase 2.2C Deliverables**: Completed e-commerce checkout integration. Hardened exact string-only quantities, cryptographically secure idempotency keys, payload fingerprinting (with customer details and location ID tracking), server-authoritative pricing and taxes, pessimistic variant row locking, payment state persistence, local `SAVEPOINT` transaction recovery (solving PostgreSQL unique-constraint abort race conditions), and robust production error sanitization.
 - **Phase 2.3 Deliverables**: Completed local offline POS queueing utilizing indexedDB storage, network connectivity event listeners, automatic background synchronization, backoff retry schedules, and intuitive UI status banners.
-- **Phase 2.3 R1 Deliverables**: Hardened offline POS resilience architecture against independent security/architecture audit findings:
-  - Dual-layer storage synchronization: automatic migration of in-memory queue to IndexedDB upon recovery with deduplication (`migrateMemoryToIDB`).
-  - Fail-closed tenant isolation in sync daemon: aborts immediately with zero queue mutations if unauthenticated or tenant is `org_default`; scopes sync strictly to caller's authenticated `organizationId`.
-  - Server-authoritative checkout with offline fallback: generates cryptographic idempotency key upfront, preserves key on transport failures (`Failed to fetch`), clears cart only upon server acceptance or durable queue placement.
-  - Strict 409 conflict vs replay semantics: conflict rejections (HTTP 409, `IDEMPOTENCY_CONFLICT`) marked failed with error details, stopped from retrying, kept in queue; genuine replays (HTTP 200/201) purged from queue.
-  - Replaced optimistic stock mutations with post-sync server balance reconciliation.
-  - Decoupled simulator UI from real network state.
+- **Phase 2.3 R1 Deliverables**: Hardened offline POS resilience architecture against independent security/architecture audit findings (APPROVED WITH CONDITIONS on 2026-09-10).
+- **Phase 2.4 Deliverables**: Modal Accessibility, Keyboard Focus Trapping & Global POS Hotkeys:
+  - Centralized Modal Stack Manager (`src/services/modalManager.ts`) coordinating stacked dialogs, focus trapping exclusivity, and global Escape dispatch without competition.
+  - Hardened Modal primitive (`src/components/ui/Modal.tsx`) with `useId` collision-safe IDs, `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `closeOnEscape`, safe focus restoration guarded by `document.body.contains(trigger)`, and zero-dimension headless guards.
+  - Reusable focus trap hook (`src/hooks/useModalFocusTrap.ts`) supporting nested modal lifecycles.
+  - Refactored all 5 POS overlay dialogs in `PosTerminal.tsx` to wrap `<Modal>` (Variant Selector, Payment Tender, Held Sales Queue, Returns & Refunds, Quick Add Customer).
+  - Centralized POS keyboard shortcuts hook (`src/hooks/usePosKeyboardShortcuts.ts`) with input-element guards (protects typing in `input`, `textarea`, `select`, `contenteditable`), complete modal-open suppression, native browser shortcut protection (`Ctrl+C`, `Ctrl+V`, `F5`, `Alt+Tab`), and strict financial mutation safety (zero shortcuts trigger payment or ledger updates).
+  - Accessible Hotkey Quick Reference Bar in `PosTerminal.tsx` footer.
+  - Comprehensive 20-point behavioral test suite (`tests/ux_pos_hotkeys.test.ts`) covering all 12 modal focus/lifecycle checkpoints and 8 POS hotkey/safety checkpoints.
 - **Objective**: Modernize frontend UX incrementally starting with common design primitives and error wrappers, progressing to server authoritative integration, offline resilience, and mobile responsive layout fixes.
 - **Scope**:
   - [x] Phase 1: Frontend inspection and audit reports.
@@ -363,7 +365,7 @@ PROD-001 (NOT STARTED)
   - [x] Phase 2.2C: E-commerce storefront checkout integration, savepoint transaction recovery, and exact decimal inputs.
   - [x] Phase 2.3: Offline POS IndexedDB transaction queueing, synchronization on recovery, backoff schedules, and status banners.
   - [x] Phase 2.3 R1: Offline POS security, multi-tenant isolation, 409 conflict semantics, storage split-brain migration, and server-authoritative reconciliation.
-  - [ ] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.
+  - [x] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.
   - [ ] Phase 2.5: Calibrate mobile touch targets and ensure horizontal scroll wraps for complex tables.
 - **Dependencies**: `POS-001`, `API-001`, `QA-001`.
 - **Acceptance Criteria**:
@@ -379,8 +381,14 @@ PROD-001 (NOT STARTED)
   - [x] Phase 2.3 R1: Cart cleared only upon successful server acceptance or durable queue placement.
   - [x] Phase 2.3 R1: Server-authoritative post-sync inventory reconciliation replaces client stock mutations.
   - [x] Phase 2.3 R1: Simulator UI separated from real network drops.
-- **Security Requirements**: Offline queue items encrypted locally before sync; fail-closed tenant validation; zero cross-tenant queue sync; server-authoritative pricing and inventory.
-- **Validation Requirements**: 14/14 offline POS regression tests in `tests/ux_offline_pos.test.ts`.
+  - [x] Phase 2.4: Modal receives focus on open, Tab and Shift+Tab wrap within dialog, Escape dismisses dismissible modals with zero leakage to background.
+  - [x] Phase 2.4: Focus safely restores to attached trigger element and fails safely on detached triggers.
+  - [x] Phase 2.4: Stacked modals do not compete; top-most modal owns focus and handles Escape.
+  - [x] Phase 2.4: POS hotkeys fire on standard keys (F2, F3, F4, F7, F8, F9, F10) outside modals and outside form inputs.
+  - [x] Phase 2.4: Zero hotkeys execute financial transactions or alter server inventory.
+  - [x] Phase 2.4: All 20 behavioral tests pass in `tests/ux_pos_hotkeys.test.ts`.
+- **Security Requirements**: Offline queue items encrypted locally before sync; fail-closed tenant validation; zero cross-tenant queue sync; server-authoritative pricing and inventory; zero financial mutations executable from keyboard shortcuts.
+- **Validation Requirements**: 20/20 behavioral tests in `tests/ux_pos_hotkeys.test.ts`, 3/3 accessibility checks in `tests/ux_accessibility.test.ts`, 14/14 offline POS regression tests in `tests/ux_offline_pos.test.ts`.
 
 ---
 

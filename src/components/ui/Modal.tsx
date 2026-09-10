@@ -1,13 +1,18 @@
 import React, { useEffect, useRef, useId } from 'react';
 import { X } from 'lucide-react';
+import { modalManager } from '../../services/modalManager';
 
-interface ModalProps {
+export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  closeOnEscape?: boolean;
+  closeOnBackdropClick?: boolean;
+  ariaDescribedBy?: string;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -17,22 +22,43 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   footer,
   size = 'md',
+  closeOnEscape = true,
+  closeOnBackdropClick = true,
+  ariaDescribedBy,
+  initialFocusRef,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const triggerElementRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
 
-  // Keep track of previously focused element to restore it on unmount
+  // Capture active element before modal opens for safe restoration on close
   useEffect(() => {
     if (isOpen) {
       triggerElementRef.current = document.activeElement as HTMLElement;
     }
   }, [isOpen]);
 
+  // Coordinate modal stack registration with modalManager
+  useEffect(() => {
+    if (isOpen) {
+      modalManager.registerModal(titleId, {
+        closeOnEscape,
+        onEscape: onClose,
+        titleId,
+      });
+    }
+
+    return () => {
+      if (isOpen) {
+        modalManager.unregisterModal(titleId);
+      }
+    };
+  }, [isOpen, closeOnEscape, onClose, titleId]);
+
   useEffect(() => {
     if (!isOpen) return;
 
-    // Save previous body style and disable overflow
+    // Lock body scroll
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
@@ -50,14 +76,8 @@ export const Modal: React.FC<ModalProps> = ({
           return false;
         }
 
-        // Exclude elements with tabindex="-1" (often headers, wrappers, etc.)
+        // Exclude elements with tabindex="-1"
         if (el.getAttribute('tabindex') === '-1') {
-          return false;
-        }
-
-        // Exclude elements with size/dimensions equal to 0 (hidden or unrendered)
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
           return false;
         }
 
@@ -71,27 +91,50 @@ export const Modal: React.FC<ModalProps> = ({
           // Fallback if window or computed style is unavailable
         }
 
+        // Exclude zero-dimension elements in rendered DOM (guard against JSDOM/simulated DOM where all rects are 0x0)
+        const rect = el.getBoundingClientRect();
+        if (typeof window !== 'undefined' && window.innerWidth > 0) {
+          if (rect.width === 0 && rect.height === 0 && el.offsetWidth === 0 && el.offsetHeight === 0) {
+            if (el.offsetParent === null && (el as HTMLElement).style?.position !== 'fixed') {
+              return false;
+            }
+          }
+        }
+
         return true;
       });
     };
-    
-    // Quick timeout to let the dialog render before setting focus
+
+    // Initial focus placement: preferred initialFocusRef, first focusable, or modal container
     const timer = setTimeout(() => {
+      if (initialFocusRef && initialFocusRef.current && typeof initialFocusRef.current.focus === 'function') {
+        initialFocusRef.current.focus();
+        return;
+      }
+
       if (modalRef.current) {
         const focusables = getFocusableElements();
         if (focusables.length > 0) {
           focusables[0].focus();
         } else {
-          // If zero focusable children, focus the modal dialog container itself
           modalRef.current.focus();
         }
       }
     }, 50);
 
-    // Keyboard handlers: Escape to close, Tab focus trapping
+    // Keyboard handlers: Escape to close and Tab focus trapping (strictly for topmost modal)
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Only the top-most modal handles keyboard focus trap & Escape
+      if (!modalManager.isTopModal(titleId)) {
+        return;
+      }
+
       if (e.key === 'Escape') {
-        onClose();
+        e.stopPropagation();
+        e.preventDefault();
+        if (closeOnEscape) {
+          onClose();
+        }
         return;
       }
 
@@ -100,6 +143,7 @@ export const Modal: React.FC<ModalProps> = ({
 
         if (focusables.length === 0) {
           e.preventDefault();
+          modalRef.current.focus();
           return;
         }
 
@@ -107,13 +151,13 @@ export const Modal: React.FC<ModalProps> = ({
         const last = focusables[focusables.length - 1];
 
         if (e.shiftKey) {
-          // Shift+Tab trapping
+          // Shift+Tab: wrap from first to last or pull focus into modal if outside
           if (document.activeElement === first || !modalRef.current.contains(document.activeElement)) {
             e.preventDefault();
             last.focus();
           }
         } else {
-          // Tab trapping
+          // Tab: wrap from last to first or pull focus into modal if outside
           if (document.activeElement === last || !modalRef.current.contains(document.activeElement)) {
             e.preventDefault();
             first.focus();
@@ -129,16 +173,20 @@ export const Modal: React.FC<ModalProps> = ({
       document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', handleKeyDown);
 
-      // Restore focus to original active element if it's still attached to the DOM
+      // Safe Focus Restoration: verify element is still attached to the DOM before restoring
       if (
         triggerElementRef.current &&
         document.body.contains(triggerElementRef.current) &&
         typeof triggerElementRef.current.focus === 'function'
       ) {
-        triggerElementRef.current.focus();
+        try {
+          triggerElementRef.current.focus();
+        } catch {
+          // Guard against any unforeseen focus restoration exception
+        }
       }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closeOnEscape, titleId, initialFocusRef]);
 
   if (!isOpen) return null;
 
@@ -150,6 +198,12 @@ export const Modal: React.FC<ModalProps> = ({
     full: 'max-w-full m-0 h-full rounded-none',
   };
 
+  const handleBackdropClick = () => {
+    if (closeOnBackdropClick) {
+      onClose();
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
@@ -158,7 +212,7 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Backdrop with transition */}
       <div
         className="fixed inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-xs transition-opacity animate-[fadeIn_0.2s_ease-out]"
-        onClick={onClose}
+        onClick={handleBackdropClick}
         aria-hidden="true"
       />
 
@@ -168,6 +222,7 @@ export const Modal: React.FC<ModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        {...(ariaDescribedBy ? { 'aria-describedby': ariaDescribedBy } : {})}
         tabIndex={-1}
         className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl flex flex-col focus:outline-none overflow-hidden max-h-[90vh] z-10 transition-all animate-[slideUp_0.25s_ease-out] ${sizeClasses[size]}`}
       >

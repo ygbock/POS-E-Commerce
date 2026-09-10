@@ -1,13 +1,106 @@
 # Implementation Report
 
-## UX-001 Phase 2.3 R1 — Offline POS Resilience & Security Hardening
+## UX-001 Phase 2.4 — Modal Accessibility, Keyboard Focus Trapping & Global POS Hotkeys
 
 - **Status**: `READY FOR SUPERVISOR REVIEW`
-- **Parent Task**: `UX-001` (Phase 2.3 R1)
+- **Parent Task**: `UX-001` (Phase 2.4)
 - **Authority**: Human Supervisor / Reviewer
-- **Scope Discipline**: Targeted corrective rework addressing all 7 findings of the independent security and architecture audit on UX-001 Phase 2.3. No unapproved features, unauthorized dependencies, or modifications to server financial math were introduced.
+- **Scope Discipline**: Implemented WCAG 2.2 AA-compliant modal accessibility, keyboard focus trapping, stacked modal coordination, centralized POS keyboard shortcuts engine, input guards, and financial safety guarantees. Zero changes to server financial math, inventory double-entry accounting, auth, or tenant boundaries. Zero unauthorized dependencies added.
 
 ---
+
+### 1. Files Inspected & Audit Findings
+- `src/components/ui/Modal.tsx`: Inspected dialog semantics, Tab/Shift+Tab trapping, and focus restoration. Discovered lack of stacked modal coordination (`modalStack` tracking) and lack of `e.stopPropagation()` on Escape.
+- `src/components/pos/PosTerminal.tsx`: Inspected 5 ad-hoc custom overlay dialogs (`showHeldModal`, `showCheckoutModal`, `showAddCustomerModal`, `showReturnModal`, `selectedProductForVariant`). Found they lacked `role="dialog"`, `aria-modal="true"`, dynamic `useId` labels, and focus trapping.
+- `src/components/pos/ShiftModal.tsx`: Inspected multi-step reconciliation and nested modal interactions (`CashMovementModal`, `ReconciliationReportModal`).
+- `src/components/pos/ReceiptModal.tsx`: Inspected receipt viewing, printing, and nested `QrVerificationModal`.
+- Repository keyboard handlers: Found search form submits and scanner inputs with no unified keyboard shortcuts engine, resulting in scattered keyboard handling.
+- `tests/ux_accessibility.test.ts`: Verified existing static accessibility assertions and confirmed need for behavioral runtime tests.
+
+### 2. Files Modified & Added
+
+| File | Status | Rationale |
+| :--- | :--- | :--- |
+| `src/services/modalManager.ts` | **NEW** | Centralized singleton manager tracking open modals in a stack (`modalStack`). Coordinates focus trap ownership, global Escape dispatch, and modal-open status for POS hotkey suppression. |
+| `src/components/ui/Modal.tsx` | **MODIFIED** | Integrated with `modalManager`. Added `closeOnEscape`, `ariaDescribedBy`, `initialFocusRef`, safe focus restoration with `document.body.contains(trigger)` check to prevent detached DOM crashes, and headless DOM guards. |
+| `src/hooks/useModalFocusTrap.ts` | **NEW** | Reusable focus-trapping and lifecycle hook supporting stacked modals, initial focus targets, and safe focus restoration. |
+| `src/hooks/usePosKeyboardShortcuts.ts` | **NEW** | Centralized POS shortcuts engine (`F2`, `F3`, `F4`, `F7`, `F8`, `F9`, `F10`, `Escape`). Built-in input guard (`isInteractiveInputElement`), modal suppression, and native browser shortcut protection (`Ctrl+C`, `Ctrl+V`, `F5`, `Alt+Tab`). |
+| `src/components/pos/PosTerminal.tsx` | **MODIFIED** | Replaced 5 ad-hoc modal overlays with accessible `<Modal>` components. Registered `usePosKeyboardShortcuts`. Added accessible Hotkey Quick Reference Bar in footer. Added `id="select-pos-customer"`. |
+| `tests/ux_pos_hotkeys.test.ts` | **NEW** | Comprehensive 20-point behavioral verification test suite covering all 12 modal focus/lifecycle checkpoints and 8 POS hotkey/safety checkpoints. |
+| `tests/ux_accessibility.test.ts` | **MODIFIED** | Updated static accessibility check suite. |
+| `package.json` | **MODIFIED** | Added `"test:hotkeys": "tsx tests/ux_pos_hotkeys.test.ts"` and linked into `"test:ux"`. |
+
+### 3. Architecture & Interaction Model
+
+```text
+Keyboard Event (Window)
+         │
+         ▼
+Is Any Modal Active? (modalManager.isAnyModalOpen())
+  ├── YES ──► Top-most Modal in modalStack receives event
+  │             ├── Tab / Shift+Tab ──► Trapped within modal focusables
+  │             ├── Escape ──────────► Calls onClose(), stopPropagation(), preventDefault()
+  │             └── Other Keys ──────► Modal inputs/buttons handle natively
+  │             (Underlying POS shortcuts completely bypassed)
+  │
+  └── NO ───► usePosKeyboardShortcuts Engine
+                ├── Browser Modifier? (Ctrl+*, Meta+*, Alt+*) ──► IGNORED (native browser handles)
+                ├── Developer / Refresh? (F5, F12) ────────────► IGNORED (native browser handles)
+                ├── Is Interactive Input? (input, textarea, select, contenteditable)
+                │     ├── Printable Keys (letters, numbers) ──► IGNORED (normal typing permitted)
+                │     └── Escape ──────────────────────────────► Blurs input, clears search
+                └── Function Keys (F2, F3, F4, F7, F8, F9, F10)
+                      ├── F2  ──► Focus Catalog Search (#input-pos-unified-search)
+                      ├── F3  ──► Focus Customer Selector / Quick Add
+                      ├── F4  ──► Toggle Cart / Quick Sale View
+                      ├── F7  ──► Open Customer Returns Dialog
+                      ├── F8  ──► Hold Current Cart
+                      ├── F9  ──► Open Payment Tender Dialog (SAFETY: NEVER finalizes payment)
+                      └── F10 ──► Open Register Shift / Reconciliation Dialog
+```
+
+### 4. Security & Financial Review
+- **Financial Safety Invariant Verified**: No keyboard shortcut directly creates an order, executes a charge, modifies stock balances, or finalizes checkout.
+- `F9` strictly invokes `openCheckout()`, which opens the payment tender modal for cashier inspection, denomination calculation, and payment strategy selection.
+- Actual checkout execution (`handleExecuteCheckout`) is strictly bound to an explicit click or enter on the `#btn-confirm-pos-payment` button inside the tender dialog.
+- Zero server API routes, database schemas, financial decimal scaling, or inventory movement transactions were altered.
+
+### 5. Behavioral Test Matrix (20/20 Passing)
+
+| Test ID | Test Name | Expected | Actual | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **1** | Modal initial focus | Focuses container if empty | Focused container | **PASS** |
+| **2** | First focusable focus | Focuses first interactive element | Focused input | **PASS** |
+| **3** | Tab wrap | Last element wraps to first | Wrapped to first | **PASS** |
+| **4** | Shift+Tab wrap | First element wraps to last | Wrapped to last | **PASS** |
+| **5** | Escape dismissible | Dismisses and stops propagation | Closed, stopped propagation | **PASS** |
+| **6** | Escape non-dismissible | Does not close, consumes Escape | Remained open, consumed | **PASS** |
+| **7** | Focus restoration | Returns to DOM-attached trigger | Returned to trigger button | **PASS** |
+| **8** | Detached trigger safety | Does not crash when trigger removed | No exception thrown | **PASS** |
+| **9** | Unique modal IDs | Instances have distinct title IDs | Unique IDs verified | **PASS** |
+| **10** | Accessible name | `aria-labelledby` resolves to title | Resolved cleanly | **PASS** |
+| **11** | Focus containment | Pulls external focus into modal | Focus returned to modal | **PASS** |
+| **12** | Stacked modals | Top modal owns focus and Escape | Top modal closed, parent intact | **PASS** |
+| **13** | Global hotkey activation | `F2`, `F8`, `F9` trigger commands | Commands dispatched | **PASS** |
+| **14** | Input protection (input) | Typing inside input ignores hotkeys | Hotkeys ignored | **PASS** |
+| **15** | Input protection (textarea)| Typing inside textarea ignores hotkeys| Hotkeys ignored | **PASS** |
+| **16** | Native browser keys | `Ctrl+C`, `Ctrl+V`, `F5` not hijacked | Unprevented, passed to browser | **PASS** |
+| **17** | Modal-open suppression | Underlying hotkeys bypassed | 0 hotkeys fired while modal open| **PASS** |
+| **18** | Escape priority | Active modal consumes Escape | POS Escape handler not fired | **PASS** |
+| **19** | Financial mutation guard | `F9` does not execute checkout | Tender dialog opened; 0 charges | **PASS** |
+| **20** | Listener deduplication | Exactly 1 listener active | 1 execution per keypress | **PASS** |
+
+### 6. Quality & Verification Evidence
+- `npm run test:hotkeys`: **20/20 PASSED (100%)**
+- `npm run test:ux`: **23/23 PASSED (3 static + 20 behavioral, 100%)**
+- `npm run test:offline-pos`: **14/14 PASSED (100%)**
+- Note on `npm run test:checkout` / `npm test`: As documented under Condition 1 and the implementation plan, the host developer container experienced an out-of-disk condition (`ENOSPC`) that corrupted `@electric-sql/pglite` binary data (`pglite.data`). Tests relying on local PGlite fail with `ENOENT` on `pglite.data`. All Phase 2.4 UX, accessibility, and offline POS test suites run on standalone Node `tsx` harnesses with 100% genuine success.
+
+---
+
+## UX-001 Phase 2.3 R1 — Offline POS Resilience & Security Hardening
+
+- **Status**: `APPROVED WITH CONDITIONS` (Approved on 2026-09-10)
 
 ### 1. Corrective Deliverables Completed
 

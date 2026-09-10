@@ -44,6 +44,8 @@ import { CashMovementModal } from './CashMovementModal';
 import { QuickSaleView } from './QuickSaleView';
 import { BarcodeQrScannerModal } from './BarcodeQrScannerModal';
 import { syncService, NetworkState } from '../../services/syncService';
+import { Modal } from '../ui/Modal';
+import { usePosKeyboardShortcuts } from '../../hooks/usePosKeyboardShortcuts';
 
 export const PosTerminal: React.FC = () => {
   const {
@@ -366,6 +368,51 @@ export const PosTerminal: React.FC = () => {
     setFoundReturnOrder(null);
     setReturnOrderNumber('');
   };
+
+  // Centralized POS Keyboard Shortcuts
+  usePosKeyboardShortcuts({
+    onFocusSearch: () => {
+      const el = document.getElementById('input-pos-unified-search');
+      if (el) {
+        el.focus();
+        if (el instanceof HTMLInputElement) el.select();
+      }
+    },
+    onFocusCustomer: () => {
+      const el = document.getElementById('select-pos-customer');
+      if (el) {
+        el.focus();
+      } else {
+        setShowAddCustomerModal(true);
+      }
+    },
+    onToggleCart: () => {
+      setMobileTab((prev) => (prev === 'catalog' ? 'cart' : 'catalog'));
+    },
+    onOpenReturns: () => {
+      setShowReturnModal(true);
+    },
+    onHoldCart: () => {
+      if (posCart.length > 0) {
+        const note = prompt('Enter a note for held cart (optional):') || undefined;
+        holdCurrentPosCart(note);
+        triggerScanToast('Current cart suspended and placed in held queue');
+      }
+    },
+    onOpenTender: () => {
+      openCheckout();
+    },
+    onOpenShift: () => {
+      setShowShiftModal(true);
+    },
+    onEscape: () => {
+      if (searchTerm) {
+        setSearchTerm('');
+      } else if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    },
+  });
 
   if (posMode === 'quick_sale') {
     return (
@@ -815,6 +862,7 @@ export const PosTerminal: React.FC = () => {
               <div className="flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <select
+                  id="select-pos-customer"
                   aria-label="Attach Customer"
                   value={selectedPosCustomer?.id || ''}
                   onChange={(e) => {
@@ -1011,517 +1059,514 @@ export const PosTerminal: React.FC = () => {
         </div>
       </div>
 
+      {/* 4. POS KEYBOARD SHORTCUTS QUICK REFERENCE FOOTER */}
+      <div
+        role="region"
+        aria-label="POS Keyboard Shortcuts Reference"
+        className="mt-2 py-1.5 px-3 bg-slate-100/90 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-1.5 shrink-0"
+      >
+        <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+          <span>Shortcuts:</span>
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 shadow-2xs">F2</kbd>
+            <span>Search</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 shadow-2xs">F3</kbd>
+            <span>Customer</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 shadow-2xs">F4</kbd>
+            <span>Cart/Catalog</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 shadow-2xs">F7</kbd>
+            <span>Returns</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 shadow-2xs">F8</kbd>
+            <span>Hold Cart</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-sky-100 dark:bg-sky-950 border border-sky-300 dark:border-sky-700 rounded text-[10px] font-mono font-black text-sky-700 dark:text-sky-300 shadow-2xs">F9</kbd>
+            <span className="font-bold text-sky-700 dark:text-sky-300">Tender</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 shadow-2xs">F10</kbd>
+            <span>Shift</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 shadow-2xs">Esc</kbd>
+            <span>Clear/Blur</span>
+          </span>
+        </div>
+      </div>
+
       {/* MODAL 1: VARIANT SELECTOR */}
       {selectedProductForVariant && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-5 text-slate-900 dark:text-white shadow-2xl animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="font-extrabold text-base text-slate-900 dark:text-white">{selectedProductForVariant.name}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Select product variant to add to cart</p>
-              </div>
-              <button
-                onClick={() => setSelectedProductForVariant(null)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-xl cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="py-3 space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
-              {selectedProductForVariant.variants.map((v) => {
-                const stock = getLocationStockForVariant(v, currentLocationId);
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => {
-                      addToPosCart(selectedProductForVariant, v);
-                      triggerScanToast(`Added: ${selectedProductForVariant.name} (${v.name})`);
-                      setSelectedProductForVariant(null);
-                    }}
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-left transition-all cursor-pointer"
-                  >
-                    <div>
-                      <p className="font-bold text-xs text-slate-900 dark:text-white">{v.name}</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">SKU: {v.sku}</p>
-                      <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold">{stock} in store stock</span>
+        <Modal
+          isOpen={!!selectedProductForVariant}
+          onClose={() => setSelectedProductForVariant(null)}
+          title={`Select Variant: ${selectedProductForVariant.name}`}
+          size="md"
+        >
+          <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+            {selectedProductForVariant.variants.map((v) => {
+              const stock = getLocationStockForVariant(v, currentLocationId);
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => {
+                    addToPosCart(selectedProductForVariant, v);
+                    triggerScanToast(`Added: ${selectedProductForVariant.name} (${v.name})`);
+                    setSelectedProductForVariant(null);
+                  }}
+                  className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-left transition-all cursor-pointer"
+                >
+                  <div>
+                    <p className="font-bold text-xs text-slate-900 dark:text-white">{v.name}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">SKU: {v.sku}</p>
+                    <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold">{stock} in store stock</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-black font-mono text-slate-900 dark:text-white">
+                      {formatCurrency(v.retailPrice)}
+                    </span>
+                    <div className="mt-1 px-2.5 py-1 bg-sky-600 text-white rounded-lg text-[10px] font-bold">
+                      Add +
                     </div>
-                    <div className="text-right">
-                      <span className="text-sm font-black font-mono text-slate-900 dark:text-white">
-                        {formatCurrency(v.retailPrice)}
-                      </span>
-                      <div className="mt-1 px-2.5 py-1 bg-sky-600 text-white rounded-lg text-[10px] font-bold">
-                        Add +
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL 2: CHECKOUT / MULTI-TENDER & QUICK CASH DENOMINATIONS */}
-      {showCheckoutModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-6 text-slate-900 dark:text-white shadow-2xl animate-in zoom-in-95 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="font-black text-lg text-slate-900 dark:text-white tracking-tight">POS Payment Tender</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Total Payable: <strong className="text-sky-600 dark:text-sky-400 font-black">{formatCurrency(cartTotal)}</strong></p>
-              </div>
+      <Modal
+        isOpen={showCheckoutModal}
+        onClose={() => setShowCheckoutModal(false)}
+        title={`POS Payment Tender — ${formatCurrency(cartTotal)}`}
+        size="lg"
+        footer={
+          <div className="flex gap-2 w-full">
+            <button
+              type="button"
+              onClick={() => setShowCheckoutModal(false)}
+              className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              id="btn-confirm-pos-payment"
+              onClick={handleExecuteCheckout}
+              className="flex-2 py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-white rounded-2xl font-black shadow-md shadow-sky-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <CheckCircle2 className="w-5 h-5" />
+              <span>Complete & Print Receipt</span>
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-xs">
+          {/* Mode Switcher: Single vs Split */}
+          <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <span className="font-bold text-slate-700 dark:text-slate-300">Tender Strategy:</span>
+            <div className="flex gap-1">
               <button
-                onClick={() => setShowCheckoutModal(false)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-xl cursor-pointer"
+                type="button"
+                onClick={() => setIsSplitPayment(false)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  !isSplitPayment ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
               >
-                <X className="w-5 h-5" />
+                Single Method
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSplitPayment(true)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isSplitPayment ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                Split Payment
               </button>
             </div>
+          </div>
 
-            {/* Mode Switcher: Single vs Split */}
-            <div className="py-4 space-y-4 text-xs">
-              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
-                <span className="font-bold text-slate-700 dark:text-slate-300">Tender Strategy:</span>
-                <div className="flex gap-1">
+          {!isSplitPayment ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(['Cash', 'Credit Card', 'Mobile Money', 'Fintech Wallet'] as PaymentMethod[]).map((method) => (
                   <button
-                    onClick={() => setIsSplitPayment(false)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      !isSplitPayment ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                    key={method}
+                    type="button"
+                    onClick={() => setPrimaryPaymentMethod(method)}
+                    className={`p-3 rounded-2xl border text-center flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      primaryPaymentMethod === method
+                        ? 'bg-sky-500/10 border-sky-500 text-sky-600 dark:text-sky-400 shadow-xs'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
                     }`}
                   >
-                    Single Method
+                    {method === 'Cash' && <Banknote className="w-5 h-5 text-emerald-500" />}
+                    {method === 'Credit Card' && <CreditCard className="w-5 h-5 text-sky-500" />}
+                    {method === 'Mobile Money' && <Smartphone className="w-5 h-5 text-amber-500" />}
+                    {method === 'Fintech Wallet' && <Wallet className="w-5 h-5 text-indigo-500" />}
+                    <span className="text-[11px] font-bold">{method}</span>
                   </button>
-                  <button
-                    onClick={() => setIsSplitPayment(true)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      isSplitPayment ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    Split Payment
-                  </button>
-                </div>
+                ))}
               </div>
 
-              {!isSplitPayment ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {(['Cash', 'Credit Card', 'Mobile Money', 'Fintech Wallet'] as PaymentMethod[]).map((method) => (
+              {/* Cash Tender Input & Denominations */}
+              {primaryPaymentMethod === 'Cash' && (
+                <div className="space-y-3 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex justify-between items-center">
+                    <label className="text-slate-700 dark:text-slate-300 font-bold">Cash Tendered:</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={tenderCashAmount}
+                      onChange={(e) => setTenderCashAmount(e.target.value)}
+                      className="w-36 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2 text-right font-black text-slate-900 dark:text-white text-base"
+                    />
+                  </div>
+
+                  {/* Quick Cash Presets */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={setExactTenderCash}
+                      className="px-2.5 py-1 bg-sky-600 text-white rounded-lg text-xs font-bold cursor-pointer"
+                    >
+                      Exact (${cartTotal.toFixed(2)})
+                    </button>
+                    {[10, 20, 50, 100].map((amt) => (
                       <button
-                        key={method}
-                        onClick={() => setPrimaryPaymentMethod(method)}
-                        className={`p-3 rounded-2xl border text-center flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                          primaryPaymentMethod === method
-                            ? 'bg-sky-500/10 border-sky-500 text-sky-600 dark:text-sky-400 shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
-                        }`}
+                        key={amt}
+                        type="button"
+                        onClick={() => setTenderPreset(amt)}
+                        className="px-2.5 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-100 rounded-lg text-xs font-bold cursor-pointer"
                       >
-                        {method === 'Cash' && <Banknote className="w-5 h-5 text-emerald-500" />}
-                        {method === 'Credit Card' && <CreditCard className="w-5 h-5 text-sky-500" />}
-                        {method === 'Mobile Money' && <Smartphone className="w-5 h-5 text-amber-500" />}
-                        {method === 'Fintech Wallet' && <Wallet className="w-5 h-5 text-indigo-500" />}
-                        <span className="text-[11px] font-bold">{method}</span>
+                        ${amt}
                       </button>
                     ))}
                   </div>
 
-                  {/* Cash Tender Input & Denominations */}
-                  {primaryPaymentMethod === 'Cash' && (
-                    <div className="space-y-3 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-                      <div className="flex justify-between items-center">
-                        <label className="text-slate-700 dark:text-slate-300 font-bold">Cash Tendered:</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={tenderCashAmount}
-                          onChange={(e) => setTenderCashAmount(e.target.value)}
-                          className="w-36 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2 text-right font-black text-slate-900 dark:text-white text-base"
-                        />
-                      </div>
-
-                      {/* Quick Cash Presets */}
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        <button
-                          type="button"
-                          onClick={setExactTenderCash}
-                          className="px-2.5 py-1 bg-sky-600 text-white rounded-lg text-xs font-bold cursor-pointer"
-                        >
-                          Exact (${cartTotal.toFixed(2)})
-                        </button>
-                        {[10, 20, 50, 100].map((amt) => (
-                          <button
-                            key={amt}
-                            type="button"
-                            onClick={() => setTenderPreset(amt)}
-                            className="px-2.5 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-100 rounded-lg text-xs font-bold cursor-pointer"
-                          >
-                            ${amt}
-                          </button>
-                        ))}
-                      </div>
-
-                      {parseFloat(tenderCashAmount) >= cartTotal && (
-                        <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-black text-sm pt-2 border-t border-slate-200 dark:border-slate-700">
-                          <span>Change Due to Customer:</span>
-                          <span className="text-lg font-mono">{formatCurrency(parseFloat(tenderCashAmount) - cartTotal)}</span>
-                        </div>
-                      )}
+                  {parseFloat(tenderCashAmount) >= cartTotal && (
+                    <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-black text-sm pt-2 border-t border-slate-200 dark:border-slate-700">
+                      <span>Change Due to Customer:</span>
+                      <span className="text-lg font-mono">{formatCurrency(parseFloat(tenderCashAmount) - cartTotal)}</span>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="space-y-3 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  <p className="font-bold text-slate-700 dark:text-slate-300 text-[11px] uppercase tracking-wider">
-                    Split Method Breakdown
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-600 dark:text-slate-400 font-medium">Cash Tender:</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={splitCash}
-                      onChange={(e) => setSplitCash(e.target.value)}
-                      className="w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 text-right font-bold text-slate-900 dark:text-white"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-600 dark:text-slate-400 font-medium">Card Tender:</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={splitCard}
-                      onChange={(e) => setSplitCard(e.target.value)}
-                      className="w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 text-right font-bold text-slate-900 dark:text-white"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-600 dark:text-slate-400 font-medium">Mobile Money:</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={splitMobile}
-                      onChange={(e) => setSplitMobile(e.target.value)}
-                      className="w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 text-right font-bold text-slate-900 dark:text-white"
-                    />
-                  </div>
-                </div>
               )}
             </div>
+          ) : (
+            <div className="space-y-3 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <p className="font-bold text-slate-700 dark:text-slate-300 text-[11px] uppercase tracking-wider">
+                Split Method Breakdown
+              </p>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Cash Tender:</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={splitCash}
+                  onChange={(e) => setSplitCash(e.target.value)}
+                  className="w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 text-right font-bold text-slate-900 dark:text-white"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Card Tender:</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={splitCard}
+                  onChange={(e) => setSplitCard(e.target.value)}
+                  className="w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 text-right font-bold text-slate-900 dark:text-white"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Mobile Money:</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={splitMobile}
+                  onChange={(e) => setSplitMobile(e.target.value)}
+                  className="w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 text-right font-bold text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+          )}
 
-            {/* Optional Coupon Code */}
-            <div className="pt-2 pb-4">
+          {/* Optional Coupon Code */}
+          <div className="pt-2">
+            <input
+              type="text"
+              placeholder="Optional Promo / Voucher Code (e.g. WELCOME20)"
+              value={appliedPromoCode}
+              onChange={(e) => setAppliedPromoCode(e.target.value.toUpperCase())}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 uppercase font-mono"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL 3: HELD / SUSPENDED CARTS QUEUE */}
+      <Modal
+        isOpen={showHeldModal}
+        onClose={() => setShowHeldModal(false)}
+        title={`Suspended / Held Sales Queue (${heldCarts.length})`}
+        size="md"
+      >
+        <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+          {heldCarts.length === 0 ? (
+            <p className="text-center text-slate-400 py-6 text-xs">No suspended sales in queue</p>
+          ) : (
+            heldCarts.map((h) => (
+              <div
+                key={h.id}
+                className="p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center justify-between text-xs"
+              >
+                <div>
+                  <p className="font-bold text-slate-900 dark:text-white">{h.cartId} • {h.customerName}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {h.items.length} items • Held at {new Date(h.heldAt).toLocaleTimeString()}
+                  </p>
+                  {h.note && <p className="text-[10px] text-amber-600 dark:text-amber-400 italic">"{h.note}"</p>}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resumeHeldPosCart(h.id);
+                      setShowHeldModal(false);
+                    }}
+                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    Resume
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeHeldPosCart(h.id)}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      {/* MODAL 4: POS RETURN / REFUND */}
+      <Modal
+        isOpen={showReturnModal}
+        onClose={() => setShowReturnModal(false)}
+        title="POS Return & Refund"
+        size="lg"
+      >
+        <div className="space-y-3 text-xs">
+          <form onSubmit={handleSearchReturnOrder} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Enter Receipt/Order # (e.g. ORD-8801)"
+              value={returnOrderNumber}
+              onChange={(e) => setReturnOrderNumber(e.target.value.toUpperCase())}
+              className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs uppercase font-mono"
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold cursor-pointer"
+            >
+              Lookup
+            </button>
+          </form>
+
+          {foundReturnOrder && (
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+                <div>
+                  <p className="font-bold text-slate-900 dark:text-white">{foundReturnOrder.orderNumber}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {foundReturnOrder.customerName} • {new Date(foundReturnOrder.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <span className="font-black font-mono text-sky-600 dark:text-sky-400">{formatCurrency(foundReturnOrder.totalAmount)}</span>
+              </div>
+
+              <div className="space-y-2">
+                <p className="font-bold text-[11px] uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Select Items to Return:
+                </p>
+                {foundReturnOrder.items.map((item) => (
+                  <div
+                    key={item.variantId}
+                    className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-between text-xs"
+                  >
+                    <div className="flex-1">
+                      <p className="font-bold text-slate-900 dark:text-white">{item.productName}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">{item.variantName} (Purchased: {item.quantity})</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={returnItemsState[item.variantId]?.qty || 0}
+                        onChange={(e) => {
+                          const q = parseInt(e.target.value, 10);
+                          setReturnItemsState((prev) => ({
+                            ...prev,
+                            [item.variantId]: { ...prev[item.variantId], qty: q },
+                          }));
+                        }}
+                        className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white text-xs font-bold"
+                      >
+                        {Array.from({ length: item.quantity + 1 }, (_, i) => (
+                          <option key={i} value={i}>
+                            Return: {i}
+                          </option>
+                        ))}
+                      </select>
+
+                      <label className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={returnItemsState[item.variantId]?.restock ?? true}
+                          onChange={(e) => {
+                            setReturnItemsState((prev) => ({
+                              ...prev,
+                              [item.variantId]: { ...prev[item.variantId], restock: e.target.checked },
+                            }));
+                          }}
+                          className="rounded"
+                        />
+                        <span>Restock</span>
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleConfirmReturn}
+                className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer"
+              >
+                Confirm Return & Issue Refund
+              </button>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* MODAL 5: QUICK ADD CUSTOMER */}
+      <Modal
+        isOpen={showAddCustomerModal}
+        onClose={() => setShowAddCustomerModal(false)}
+        title="Quick Add Customer"
+        size="md"
+      >
+        <form onSubmit={handleCreateQuickCustomer} className="space-y-3.5 text-xs">
+          <div>
+            <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+              Full Name <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Sarah Jenkins"
+              value={newCustomerForm.name}
+              onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+                Phone Number
+              </label>
               <input
-                type="text"
-                placeholder="Optional Promo / Voucher Code (e.g. WELCOME20)"
-                value={appliedPromoCode}
-                onChange={(e) => setAppliedPromoCode(e.target.value.toUpperCase())}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 uppercase font-mono"
+                type="tel"
+                placeholder="e.g. +1 (555) 234-5678"
+                value={newCustomerForm.phone}
+                onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
               />
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowCheckoutModal(false)}
-                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                id="btn-confirm-pos-payment"
-                onClick={handleExecuteCheckout}
-                className="flex-2 py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-white rounded-2xl font-black shadow-md shadow-sky-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <CheckCircle2 className="w-5 h-5" />
-                <span>Complete & Print Receipt</span>
-              </button>
+            <div>
+              <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+                Email Address
+              </label>
+              <input
+                type="email"
+                placeholder="e.g. sarah@example.com"
+                value={newCustomerForm.email}
+                onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
+              />
             </div>
           </div>
-        </div>
-      )}
 
-      {/* MODAL 3: HELD / SUSPENDED CARTS QUEUE */}
-      {showHeldModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-5 text-slate-900 dark:text-white shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="font-extrabold text-base text-slate-900 dark:text-white">Suspended / Held Sales Queue</h3>
-              <button
-                onClick={() => setShowHeldModal(false)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-xl cursor-pointer"
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+                Membership Tier
+              </label>
+              <select
+                value={newCustomerForm.tier}
+                onChange={(e) => setNewCustomerForm({ ...newCustomerForm, tier: e.target.value as any })}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
               >
-                <X className="w-5 h-5" />
-              </button>
+                <option value="Bronze">Bronze Tier</option>
+                <option value="Silver">Silver Tier</option>
+                <option value="Gold">Gold Tier</option>
+                <option value="VIP">VIP Tier</option>
+              </select>
             </div>
 
-            <div className="py-3 space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
-              {heldCarts.map((h) => (
-                <div
-                  key={h.id}
-                  className="p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center justify-between text-xs"
-                >
-                  <div>
-                    <p className="font-bold text-slate-900 dark:text-white">{h.cartId} • {h.customerName}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {h.items.length} items • Held at {new Date(h.heldAt).toLocaleTimeString()}
-                    </p>
-                    {h.note && <p className="text-[10px] text-amber-600 dark:text-amber-400 italic">"{h.note}"</p>}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => {
-                        resumeHeldPosCart(h.id);
-                        setShowHeldModal(false);
-                      }}
-                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold cursor-pointer"
-                    >
-                      Resume
-                    </button>
-                    <button
-                      onClick={() => removeHeldPosCart(h.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div>
+              <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+                Customer Group
+              </label>
+              <select
+                value={newCustomerForm.customerGroup}
+                onChange={(e) => setNewCustomerForm({ ...newCustomerForm, customerGroup: e.target.value as any })}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
+              >
+                <option value="Retail">Retail</option>
+                <option value="Wholesale">Wholesale</option>
+                <option value="Corporate">Corporate</option>
+                <option value="VIP Member">VIP Member</option>
+              </select>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* MODAL 4: POS RETURN / REFUND */}
-      {showReturnModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-5 text-slate-900 dark:text-white shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="font-extrabold text-base text-slate-900 dark:text-white">POS Return & Refund</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Lookup receipt and adjust inventory automatically</p>
-              </div>
-              <button
-                onClick={() => setShowReturnModal(false)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-xl cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="py-3 space-y-3 text-xs">
-              <form onSubmit={handleSearchReturnOrder} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Enter Receipt/Order # (e.g. ORD-8801)"
-                  value={returnOrderNumber}
-                  onChange={(e) => setReturnOrderNumber(e.target.value.toUpperCase())}
-                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs uppercase font-mono"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Lookup
-                </button>
-              </form>
-
-              {foundReturnOrder && (
-                <div className="p-3.5 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                  <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <div>
-                      <p className="font-bold text-slate-900 dark:text-white">{foundReturnOrder.orderNumber}</p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {foundReturnOrder.customerName} • {new Date(foundReturnOrder.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <span className="font-black font-mono text-sky-600 dark:text-sky-400">{formatCurrency(foundReturnOrder.totalAmount)}</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="font-bold text-[11px] uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                      Select Items to Return:
-                    </p>
-                    {foundReturnOrder.items.map((item) => (
-                      <div
-                        key={item.variantId}
-                        className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-between text-xs"
-                      >
-                        <div className="flex-1">
-                          <p className="font-bold text-slate-900 dark:text-white">{item.productName}</p>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400">{item.variantName} (Purchased: {item.quantity})</p>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={returnItemsState[item.variantId]?.qty || 0}
-                            onChange={(e) => {
-                              const q = parseInt(e.target.value, 10);
-                              setReturnItemsState((prev) => ({
-                                ...prev,
-                                [item.variantId]: { ...prev[item.variantId], qty: q },
-                              }));
-                            }}
-                            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white text-xs font-bold"
-                          >
-                            {Array.from({ length: item.quantity + 1 }, (_, i) => (
-                              <option key={i} value={i}>
-                                Return: {i}
-                              </option>
-                            ))}
-                          </select>
-
-                          <label className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={returnItemsState[item.variantId]?.restock ?? true}
-                              onChange={(e) => {
-                                setReturnItemsState((prev) => ({
-                                  ...prev,
-                                  [item.variantId]: { ...prev[item.variantId], restock: e.target.checked },
-                                }));
-                              }}
-                              className="rounded"
-                            />
-                            <span>Restock</span>
-                          </label>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={handleConfirmReturn}
-                    className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer"
-                  >
-                    Confirm Return & Issue Refund
-                  </button>
-                </div>
-              )}
-            </div>
+          <div className="pt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAddCustomerModal(false)}
+              className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              id="btn-submit-quick-customer"
+              className="flex-2 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-black shadow-md shadow-sky-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Create & Attach</span>
+            </button>
           </div>
-        </div>
-      )}
-
-      {/* MODAL 5: QUICK ADD CUSTOMER */}
-      {showAddCustomerModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-5 text-slate-900 dark:text-white shadow-2xl animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold">
-                  <UserPlus className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">Quick Add Customer</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Add customer profile and attach to current sale</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddCustomerModal(false)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-xl cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateQuickCustomer} className="py-4 space-y-3.5 text-xs">
-              <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                  Full Name <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Sarah Jenkins"
-                  value={newCustomerForm.name}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. +1 (555) 234-5678"
-                    value={newCustomerForm.phone}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="e.g. sarah@example.com"
-                    value={newCustomerForm.email}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                    Membership Tier
-                  </label>
-                  <select
-                    value={newCustomerForm.tier}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, tier: e.target.value as any })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
-                  >
-                    <option value="Bronze">Bronze Tier</option>
-                    <option value="Silver">Silver Tier</option>
-                    <option value="Gold">Gold Tier</option>
-                    <option value="VIP">VIP Tier</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                    Customer Group
-                  </label>
-                  <select
-                    value={newCustomerForm.customerGroup}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, customerGroup: e.target.value as any })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl py-2 px-3 focus:outline-none focus:border-sky-500 font-medium"
-                  >
-                    <option value="Retail">Retail</option>
-                    <option value="Wholesale">Wholesale</option>
-                    <option value="Corporate">Corporate</option>
-                    <option value="VIP Member">VIP Member</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCustomerModal(false)}
-                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  id="btn-submit-quick-customer"
-                  className="flex-2 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-black shadow-md shadow-sky-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Create & Attach</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       {/* Price Override & Manager Approval Modal */}
       <PriceOverrideModal
