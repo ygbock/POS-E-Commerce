@@ -1103,5 +1103,64 @@ In accordance with supervisor directives and the engineering contract, `API-001`
    - `npm run lint`: **0 errors**
    - `npm run build`: **Succeeded cleanly with 0 warnings/errors** (bundles the Express backend into `dist/server.cjs` and compiles Vite client assets to `dist/`).
 
+---
+
+## UX-001 Phase 2.2C R1 — Storefront Checkout Integrity Hardening
+
+- **Status**: `IMPLEMENTED` / `READY FOR REVIEW`
+- **Objective**: Harden the storefront e-commerce order endpoint and checkout flow to be secure, race-safe, transactional, and fully server-authoritative, aligning it with the established `POS-001`, `INV-001`/`INV-002`, and `API-001` architectures.
+
+### 1. Key Accomplishments & Hardening Features
+
+#### A. Cryptographically Secure Mandatory Idempotency
+- **Required Constraint**: Implemented a mandatory `idempotency_key` boundary for `POST /api/orders` (storefront). Rejects missing, empty, non-string, or malformed keys with 422 errors, ensuring keys are valid UUIDs.
+- **Race-Safe DB-level Deduplication**: Combined a database unique constraint on `idempotency_key` with a transaction-level query to detect replays. Upon detecting a replay, it fetches the existing order and returns it with a `200 OK` and a dedicated header, preventing duplicate balance reductions or database writes.
+- **Payload Integrity Fingerprint**: Generates a SHA-256 hash of the order's variant items and target customer identifiers. Stores this fingerprint alongside the key. If a replay occurs with a different payload, it is rejected with a `409 Conflict` error to block tampering.
+
+#### B. Server-Authoritative exact decimal Pricing, Taxes, and Totals
+- **Zero-Float Calculations**: Fully eliminated floating-point calculations during checkout. Scaled string arithmetic handles line totals, tax calculations, and discount offsets.
+- **Price and Tax Verification**: The server queries the products and product variants database using the client's `variant_id` to retrieve authoritative `retail_price` and `tax_rate` values. It calculates prices server-side, making the checkout flow resilient against client-side price manipulation.
+- **Exact Quantity Constraints**: Quantity arguments must be provided as valid numeric strings with up to 4 decimal places. Floating-point quantities or malformed numbers are rejected at the HTTP boundary.
+
+#### C. Database Transaction Integrity & Strict Inventory Locking
+- **Atomic Operations**: All checkout mutations—including inventory checks, reservation updates, customer registration or retrieval, order creation, payment creation, and audit logging—run inside a single database transaction (`db.withTransaction`).
+- **Pessimistic Concurrency Locking**: Executes a `SELECT FOR UPDATE` on matching `inventory_balances` records at the start of the transaction. This serializes concurrent checkout requests for the same product and prevents race-condition overselling.
+- **Fail-Closed Balance Verification**: The server evaluates actual `on_hand` and `reserved` quantities inside the transaction. If available stock is insufficient, the transaction rolls back, and the client receives a descriptive, safe error.
+
+#### D. Safe Production Error Sanitization & Leak Proofing
+- **Complete Redaction**: Wraps all database operations in custom try-catch blocks. Database connection strings, credentials, raw query texts, table/column structures, and stack traces are fully redacted.
+- **Safe Safe Error Codes**: Unhandled errors return a standard HTTP 500 status with a generic `ORDER_ERROR` code in production. This hides sensitive server internals while keeping error logging visible on the server.
+
+### 2. Acceptance Matrix
+
+| Item # | Acceptance Criterion | Result | Evidence |
+| :--- | :--- | :--- | :--- |
+| **R1** | Mandatory UUID-based Idempotency Key | **PASSED** | Checked on storefront `POST /api/orders`; verified via `TEST Idempotency Key & Replay Safeguards` in `tests/ux_storefront_checkout_integrity.test.ts`. |
+| **R2** | Fingerprinted Replay Protection | **PASSED** | Verifies item payload against stored hash; tested replay with modified payloads resulting in a `409 Conflict`. |
+| **R3** | Server-Authoritative Price & Tax Verification | **PASSED** | Sourced directly from catalog database, ignoring client-submitted totals; verified via `TEST Storefront Security Boundaries & Price-Tampering Shields`. |
+| **R4** | Zero-Float Exact Decimal Totals | **PASSED** | Computed using `parseQtyToScaled`, scaled arithmetic, and half-up rounding. Tested via `TEST Exact Decimals & Quantity Boundary Validation`. |
+| **R5** | Concurrency Protection & Stock Locking | **PASSED** | Employs `FOR UPDATE` locking and atomic transactions. Validated via `TEST Exclusivity Race-Safe Concurrency Verification` and `TEST Inventory Stock Check & Rollback Semantics`. |
+| **R6** | Safe Production Error Redaction | **PASSED** | Redacts system details from output under production mode; tested via `TEST Production Error Redaction & Leak Protection`. |
+| **R7** | Authentic Payments with "Paid" State | **PASSED** | Generates real, non-placeholder payments matched to the total; verified via `TEST Honest Payment Lifecycle & States`. |
+
+### 3. Verification Outcomes
+
+1. **New Automated Storefront Checkout Regression Test Suite (`tests/ux_storefront_checkout_integrity.test.ts`)**:
+   - **All 7/7 comprehensive integration and concurrency scenarios pass cleanly with 0 failures!**
+     - `Idempotency Key & Replay Safeguards`: **PASSED**
+     - `Exact Decimals & Quantity Boundary Validation`: **PASSED**
+     - `Honest Payment Lifecycle & States`: **PASSED**
+     - `Storefront Security Boundaries & Price-Tampering Shields`: **PASSED**
+     - `Inventory Stock Check & Rollback Semantics`: **PASSED**
+     - `Production Error Redaction & Leak Protection`: **PASSED**
+     - `Exclusivity Race-Safe Concurrency Verification`: **PASSED**
+
+2. **Full Suite Execution (`npm test` & `tests/ux_accessibility.test.ts`)**:
+   - **All 107 baseline tests and 3 static accessibility scenarios pass 100% cleanly with 0 errors/failures.**
+   - `npm run lint` (`tsc --noEmit`): **0 errors / 0 warnings**
+   - `npm run build`: **Succeeded cleanly with 0 errors/warnings** (Express backend compiled to CJS, Vite frontend assets optimized into `dist/` directory).
+   - `compile_applet`: **Build succeeded successfully**
+
+
 
 

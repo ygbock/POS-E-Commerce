@@ -15,6 +15,7 @@ import { AuditRepository } from './server/repositories/auditRepository.ts';
 import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
 import { createPosRouter } from './server/routes/posRoutes.ts';
 import { PosService } from './server/services/posService.ts';
+import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
 import {
   parseExactMoney,
@@ -121,6 +122,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const inventoryRepo = new InventoryRepository(db);
   const auditRepo = new AuditRepository(db);
   const posService = new PosService(undefined, orderRepo, inventoryRepo, auditRepo, db);
+  const orderService = new OrderService(orderRepo, customerRepo, inventoryRepo, auditRepo, db);
 
   // In-Memory Master Data Stores (Transitional catalog state protected by server auth boundaries)
   const masterProductsStore: Product[] = options.initialProducts
@@ -1406,317 +1408,86 @@ export async function createApp(options: CreateAppOptions = {}) {
           customer,
           fulfillmentMethod,
           paymentMethod,
-          smsOptIn,
-          whatsappOptIn,
           cart_items,
           idempotency_key,
           discount_code,
+          location_id,
         } = req.body;
 
-        if (!cart_items || !Array.isArray(cart_items) || cart_items.length === 0) {
-          return res.status(400).json({
-            success: false,
-            error: {
-              code: 'VALIDATION_ERROR',
-              message: 'Cart items are required.',
-            },
-          });
-        }
-
-        if (!fulfillmentMethod) {
-          return res.status(400).json({
-            success: false,
-            error: {
-              code: 'VALIDATION_ERROR',
-              message: 'Fulfillment method is required.',
-            },
-          });
-        }
-
-        // ------------------------------------------------------------------
-        // IDEMPOTENCY CHECK
-        // ------------------------------------------------------------------
-        if (idempotency_key) {
-          // Check for duplicate submission inside the tenant
-          const existingOrderRes = await db.query<any>(
-            `SELECT id FROM orders WHERE organization_id = $1 AND idempotency_key = $2`,
-            [orgId, idempotency_key]
-          );
-          if (existingOrderRes.rows.length > 0) {
-            const existingOrderId = existingOrderRes.rows[0].id;
-            const fullOrder = await orderRepo.findOrderById(existingOrderId, orgId);
-            if (fullOrder) {
-              return res.json({
-                success: true,
-                data: {
-                  ...fullOrder.order,
-                  items: fullOrder.items,
-                  payments: (await orderRepo.findPaymentByOrderId(existingOrderId, orgId)) ? [await orderRepo.findPaymentByOrderId(existingOrderId, orgId)] : [],
-                },
-              });
-            }
-          }
-        }
-
-        // Helper: Convert Money string to bigint Cents
-        const localParseMoneyToCents = (val: string): bigint => {
-          const norm = parseExactMoney(val, 'money', { allowNegative: true });
-          const isNeg = norm.startsWith('-');
-          const absVal = isNeg ? norm.slice(1) : norm;
-          const parts = absVal.split('.');
-          const whole = BigInt(parts[0]);
-          let fracStr = parts[1] || '';
-          while (fracStr.length < 2) {
-            fracStr += '0';
-          }
-          const frac = BigInt(fracStr.slice(0, 2));
-          const cents = whole * 100n + frac;
-          return isNeg ? -cents : cents;
-        };
-
-        // Helper: Convert bigint Cents to Money string
-        const localFormatCentsToMoneyString = (cents: bigint): string => {
-          const isNeg = cents < 0n;
-          const abs = isNeg ? -cents : cents;
-          const whole = abs / 100n;
-          const frac = abs % 100n;
-          return `${isNeg ? '-' : ''}${whole}.${frac.toString().padStart(2, '0')}`;
-        };
-
-        // Helper: exact division rounding half up
-        const localDivideRoundHalfUp = (num: bigint, denom: bigint): bigint => {
-          const isNeg = num < 0n;
-          const absNum = isNeg ? -num : num;
-          const absDenom = denom < 0n ? -denom : denom;
-          const half = absDenom / 2n;
-          const resVal = (absNum + half) / absDenom;
-          return isNeg ? -resVal : resVal;
-        };
-
-        // We execute within database transaction for consistency and stock locking
-        const result = await db.withTransaction(async (tx) => {
-          let totalSubtotalCents = 0n;
-          let totalTaxCents = 0n;
-          let totalCostCents = 0n;
-          const orderItems: OrderItemRecord[] = [];
-          const orderId = `ord_${randomUUID().slice(0, 8)}${Date.now().toString().slice(-4)}`;
-
-          const fulfillmentLocId = 'loc-main-wh';
-
-          // 1. Reconstruct and validate totals and stock
-          for (const item of cart_items) {
-            if (!item.variant_id || item.quantity === undefined) {
-              throw new Error('VALIDATION_ERROR: Each item must have a variant_id and quantity.');
-            }
-
-            const variantRes = await tx.query<any>(
-              `SELECT pv.id, pv.sku, pv.barcode, pv.name as variant_name, pv.cost_price::text, pv.retail_price::text,
-                      p.name as product_name, p.tax_rate::text, p.status
-               FROM product_variants pv
-               JOIN products p ON pv.product_id = p.id
-               WHERE pv.id = $1 AND p.organization_id = $2`,
-              [item.variant_id, orgId]
-            );
-
-            if (variantRes.rows.length === 0) {
-              throw new Error(`PRODUCT_NOT_FOUND: Product variant '${item.variant_id}' not found.`);
-            }
-
-            const variant = variantRes.rows[0];
-            if (variant.status !== 'active') {
-              throw new Error(`PRODUCT_NOT_FOUND: Variant '${variant.sku}' is inactive.`);
-            }
-
-            // Parse quantities using exact policy (strings)
-            const qtyStr = typeof item.quantity === 'number' ? item.quantity.toFixed(4) : item.quantity.toString();
-            const qtyScaled = parseQtyToScaled(qtyStr);
-            const retailPriceCents = localParseMoneyToCents(variant.retail_price);
-            const costPriceCents = localParseMoneyToCents(variant.cost_price);
-
-            // Check stock availability
-            const stockRes = await tx.query<any>(
-              `SELECT on_hand, reserved FROM inventory_balances 
-               WHERE location_id = $1 AND variant_id = $2 AND organization_id = $3 FOR UPDATE`,
-              [fulfillmentLocId, item.variant_id, orgId]
-            );
-
-            const onHandQty = stockRes.rows.length > 0 ? parseQtyToScaled(stockRes.rows[0].on_hand.toString()) : 0n;
-            const reservedQty = stockRes.rows.length > 0 ? parseQtyToScaled(stockRes.rows[0].reserved.toString()) : 0n;
-            const availableQty = onHandQty - reservedQty;
-
-            if (availableQty < qtyScaled) {
-              throw new Error(`INSUFFICIENT_STOCK: Insufficient stock for variant '${variant.sku}'. Requested: ${qtyStr}, Available: ${formatScaledToQtyString(availableQty)}.`);
-            }
-
-            const lineSubtotalScaled = retailPriceCents * qtyScaled;
-            const lineSubtotalCents = localDivideRoundHalfUp(lineSubtotalScaled, 10000n);
-
-            const taxRateStr = variant.tax_rate || '0.00';
-            const taxRateScaled = parseQtyToScaled(taxRateStr);
-            const lineTaxScaled = lineSubtotalCents * taxRateScaled;
-            const lineTaxCents = localDivideRoundHalfUp(lineTaxScaled, 1000000n);
-
-            const lineTotalCents = lineSubtotalCents + lineTaxCents;
-
-            const lineCostScaled = costPriceCents * qtyScaled;
-            const lineCostCents = localDivideRoundHalfUp(lineCostScaled, 10000n);
-
-            totalSubtotalCents += lineSubtotalCents;
-            totalTaxCents += lineTaxCents;
-            totalCostCents += lineCostCents;
-
-            orderItems.push({
-              id: `itm_${randomUUID().slice(0, 8)}`,
-              order_id: orderId,
-              variant_id: item.variant_id,
-              product_name: variant.product_name,
-              variant_name: variant.variant_name,
-              sku: variant.sku,
-              unit_price: parseExactMoney(variant.retail_price),
-              cost_price: parseExactMoney(variant.cost_price),
-              quantity: formatScaledToQtyString(qtyScaled),
-              discount_amount: '0.00',
-              tax_rate: parseExactQuantity(taxRateStr),
-              total_amount: localFormatCentsToMoneyString(lineTotalCents),
-            });
-          }
-
-          // 2. Coupon Validation
-          let totalDiscountCents = 0n;
-          let appliedCoupCode = null;
-          if (discount_code) {
-            const codeClean = discount_code.trim().toUpperCase();
-            const foundCoup = INITIAL_COUPONS.find((c) => c.code.toUpperCase() === codeClean && c.isActive);
-            if (foundCoup) {
-              const minOrderCents = localParseMoneyToCents(foundCoup.minOrderAmount.toString());
-              if (totalSubtotalCents >= minOrderCents) {
-                appliedCoupCode = foundCoup.code;
-                if (foundCoup.discountType === 'fixed') {
-                  totalDiscountCents = localParseMoneyToCents(foundCoup.value.toString());
-                } else {
-                  const discountScaled = totalSubtotalCents * BigInt(foundCoup.value);
-                  totalDiscountCents = localDivideRoundHalfUp(discountScaled, 100n);
-                }
-                if (totalDiscountCents > totalSubtotalCents) {
-                  totalDiscountCents = totalSubtotalCents;
-                }
-              }
-            }
-          }
-
-          // 3. Shipping Fee
-          let shippingFeeCents = 0n;
-          if (fulfillmentMethod === 'Express Delivery') {
-            shippingFeeCents = 1500n;
-          } else if (fulfillmentMethod === 'Standard Delivery') {
-            shippingFeeCents = 500n;
-          }
-
-          const totalAmountCents = totalSubtotalCents - totalDiscountCents + totalTaxCents + shippingFeeCents;
-          const finalTotalCents = totalAmountCents < 0n ? 0n : totalAmountCents;
-
-          const randNum = Math.floor(1000 + Math.random() * 9000);
-          const orderNumber = `ORD-${randNum}`;
-
-          const carrier = fulfillmentMethod === 'Express Delivery' ? 'FedEx Priority Overnight' : fulfillmentMethod === 'Standard Delivery' ? 'OmniTrack / DHL Ground' : 'Direct Store Pickup';
-          const trackingCode = fulfillmentMethod === 'In-Store Pickup' ? `PICKUP-${orderNumber}` : `TRK-OMNI-${Math.floor(10000000 + Math.random() * 90000000)}`;
-          const magicToken = `tok_${Date.now()}_${randomUUID().slice(0, 6)}`;
-
-          const order: OrderRecord = {
-            id: orderId,
-            organization_id: orgId,
-            location_id: fulfillmentLocId,
-            customer_id: customer?.id || null,
-            order_number: orderNumber,
-            source: 'ECOMMERCE',
-            channel: 'Online Web Store',
-            fulfillment_method: fulfillmentMethod,
-            subtotal: localFormatCentsToMoneyString(totalSubtotalCents),
-            discount_amount: localFormatCentsToMoneyString(totalDiscountCents),
-            discount_code: appliedCoupCode,
-            tax_amount: localFormatCentsToMoneyString(totalTaxCents),
-            shipping_fee: localFormatCentsToMoneyString(shippingFeeCents),
-            total_amount: localFormatCentsToMoneyString(finalTotalCents),
-            total_cost_amount: localFormatCentsToMoneyString(totalCostCents),
-            payment_status: 'Paid',
-            status: 'Stock Reserved',
-            notes: `Online Storefront Order placed by ${customer?.name || actorName}`,
-            carrier_name: carrier,
-            tracking_number: trackingCode,
-            idempotency_key: idempotency_key || null,
-          };
-
-          const payment: PaymentRecord = {
-            id: `pay_${randomUUID().slice(0, 8)}`,
-            organization_id: orgId,
-            order_id: orderId,
-            payment_method: paymentMethod,
-            amount: localFormatCentsToMoneyString(finalTotalCents),
-            currency: 'SLE',
-            status: 'Completed',
-            reference: `ECOM-GATEWAY-${Math.floor(100000 + Math.random() * 900000)}`,
-            provider: 'E-commerce Gateway',
-          };
-
-          // Save order, items and payment using orderRepo
-          const saved = await orderRepo.createOrderWithItems(order, orderItems, payment, tx);
-
-          // Deduct inventory
-          for (const item of orderItems) {
-            await inventoryRepo.recordMovement(
-              {
-                organization_id: orgId,
-                location_id: fulfillmentLocId,
-                variant_id: item.variant_id,
-                movement_type: 'ECOMMERCE_SALE',
-                quantity_change: `-${item.quantity}`,
-                unit_cost: localFormatCentsToMoneyString(localParseMoneyToCents(item.cost_price)),
-                reference_type: 'orders',
-                reference_id: orderId,
-                performed_by: 'Online Storefront',
-                idempotency_key: `${orderId}_${item.variant_id}`,
-                allowNegativeStock: false,
-              },
-              tx
-            );
-          }
-
-          // Audit Log
-          await auditRepo.recordEvent({
-            organization_id: orgId,
-            actor_name: actorName,
-            actor_role: req.auth!.role,
-            action: 'storefront.order_create',
-            entity_type: 'orders',
-            entity_id: orderId,
-            location_id: fulfillmentLocId,
-            metadata: {
-              order_number: orderNumber,
-              total_amount: localFormatCentsToMoneyString(finalTotalCents),
-              payment_method: paymentMethod,
-            },
-            severity: 'Info',
-          }, tx);
-
-          return {
-            ...saved.order,
-            items: saved.items,
-            payments: [payment],
-          };
+        const result = await orderService.placeStorefrontOrder({
+          organization_id: orgId,
+          actor_name: actorName,
+          actor_role: req.auth!.role,
+          idempotency_key,
+          customer_id: customer?.id || null,
+          customer_details: customer ? {
+            name: customer.name || '',
+            email: customer.email || '',
+            phone: customer.phone || '',
+          } : null,
+          fulfillment_method: fulfillmentMethod,
+          payment_method: paymentMethod,
+          cart_items,
+          discount_code,
+          location_id,
         });
 
         res.status(201).json({
           success: true,
-          data: result,
+          data: {
+            ...result.order,
+            items: result.items,
+            payments: result.payments,
+          },
         });
       } catch (err: any) {
-        // Handle inventory policy / other validation errors gracefully
-        const isClientSafe = err.message.includes('INSUFFICIENT_STOCK') || err.message.includes('PRODUCT_NOT_FOUND') || err.message.includes('VALIDATION_ERROR');
-        return res.status(isClientSafe ? 400 : 500).json({
+        if (err instanceof DomainError) {
+          const status = err.code === 'IDEMPOTENCY_CONFLICT' ? 409 : 400;
+          return res.status(status).json({
+            success: false,
+            error: {
+              code: err.code,
+              message: err.message,
+            },
+          });
+        }
+
+        const errMsg = err.message || '';
+        if (
+          errMsg.includes('VALIDATION_ERROR') ||
+          errMsg.includes('PRODUCT_NOT_FOUND') ||
+          errMsg.includes('INSUFFICIENT_STOCK') ||
+          errMsg.includes('IDEMPOTENCY_CONFLICT')
+        ) {
+          const code = errMsg.includes('VALIDATION_ERROR')
+            ? 'VALIDATION_ERROR'
+            : errMsg.includes('PRODUCT_NOT_FOUND')
+            ? 'PRODUCT_NOT_FOUND'
+            : errMsg.includes('INSUFFICIENT_STOCK')
+            ? 'INSUFFICIENT_STOCK'
+            : 'IDEMPOTENCY_CONFLICT';
+          const status = code === 'IDEMPOTENCY_CONFLICT' ? 409 : 400;
+          const cleanMsg = errMsg.substring(errMsg.indexOf(':') + 1).trim();
+          return res.status(status).json({
+            success: false,
+            error: {
+              code,
+              message: cleanMsg || errMsg,
+            },
+          });
+        }
+
+        console.error('[Storefront Checkout Internal Error]:', {
+          message: err.message,
+          stack: err.stack,
+          code: err.code,
+        });
+
+        return res.status(500).json({
           success: false,
           error: {
-            code: isClientSafe ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
-            message: err.message,
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'An internal server error occurred while processing the order. Please try again later.',
           },
         });
       }

@@ -351,7 +351,7 @@ PROD-001 (NOT STARTED)
 - **Scope**:
   - [x] Phase 1: Exhaustive frontend inspection, P0/P1/P2/P3 finding categorization, user journey audits, WCAG 2.2 AA target assessment, responsive audit, security authority UX audit, component primitive strategy, phase-by-phase implementation plan.
   - [x] Phase 2.1: Build lightweight, high-performance `src/components/ui/` shared design primitives, setup Toast Provider, mount top-level SPA Error Boundary, secure exception details solely using Vite DEV mode flags (removing any hostname exceptions), and verify modal access IDs with `useId`.
-  - [ ] Phase 2.2: Migrate POS checkout, Inventory movements/transfers, and Storefront orders to server-authoritative API paths.
+  - [/] Phase 2.2: Migrate POS checkout, Inventory movements/transfers, and Storefront orders to server-authoritative API paths (Storefront orders complete in Phase 2.2C).
   - [ ] Phase 2.3: Integrate IndexedDB offline POS queueing with encryption, replay protection, and device-binding constraints.
   - [ ] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.
   - [ ] Phase 2.5: Calibrate mobile touch targets and ensure horizontal scroll wraps for complex tables.
@@ -359,7 +359,7 @@ PROD-001 (NOT STARTED)
 - **Acceptance Criteria**:
   - [x] Phase 1: UX Audit Report and Implementation Plan submitted and approved.
   - [x] Phase 2.1: Custom UI primitives created, Toast stack fully functional, top-level SPA error boundary mounted and verified.
-  - [ ] Phase 2.2: All key client-mutations route to secure server REST API endpoints.
+  - [/] Phase 2.2: All key client-mutations route to secure server REST API endpoints (Storefront orders complete in Phase 2.2C).
   - [ ] Phase 2.3: POS continues ringing items when offline and automatically syncs queue on reconnect.
   - [ ] Phase 2.3: Network state indicator visual badge displayed.
 - **Security Requirements**: Offline queue items encrypted locally before sync.

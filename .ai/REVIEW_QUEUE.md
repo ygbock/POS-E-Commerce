@@ -287,4 +287,24 @@ Status: READY FOR REVIEW
     - **Architectural Follow-Up**: Documented `RISK-014` regarding duplicated tenant-resolution logic (`server.ts` `resolveAuthorizedTenant` vs `inventoryRoutes.ts` `resolveTenant`) with recommendation for future consolidation into a shared authorization service.
 - **Next Step**: Authorize and transition to the next dependency-safe roadmap task: `UX-001`.
 
+---
+## UX-001 Phase 2.2C R1: Storefront Checkout Integrity Hardening
+- **Task ID**: UX-001 Phase 2.2C R1
+- **Status**: PENDING REVIEW
+- **Agent Notes**:
+  - Fully resolved all security, decimal, transaction, and concurrency requirements for the storefront order checkout flow:
+    - **R1 (Cryptographically Secure Mandatory Idempotency)**: Enforced a strict, non-bypassable UUID-based `idempotency_key` requirement for e-commerce checkouts. Added transaction-level deduplication to safely replay requests and protect against dual-processing.
+    - **R2 (Payload Fingerprinting)**: Built payload-level SHA-256 fingerprinting to prevent tampering or altered-payload replays under an identical idempotency key (rejects with 409 Conflict).
+    - **R3 & R4 (Server-Authoritative Pricing, Taxes, & Exact Decimals)**: Ported pricing calculations and tax lookups fully to the database-driven server side. Replaced all floating-point operations with precise scaled-decimal math. Rejects floats or leading/trailing whitespace at the API boundary.
+    - **R5 (Transaction Integrity & Concurrency Locking)**: Wrapped the entire checkout pipeline in a database transaction (`db.withTransaction`) starting with pessimistic locking (`SELECT FOR UPDATE`) on product variant inventory balances. Prevents overselling and supports rollback semantics on stock insufficiency or exceptions.
+    - **R6 (Production Error Sanitization)**: Ensured SQL text, DB credentials, file paths, and stack traces are completely redacted in both dev and production modes. Returns standard generic safe codes (`ORDER_ERROR`) under production mode.
+    - **R7 (Honest Payment States)**: Replaced placeholder checkout steps with the real generation of corresponding "Paid" e-commerce payments in the database.
+    - **Automated Verification**: Created a robust, comprehensive automated regression test suite (`tests/ux_storefront_checkout_integrity.test.ts`) covering all 7 critical criteria.
+  - **Quality Gates Check**:
+    - **Test Outcomes**: All 7/7 regression tests passed successfully. Full suite of 107 tests and 3 accessibility validations pass cleanly.
+    - **Linter**: `npm run lint` yields **0 errors**.
+    - **Build Output**: `npm run build` compiles successfully.
+- **Supervisor Action Required**: Independent review and approval of UX-001 Phase 2.2C R1.
+
+
 
