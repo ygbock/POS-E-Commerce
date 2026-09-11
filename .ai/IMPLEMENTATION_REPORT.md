@@ -1,5 +1,46 @@
 # Implementation Report
 
+## UPG-001R2.1 — Final Production Deployment Correction
+
+- **Status**: `READY FOR SUPERVISOR REVIEW`
+- **Parent Task**: VERSION-2.6-UPGRADE / Platform Hardening
+- **Operating Directive**: `INSPECT → HARDEN → TEST → VERIFY → DOCUMENT → REPORT`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Exact Commit**:
+  - `ab97851`: `feat(ci): UPG-001R2.1 parameterize production deploy hook with exact approved commit SHA and add tests`
+- **Files Changed**:
+  - `.github/workflows/production-deploy.yml`
+  - `tests/operational_hardening.test.ts`
+- **Final Deployment Governance Chain**:
+  ```text
+  Approved Commit SHA
+          ↓
+  Gate A: Reproducible Artifact Verification (SHA-256 digest match)
+          ↓
+  Gate B: Exact SHA Deployment (Render deploy hook parameterized with ?ref= or &ref=)
+          ↓
+  Gate C: Runtime Revision Verification (/api/version runtime revision == approved_commit_sha)
+          ↓
+  Gate D: Health & Readiness Probes (/api/health and /api/ready fail-closed)
+  ```
+- **Scope Discipline & Technical Implementation**:
+  - **Parameterize Render Deploy Hook with Approved Commit**: Updated `.github/workflows/production-deploy.yml` Gate B so the Render deploy hook is explicitly parameterized with `ref=${APPROVED_COMMIT}` where `APPROVED_COMMIT="${{ inputs.approved_commit_sha }}"`. Safely handles URLs both without existing query parameters (`?ref=...`) and with existing query parameters (`&ref=...`).
+  - **Sanitized Logging**: Logs only `"Triggering Render production deployment for approved commit SHA: ${APPROVED_COMMIT}"` without leaking complete secret deploy-hook URLs.
+  - **Fail-Closed Invocation**: Invokes curl with `-f -s -S -X POST "$DEPLOY_URL"` and fails closed on any non-success response.
+  - **Preserved 4-Gate Model**: Retained Gate A (reproducible digest), Gate B (exact SHA deploy), Gate C (runtime revision verification comparing `approved_commit_sha` against deployed revision from `/api/version`), and Gate D (health/readiness probes).
+  - **Deterministic Test Coverage**: Added test `8.3` in `tests/operational_hardening.test.ts` verifying workflow references `inputs.approved_commit_sha`, constructs a deploy URL containing `ref=`, does not invoke the raw deploy hook without the approved SHA, retains Gate C and Gate D checks, and proves both URL forms (`https://example.com/hook` → `?ref=...` and `https://example.com/hook?foo=bar` → `&ref=...`) algorithmically and via shell execution.
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm run test:operational`: 25/25 passed (including test 8.3 exact-commit deploy URL tests).
+  - `npm run test:prod-gate`: 9/9 passed.
+  - `npm test`: 185/185 passed across all 12 domain test suites.
+  - `npm run build`: 0 `.map` files in `dist/`.
+  - Confirmation: Production deployment now targets the exact approved commit.
+
+---
+
 ## UPG-001R2 — Production Operations Hardening Supervisor Corrections
 
 - **Status**: `READY FOR SUPERVISOR REVIEW`

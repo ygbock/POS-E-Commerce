@@ -48,7 +48,7 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
-### Queue Item: UPG-001, UPG-001R1 & UPG-001R2 — Production Operations Hardening & Platform Controls
+### Queue Item: UPG-001, UPG-001R1, UPG-001R2 & UPG-001R2.1 — Production Operations Hardening & Platform Controls
 - **Submitted By**: Senior Software Engineer / Implementation Lead
 - **Submission Date**: 2026-09-11
 - **Current Status**: `PENDING SUPERVISOR REVIEW`
@@ -56,22 +56,28 @@ Reviewers must evaluate submissions across these ten dimensions:
 - **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
 - **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
 - **Exact Commits**:
+  - `ab97851`: `feat(ci): UPG-001R2.1 parameterize production deploy hook with exact approved commit SHA and add tests`
+  - `4790d90`: `fix(ci): quote workflow step names containing colons to resolve YAML parsing syntax error`
+  - `da22594`: `docs: record UPG-001R2 supervisor review corrections in task queue, review queue, and implementation report`
   - `661bafa`: `feat(hardening): UPG-001R2 complete 1:1 environment contract, 4-gate deployment workflow, and expanded contradiction matrix`
   - `e840027`: `feat(hardening): UPG-001R1 production operations hardening corrections`
   - `5e3f801`: `docs: add operational platform hardening specifications and runbooks (UPG-001)`
   - `21ac17c`: `feat: add CI/CD deployment pipelines, operational hardening scripts, and backup verification utilities`
+- **Deployment Governance Chain**:
+  `approved SHA → reproducible artifact → exact SHA deployment → runtime SHA verification → health/readiness`
+  - Render production deploy hook is now explicitly parameterized with the approved commit SHA via `?ref=` or `&ref=`.
 - **Scope**:
   - `server/config/environment.ts`: Strict 1:1 `DEPLOY_ENV` and `NODE_ENV` contract, generalized contradiction rejection across all 12 non-matching pairs, explicit rejection of unknown `NODE_ENV` values (no silent downgrade), decimal integer PORT validation (`1-65535`), PostgreSQL connection URL validation without credential leakage, HTTPS `APP_URL` requirement in staging/production, and configurable cross-environment isolation.
-  - `.github/workflows/production-deploy.yml`: 4 distinct deployment gates: Gate A (reproducible artifact digest verification), Gate B (deployment execution fail-closed on missing webhook), Gate C (post-deploy runtime revision verification comparing `approved_commit_sha == deployed_runtime_revision`), and Gate D (health/readiness probes fail-closed).
+  - `.github/workflows/production-deploy.yml`: 4 distinct deployment gates: Gate A (reproducible artifact digest verification), Gate B (exact approved commit deployment via parameterized Render hook with `ref=${APPROVED_COMMIT}` and fail-closed missing hook handling), Gate C (post-deploy runtime revision verification comparing `approved_commit_sha == deployed_runtime_revision`), and Gate D (health/readiness probes fail-closed).
   - `server.ts`: Exposes sanitized runtime revision identity (`/api/version` and `/api/health`) without credential leakage.
   - `.github/workflows/ci.yml`: Source-map exposure guard rejecting all `.map` files in `dist/`.
   - `package.json`: Source-map stripping from production server bundle build.
-  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 24 test cases verifying all positive and negative failure paths, complete 12-pair contradiction matrix, unknown `NODE_ENV` handling, and 4-gate workflow checks.
+  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 25 test cases verifying all positive and negative failure paths, complete 12-pair contradiction matrix, unknown `NODE_ENV` handling, 4-gate workflow checks, and exact-commit deploy URL construction (`?ref=` and `&ref=`).
 - **Verification Evidence**:
   - `npm run lint`: 0 errors (PASS).
-  - `npm run test:operational`: 24 passed, 0 failed (PASS).
+  - `npm run test:operational`: 25 passed, 0 failed (PASS).
   - `npm run test:prod-gate`: 9 passed, 0 failed (PASS).
-  - `npm test`: 184 passed, 0 failed across all 12 domain suites (PASS).
+  - `npm test`: 185 passed, 0 failed across all 12 domain suites (PASS).
   - `npm run build`: 0 map files generated in deployable artifacts (PASS).
   - `git status --short`: clean (PASS).
 
