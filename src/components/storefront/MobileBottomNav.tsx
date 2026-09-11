@@ -81,7 +81,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           id="btn-mobilenav-home"
           type="button"
           onClick={handleHomeClick}
-          className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all ${
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-2 rounded-xl transition-all ${
             activeSection === 'home'
               ? 'text-sky-400 font-bold'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
@@ -101,7 +101,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           id="btn-mobilenav-catalog"
           type="button"
           onClick={handleCatalogClick}
-          className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all ${
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-2 rounded-xl transition-all ${
             activeSection === 'catalog'
               ? 'text-sky-400 font-bold'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
@@ -122,7 +122,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             id="btn-mobilenav-filter"
             type="button"
             onClick={handleFilterClick}
-            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-2 rounded-xl transition-all ${
               hasActiveFilters
                 ? 'text-amber-400 font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
@@ -156,7 +156,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 }, 100);
               }
             }}
-            className="flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-amber-300 transition-all"
+            className="flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-amber-300 transition-all"
           >
             <Tag className="w-5 h-5 text-amber-400" />
             <span className="text-[10px] mt-1 tracking-tight">Deals</span>
@@ -168,7 +168,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           id="btn-mobilenav-cart"
           type="button"
           onClick={onOpenCart}
-          className="flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-sky-400 transition-all relative"
+          className="flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-sky-400 transition-all relative"
         >
           <div className="relative">
             <div className="p-1 bg-gradient-to-tr from-sky-500/20 to-indigo-500/20 rounded-lg text-sky-400">
@@ -188,7 +188,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           id="btn-mobilenav-account"
           type="button"
           onClick={onOpenAccount}
-          className="flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
+          className="flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
         >
           <div className="relative">
             <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-sky-400">

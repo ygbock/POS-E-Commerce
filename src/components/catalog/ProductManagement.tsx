@@ -1011,6 +1011,10 @@ export const ProductManagement: React.FC = () => {
               </div>
 
               <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                {/* Mobile Touch Table Swipe Indicator */}
+                <div className="block sm:hidden bg-slate-50 dark:bg-slate-850 border-b border-slate-100 dark:border-slate-800 py-1.5 px-3 text-center text-[10px] text-slate-500 dark:text-slate-400 font-medium select-none tracking-wide animate-pulse">
+                  Swipe horizontally to view full matrix ↔
+                </div>
                 <div className="overflow-x-auto custom-scrollbar">
                   <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
                     <thead className="bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-800">
@@ -1093,6 +1097,10 @@ export const ProductManagement: React.FC = () => {
               </div>
 
               <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                {/* Mobile Touch Table Swipe Indicator */}
+                <div className="block sm:hidden bg-slate-50 dark:bg-slate-850 border-b border-slate-100 dark:border-slate-800 py-1.5 px-3 text-center text-[10px] text-slate-500 dark:text-slate-400 font-medium select-none tracking-wide animate-pulse">
+                  Swipe horizontally to view full stock breakdown ↔
+                </div>
                 <div className="overflow-x-auto custom-scrollbar">
                   <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
                     <thead className="bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-800">
@@ -1203,8 +1211,11 @@ export const ProductManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Pricing Matrix Table */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                {/* Mobile Touch Table Swipe Indicator */}
+                <div className="block sm:hidden bg-slate-50 dark:bg-slate-850 border-b border-slate-100 dark:border-slate-800 py-1.5 px-3 text-center text-[10px] text-slate-500 dark:text-slate-400 font-medium select-none tracking-wide animate-pulse">
+                  Swipe horizontally to view full pricing details ↔
+                </div>
                 <div className="overflow-x-auto custom-scrollbar">
                   <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
                     <thead className="bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-800">

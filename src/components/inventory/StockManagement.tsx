@@ -304,6 +304,10 @@ export const StockManagement: React.FC<StockManagementProps> = ({ initialSubTab 
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            {/* Mobile Touch Table Swipe Indicator */}
+            <div className="block sm:hidden bg-slate-50 border-b border-slate-100 py-1.5 px-3 text-center text-[10px] text-slate-500 font-medium select-none tracking-wide animate-pulse">
+              Swipe horizontally to view full stock columns ↔
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-slate-700">
                 <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-semibold tracking-wider border-b border-slate-200">
@@ -484,6 +488,10 @@ export const StockManagement: React.FC<StockManagementProps> = ({ initialSubTab 
               <h3 className="text-sm font-bold text-slate-900">Immutable Stock Audit Log</h3>
               <p className="text-xs text-slate-500">Full forensic log of every stock increment, sale deduction, write-off and transfer</p>
             </div>
+          </div>
+          {/* Mobile Touch Table Swipe Indicator */}
+          <div className="block sm:hidden bg-slate-50 border-b border-slate-100 py-1.5 px-3 text-center text-[10px] text-slate-500 font-medium select-none tracking-wide animate-pulse">
+            Swipe horizontally to view full audit columns ↔
           </div>
 
           <div className="overflow-x-auto">

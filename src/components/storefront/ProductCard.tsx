@@ -181,26 +181,31 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-1 leading-relaxed hidden xs:block">
             {product.shortDescription}
           </p>
+
+          <div className="flex items-baseline gap-1 sm:gap-1.5 flex-wrap pt-1">
+            <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+              {formatCurrency(price)}
+            </span>
+            {compareAtPrice && compareAtPrice > price && (
+              <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 line-through">
+                {formatCurrency(compareAtPrice)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Card Footer: Price & Quick Action */}
-      <div className="p-3.5 sm:p-4 pt-0 mt-1 sm:mt-1.5">
+      {/* Card Footer: Quick Action */}
+      <div className="p-3.5 sm:p-4 pt-0 mt-auto">
         <div className="flex items-center justify-between pt-2.5 sm:pt-3 border-t border-slate-100 dark:border-slate-800/80">
           <div>
-            <div className="flex items-baseline gap-1 sm:gap-1.5 flex-wrap">
-              <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                {formatCurrency(price)}
-              </span>
-              {compareAtPrice && compareAtPrice > price && (
-                <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 line-through">
-                  {formatCurrency(compareAtPrice)}
-                </span>
-              )}
-            </div>
-            {product.variants.length > 1 && (
-              <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 block font-medium mt-0.5">
+            {product.variants.length > 1 ? (
+              <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
                 {product.variants.length} configurations
+              </span>
+            ) : (
+              <span className="text-[9px] sm:text-[10px] text-slate-400 dark:text-slate-500 block font-medium">
+                Standard Edition
               </span>
             )}
           </div>

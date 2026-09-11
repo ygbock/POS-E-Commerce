@@ -68,7 +68,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
             key={item.id}
             id={`mobile-nav-${item.id}`}
             onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center flex-1 min-h-[48px] py-1 px-1 rounded-xl transition-all cursor-pointer relative ${
               isActive
                 ? 'text-sky-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200 active:scale-95'
@@ -94,7 +94,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
       <button
         id="mobile-nav-menu"
         onClick={onOpenMobileSidebar}
-        className="flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl text-slate-400 hover:text-slate-200 active:scale-95 transition-all cursor-pointer"
+        className="flex flex-col items-center justify-center flex-1 min-h-[48px] py-1 px-1 rounded-xl text-slate-400 hover:text-slate-200 active:scale-95 transition-all cursor-pointer"
       >
         <Menu className="w-5 h-5 text-slate-400" />
         <span className="text-[10px] tracking-tight mt-0.5">More</span>
@@ -104,7 +104,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
       <button
         id="mobile-nav-storefront"
         onClick={() => setActiveTab('storefront')}
-        className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-emerald-400 hover:text-emerald-300 active:scale-95 transition-all cursor-pointer border border-emerald-500/30 bg-emerald-500/10"
+        className="flex flex-col items-center justify-center min-h-[48px] px-2.5 rounded-xl text-emerald-400 hover:text-emerald-300 active:scale-95 transition-all cursor-pointer border border-emerald-500/30 bg-emerald-500/10"
         title="View Customer Storefront"
       >
         <Store className="w-4 h-4 text-emerald-400" />

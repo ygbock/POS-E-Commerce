@@ -712,7 +712,7 @@ async function main() {
     mockDocument.body.appendChild(inputEl);
     inputEl.focus();
 
-    assert.ok(isInteractiveInputElement(inputEl), 'Input must be identified as interactive input');
+    assert.ok(isInteractiveInputElement(inputEl as any), 'Input must be identified as interactive input');
 
     // User types 'F' into customer name or search
     const typeF = new MockKeyboardEvent({ key: 'F', target: inputEl });
@@ -735,7 +735,7 @@ async function main() {
     mockDocument.body.appendChild(textareaEl);
     textareaEl.focus();
 
-    assert.ok(isInteractiveInputElement(textareaEl), 'Textarea must be identified as interactive input');
+    assert.ok(isInteractiveInputElement(textareaEl as any), 'Textarea must be identified as interactive input');
 
     // User types 'S' or 'A' into notes
     const typeS = new MockKeyboardEvent({ key: 'S', target: textareaEl });
