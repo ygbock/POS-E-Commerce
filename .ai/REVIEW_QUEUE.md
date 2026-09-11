@@ -48,6 +48,29 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
+### Queue Item: UPG-001 & UPG-001R1 — Production Operations Hardening & Platform Controls
+- **Submitted By**: Senior Software Engineer / Implementation Lead
+- **Submission Date**: 2026-09-11
+- **Current Status**: `PENDING SUPERVISOR REVIEW`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Scope**:
+  - `server/config/environment.ts`: `DEPLOY_ENV` authoritative contract, safe fallback from `NODE_ENV`, strict contradiction rejection (`staging+production`, `production+staging`, `test/development+production`), mutually exclusive booleans (`isProduction`, `isStaging`, `isTest`, `isDevelopment`), strict decimal integer PORT validation (`1-65535`), PostgreSQL connection URL validation (protocol, host, db) without credential leakage, HTTPS `APP_URL` requirement in staging/production, and configurable cross-environment isolation.
+  - `.github/workflows/production-deploy.yml`: Post-deployment probe fail-closed gate (`exit 1` when `$SUCCESS -ne 1`).
+  - `.github/workflows/ci.yml`: Source-map exposure guard rejecting all `.map` files in `dist/`.
+  - `package.json`: Source-map stripping from production server bundle build.
+  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 25 test cases verifying all positive and negative failure paths.
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm run test:operational`: 25 passed, 0 failed (PASS).
+  - `npm run test:prod-gate`: 9 passed, 0 failed (PASS).
+  - `npm test`: 185 passed, 0 failed across all 12 domain suites (PASS).
+  - `npm run build`: 0 map files generated in deployable artifacts (PASS).
+  - `git status --short`: clean (PASS).
+
+---
+
 ### Queue Item: REL-011 & REL-011R1 — Production Database Fail-Closed + PostgreSQL Staging Gate
 - **Submitted By**: Senior Software Engineer / Implementation Lead & Security Architect
 - **Submission Date**: 2026-09-11

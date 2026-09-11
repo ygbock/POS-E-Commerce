@@ -657,3 +657,34 @@ PROD-001 (NOT STARTED)
   - [x] No credentials or secrets committed.
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
 
+---
+
+### Task 13: UPG-001 & UPG-001R1 — Production Operations Hardening & Platform Controls
+- **Status**: `READY FOR REVIEW`
+- **Parent Program**: `VERSION-2.6-UPGRADE` (`2.6.0-development`)
+- **Objective**: Establish production operational architecture, strict runtime environment separation, database URL validation, non-leaking error envelopes, fail-closed CI deployment health gates, and public source-map blocking on dedicated branch `upgrade/v2.6/upg-001-platform-hardening`.
+- **Scope**:
+  - `server/config/environment.ts`: Centralized runtime environment validator ensuring `DEPLOY_ENV` authoritativeness, safe fallback derivation from `NODE_ENV`, strict contradiction rejection, decimal integer PORT validation, PostgreSQL connection URL protocol/host/db validation without error leakage, HTTPS `APP_URL` requirement in staging/production, and configurable cross-environment isolation.
+  - `.github/workflows/production-deploy.yml`: Fail-closed health gate (`exit 1` when `$SUCCESS -ne 1`).
+  - `.github/workflows/ci.yml`: Source-map exposure guard rejecting all `.map` files in `dist/`.
+  - `package.json`: Source-map stripping from production server bundle build.
+  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 25 test cases verifying all positive and negative failure paths.
+- **Dependencies**: None.
+- **Acceptance Criteria**:
+  - [x] Dedicated branch `upgrade/v2.6/upg-001-platform-hardening` maintained.
+  - [x] `main` and frozen production baseline `9ae4b7528aecd195a9167e1b2a060513cbf83223` untouched.
+  - [x] `DEPLOY_ENV` authoritative contract with strict contradiction rejection implemented.
+  - [x] `isProduction` and `isStaging` mutually exclusive booleans enforced.
+  - [x] Strict decimal integer PORT validation (`1-65535`) enforced.
+  - [x] PostgreSQL connection URL validated (protocol, host, db) without credential leakage.
+  - [x] HTTPS `APP_URL` enforced in staging/production with configurable cross-environment isolation.
+  - [x] Production workflow post-deploy probe fails closed (`exit 1`) on failure.
+  - [x] Source maps blocked on server route and stripped from deployable build output.
+  - [x] 25/25 operational tests pass deterministically.
+  - [x] 9/9 production gate tests pass deterministically.
+  - [x] Full regression suite (185 tests across 12 suites) passes 100%.
+  - [x] `npm run lint` passes with 0 errors.
+  - [x] Zero secrets committed.
+- **Supervisor Gate**: Marked `READY FOR REVIEW`.
+
+

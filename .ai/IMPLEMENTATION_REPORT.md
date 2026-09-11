@@ -1,5 +1,25 @@
 # Implementation Report
 
+## UPG-001R1 — Production Operations Hardening Corrections
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: VERSION-2.6-UPGRADE / Platform Hardening
+- **Operating Directive**: `INSPECT → HARDEN → TEST → VERIFY → DOCUMENT → REPORT`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Scope Discipline**:
+  - **Environment Contract**: `server/config/environment.ts` refactored so `DEPLOY_ENV` is authoritative when supplied, with safe fallback to `NODE_ENV`. Implemented strict rejection of all specified contradiction states (`DEPLOY_ENV=staging + NODE_ENV=production`, `DEPLOY_ENV=production + NODE_ENV=staging`, `DEPLOY_ENV=test/development + NODE_ENV=production`). Enforced mutually exclusive booleans (`isProduction`, `isStaging`, `isTest`, `isDevelopment`).
+  - **PostgreSQL Connection URL Validation**: In staging and production, require either `DATABASE_URL` or `PGHOST`. Validated URL protocol (`postgresql:` or `postgres:`), host presence, and database name path. Sanitized all errors to ensure connection URLs and credentials are never exposed in error text or logs.
+  - **Strict PORT Validation**: Replaced permissive `parseInt()` acceptance with strict decimal integer regex (`/^\d+$/`) bounded between 1 and 65535, properly rejecting non-integers, floats, exponents, and sign prefixes (`3000abc`, `12.5`, `1e4`, `+`, `-`).
+  - **APP_URL HTTPS Mandate & Configurable Isolation**: In staging and production, `APP_URL` must be a valid URL with hostname and HTTPS protocol. Replaced hardcoded Render domain checks with configurable explicit cross-environment separation policies (`PRODUCTION_APP_URL`, `PRODUCTION_DATABASE_URL`, `STAGING_APP_URL`, `STAGING_DATABASE_URL`).
+  - **Production Fail-Closed Health Gate**: In `.github/workflows/production-deploy.yml`, ensured the post-deployment health probe explicitly fails closed with `exit 1` when `$SUCCESS -ne 1`.
+  - **Public Source Map Exposure Guard**: Removed `--sourcemap` from the production server bundle build in `package.json`. Updated `.github/workflows/ci.yml` and `tests/operational_hardening.test.ts` to assert that zero `.map` files are emitted in deployable output (`dist/**/*.map`, `dist/index.html.map`, `dist/server.cjs.map`, `dist/assets/*.map`).
+  - **Operational Test Suite**: Expanded `tests/operational_hardening.test.ts` to 25 deterministic, self-contained tests covering all positive and negative failure branches.
+  - **Verification**: Executed `npm run lint` (0 errors), `npm run test:operational` (25/25 PASS), `npm run test:prod-gate` (9/9 PASS), `npm test` (185/185 PASS across all 12 domain suites), and `npm run build` (0 map files).
+
+---
+
 ## REL-012R3 — Final Release HEAD Metadata Synchronization
 
 - **Status**: `READY FOR REVIEW`
