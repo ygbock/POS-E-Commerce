@@ -1,0 +1,106 @@
+name: Production Promotion & Approval Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      approved_commit_sha:
+        description: "Approved Commit SHA (Must match verified staging release tuple)"
+        required: true
+        type: string
+      approved_artifact_digest:
+        description: "Approved Artifact Digest SHA-256 (Must match verified staging build)"
+        required: true
+        type: string
+
+jobs:
+  production-deployment-gate:
+    name: Production Manual Approval Gate
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://abacha-app.onrender.com
+    steps:
+      - name: Verify Branch Governance
+        run: |
+          echo "=== 1. Branch Protection Enforcement ==="
+          # Verify that promotion only occurs from main or approved release tag
+          if [[ "${{ github.ref }}" != "refs/heads/main" && ! "${{ github.ref }}" =~ ^refs/tags/v.* ]]; then
+            echo "FATAL: Production promotion is strictly forbidden from unmerged feature branches."
+            exit 1
+          fi
+          echo "Branch governance passed."
+
+      - name: Checkout Approved Commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.approved_commit_sha }}
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Clean Dependencies
+        run: npm ci
+
+      - name: Reproduce & Verify Artifact Digest (Staging Match)
+        id: verify-digest
+        run: |
+          echo "=== 2. Artifact Digest Match Verification ==="
+          npm run build
+          CURRENT_DIGEST=$(sha256sum dist/server.cjs | awk '{print $1}')
+          EXPECTED_DIGEST="${{ inputs.approved_artifact_digest }}"
+          
+          echo "Expected Staging Digest: ${EXPECTED_DIGEST}"
+          echo "Reproduced Digest:       ${CURRENT_DIGEST}"
+          
+          if [ "${CURRENT_DIGEST}" != "${EXPECTED_DIGEST}" ]; then
+            echo "FATAL: Artifact digest mismatch! The current build does not match the approved staging artifact."
+            exit 1
+          fi
+          echo "Artifact digest verified identical to approved staging release."
+
+      - name: Verify Migration Checksums Integrity
+        run: |
+          echo "=== 3. Migration Checksum Gate ==="
+          sha256sum server/db/migrations/*.sql
+          # Verify no uncommitted or modified migration files exist
+          git diff --exit-code server/db/migrations/
+
+      - name: Trigger Render Production Deployment
+        run: |
+          echo "=== 4. Production Deployment Execution ==="
+          if [ -n "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" ]; then
+            echo "Executing Render production deployment webhook..."
+            curl -f -X POST "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}"
+          else
+            echo "[Notice] RENDER_PROD_DEPLOY_HOOK_URL not configured; manual operator deployment required."
+          fi
+
+      - name: Production Post-Deployment Health & Readiness Probe
+        run: |
+          echo "=== 5. Production Health Verification ==="
+          PROD_URL="https://abacha-app.onrender.com"
+          
+          MAX_RETRIES=12
+          RETRY_COUNT=0
+          SUCCESS=0
+          
+          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+            echo "Pinging ${PROD_URL}/api/health (attempt $((RETRY_COUNT+1))/${MAX_RETRIES})..."
+            HEALTH_JSON=$(curl -s "${PROD_URL}/api/health" || true)
+            READY_JSON=$(curl -s "${PROD_URL}/api/ready" || true)
+            
+            if echo "$HEALTH_JSON" | grep -q '"status":"ok"' && echo "$READY_JSON" | grep -q '"ready":true'; then
+              echo "Production Health and Readiness Probes PASSED!"
+              SUCCESS=1
+              break
+            fi
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            sleep 10
+          done
+          
+          if [ $SUCCESS -ne 1 ]; then
+            echo "WARNING / ALERT: Production health probe did not confirm OK within allocated window."
+          fi

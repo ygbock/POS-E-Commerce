@@ -46,6 +46,8 @@ import { apiErrorHandler, buildApiErrorResponse, ApiError } from './server/utils
 import { hashPassword } from './server/auth/password.ts';
 import { PERMISSIONS, ROLE_PERMISSIONS, VALID_ROLES } from './server/auth/roles.ts';
 
+import { validateEnvironment } from './server/config/environment.ts';
+
 export interface CreateAppOptions {
   db?: DatabaseClient;
   authService?: AuthService;
@@ -57,21 +59,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   const app = express();
   const isProd = process.env.NODE_ENV === 'production';
 
-  // Validate production environment requirements before proceeding
-  if (isProd) {
-    const dbUrl = process.env.DATABASE_URL;
-    const pgHost = process.env.PGHOST;
-    if (!dbUrl && !pgHost) {
-      throw new Error('[AbaCha Config Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST is missing).');
-    }
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error('[AbaCha Config Fatal] JWT_SECRET environment variable is mandatory in production.');
-    }
-    if (jwtSecret.length < 32 || jwtSecret.includes('dev') || jwtSecret.includes('default')) {
-      throw new Error('[AbaCha Config Fatal] Production JWT_SECRET must be a high-entropy string of at least 32 characters.');
-    }
-  }
+  // Centralized Environment & Runtime Contract Validation (UPG-001)
+  validateEnvironment();
 
   // Initialize Database Persistence Layer
   const dbStatus = {
@@ -1765,6 +1754,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
       app.use(vite.middlewares);
     } else {
+      // Security Hardening (UPG-001): Block public access to source maps
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        if (req.path.endsWith('.map')) {
+          return res.status(404).send('Not Found');
+        }
+        next();
+      });
+
       const distPath = path.join(process.cwd(), 'dist');
       app.use(express.static(distPath));
       app.get('*', (req: Request, res: Response) => {
@@ -1796,7 +1793,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 }
 
 export async function startServer() {
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   const { app } = await createApp();
 

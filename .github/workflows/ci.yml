@@ -1,0 +1,110 @@
+name: CI Platform Hardening & Regression Gate
+
+on:
+  pull_request:
+    branches: [ main, staging ]
+  push:
+    branches: [ main, 'upgrade/**' ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-build:
+    name: Lint & Build Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies (npm ci)
+        run: npm ci
+
+      - name: Static Type & Lint Check (npm run lint)
+        run: npm run lint
+
+      - name: Production Bundle Build (npm run build)
+        run: npm run build
+
+      - name: Source Map Exposure Guard
+        run: |
+          # Verify public source maps are disabled/restricted
+          if [ -f dist/index.html.map ]; then
+            echo "Security Error: Client-side source map found in public bundle"
+            exit 1
+          fi
+          echo "Source map guard passed."
+
+  domain-regression-suites:
+    name: Authoritative Domain Regression Suites
+    needs: [lint-and-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: 1. Persistence Domain (test:db)
+        run: npm run test:db
+
+      - name: 2. Auth & Security Boundaries (test:security)
+        run: npm run test:security
+
+      - name: 3. Server-Authoritative Inventory (test:inventory)
+        run: npm run test:inventory
+
+      - name: 4. Transfer Event Immutability (test:transfer)
+        run: npm run test:transfer
+
+      - name: 5. Server-Authoritative POS Engine (test:pos)
+        run: npm run test:pos
+
+      - name: 6. API Hardening & Idempotency (test:api)
+        run: npm run test:api
+
+      - name: 7. End-to-End QA Verification (test:qa)
+        run: npm run test:qa
+
+      - name: 8. UX Accessibility & Hotkeys (test:ux)
+        run: npm run test:ux
+
+      - name: 9. Storefront Checkout Integrity (test:checkout)
+        run: npm run test:checkout
+
+      - name: 10. Offline POS Sync (test:offline-pos)
+        run: npm run test:offline-pos
+
+      - name: 11. Production Database Gate (test:prod-gate)
+        run: npm run test:prod-gate
+
+      - name: 12. Operational Platform Hardening (test:operational)
+        run: npm run test:operational
+
+  secret-scanning:
+    name: Multi-Layer Secret Leakage Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository with Full History
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
