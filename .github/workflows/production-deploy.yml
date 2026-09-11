@@ -44,7 +44,7 @@ jobs:
       - name: Install Clean Dependencies
         run: npm ci
 
-      - name: Gate A: Reproducible Artifact Verification (Staging Match)
+      - name: "Gate A: Reproducible Artifact Verification (Staging Match)"
         id: verify-digest
         run: |
           echo "=== Gate A: Reproducible Artifact Verification ==="
@@ -70,7 +70,7 @@ jobs:
           # Verify no uncommitted or modified migration files exist
           git diff --exit-code server/db/migrations/
 
-      - name: Gate B: Deployment Execution
+      - name: "Gate B: Deployment Execution"
         run: |
           echo "=== Gate B: Deployment Execution ==="
           if [ -z "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" ]; then
@@ -82,7 +82,7 @@ jobs:
           curl -f -s -S -X POST "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" > /dev/null
           echo "Production deployment webhook invoked successfully."
 
-      - name: Gate C: Deployed Revision Verification
+      - name: "Gate C: Deployed Revision Verification"
         run: |
           echo "=== Gate C: Deployed Revision Verification ==="
           PROD_URL="https://abacha-app.onrender.com"
@@ -116,7 +116,7 @@ jobs:
             exit 1
           fi
 
-      - name: Gate D: Production Post-Deployment Health & Readiness Probes
+      - name: "Gate D: Production Post-Deployment Health & Readiness Probes"
         run: |
           echo "=== Gate D: Production Health & Readiness Verification ==="
           PROD_URL="https://abacha-app.onrender.com"
