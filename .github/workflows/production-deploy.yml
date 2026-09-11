@@ -101,6 +101,7 @@ jobs:
             sleep 10
           done
           
-          if [ $SUCCESS -ne 1 ]; then
-            echo "WARNING / ALERT: Production health probe did not confirm OK within allocated window."
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "FATAL: Production health/readiness verification failed."
+            exit 1
           fi

@@ -1,5 +1,5 @@
 /**
- * Centralized Environment & Runtime Configuration Contract (UPG-001)
+ * Centralized Environment & Runtime Configuration Contract (UPG-001R1)
  * 
  * Enforces strict environment boundaries between development, test, staging, and production.
  * Ensures fail-closed validation on startup without exposing credentials in logs or error messages.
@@ -34,44 +34,75 @@ export interface EnvironmentValidationReport {
   variables: EnvironmentVariableStatus[];
 }
 
+const VALID_ENVS: DeployEnvironment[] = ['development', 'test', 'staging', 'production'];
+
 /**
  * Validates the runtime configuration against environment policies.
  * Fail-closed: Throws on any contract violation in staging or production.
  */
 export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): ValidatedConfig {
-  const nodeEnv = (env.NODE_ENV || 'development').trim();
-  
-  // Resolve DEPLOY_ENV with fallback to NODE_ENV mapping
-  let rawDeployEnv = env.DEPLOY_ENV ? env.DEPLOY_ENV.trim().toLowerCase() : undefined;
-  if (!rawDeployEnv) {
-    if (nodeEnv === 'production') {
-      rawDeployEnv = 'production';
-    } else if (nodeEnv === 'test') {
-      rawDeployEnv = 'test';
+  const nodeEnvRaw = env.NODE_ENV ? env.NODE_ENV.trim().toLowerCase() : '';
+  const deployEnvRaw = env.DEPLOY_ENV ? env.DEPLOY_ENV.trim().toLowerCase() : '';
+
+  // 1. DEPLOY_ENV / NODE_ENV Resolution & Contradiction Detection
+  let deployEnv: DeployEnvironment;
+
+  if (deployEnvRaw) {
+    if (!VALID_ENVS.includes(deployEnvRaw as DeployEnvironment)) {
+      throw new Error(`[AbaCha Config Fatal] Invalid DEPLOY_ENV "${deployEnvRaw}". Must be one of: ${VALID_ENVS.join(', ')}`);
+    }
+    deployEnv = deployEnvRaw as DeployEnvironment;
+
+      // Check for explicit contradiction with NODE_ENV
+      if (nodeEnvRaw) {
+        if (deployEnv === 'staging' && nodeEnvRaw === 'production') {
+          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=staging conflicts with NODE_ENV=production.');
+        }
+        if (deployEnv === 'production' && nodeEnvRaw === 'staging') {
+          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=production conflicts with NODE_ENV=staging.');
+        }
+        if (deployEnv === 'test' && nodeEnvRaw === 'production') {
+          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=test conflicts with NODE_ENV=production.');
+        }
+        if (deployEnv === 'development' && nodeEnvRaw === 'production') {
+          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=development conflicts with NODE_ENV=production.');
+        }
+        if (deployEnv === 'production' && (nodeEnvRaw === 'development' || nodeEnvRaw === 'test')) {
+          throw new Error(`[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=production conflicts with NODE_ENV=${nodeEnvRaw}.`);
+        }
+      }
+  } else {
+    // When DEPLOY_ENV is absent, derive it safely from NODE_ENV
+    if (nodeEnvRaw === 'production') {
+      deployEnv = 'production';
+    } else if (nodeEnvRaw === 'staging') {
+      deployEnv = 'staging';
+    } else if (nodeEnvRaw === 'test') {
+      deployEnv = 'test';
+    } else if (nodeEnvRaw === 'development') {
+      deployEnv = 'development';
     } else {
-      rawDeployEnv = 'development';
+      deployEnv = 'development';
     }
   }
 
-  const validEnvs: DeployEnvironment[] = ['development', 'test', 'staging', 'production'];
-  if (!validEnvs.includes(rawDeployEnv as DeployEnvironment)) {
-    throw new Error(`[AbaCha Config Fatal] Invalid DEPLOY_ENV "${rawDeployEnv}". Must be one of: ${validEnvs.join(', ')}`);
-  }
-
-  const deployEnv = rawDeployEnv as DeployEnvironment;
-  const isProduction = deployEnv === 'production' || nodeEnv === 'production';
+  // Mutually exclusive environment booleans
+  const isProduction = deployEnv === 'production';
   const isStaging = deployEnv === 'staging';
-  const isTest = deployEnv === 'test' || nodeEnv === 'test';
-  const isDevelopment = deployEnv === 'development' && nodeEnv !== 'production';
+  const isTest = deployEnv === 'test';
+  const isDevelopment = deployEnv === 'development';
 
-  // 1. Port Validation
-  const portStr = env.PORT ? env.PORT.trim() : '3000';
-  const port = parseInt(portStr, 10);
-  if (isNaN(port) || port < 1 || port > 65535) {
-    throw new Error(`[AbaCha Config Fatal] PORT must be a valid integer between 1 and 65535. Received: "${portStr}"`);
+  // 2. Strict PORT Validation
+  const portRaw = env.PORT !== undefined ? env.PORT.trim() : '3000';
+  if (!/^\d+$/.test(portRaw)) {
+    throw new Error(`[AbaCha Config Fatal] PORT must be a valid decimal integer string between 1 and 65535. Received: "${portRaw}"`);
+  }
+  const port = parseInt(portRaw, 10);
+  if (port < 1 || port > 65535) {
+    throw new Error(`[AbaCha Config Fatal] PORT must be between 1 and 65535. Received: ${port}`);
   }
 
-  // 2. Production & Staging Persistence Requirements
+  // 3. PostgreSQL Persistence & URL Validation
   const dbUrl = env.DATABASE_URL?.trim();
   const pgHost = env.PGHOST?.trim();
 
@@ -80,7 +111,25 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
       throw new Error('[AbaCha Config Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST is missing).');
     }
 
-    // 3. JWT Secret Mandate
+    if (dbUrl) {
+      try {
+        const parsed = new URL(dbUrl);
+        if (parsed.protocol !== 'postgresql:' && parsed.protocol !== 'postgres:') {
+          throw new Error('Invalid protocol');
+        }
+        if (!parsed.hostname || parsed.hostname.trim() === '') {
+          throw new Error('Missing host');
+        }
+        const pathname = parsed.pathname ? parsed.pathname.trim() : '';
+        if (pathname.length <= 1 || pathname === '/') {
+          throw new Error('Missing database name');
+        }
+      } catch {
+        throw new Error('[AbaCha Config Fatal] Invalid DATABASE_URL: must be a valid PostgreSQL connection URL with protocol (postgresql: or postgres:), host, and database name.');
+      }
+    }
+
+    // 4. JWT Secret Mandate
     const jwtSecret = env.JWT_SECRET?.trim();
     if (!jwtSecret) {
       throw new Error('[AbaCha Config Fatal] JWT_SECRET environment variable is mandatory in production.');
@@ -90,39 +139,67 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
       throw new Error('[AbaCha Config Fatal] Production JWT_SECRET must be a high-entropy string of at least 32 characters.');
     }
 
-    // 4. Staging vs Production Environment Separation Contract (UPG-001)
+    // 5. Configurable Cross-Environment Separation Contract
     if (isStaging) {
-      if (env.PRODUCTION_DATABASE_URL && dbUrl && dbUrl === env.PRODUCTION_DATABASE_URL) {
+      if (env.PRODUCTION_DATABASE_URL && dbUrl && dbUrl === env.PRODUCTION_DATABASE_URL.trim()) {
         throw new Error('[AbaCha Config Fatal] Cross-environment violation: Staging environment cannot use production database.');
       }
-      if (env.APP_URL && env.APP_URL.includes('abacha-app.onrender.com')) {
-        throw new Error('[AbaCha Config Fatal] Cross-environment violation: Staging APP_URL cannot target production domain.');
+      if (env.PRODUCTION_APP_URL && env.APP_URL && env.APP_URL.trim() === env.PRODUCTION_APP_URL.trim()) {
+        throw new Error('[AbaCha Config Fatal] Cross-environment violation: Staging APP_URL cannot match production APP_URL.');
       }
     }
 
     if (isProduction) {
-      if (env.STAGING_DATABASE_URL && dbUrl && dbUrl === env.STAGING_DATABASE_URL) {
+      if (env.STAGING_DATABASE_URL && dbUrl && dbUrl === env.STAGING_DATABASE_URL.trim()) {
         throw new Error('[AbaCha Config Fatal] Cross-environment violation: Production environment cannot use staging database.');
+      }
+      if (env.STAGING_APP_URL && env.APP_URL && env.APP_URL.trim() === env.STAGING_APP_URL.trim()) {
+        throw new Error('[AbaCha Config Fatal] Cross-environment violation: Production APP_URL cannot match staging APP_URL.');
       }
     }
 
-    // 5. APP_URL HTTPS Validation in Production & Staging
+    // 6. APP_URL Validation
     if (env.APP_URL) {
-      const appUrl = env.APP_URL.trim();
-      if (!appUrl.startsWith('https://')) {
-        throw new Error(`[AbaCha Config Fatal] APP_URL must use secure HTTPS protocol in ${deployEnv}. Received non-https URL.`);
+      const appUrlRaw = env.APP_URL.trim();
+      let parsedAppUrl: URL;
+      try {
+        parsedAppUrl = new URL(appUrlRaw);
+      } catch {
+        throw new Error('[AbaCha Config Fatal] Invalid APP_URL: malformed URL string.');
       }
 
-      // Ensure staging does not use production APP_URL and vice-versa
-      if (isStaging && appUrl.includes('abacha-app.onrender.com')) {
-        throw new Error('[AbaCha Config Fatal] Cross-environment violation: Staging APP_URL cannot target production domain.');
+      if (parsedAppUrl.protocol !== 'https:') {
+        throw new Error(`[AbaCha Config Fatal] APP_URL must use secure HTTPS protocol in ${deployEnv}. Received protocol: "${parsedAppUrl.protocol}"`);
+      }
+
+      if (!parsedAppUrl.hostname || parsedAppUrl.hostname.trim() === '') {
+        throw new Error('[AbaCha Config Fatal] Invalid APP_URL: missing hostname.');
+      }
+    }
+  } else {
+    // In dev / test, validate DATABASE_URL and APP_URL syntax if provided
+    if (dbUrl) {
+      try {
+        const parsed = new URL(dbUrl);
+        if (parsed.protocol !== 'postgresql:' && parsed.protocol !== 'postgres:') {
+          throw new Error('Invalid protocol');
+        }
+      } catch {
+        throw new Error('[AbaCha Config Fatal] Invalid DATABASE_URL: must be a valid PostgreSQL connection URL with protocol (postgresql: or postgres:), host, and database name.');
+      }
+    }
+    if (env.APP_URL) {
+      try {
+        new URL(env.APP_URL.trim());
+      } catch {
+        throw new Error('[AbaCha Config Fatal] Invalid APP_URL: malformed URL string.');
       }
     }
   }
 
   return {
     deployEnv,
-    nodeEnv,
+    nodeEnv: nodeEnvRaw || 'development',
     isProduction,
     isStaging,
     isTest,
@@ -155,17 +232,30 @@ export function getSanitizedEnvironmentReport(env: NodeJS.ProcessEnv = process.e
       return { name, configured: false, status: 'MISSING' };
     }
     if (name === 'JWT_SECRET') {
-      const valid = val.length >= 32 && !val.includes('dev') && !val.includes('default');
+      const valid = val.length >= 32 && !val.toLowerCase().includes('dev') && !val.toLowerCase().includes('default');
       return { name, configured: true, status: valid ? 'VALID' : 'INVALID', note: valid ? 'High Entropy' : 'Weak or Short' };
     }
     if (name === 'PORT') {
-      const p = parseInt(val, 10);
-      const valid = !isNaN(p) && p >= 1 && p <= 65535;
+      const valid = /^\d+$/.test(val.trim()) && parseInt(val.trim(), 10) >= 1 && parseInt(val.trim(), 10) <= 65535;
       return { name, configured: true, status: valid ? 'VALID' : 'INVALID' };
     }
     if (name === 'APP_URL') {
-      const valid = val.startsWith('https://') || val.startsWith('http://localhost');
-      return { name, configured: true, status: valid ? 'VALID' : 'INVALID' };
+      try {
+        const u = new URL(val.trim());
+        const valid = u.protocol === 'https:' || u.protocol === 'http:';
+        return { name, configured: true, status: valid ? 'VALID' : 'INVALID' };
+      } catch {
+        return { name, configured: true, status: 'INVALID', note: 'Malformed URL' };
+      }
+    }
+    if (name === 'DATABASE_URL') {
+      try {
+        const u = new URL(val.trim());
+        const valid = (u.protocol === 'postgresql:' || u.protocol === 'postgres:') && Boolean(u.hostname) && (u.pathname.length > 1);
+        return { name, configured: true, status: valid ? 'VALID' : 'INVALID' };
+      } catch {
+        return { name, configured: true, status: 'INVALID', note: 'Malformed connection string' };
+      }
     }
     return { name, configured: true, status: 'VALID' };
   });
