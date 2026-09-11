@@ -564,3 +564,32 @@ PROD-001 (NOT STARTED)
   - [x] No secrets committed.
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
 
+---
+
+### Task 12: REL-012 — Final Release Candidate, Production Deployment Validation & Customer Handover Gate
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Perform the final release-candidate, security audit, database validation, smoke tests, and customer-handover evaluation for the AbaCha platform.
+- **Scope**:
+  - Validated target Release SHA against the codebase.
+  - Inspected production configurations, safety barriers, and deployment documentation.
+  - Validated clean installation, compilation, linting, and 160-unit full regression test suite against PostgreSQL staging.
+  - Conducted robust verification of authentication, tenant isolation, double-entry inventory ledger, storefront, and POS offline synchronization.
+  - Documented payment capability simulation disclosures and backup operational handover risks.
+  - Released comprehensive handover blueprint report `.ai/REL-012_FINAL_RELEASE_GATE.md`.
+- **Dependencies**: `REL-011`
+- **Acceptance Criteria**:
+  - [x] Exact release SHA verified.
+  - [x] `npm ci` passes successfully.
+  - [x] `npm run lint` passes (0 errors).
+  - [x] Complete unique test suite (160 units) passes with 100% success.
+  - [x] Production bundle compilation succeeds with zero warnings.
+  - [x] Real PostgreSQL staging migrations verified and health checks succeed.
+  - [x] Authentication and tenant isolation integrity smoke tests succeed.
+  - [x] Inventory, reservation, and idempotency race test successfully verified.
+  - [x] Storefront storefront checkout, price authority, and POS offline queues verified.
+  - [x] Payment gateway simulation disclosed and backup handover risks classified.
+  - [x] Detailed release report created under `.ai/REL-012_FINAL_RELEASE_GATE.md`.
+  - [x] All governance files updated.
+  - [x] No credentials or secrets committed.
+- **Supervisor Gate**: Marked `READY FOR REVIEW`.
+

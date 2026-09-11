@@ -416,3 +416,19 @@ Status: READY FOR REVIEW
   - Audited security invariants: zero secrets in frontend, zero `Math.random` in server auth/keys/financials, server-authoritative money/inventory.
   - Recommended release status: **YELLOW — CONDITIONALLY READY** (pending live PostgreSQL staging verification and GitHub Actions CI runner).
 - **Supervisor Action Required**: Final independent supervisor review and release gate decision.
+
+---
+
+### Queue Item: REL-012 — Final Release Candidate, Production Deployment Validation & Customer Handover Gate
+- **Submitted By**: Senior Software Engineer / Implementation Lead & Security Architect
+- **Submission Date**: 2026-09-11
+- **Current Status**: `PENDING REVIEW`
+- **Scope**:
+  - Performed final release-candidate verification and security audit.
+  - Validated production environment parameters and fail-closed safety barriers under staging workloads.
+  - Successfully verified PostgreSQL migrations, database startup policies, liveness/readiness probes, and 160-unit full integration regression test suite.
+  - Conducted robust functional smoke tests of authentication, tenant isolation boundaries, double-entry inventory ledger, e-commerce storefront checkout, and POS offline queues.
+  - Disclosed simulation statuses of payment gateways and identified operational risks including geographical backups.
+  - Released `.ai/REL-012_FINAL_RELEASE_GATE.md` containing the definitive customer handover blueprint.
+- **Supervisor Action Required**: Final Go / Conditional Go / No-Go Decision on customer handover.
+
