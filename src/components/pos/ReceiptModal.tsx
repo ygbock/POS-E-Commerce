@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useCommerce } from '../../context/CommerceContext';
+import { modalManager } from '../../services/modalManager';
 import { Order } from '../../types';
 import { ReceiptTemplateConfig, DEFAULT_RECEIPT_CONFIG, ReceiptTemplateType, QrCodeTargetType } from '../../types/receipt';
 import { ReceiptTemplateEngine } from './ReceiptTemplateEngine';
@@ -15,7 +17,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrModalUrl, setQrModalUrl] = useState('');
-  const [qrModalLabel, setQrModalLabel] = useState('');
+  // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
+  useEffect(() => {
+    if (order) {
+      modalManager.registerModal('pos-receipt-modal', {
+        closeOnEscape: true,
+        onEscape: onClose,
+        titleId: 'pos-receipt-modal-title',
+      });
+    }
+    return () => {
+      if (order) {
+        modalManager.unregisterModal('pos-receipt-modal');
+      }
+    };
+  }, [order, onClose]);
 
   if (!order) return null;
 

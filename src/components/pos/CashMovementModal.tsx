@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCommerce } from '../../context/CommerceContext';
+import { modalManager } from '../../services/modalManager';
 import { AUTHORIZED_MANAGERS } from './PriceOverrideModal';
 import {
   ArrowDownLeft,
@@ -31,7 +32,21 @@ export const CashMovementModal: React.FC<CashMovementModalProps> = ({ isOpen, on
   const [requiresApproval, setRequiresApproval] = useState<boolean>(false);
   const [managerPin, setManagerPin] = useState<string>('1234');
   const [approvedManagerName, setApprovedManagerName] = useState<string>('');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
+  useEffect(() => {
+    if (isOpen) {
+      modalManager.registerModal('pos-cash-movement-modal', {
+        closeOnEscape: true,
+        onEscape: onClose,
+        titleId: 'pos-cash-movement-modal-title',
+      });
+    }
+    return () => {
+      if (isOpen) {
+        modalManager.unregisterModal('pos-cash-movement-modal');
+      }
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

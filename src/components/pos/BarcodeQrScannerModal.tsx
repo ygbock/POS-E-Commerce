@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCommerce } from '../../context/CommerceContext';
+import { modalManager } from '../../services/modalManager';
 import { Product, ProductVariant, Customer, Order } from '../../types';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
@@ -395,8 +396,21 @@ export const BarcodeQrScannerModal: React.FC<BarcodeQrScannerModalProps> = ({
       };
     } else {
       stopCameraScan();
+  // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
+  useEffect(() => {
+    if (isOpen) {
+      modalManager.registerModal('pos-scanner-modal', {
+        closeOnEscape: true,
+        onEscape: onClose,
+        titleId: 'pos-scanner-modal-title',
+      });
     }
-  }, [isOpen]);
+    return () => {
+      if (isOpen) {
+        modalManager.unregisterModal('pos-scanner-modal');
+      }
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

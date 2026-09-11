@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CartItem } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { modalManager } from '../../services/modalManager';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -82,8 +83,21 @@ export const PriceOverrideModal: React.FC<PriceOverrideModalProps> = ({
       setApprovedManager(null);
       setShowPinPad(false);
       setSelectedReason(OVERRIDE_REASONS[0]);
+  // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
+  useEffect(() => {
+    if (isOpen && item) {
+      modalManager.registerModal('pos-price-override-modal', {
+        closeOnEscape: true,
+        onEscape: onClose,
+        titleId: 'pos-price-override-modal-title',
+      });
     }
-  }, [item, isOpen]);
+    return () => {
+      if (isOpen && item) {
+        modalManager.unregisterModal('pos-price-override-modal');
+      }
+    };
+  }, [isOpen, item, onClose]);
 
   if (!isOpen || !item) return null;
 

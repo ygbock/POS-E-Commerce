@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCommerce } from '../../context/CommerceContext';
+import { modalManager } from '../../services/modalManager';
 import { PosShiftReconciliation, CashDenominations, PosShift } from '../../types';
 import { CashMovementModal } from './CashMovementModal';
 import { ReconciliationReportModal } from './ReconciliationReportModal';
@@ -90,7 +91,21 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
   const [supervisorPin, setSupervisorPin] = useState<string>('1234');
 
   // Selected History Shift Modal view
-  const [viewHistoryShift, setViewHistoryShift] = useState<any | null>(null);
+  // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
+  useEffect(() => {
+    if (isOpen) {
+      modalManager.registerModal('pos-shift-modal', {
+        closeOnEscape: true,
+        onEscape: onClose,
+        titleId: 'pos-shift-modal-title',
+      });
+    }
+    return () => {
+      if (isOpen) {
+        modalManager.unregisterModal('pos-shift-modal');
+      }
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
