@@ -5,7 +5,7 @@
 - **Status**: `READY FOR REVIEW`
 - **Parent Task**: Strategic Roadmap / Database Hardening & Fail-Closed Gate
 - **Operating Directive**: `INSPECT → FIX → TEST → VERIFY → DOCUMENT → REPORT`
-- **Target SHA / Current HEAD**: `342b08b0bea6b9a6fe5893aecaec668fec718bf5`
+- **Target SHA / Current HEAD**: `9ae4b7528aecd195a9167e1b2a060513cbf83223`
 - **Scope Discipline**:
   - Implemented a strictly deterministic, **fail-closed** database startup policy for production environments (`NODE_ENV=production`), prohibiting automatic fallback to `PGlite`.
   - Configured `server/db/client.ts` and `server.ts` to abort immediately with exit code 1 if external PostgreSQL connection parameters (`DATABASE_URL` or `PGHOST`) are missing or unreachable, or if `JWT_SECRET` is insecure/short.
