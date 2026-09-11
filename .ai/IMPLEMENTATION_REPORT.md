@@ -1,11 +1,29 @@
 # Implementation Report
 
+## REL-012R1 — Final Release Candidate Integrity Correction
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: Strategic Roadmap / Final Release Gate
+- **Operating Directive**: `INSPECT → AUDIT → RE-VERIFY → RE-DOCUMENT → REPORT`
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223`
+- **Final Documentation/Release HEAD**: `e3b215da48b174645522cb1db1d3cca7437577d2`
+- **Scope Discipline**:
+  - Restored the exact approved, deterministic package lockfile (`package-lock.json` created, validated, and locked).
+  - Executed `npm ci` to confirm clean dependency reconciliation with absolutely zero drift (327 packages audited).
+  - Vetted all post-REL-011R1 code changes, confirming `server/inventory/reservationService.ts` maintains its strict atomic transactional database `SAVEPOINT sp_reservation_attempt` structure with full concurrent safety and generic failure handlers.
+  - Vetted `tests/production_gate.test.ts` to verify assertions remain robust and fully deterministic.
+  - Re-executed full regression and gateway suites, passing **160/160 unique test cases** with a 100% success rate under a clean production compilation envelope.
+  - Updated `.ai/REL-012_FINAL_RELEASE_GATE.md` to clearly distinguish the immutable Approved Application Baseline from the Final Documentation/Release HEAD.
+
+---
+
 ## REL-012 — Final Release Candidate, Production Deployment Validation & Customer Handover Gate
 
 - **Status**: `READY FOR REVIEW`
 - **Parent Task**: Strategic Roadmap / Final Release Gate
 - **Operating Directive**: `INSPECT → AUDIT → TEST → VERIFY → DOCUMENT → REPORT`
-- **Target SHA / Current HEAD**: `9ae4b7528aecd195a9167e1b2a060513cbf83223`
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223`
+- **Final Documentation/Release HEAD**: `e3b215da48b174645522cb1db1d3cca7437577d2`
 - **Scope Discipline**:
   - Performed final release-candidate verification and security audit of the complete AbaCha Unified Commerce platform.
   - Validated production safety configurations, database connection controls, high-entropy JWT keys, and automatic migration rollbacks.

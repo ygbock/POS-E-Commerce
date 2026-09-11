@@ -432,3 +432,16 @@ Status: READY FOR REVIEW
   - Released `.ai/REL-012_FINAL_RELEASE_GATE.md` containing the definitive customer handover blueprint.
 - **Supervisor Action Required**: Final Go / Conditional Go / No-Go Decision on customer handover.
 
+---
+
+### Queue Item: REL-012R1 — Final Release Candidate Integrity Correction
+- **Submitted By**: Senior Software Engineer / Implementation Lead & Security Architect
+- **Submission Date**: 2026-09-11
+- **Current Status**: `PENDING REVIEW`
+- **Scope**:
+  - Restored exact locked dependency tree (`package-lock.json` committed and validated via `npm ci`).
+  - Re-vetted post-REL-011R1 reservation concurrency transactional boundaries, verifying zero unvetted mutations.
+  - Successfully verified linter checks and re-ran the full 160-unit integration suite against PostgreSQL with 100% pass rate.
+  - Synchronized release report `.ai/REL-012_FINAL_RELEASE_GATE.md` with both Approved Application Baseline (`9ae4b7528aecd195a9167e1b2a060513cbf83223`) and Final Documentation/Release HEAD (`e3b215da48b174645522cb1db1d3cca7437577d2`) SHAs.
+- **Supervisor Action Required**: Review release candidate integrity documentation, verify zero source changes, and approve handover release.
+

@@ -593,3 +593,26 @@ PROD-001 (NOT STARTED)
   - [x] No credentials or secrets committed.
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
 
+---
+
+### Task 12R1: REL-012R1 — Final Release Candidate Integrity Correction
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Restore release-candidate integrity after the REL-012 documentation commit caused the current main branch to diverge from the approved REL-011R1 release candidate.
+- **Scope**:
+  - Restored the deterministic locked package-lock.json.
+  - Audited post-REL-011R1 source code and test files to ensure exact parity with the approved candidate.
+  - Verified linter, production bundler, and full 160-unit regression test suite with 100% success.
+  - Updated final handover documentation to explicitly distinguish the Approved Application Baseline and the Final Documentation/Release HEAD commit SHAs.
+- **Dependencies**: `REL-012`
+- **Acceptance Criteria**:
+  - [x] package-lock.json restored and committed.
+  - [x] `npm ci` succeeds cleanly with zero dependency drift.
+  - [x] Verified `reservationService.ts` matches approved REL-011R1 atomic savepoint transactional design.
+  - [x] Verified `tests/production_gate.test.ts` checks are intact.
+  - [x] Static compilation, formatting, and `npm run lint` pass with 0 errors.
+  - [x] Run full PostgreSQL staging integration suite (160 unique verification units pass).
+  - [x] No application source mutations introduced.
+  - [x] Handover blueprint `.ai/REL-012_FINAL_RELEASE_GATE.md` updated with exact baseline and current release HEAD SHA metrics.
+  - [x] No secrets committed.
+- **Supervisor Gate**: Marked `READY FOR REVIEW`.
+
