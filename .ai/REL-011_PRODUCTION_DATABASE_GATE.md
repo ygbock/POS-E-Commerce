@@ -188,3 +188,58 @@ All core operational invariants remain intact and verified against real PostgreS
 ## 10. Final Recommendation
 Task **REL-011** is **COMPLETE** and **READY FOR REVIEW**. The platform successfully enforces a deterministic fail-closed architecture, prohibits silent PGlite degradation in production, and passes all 158 tests natively against PostgreSQL 16.
 
+
+## 11. REL-011R1: Reservation Idempotency Race & Concurrency Fix
+
+### 11.1 Problem Statement & Current Defect
+In the original implementation, `SAVEPOINT sp_reservation_insert` in `server/inventory/reservationService.ts` was instantiated *after* updating the inventory reserved balance in the repository (`inventoryRepo.adjustReserved()`). 
+
+On concurrent overlapping requests utilizing the same idempotency key, the second request would attempt to write to `inventory_reservations`, trigger a unique key constraint violation (`23505`), and rollback to `sp_reservation_insert`. However, because the inventory reserved balance was updated *before* the savepoint was created, that duplicate increment of the reserved inventory remained active in the outer transaction and was committed when the transaction successfully closed. This resulted in an inventory integrity violation:
+- Exactly one reservation record existed in the database.
+- But the reserved balance was incremented twice, and available stock was decremented twice, causing a persistent inventory leak.
+
+### 11.2 Core Corrective Fix
+We refactored `createReservation` inside `server/inventory/reservationService.ts` to reposition the `SAVEPOINT sp_reservation_attempt` so that it encompasses **BOTH** operations:
+1. `inventoryRepo.adjustReserved(...)` (Inventory reserved-balance adjustment)
+2. `reservationRepo.createReservation(...)` (Reservation row insert)
+
+#### Transaction shape implemented:
+```text
+BEGIN (Outer Transaction)
+  │
+  ├── SAVEPOINT sp_reservation_attempt
+  │     ├── 1. Read available stock & adjust reserved balance
+  │     └── 2. Try INSERT INTO inventory_reservations (idempotency unique-key check)
+  │
+  ├── ON UNIQUE CONSTRAINT ERROR (23505) ──> ROLLBACK TO SAVEPOINT sp_reservation_attempt
+  │     │                                  (Reverts both the balance change & insert atomically)
+  │     └── 3. Fetch existing reservation and return (No duplicate balance adjustments)
+  │
+  └── COMMIT
+```
+
+By ensuring that the rollback completely reverts the entire reservation attempt, transaction semantics cleanly and atomically undo the duplicate inventory increment, guaranteeing absolute data consistency.
+
+### 11.3 Concurrency & Conflict Tests Added (`tests/production_gate.test.ts`)
+We added two brand new automated test cases to `tests/production_gate.test.ts` to verify the fix natively under both isolated database modes and real PostgreSQL staging:
+
+1. **Test 8: Concurrent Reservation Idempotency Concurrency Test (PGSQL)**
+   - Prepares an organization, location, and variant with 100 units of stock.
+   - Invokes two concurrent `createReservation()` calls using `Promise.all` with the same payload and idempotency key.
+   - Verifies both calls succeed and return the exact same reservation.
+   - Verifies exactly **ONE** reservation record is created in the database.
+   - Verifies the inventory balance's `reserved` stock is incremented exactly **ONCE** (to 10) and `available` is decremented exactly **ONCE** (to 90).
+   - Verifies no PostgreSQL transaction abort block error (`25P02`) is left behind.
+   - Verifies subsequent database queries and transactions execute normally.
+
+2. **Test 9: Concurrent Reservation Idempotency Conflict Test (Different Payload)**
+   - Verifies that if a duplicate request uses the same idempotency key but passes a different payload (e.g. different quantity), the system safely rejects it with a strict `IDEMPOTENCY_CONFLICT` error.
+   - Verifies that the rejected request leaves the reserved stock completely unchanged.
+
+### 11.4 Final Execution Results (PostgreSQL 16)
+Both tests execute and pass with 100% success on the real PostgreSQL 16 staging database:
+- `[TEST] 8. Concurrent Reservation Idempotency Concurrency Test (PGSQL)... PASSED`
+- `[TEST] 9. Concurrent Reservation Idempotency Conflict Test (Different Payload)... PASSED`
+
+This completes the verification of **REL-011R1** as fully resolved and production-ready.
+

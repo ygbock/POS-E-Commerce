@@ -81,37 +81,37 @@ export class ReservationService {
         }
       }
 
-      // 2. Verify tenant ownership
-      const isLocValid = await this.inventoryRepo.verifyLocationOwnership(organizationId, data.location_id, tx);
-      if (!isLocValid) {
-        throw new Error(`TENANT_ACCESS_DENIED: Location '${data.location_id}' does not belong to organization.`);
-      }
-
-      const isVarValid = await this.inventoryRepo.verifyVariantOwnership(organizationId, data.variant_id, tx);
-      if (!isVarValid) {
-        throw new Error(`TENANT_ACCESS_DENIED: Variant '${data.variant_id}' does not belong to organization.`);
-      }
-
-      // 3. Adjust balance reserved atomically (checks available stock via FOR UPDATE lock)
-      await this.inventoryRepo.adjustReserved(
-        {
-          organization_id: organizationId,
-          location_id: data.location_id,
-          variant_id: data.variant_id,
-          delta_reserved: exactQty,
-        },
-        tx
-      );
-
-      // 4. Create reservation record with collision-resistant UUID
-      const reservationId = generateInventoryId('res');
-      let reservation: InventoryReservationRecord;
       const useSavepoint = !!idempotencyKey;
       if (useSavepoint) {
-        await tx.exec('SAVEPOINT sp_reservation_insert');
+        await tx.exec('SAVEPOINT sp_reservation_attempt');
       }
+
       try {
-        reservation = await this.reservationRepo.createReservation(
+        // 2. Verify tenant ownership
+        const isLocValid = await this.inventoryRepo.verifyLocationOwnership(organizationId, data.location_id, tx);
+        if (!isLocValid) {
+          throw new Error(`TENANT_ACCESS_DENIED: Location '${data.location_id}' does not belong to organization.`);
+        }
+
+        const isVarValid = await this.inventoryRepo.verifyVariantOwnership(organizationId, data.variant_id, tx);
+        if (!isVarValid) {
+          throw new Error(`TENANT_ACCESS_DENIED: Variant '${data.variant_id}' does not belong to organization.`);
+        }
+
+        // 3. Adjust balance reserved atomically (checks available stock via FOR UPDATE lock)
+        await this.inventoryRepo.adjustReserved(
+          {
+            organization_id: organizationId,
+            location_id: data.location_id,
+            variant_id: data.variant_id,
+            delta_reserved: exactQty,
+          },
+          tx
+        );
+
+        // 4. Create reservation record with collision-resistant UUID
+        const reservationId = generateInventoryId('res');
+        const reservation = await this.reservationRepo.createReservation(
           {
             id: reservationId,
             organization_id: organizationId,
@@ -129,13 +129,13 @@ export class ReservationService {
           tx
         );
         if (useSavepoint) {
-          await tx.exec('RELEASE SAVEPOINT sp_reservation_insert');
+          await tx.exec('RELEASE SAVEPOINT sp_reservation_attempt');
         }
         return reservation;
       } catch (err: any) {
         if (useSavepoint) {
           try {
-            await tx.exec('ROLLBACK TO SAVEPOINT sp_reservation_insert');
+            await tx.exec('ROLLBACK TO SAVEPOINT sp_reservation_attempt');
           } catch {
             // ignore savepoint rollback error
           }

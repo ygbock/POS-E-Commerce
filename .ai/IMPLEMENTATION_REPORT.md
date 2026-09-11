@@ -1,5 +1,21 @@
 # Implementation Report
 
+## REL-011 & REL-011R1 — Production Database Fail-Closed & Concurrency Hardening
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: Strategic Roadmap / Database Hardening & Fail-Closed Gate
+- **Operating Directive**: `INSPECT → FIX → TEST → VERIFY → DOCUMENT → REPORT`
+- **Target SHA / Current HEAD**: `342b08b0bea6b9a6fe5893aecaec668fec718bf5`
+- **Scope Discipline**:
+  - Implemented a strictly deterministic, **fail-closed** database startup policy for production environments (`NODE_ENV=production`), prohibiting automatic fallback to `PGlite`.
+  - Configured `server/db/client.ts` and `server.ts` to abort immediately with exit code 1 if external PostgreSQL connection parameters (`DATABASE_URL` or `PGHOST`) are missing or unreachable, or if `JWT_SECRET` is insecure/short.
+  - Corrected the PostgreSQL reservation idempotency race condition (`REL-011R1`) by nesting BOTH the inventory reserved-balance adjustment (`inventoryRepo.adjustReserved`) and the reservation insertion (`reservationRepo.createReservation`) within a single, atomic `SAVEPOINT sp_reservation_attempt` transaction blocks.
+  - Implemented 9 automated tests in `tests/production_gate.test.ts` to verify production database policy, PGlite bypass restrictions, JWT strength, health/readiness HTTP 503 outage responses, concurrent reservation idempotency, and different payload collisions.
+  - Validated the complete 151-test suite + 9 production-gate tests (**160 tests total**) successfully against a real PostgreSQL 16 staging database, passing with 100% success.
+  - Verified static compilation with `npm run lint` and `npm run build` cleanly returning exit code 0.
+
+---
+
 ## REL-010 — Release Candidate Hardening & Production Gate
 
 - **Status**: `READY FOR REVIEW`

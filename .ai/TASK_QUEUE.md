@@ -535,15 +535,15 @@ PROD-001 (NOT STARTED)
 
 ### Task 11: REL-011 — Production Database Fail-Closed + PostgreSQL Staging Gate
 - **Status**: `READY FOR REVIEW`
-- **Objective**: Make production database behavior deterministic and fail-closed, then validate the complete application against a real PostgreSQL staging database.
+- **Objective**: Make production database behavior deterministic and fail-closed, then validate the complete application against a real PostgreSQL staging database. Resolve PostgreSQL reservation idempotency race condition under concurrent requests.
 - **Scope**:
   - Enforced production database policy: `NODE_ENV=production` requires valid PostgreSQL configuration; missing or invalid config causes hard startup termination.
   - Strictly prohibited embedded PGlite persistence in production; environment variable overrides (`ALLOW_EMBEDDED_POSTGRES`) are ignored under production.
   - Removed automatic fallback to embedded storage from `startServer()` in `server.ts`.
   - Enforced high-entropy `JWT_SECRET` (minimum 32 characters, no 'dev'/'default') during production startup.
-  - Wrapped concurrent reservation insert in PostgreSQL `SAVEPOINT sp_reservation_insert` in `reservationService.ts` to allow clean recovery without aborting active transaction.
+  - Repositioned the SQL savepoint rollback (`REL-011R1`) to wrap BOTH the inventory balance adjustment and reservation creation inside `reservationService.ts`. This ensures duplicate concurrent requests with identical idempotency keys roll back the entire attempt atomically, resolving the concurrency race and preventing inventory leaks.
   - Validated health (`/api/health`) and readiness (`/api/ready`) probes report active database engine (`"engine": "postgresql"`) and return HTTP 503 during database outage.
-  - Executed complete verification suite (151 unique baseline units + 7 production gate units = 158 units) against real PostgreSQL 16 staging database with 100% pass rate.
+  - Executed complete verification suite (151 unique baseline units + 9 production gate/concurrency units = 160 units) against real PostgreSQL 16 staging database with 100% pass rate.
   - Validated negative test scenarios (missing config, invalid config, database outage, PGlite fallback rejection).
 - **Dependencies**: `REL-010`
 - **Acceptance Criteria**:
@@ -553,7 +553,10 @@ PROD-001 (NOT STARTED)
   - [x] `/api/health` reports PostgreSQL (`"engine": "postgresql"`).
   - [x] `/api/ready` succeeds with PostgreSQL available.
   - [x] `/api/ready` fails when PostgreSQL is unavailable (HTTP 503).
-  - [x] 151 unique verification units pass on PostgreSQL (158 total units).
+  - [x] Concurrency fix correctly wraps inventory adjustment and reservation insertion under `SAVEPOINT sp_reservation_attempt` (`REL-011R1`).
+  - [x] Concurrent reservation idempotency concurrency test passes on PostgreSQL.
+  - [x] Concurrent reservation idempotency conflict test (different payload) passes on PostgreSQL.
+  - [x] 151 unique verification units pass on PostgreSQL (160 total units).
   - [x] `npm run lint` passes (0 errors).
   - [x] `npm run build` passes (Exit Code 0).
   - [x] No security regressions.
