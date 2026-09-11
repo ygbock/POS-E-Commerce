@@ -78,8 +78,23 @@ jobs:
             echo "Automated promotion cannot proceed without an approved, verified deployment mechanism."
             exit 1
           fi
-          echo "Executing Render production deployment webhook..."
-          curl -f -s -S -X POST "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" > /dev/null
+
+          APPROVED_COMMIT="${{ inputs.approved_commit_sha }}"
+          DEPLOY_HOOK="${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}"
+
+          if [ -z "$APPROVED_COMMIT" ]; then
+            echo "FATAL: inputs.approved_commit_sha is required for exact-commit deployment."
+            exit 1
+          fi
+
+          if [[ "$DEPLOY_HOOK" == *"?"* ]]; then
+            DEPLOY_URL="${DEPLOY_HOOK}&ref=${APPROVED_COMMIT}"
+          else
+            DEPLOY_URL="${DEPLOY_HOOK}?ref=${APPROVED_COMMIT}"
+          fi
+
+          echo "Triggering Render production deployment for approved commit SHA: ${APPROVED_COMMIT}"
+          curl -f -s -S -X POST "$DEPLOY_URL" > /dev/null
           echo "Production deployment webhook invoked successfully."
 
       - name: "Gate C: Deployed Revision Verification"
