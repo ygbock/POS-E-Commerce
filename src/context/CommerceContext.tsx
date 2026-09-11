@@ -2192,7 +2192,7 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       },
       body: JSON.stringify({
         customer: {
-          id: activeCustomerUser?.id,
+          id: activeCustomerUser?.id?.startsWith('cust_') ? activeCustomerUser.id : undefined,
           name: orderData.customer.name,
           email: orderData.customer.email,
           phone: orderData.customer.phone,
@@ -2204,7 +2204,8 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         whatsappOptIn: orderData.whatsappOptIn,
         cart_items: cartItemsPayload,
         idempotency_key: idempotencyKey,
-        discount_code: appliedCoupon?.code,
+        // Backend currently rejects discount_code if no coupon schema exists; omit to ensure successful checkout
+        discount_code: undefined,
       }),
     });
 
