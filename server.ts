@@ -57,6 +57,22 @@ export async function createApp(options: CreateAppOptions = {}) {
   const app = express();
   const isProd = process.env.NODE_ENV === 'production';
 
+  // Validate production environment requirements before proceeding
+  if (isProd) {
+    const dbUrl = process.env.DATABASE_URL;
+    const pgHost = process.env.PGHOST;
+    if (!dbUrl && !pgHost) {
+      throw new Error('[AbaCha Config Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST is missing).');
+    }
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('[AbaCha Config Fatal] JWT_SECRET environment variable is mandatory in production.');
+    }
+    if (jwtSecret.length < 32 || jwtSecret.includes('dev') || jwtSecret.includes('default')) {
+      throw new Error('[AbaCha Config Fatal] Production JWT_SECRET must be a high-entropy string of at least 32 characters.');
+    }
+  }
+
   // Initialize Database Persistence Layer
   const dbStatus = {
     connected: false,
@@ -1781,12 +1797,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
 export async function startServer() {
   const PORT = 3000;
-
-  // In cloud sandbox containers without external PostgreSQL configured, enable embedded persistent PostgreSQL engine
-  if (!process.env.DATABASE_URL && !process.env.PGHOST) {
-    console.warn('[AbaCha DB] No external DATABASE_URL or PGHOST detected in container environment. Booting persistent embedded PostgreSQL engine (.data/postgres).');
-    process.env.ALLOW_EMBEDDED_POSTGRES = 'true';
-  }
 
   const { app } = await createApp();
 

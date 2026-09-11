@@ -1575,6 +1575,50 @@ In accordance with supervisor directives and the engineering contract, `API-001`
    - Stopped at: `READY FOR FINAL SUPERVISOR RELEASE DECISION`.
 
 
+---
+
+## REL-011 — Production Database Fail-Closed + PostgreSQL Staging Gate
+
+- **Status**: `READY FOR REVIEW`
+- **Role**: Senior Backend / Release Engineer
+- **Parent Task**: Strategic Roadmap / Handover Gate
+- **48-Hour Customer Handover Readiness**: Complete and verified
+
+### 1. Architectural & Safety Accomplishments
+
+1. **Strict Production Environment Gate**:
+   - Hardened `server.ts` to perform fail-closed environment validation at `createApp` startup when running under `NODE_ENV=production`.
+   - Mandated valid external PostgreSQL configurations (`DATABASE_URL` or `PGHOST`). If absent, startup terminates immediately with a clear, sanitized non-secret configuration error.
+   - Removed any potential silent fallback to embedded PGlite persistence when running in production mode.
+
+2. **JWT Secret Entropic Rules**:
+   - Enforced strict requirements on `JWT_SECRET` under `NODE_ENV=production`. It must be at least 32 characters in length and cannot contain lowercase/uppercase variations of `'dev'` or `'default'` substrings. Weak or missing credentials cause immediate startup abort.
+
+3. **Secure Error Redaction**:
+   - Confirmed that operational database connection and configuration failures do not leak connection parameters, passwords, or stack traces to standard outputs or API responses.
+
+4. **Health & Readiness Probe Hardening**:
+   - Configured `/api/health` and `/api/ready` to correctly report 503 Service Unavailable with a sanitized JSON payload if the PostgreSQL service is unreachable, ensuring standard load balancers fail-closed on bad nodes.
+
+5. **Development & Test Flexibility**:
+   - Ensured zero friction for local development and non-production testing; the system gracefully allows embedded PGlite fallbacks in development and respects postgres in test when explicitly configured.
+
+### 2. Verification Outcomes
+
+1. **New Automated Production Gate Tests**:
+   - `npm run test:prod-gate`: **7/7 PASSED (100%)**
+2. **Full Regression Execution Check**:
+   - `npm test`: **158/158 PASSED (100%)**
+3. **Build & Lint Consistency Check**:
+   - `npm run lint` (`tsc --noEmit`): **0 errors / 0 warnings**
+   - `npm run build`: **Succeeded cleanly with 0 errors/warnings**
+4. **Applet Compilation**:
+   - `compile_applet`: **Build succeeded successfully**
+5. **Governance State**:
+   - Marked `READY FOR REVIEW` in `.ai/TASK_QUEUE.md` and `.ai/REL-011_PRODUCTION_DATABASE_GATE.md` created.
+
+
+
 
 
 
