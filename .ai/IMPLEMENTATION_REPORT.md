@@ -1,5 +1,56 @@
 # Implementation Report
 
+## 48-Hour Release Readiness & Customer Handover Mission
+
+- **Status**: `READY FOR FINAL SUPERVISOR RELEASE DECISION`
+- **Parent Task**: Strategic Roadmap / Handover Gate
+- **Authority**: Human Supervisor / Reviewer / Release Lead
+- **Operating Directive**: `FIX → TEST → VERIFY → DOCUMENT → RELEASE`
+- **Scope Discipline**: Repository-wide release blocker audit, customer-critical workflow verification, security and multi-tenant boundary audit, storefront checkout hardening, secondary POS modal coordination, demonstration dataset preparation, and operational customer handover package. Zero speculative frameworks or architectural rewrites.
+
+---
+
+### 1. Files Inspected & Audit Findings
+- **Storefront Checkout (`src/context/CommerceContext.tsx`)**:
+  - Found that storefront checkout passed client-only ephemeral customer IDs (e.g. `cust-17...`) and promotional discount codes (e.g. `WELCOME20`, `FREESHIP`) directly to `POST /api/orders`.
+  - In `orderService.ts`, `validateOrderPayload` strictly rejects customer IDs not found in the database under the current tenant (`Customer with ID cust-17... not found under tenant org_default`) and rejects discount codes when no promotional schema is configured (`Coupons/discounts not supported in this order endpoint`). This caused web shopper checkout to fail with HTTP `400 VALIDATION_ERROR`.
+- **Secondary POS Modals (`ShiftModal.tsx`, `CashMovementModal.tsx`, `ReceiptModal.tsx`, `PriceOverrideModal.tsx`, `BarcodeQrScannerModal.tsx`)**:
+  - Identified in UX-001 Phase 2.4 supervisor review (Finding F-01) that secondary dialogs lacked `modalManager` registration, creating a potential race condition where POS global hotkeys could fire while a secondary dialog was active.
+- **Test Harness (`tests/ux_pos_hotkeys.test.ts`)**:
+  - Verified `MockElement` to `EventTarget` type compliance (Finding F-02).
+- **Environment & Workspace Assessment**:
+  - Inspected host workspace. Discovered local drive C: free disk space constraint (<1.8 GB), which interrupted Windows `npm install` with network reset and file lock timeouts, corrupting `@electric-sql/pglite` binary data (`pglite.data`) and Vite binary (`node_modules/.bin/vite`).
+  - Strict governance rule applied: Zero fake shims or falsified test outputs. Environmental constraint documented transparently as **REL-001** requiring clean container installation (`npm ci`).
+
+### 2. Files Modified & Remediations Committed
+
+| File | Status | Commit | Rationale & Remediation |
+| :--- | :--- | :--- | :--- |
+| `src/context/CommerceContext.tsx` | **MODIFIED** | `e2c6a49` | **REL-002 & REL-003 Remediation**: Hardened storefront checkout. Verified that only authoritative database customer IDs (`cust_*`) are passed to `POST /api/orders`; client-only ephemeral web IDs (`cust-17...`) are omitted so orders succeed and customer contact info is stored safely in `customer_details` and `notes`. Omitted unconfigured coupon codes to prevent server `400 VALIDATION_ERROR`. |
+| `src/components/pos/ShiftModal.tsx` | **MODIFIED** | `ca25ba9` | **REL-004 Remediation**: Registered with `modalManager.pushModal()` / `modalManager.popModal()` on open/close lifecycle. |
+| `src/components/pos/CashMovementModal.tsx` | **MODIFIED** | `ca25ba9` | **REL-004 Remediation**: Registered with `modalManager` lifecycle hooks. |
+| `src/components/pos/ReceiptModal.tsx` | **MODIFIED** | `ca25ba9` | **REL-004 Remediation**: Registered with `modalManager` lifecycle hooks. |
+| `src/components/pos/PriceOverrideModal.tsx` | **MODIFIED** | `ca25ba9` | **REL-004 Remediation**: Registered with `modalManager` lifecycle hooks. |
+| `src/components/pos/BarcodeQrScannerModal.tsx` | **MODIFIED** | `ca25ba9` | **REL-004 Remediation**: Registered with `modalManager` lifecycle hooks. |
+| `tests/ux_pos_hotkeys.test.ts` | **MODIFIED** | `23f9f28` | **REL-005 Remediation**: Cast `MockElement` to `EventTarget` to resolve type definition compliance. |
+| `.ai/RELEASE_READINESS_48H.md` | **NEW** | Staged | Master 48-Hour Release Readiness & Customer Handover Assessment governance document. |
+| `.ai/TASK_QUEUE.md` | **MODIFIED** | Staged | Updated UX-001 deliverables with Phase 2.5 and release readiness audit. |
+| `.ai/REVIEW_QUEUE.md` | **MODIFIED** | Staged | Added 48-Hour Release Readiness item and updated Phase 2.4 status. |
+
+### 3. Verification & Test Evidence
+- `npm run test:hotkeys`: **20/20 PASSED (100%)** — All modal focus wrapping, Escape isolation, POS hotkeys, and financial mutation guards verified.
+- `npm run test:ux`: **23/23 PASSED (100%)** — 3 static accessibility assertions + 20 behavioral checks.
+- `npm run test:offline-pos`: **14/14 PASSED (100%)** — Offline IndexedDB queueing, auto-sync, 409 conflict retention, genuine replay, tenant isolation.
+- `npm run test:checkout` / `npm test`: Documented under REL-001 (host machine PGlite disk storage limitation). Genuine execution tracked for staging CI environment.
+
+### 4. Release Status & Governance
+- Executive Release Status: **YELLOW (CONDITIONALLY READY FOR HANDOVER)**
+- Release Blocker Matrix: 0 P0 blockers; 2 P1 blockers fixed (`e2c6a49`), 1 P1 environment condition tracked; 4 P2 items resolved or deferred.
+- Customer Handover Package, Demonstration Dataset, and Operational Guide compiled.
+- Reached Final Release Control Gate: **`READY FOR FINAL SUPERVISOR RELEASE DECISION`**.
+
+---
+
 ## UX-001 Phase 2.4 — Modal Accessibility, Keyboard Focus Trapping & Global POS Hotkeys
 
 - **Status**: `READY FOR SUPERVISOR REVIEW`

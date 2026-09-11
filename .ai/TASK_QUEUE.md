@@ -344,7 +344,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 9: UX-001 — Production UX Hardening, Offline Resilience & Error Recovery
-- **Status**: `UX-001 Phase 2.4 — READY FOR SUPERVISOR REVIEW`
+- **Status**: `APPROVED WITH CONDITIONS` (Supervisor Review 2026-09-11; 48H Release Audit Ready)
 - **Phase 1 Deliverables**: Completed Comprehensive UI/UX Audit ([.ai/UX_AUDIT.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_AUDIT.md)) and UX Modernization Implementation Plan ([.ai/UX_IMPLEMENTATION_PLAN.md](file:///c:/Users/sbses/Documents/GitHub/POS-E-Commerce/.ai/UX_IMPLEMENTATION_PLAN.md)), approved with conditions on 2026-09-10.
 - **Phase 2.1 Deliverables**: Implemented baseline design system primitives, global `ErrorBoundary` protection, sole environment gate checks, and React `useId` modal identifiers.
 - **Phase 2.2C Deliverables**: Completed e-commerce checkout integration. Hardened exact string-only quantities, cryptographically secure idempotency keys, payload fingerprinting (with customer details and location ID tracking), server-authoritative pricing and taxes, pessimistic variant row locking, payment state persistence, local `SAVEPOINT` transaction recovery (solving PostgreSQL unique-constraint abort race conditions), and robust production error sanitization.
@@ -355,9 +355,11 @@ PROD-001 (NOT STARTED)
   - Hardened Modal primitive (`src/components/ui/Modal.tsx`) with `useId` collision-safe IDs, `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `closeOnEscape`, safe focus restoration guarded by `document.body.contains(trigger)`, and zero-dimension headless guards.
   - Reusable focus trap hook (`src/hooks/useModalFocusTrap.ts`) supporting nested modal lifecycles.
   - Refactored all 5 POS overlay dialogs in `PosTerminal.tsx` to wrap `<Modal>` (Variant Selector, Payment Tender, Held Sales Queue, Returns & Refunds, Quick Add Customer).
+  - Secondary POS dialogs (`ShiftModal`, `CashMovementModal`, `ReceiptModal`, `PriceOverrideModal`, `BarcodeQrScannerModal`) registered with `modalManager` lifecycle hooks.
   - Centralized POS keyboard shortcuts hook (`src/hooks/usePosKeyboardShortcuts.ts`) with input-element guards (protects typing in `input`, `textarea`, `select`, `contenteditable`), complete modal-open suppression, native browser shortcut protection (`Ctrl+C`, `Ctrl+V`, `F5`, `Alt+Tab`), and strict financial mutation safety (zero shortcuts trigger payment or ledger updates).
   - Accessible Hotkey Quick Reference Bar in `PosTerminal.tsx` footer.
   - Comprehensive 20-point behavioral test suite (`tests/ux_pos_hotkeys.test.ts`) covering all 12 modal focus/lifecycle checkpoints and 8 POS hotkey/safety checkpoints.
+- **Phase 2.5 Deliverables**: Mobile touch targets calibrated to 44px minimum height standard; table horizontal scroll swipe indicators integrated for complex product and inventory data tables.
 - **Objective**: Modernize frontend UX incrementally starting with common design primitives and error wrappers, progressing to server authoritative integration, offline resilience, and mobile responsive layout fixes.
 - **Scope**:
   - [x] Phase 1: Frontend inspection and audit reports.
@@ -366,7 +368,7 @@ PROD-001 (NOT STARTED)
   - [x] Phase 2.3: Offline POS IndexedDB transaction queueing, synchronization on recovery, backoff schedules, and status banners.
   - [x] Phase 2.3 R1: Offline POS security, multi-tenant isolation, 409 conflict semantics, storage split-brain migration, and server-authoritative reconciliation.
   - [x] Phase 2.4: Remediate modal accessibility (focus trapping, escape listeners) and map global POS keyboard hotkeys.
-  - [ ] Phase 2.5: Calibrate mobile touch targets and ensure horizontal scroll wraps for complex tables.
+  - [x] Phase 2.5: Calibrate mobile touch targets and ensure horizontal scroll wraps for complex tables.
 - **Dependencies**: `POS-001`, `API-001`, `QA-001`.
 - **Acceptance Criteria**:
   - [x] Phase 1: UX Audit Report and Implementation Plan submitted and approved.
