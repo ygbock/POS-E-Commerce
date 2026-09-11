@@ -9,6 +9,8 @@
 - **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
 - **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
 - **Exact Commits**:
+  - `4790d90`: `fix(ci): quote workflow step names containing colons to resolve YAML parsing syntax error`
+  - `da22594`: `docs: record UPG-001R2 supervisor review corrections in task queue, review queue, and implementation report`
   - `661bafa`: `feat(hardening): UPG-001R2 complete 1:1 environment contract, 4-gate deployment workflow, and expanded contradiction matrix`
   - `e840027`: `feat(hardening): UPG-001R1 production operations hardening corrections`
   - `5e3f801`: `docs: add operational platform hardening specifications and runbooks (UPG-001)`
