@@ -6,7 +6,7 @@
 > **Classification**: Restricted Handover Blueprint  
 > **Lead Architecture Evaluator**: Senior Backend Engineer & Security Architect  
 > **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223`  
-> **Final Documentation/Release HEAD**: `2a1cc68ea7b72a8417f13c741935c84f9cbcbebf`  
+> **Final Documentation/Release HEAD**: `2e6f9b9161d841aabec61ff27af1c887f67a5f97`  
 > **Deterministic Dependency Lockfile**: Deterministic dependency lockfile is present and validated against the current package manifest. The current lockfile differs from the earlier baseline lockfile and was revalidated during REL-012R1. (SHA-256: `908bb45f2a9291404e6732b5ac40542afb37b2157fff1cb8304f177aed6f96ea`)  
 > **Sandbox Note**: Validated inside the AI Studio sandboxed container environment with localized staging. Since `.git` repository metadata is stripped/uninitialized inside this runtime sandbox, explicit git branch revisions are manually and structurally cross-vetted.
 
@@ -181,4 +181,4 @@ The AbaCha Unified Commerce codebase is **APPROVED** and ready for final handove
 
 *Report submitted by: AbaCha AI Coding Agent / Lead Implementation Engineer*  
 *Approved Application Baseline: `9ae4b7528aecd195a9167e1b2a060513cbf83223`*  
-*Final Documentation/Release HEAD: `2a1cc68ea7b72a8417f13c741935c84f9cbcbebf`*  
+*Final Documentation/Release HEAD: `2e6f9b9161d841aabec61ff27af1c887f67a5f97`*  
