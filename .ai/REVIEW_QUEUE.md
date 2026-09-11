@@ -366,5 +366,23 @@ Status: READY FOR REVIEW
     - **Build Output**: `npm run build` compiles successfully.
 - **Supervisor Action Required**: Independent review and approval of UX-001 Phase 2.2C R1.
 
+---
+
+## UX-001 Phase 2.5: Storefront & POS Usability, Keyboard Navigation & Modal Hardening
+- **Task ID**: UX-001 Phase 2.5
+- **Status**: PENDING REVIEW
+- **Agent Notes**:
+  - Implemented customer handover release hardening across the entire storefront and POS operator experience:
+    - **Storefront WCAG 2.2 AA Focus Trapping**: Connected `useModalFocusTrap` across all storefront modals (`StoreCheckoutModal`, `ProductDetailModal`, `QuickViewModal`, `OrderSuccessModal`, `OrderTrackingModal`, `OrderNotificationHubModal`, `CustomerAccountModal`, `AccountClaimModal`) and flyout drawers (`StoreCartDrawer`, `WishlistDrawer`, `MobileFilterDrawer`). Added accessible dialog semantics (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `tabIndex={-1}`, and title IDs).
+    - **Keyboard Navigation**: Added keyboard activation (`tabIndex={0}`, `role="button"`, `Enter` and `Space` keypress listeners) and `focus-visible:ring-2` styling on catalog `ProductCard` components.
+    - **POS Usability & Error UX**: Removed blocking native `window.alert(...)` dialogs across `PosTerminal.tsx` and `BarcodeQrScannerModal.tsx`. Introduced inline error banners and non-blocking `triggerScanToast` feedback.
+    - **Syntactic & Type Safety**: Corrected missing state variables and closed `useEffect` blocks in `BarcodeQrScannerModal.tsx`, `PriceOverrideModal.tsx`, `CashMovementModal.tsx`, `ReceiptModal.tsx`, and `ShiftModal.tsx`.
+  - **Quality Gates Verification**:
+    - `npm run test:hotkeys`: **20/20 PASSED** (100%).
+    - `npm run test:ux`: **23/23 PASSED** (100%).
+    - `npm run test:offline-pos`: **14/14 PASSED** (100%).
+- **Supervisor Action Required**: Independent supervisor review and final release decision.
+
+
 
 

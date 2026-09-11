@@ -32,6 +32,7 @@ export const CashMovementModal: React.FC<CashMovementModalProps> = ({ isOpen, on
   const [requiresApproval, setRequiresApproval] = useState<boolean>(false);
   const [managerPin, setManagerPin] = useState<string>('1234');
   const [approvedManagerName, setApprovedManagerName] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
   useEffect(() => {
     if (isOpen) {

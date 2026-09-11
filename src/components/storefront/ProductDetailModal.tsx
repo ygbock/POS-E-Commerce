@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Product,
   ProductVariant,
   ProductReview,
 } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import {
   Star,
   CheckCircle2,
@@ -94,6 +95,9 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const [reviewTitle, setReviewTitle] = useState('');
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(true, onClose, modalRef);
 
   // Sync state if product changes
   React.useEffect(() => {
@@ -233,8 +237,13 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
         onClick={onClose}
       >
         <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="product-detail-modal-title"
+          tabIndex={-1}
           id="product-detail-modal-container"
-          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-t-[28px] sm:rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 text-slate-900 dark:text-white max-h-[92vh] sm:max-h-[90vh] flex flex-col mt-8 sm:mt-0 relative"
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-t-[28px] sm:rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 text-slate-900 dark:text-white max-h-[92vh] sm:max-h-[90vh] flex flex-col mt-8 sm:mt-0 relative focus:outline-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Mobile Sheet Drag Handle Indicator */}
@@ -443,6 +452,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     </div>
 
                     <h1
+                      id="product-detail-modal-title"
                       className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-white truncate"
                       title={product.name}
                     >

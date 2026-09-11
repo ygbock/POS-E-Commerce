@@ -72,9 +72,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     toggleWishlist(product.id);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleCardClick();
+    }
+  };
+
   return (
     <div
       onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label={`View product details for ${product.name}`}
       onMouseEnter={() => {
         setIsHovered(true);
         if (product.images.length > 1) setActiveImageIndex(1);
@@ -83,7 +94,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         setIsHovered(false);
         setActiveImageIndex(0);
       }}
-      className="group relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-slate-100 dark:hover:shadow-indigo-950/20 hover:-translate-y-1 flex flex-col justify-between cursor-pointer"
+      className="group relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-slate-100 dark:hover:shadow-indigo-950/20 hover:-translate-y-1 flex flex-col justify-between cursor-pointer"
     >
       <div>
         {/* Image Container with Badges */}

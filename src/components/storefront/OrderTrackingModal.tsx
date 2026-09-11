@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Package,
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface OrderTrackingModalProps {
   isOpen: boolean;
@@ -87,6 +88,9 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
       }
     }
   }, [isOpen, initialOrderNumber, orders]);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, modalRef);
 
   if (!isOpen) return null;
 
@@ -173,7 +177,14 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
       className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-5 overflow-y-auto animate-in fade-in duration-200 text-slate-900 dark:text-white"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-tracking-modal-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 focus:outline-none"
+      >
         {/* Modal Header */}
         <div className="p-3.5 sm:p-6 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -182,7 +193,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-xl font-black text-slate-900 dark:text-white truncate">Live Order Tracking</h2>
+                <h2 id="order-tracking-modal-title" className="text-sm sm:text-xl font-black text-slate-900 dark:text-white truncate">Live Order Tracking</h2>
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex-shrink-0">
                   <ShieldCheck className="w-3 h-3" /> Secure Self-Service
                 </span>

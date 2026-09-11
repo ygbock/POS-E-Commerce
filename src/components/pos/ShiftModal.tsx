@@ -91,6 +91,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
   const [supervisorPin, setSupervisorPin] = useState<string>('1234');
 
   // Selected History Shift Modal view
+  const [viewHistoryShift, setViewHistoryShift] = useState<PosShift | null>(null);
+
   // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
   useEffect(() => {
     if (isOpen) {

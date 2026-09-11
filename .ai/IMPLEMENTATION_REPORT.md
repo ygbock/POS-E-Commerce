@@ -1506,6 +1506,56 @@ In accordance with supervisor directives and the engineering contract, `API-001`
    - `npm run build`: **Succeeded cleanly with 0 errors/warnings** (Express backend compiled to CJS, Vite frontend assets optimized into `dist/` directory).
    - `compile_applet`: **Build succeeded successfully**
 
+---
+
+## UX-001 Phase 2.5 — Storefront & POS Usability, Keyboard Navigation & Modal Hardening
+
+- **Status**: `READY FOR REVIEW`
+- **Role**: Senior Frontend / Product Experience Engineer
+- **Parent Task**: `UX-001`
+- **48-Hour Customer Handover Readiness**: Complete
+
+### 1. Architectural & UX Accomplishments
+
+1. **Storefront Focus Trapping & WCAG 2.2 AA Compliance**:
+   - Integrated `useModalFocusTrap` across every customer-facing modal dialog and slide-out drawer in the storefront:
+     - `StoreCheckoutModal`: Focus trap active, Escape blocked during payment in progress (`closeOnEscape: !isSubmitting`).
+     - `ProductDetailModal`: Content focus trap active, dialog title labelled, accessible dismiss.
+     - `QuickViewModal`: Focus trap active, variant/quantity selections contained.
+     - `OrderSuccessModal`: Focus trap active, order reference clearly labelled.
+     - `OrderTrackingModal`: Focus trap active, timeline tracking contained.
+     - `OrderNotificationHubModal`: Focus trap active, multi-channel notification modal contained.
+     - `CustomerAccountModal`: Focus trap active, profile/order tabs contained.
+     - `AccountClaimModal`: Focus trap active, account claim workflow contained.
+     - `StoreCartDrawer`: Slide-out drawer focus trap active, outside backdrop click dismiss.
+     - `WishlistDrawer`: Slide-out drawer focus trap active, outside backdrop click dismiss.
+     - `MobileFilterDrawer`: Slide-out drawer focus trap active, outside backdrop click dismiss.
+   - All modals and drawers properly define `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `tabIndex={-1}`, and unique title IDs, enabling complete screen-reader compatibility.
+
+2. **Catalog Keyboard Navigation & Discovery**:
+   - Hardened `ProductCard.tsx` with `tabIndex={0}`, `role="button"`, `aria-label`, `focus-visible:ring-2`, and `onKeyDown` listeners (`Enter` and `Space`), allowing customers without mouse pointing devices to browse and open products seamlessly.
+
+3. **POS Usability & Non-Blocking Feedback**:
+   - Replaced raw browser `window.alert(...)` dialogs across `PosTerminal.tsx` and `BarcodeQrScannerModal.tsx` with non-blocking inline error banners and `triggerScanToast(..., false)`.
+   - Preserves focus traps and prevents test runner lockups on touchscreen/tablet POS deployments.
+
+4. **Syntactic & Type Safety**:
+   - Fixed unclosed `useEffect` syntax in `BarcodeQrScannerModal.tsx` and `PriceOverrideModal.tsx`.
+   - Declared missing state variables (`errorMessage` in `CashMovementModal.tsx`, `qrModalLabel` in `ReceiptModal.tsx`, `viewHistoryShift` in `ShiftModal.tsx`).
+
+### 2. Verification Outcomes
+
+1. **POS Hotkeys & Keyboard Trap Suite**:
+   - `npm run test:hotkeys`: **20/20 PASSED (100%)**
+2. **UX Accessibility Suite**:
+   - `npm run test:ux`: **23/23 PASSED (100%)** (3 static checks + 20 hotkey checks)
+3. **Offline POS Resilience Suite**:
+   - `npm run test:offline-pos`: **14/14 PASSED (100%)**
+4. **Governance State**:
+   - Marked `READY FOR REVIEW` in `.ai/TASK_QUEUE.md` and `.ai/REVIEW_QUEUE.md`.
+   - Stopped at: `READY FOR FINAL SUPERVISOR RELEASE DECISION`.
+
+
 
 
 

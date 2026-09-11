@@ -34,6 +34,7 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Product, PaymentMethod, PaymentRecord, Order, Customer, CartItem } from '../../types';
@@ -121,6 +122,8 @@ export const PosTerminal: React.FC = () => {
   const [returnOrderNumber, setReturnOrderNumber] = useState('');
   const [foundReturnOrder, setFoundReturnOrder] = useState<Order | null>(null);
   const [returnItemsState, setReturnItemsState] = useState<{ [variantId: string]: { qty: number; restock: boolean; reason: string } }>({});
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [returnError, setReturnError] = useState<string | null>(null);
 
   const categories = ['All', 'Electronics', 'Home & Kitchen', 'Food & Beverage', 'Apparel'];
 
@@ -277,6 +280,7 @@ export const PosTerminal: React.FC = () => {
   // Open Checkout Modal
   const openCheckout = () => {
     if (posCart.length === 0) return;
+    setCheckoutError(null);
     setTenderCashAmount(cartTotal.toFixed(2));
     setSplitCash((cartTotal / 2).toFixed(2));
     setSplitCard((cartTotal / 2).toFixed(2));
@@ -314,18 +318,22 @@ export const PosTerminal: React.FC = () => {
     }
 
     try {
+      setCheckoutError(null);
       const order = await processPosCheckout(payments, appliedPromoCode);
       setShowCheckoutModal(false);
       setAppliedPromoCode('');
       setCompletedOrder(order);
     } catch (err: any) {
-      alert(`Checkout failed: ${err.message || err}`);
+      const errMsg = err?.message || String(err) || 'Checkout failed';
+      setCheckoutError(errMsg);
+      triggerScanToast(`Checkout failed: ${errMsg}`, false);
     }
   };
 
   // Handle Search Return Order
   const handleSearchReturnOrder = (e: React.FormEvent) => {
     e.preventDefault();
+    setReturnError(null);
     const ord = orders.find((o) => o.orderNumber.toUpperCase() === returnOrderNumber.trim().toUpperCase());
     if (ord) {
       setFoundReturnOrder(ord);
@@ -335,12 +343,14 @@ export const PosTerminal: React.FC = () => {
       });
       setReturnItemsState(init);
     } else {
-      alert('Order not found. Please verify the order number on the receipt.');
+      setReturnError('Order not found. Please verify the order number on the receipt.');
+      triggerScanToast('Order not found. Please verify the order number.', false);
     }
   };
 
   const handleConfirmReturn = () => {
     if (!foundReturnOrder) return;
+    setReturnError(null);
     const itemsToReturn = (Object.entries(returnItemsState) as [string, { qty: number; restock: boolean; reason: string }][])
       .filter(([_, data]) => data.qty > 0)
       .map(([variantId, data]) => ({
@@ -351,7 +361,8 @@ export const PosTerminal: React.FC = () => {
       }));
 
     if (itemsToReturn.length === 0) {
-      alert('Please select at least 1 item and quantity to return.');
+      setReturnError('Please select at least 1 item and quantity to return.');
+      triggerScanToast('Please select at least 1 item and quantity to return.', false);
       return;
     }
 
@@ -1173,6 +1184,12 @@ export const PosTerminal: React.FC = () => {
         }
       >
         <div className="space-y-4 text-xs">
+          {checkoutError && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{checkoutError}</span>
+            </div>
+          )}
           {/* Mode Switcher: Single vs Split */}
           <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
             <span className="font-bold text-slate-700 dark:text-slate-300">Tender Strategy:</span>
@@ -1387,6 +1404,13 @@ export const PosTerminal: React.FC = () => {
               Lookup
             </button>
           </form>
+
+          {returnError && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{returnError}</span>
+            </div>
+          )}
 
           {foundReturnOrder && (
             <div className="p-3.5 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">

@@ -17,6 +17,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrModalUrl, setQrModalUrl] = useState('');
+  const [qrModalLabel, setQrModalLabel] = useState('');
   // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
   useEffect(() => {
     if (order) {

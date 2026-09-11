@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ShoppingCart,
   X,
@@ -12,6 +12,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface StoreCartDrawerProps {
   isOpen: boolean;
@@ -36,6 +37,9 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
 
   const [couponInput, setCouponInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, drawerRef);
 
   if (!isOpen) return null;
 
@@ -68,8 +72,18 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 w-full max-w-md h-full flex flex-col justify-between p-5 text-slate-900 dark:text-white shadow-2xl animate-in slide-in-from-right duration-200">
+    <div
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="store-cart-drawer-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 w-full max-w-md h-full flex flex-col justify-between p-5 text-slate-900 dark:text-white shadow-2xl animate-in slide-in-from-right duration-200 focus:outline-none"
+      >
         {/* Drawer Header */}
         <div className="pb-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -77,12 +91,13 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
               <ShoppingCart className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Your Shopping Cart</h3>
+              <h3 id="store-cart-drawer-title" className="text-sm font-bold text-slate-900 dark:text-white">Your Shopping Cart</h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">{cartItemsCount} items in cart</p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close cart drawer"
             className="p-1 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />

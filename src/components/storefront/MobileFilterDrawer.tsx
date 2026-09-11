@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   X,
   SlidersHorizontal,
@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface MobileFilterDrawerProps {
   isOpen: boolean;
@@ -75,6 +76,9 @@ export const MobileFilterDrawer: React.FC<MobileFilterDrawerProps> = ({
 }) => {
   const { products } = useCommerce();
 
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, drawerRef);
+
   if (!isOpen) return null;
 
   const handleCategorySelect = (cat: string) => {
@@ -117,11 +121,15 @@ export const MobileFilterDrawer: React.FC<MobileFilterDrawerProps> = ({
   return (
     <div 
       className="fixed inset-0 z-50 lg:hidden bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200"
-      onClick={onClose}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-md bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 h-full flex flex-col shadow-2xl text-slate-900 dark:text-white animate-in slide-in-from-right duration-300"
-        onClick={(e) => e.stopPropagation()}
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-filter-drawer-title"
+        tabIndex={-1}
+        className="w-full max-w-md bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 h-full flex flex-col shadow-2xl text-slate-900 dark:text-white animate-in slide-in-from-right duration-300 focus:outline-none"
       >
         {/* Drawer Header */}
         <div className="px-5 py-4 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
@@ -130,7 +138,7 @@ export const MobileFilterDrawer: React.FC<MobileFilterDrawerProps> = ({
               <SlidersHorizontal className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white">Filter Products</h3>
+              <h3 id="mobile-filter-drawer-title" className="font-bold text-sm text-slate-900 dark:text-white">Filter Products</h3>
               <p className="text-[10px] text-slate-600 dark:text-slate-400">Refine by department, price & specs</p>
             </div>
           </div>
@@ -144,6 +152,7 @@ export const MobileFilterDrawer: React.FC<MobileFilterDrawerProps> = ({
             </button>
             <button
               onClick={onClose}
+              aria-label="Close filter drawer"
               className="p-1.5 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-slate-100 dark:bg-slate-800"
             >
               <X className="w-5 h-5" />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   UserPlus,
   Mail,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Order } from '../../types';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface AccountClaimModalProps {
   isOpen: boolean;
@@ -130,13 +131,25 @@ export const AccountClaimModal: React.FC<AccountClaimModalProps> = ({
     }
   };
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, modalRef);
+
+  if (!isOpen) return null;
+
   return (
     <div
       id="modal-account-claim"
       className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200 text-slate-900 dark:text-white"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-claim-modal-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 focus:outline-none"
+      >
         {/* Header */}
         <div className="p-5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -145,7 +158,7 @@ export const AccountClaimModal: React.FC<AccountClaimModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">Retroactive Account Claiming</h2>
+                <h2 id="account-claim-modal-title" className="text-base sm:text-lg font-black text-slate-900 dark:text-white">Retroactive Account Claiming</h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
                   Method 4
                 </span>

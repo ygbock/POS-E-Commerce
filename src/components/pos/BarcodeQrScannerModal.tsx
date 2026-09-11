@@ -366,7 +366,7 @@ export const BarcodeQrScannerModal: React.FC<BarcodeQrScannerModalProps> = ({
       });
       setTorchOn(nextTorch);
     } catch {
-      alert('Flashlight control is not supported on this device.');
+      setCameraError('Flashlight control is not supported on this device.');
     }
   };
 
@@ -375,12 +375,13 @@ export const BarcodeQrScannerModal: React.FC<BarcodeQrScannerModalProps> = ({
     if (!file) return;
 
     try {
+      setCameraError(null);
       const html5QrCode = new Html5Qrcode('html5qr-code-file-helper');
       const result = await html5QrCode.scanFile(file, true);
       processScannedCode(result);
       html5QrCode.clear();
     } catch (err: any) {
-      alert(`Could not decode code from image: ${err?.message || 'Invalid barcode payload'}`);
+      setCameraError(`Could not decode code from image: ${err?.message || 'Invalid barcode payload'}`);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -396,6 +397,9 @@ export const BarcodeQrScannerModal: React.FC<BarcodeQrScannerModalProps> = ({
       };
     } else {
       stopCameraScan();
+    }
+  }, [isOpen]);
+
   // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
   useEffect(() => {
     if (isOpen) {

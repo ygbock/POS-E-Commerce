@@ -83,6 +83,9 @@ export const PriceOverrideModal: React.FC<PriceOverrideModalProps> = ({
       setApprovedManager(null);
       setShowPinPad(false);
       setSelectedReason(OVERRIDE_REASONS[0]);
+    }
+  }, [item]);
+
   // Coordinate registration with modalManager for stacked modal handling & POS hotkey suppression
   useEffect(() => {
     if (isOpen && item) {

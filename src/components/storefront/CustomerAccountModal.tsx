@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   User,
   X,
@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Customer, Order, OrderStatus, Product, ProductVariant } from '../../types';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 export type AccountPortalTab = 'profile' | 'orders' | 'tracking' | 'wishlist';
 
@@ -153,6 +154,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setEmailQuery(activeCustomerUser.email);
     }
   }, [activeCustomerUser]);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, modalRef);
 
   if (!isOpen) return null;
 
@@ -369,7 +373,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200 text-slate-900 dark:text-white"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="customer-account-modal-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col focus:outline-none"
+      >
         {/* Header */}
         <div className="px-5 py-4 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3">
@@ -380,7 +391,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                <h3 id="customer-account-modal-title" className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
                   {activeCustomerUser ? activeCustomerUser.name : 'Customer Account Portal'}
                 </h3>
                 {activeCustomerUser ? (

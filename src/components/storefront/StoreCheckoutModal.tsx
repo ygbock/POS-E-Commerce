@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import {
   CreditCard,
   Smartphone,
@@ -129,6 +130,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       setIsGuestMode(false);
     }
   }, [activeCustomerUser, selectedAddressIndex]);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, modalRef, { closeOnEscape: !isSubmitting });
 
   if (!isOpen) return null;
 
@@ -265,8 +269,22 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden animate-in zoom-in-95 text-slate-900 dark:text-white max-h-[94vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (!isSubmitting && e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="store-checkout-modal-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden animate-in zoom-in-95 text-slate-900 dark:text-white max-h-[94vh] flex flex-col focus:outline-none"
+      >
         {/* Top Header & Security Banner */}
         <div className="px-5 sm:px-8 py-4 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3.5">
@@ -277,7 +295,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-black text-sm sm:text-base text-slate-900 dark:text-white tracking-tight">
+                <h3 id="store-checkout-modal-title" className="font-black text-sm sm:text-base text-slate-900 dark:text-white tracking-tight">
                   Professional Encrypted Checkout
                 </h3>
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">

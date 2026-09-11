@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Mail,
   Smartphone,
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Order } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface OrderNotificationHubModalProps {
   isOpen: boolean;
@@ -46,6 +47,9 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
     simulateAdvanceOrderStatus,
     sendCustomerAlert,
   } = useCommerce();
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, modalRef);
 
   const handleOpenTracking = (orderNum: string, email?: string) => {
     onClose();
@@ -97,7 +101,14 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
       className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-slate-900 dark:text-white">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-notification-hub-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-slate-900 dark:text-white focus:outline-none"
+      >
         {/* Header */}
         <div className="p-3.5 sm:p-5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -108,7 +119,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white truncate">Order Notification Hub</h2>
+                <h2 id="order-notification-hub-title" className="text-sm sm:text-lg font-black text-slate-900 dark:text-white truncate">Order Notification Hub</h2>
                 <span className="font-mono text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30 flex-shrink-0">
                   {order.orderNumber}
                 </span>

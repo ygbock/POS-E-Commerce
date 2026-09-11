@@ -486,3 +486,24 @@ PROD-001 (NOT STARTED)
 - **Dependencies**: `API-001R2`
 - **Supervisor Gate**: Marked READY FOR REVIEW for final independent human supervisor approval.
 
+---
+
+### Task 9.5: UX-001 Phase 2.5 — Storefront & POS Usability, Keyboard Navigation & Modal Hardening
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: `UX-001`
+- **Objective**: Harden the storefront customer journey and POS operator experience for 48-hour customer handover readiness without weakening server authority or duplicating business logic.
+- **Scope**:
+  - Connect `useModalFocusTrap` and enterprise modalManager coordination across all storefront modals and drawers.
+  - Implement full keyboard accessibility (`tabIndex={0}`, `role="button"`, `Enter`/`Space`) and visible focus styling on catalog `ProductCard` components.
+  - Replace blocking `window.alert(...)` calls in `PosTerminal.tsx` and `BarcodeQrScannerModal.tsx` with non-blocking scan toasts and inline error banners.
+  - Ensure zero syntactic or variable leakage in secondary POS dialogs (`CashMovementModal`, `PriceOverrideModal`, `ReceiptModal`, `ShiftModal`).
+- **Dependencies**: `UX-001 Phase 2.4`
+- **Acceptance Criteria**:
+  - [x] All storefront modals (`StoreCheckoutModal`, `ProductDetailModal`, `QuickViewModal`, `OrderSuccessModal`, `OrderTrackingModal`, `OrderNotificationHubModal`, `CustomerAccountModal`, `AccountClaimModal`) implement `useModalFocusTrap` with dialog semantics.
+  - [x] All storefront drawers (`StoreCartDrawer`, `WishlistDrawer`, `MobileFilterDrawer`) implement `useModalFocusTrap` with overlay click dismissal and focus locking.
+  - [x] Product discovery cards are fully operable via keyboard (`Enter`/`Space`) with accessible labels.
+  - [x] POS operator error feedback uses inline banners and scan toasts instead of blocking browser popups.
+  - [x] Behavioral test suites pass cleanly: `npm run test:hotkeys` (20/20 PASS), `npm run test:ux` (23/23 PASS), `npm run test:offline-pos` (14/14 PASS).
+- **Supervisor Gate**: Marked READY FOR REVIEW. Stopped at release gate for independent supervisor review.
+
+

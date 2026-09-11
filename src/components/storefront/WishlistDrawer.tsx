@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Heart,
   X,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Product } from '../../types';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface WishlistDrawerProps {
   isOpen: boolean;
@@ -33,6 +34,9 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
     formatCurrency,
   } = useCommerce();
 
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, drawerRef);
+
   if (!isOpen) return null;
 
   const wishlistedProducts = products.filter((p) => wishlist.includes(p.id));
@@ -50,8 +54,18 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 w-full max-w-md h-full flex flex-col justify-between p-5 text-slate-900 dark:text-white shadow-2xl animate-in slide-in-from-right duration-200">
+    <div
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wishlist-drawer-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 w-full max-w-md h-full flex flex-col justify-between p-5 text-slate-900 dark:text-white shadow-2xl animate-in slide-in-from-right duration-200 focus:outline-none"
+      >
         {/* Drawer Header */}
         <div className="pb-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -59,12 +73,13 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
               <Heart className="w-4 h-4 fill-rose-400" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Your Saved Wishlist</h3>
+              <h3 id="wishlist-drawer-title" className="text-sm font-bold text-slate-900 dark:text-white">Your Saved Wishlist</h3>
               <p className="text-[11px] text-slate-600 dark:text-slate-400">{wishlistedProducts.length} saved items</p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close wishlist drawer"
             className="p-1 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-slate-100 dark:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />

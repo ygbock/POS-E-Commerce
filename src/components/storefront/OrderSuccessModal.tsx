@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   CheckCircle2,
   Package,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Order } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface OrderSuccessModalProps {
   isOpen: boolean;
@@ -37,6 +38,9 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
   const { formatCurrency, activeCustomerUser } = useCommerce();
   const [copiedLink, setCopiedLink] = useState(false);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, modalRef);
+
   if (!isOpen || !order) return null;
 
   const magicToken = order.trackingMagicToken || `tok_${order.id.slice(0, 8)}`;
@@ -56,7 +60,14 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
       className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200 text-slate-900 dark:text-white"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-success-modal-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 focus:outline-none"
+      >
         {/* Header Ribbon */}
         <div className="p-6 bg-gradient-to-r from-emerald-950 via-slate-900 to-sky-950 border-b border-slate-200 dark:border-slate-800 text-center relative">
           <button
@@ -73,7 +84,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
           <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
             Payment Cleared & Stock Allocated
           </span>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-2">Thank You for Your Order!</h2>
+          <h2 id="order-success-modal-title" className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-2">Thank You for Your Order!</h2>
           <p className="text-xs text-slate-700 dark:text-slate-300 max-w-md mx-auto mt-1">
             Order <strong className="font-mono text-emerald-300">{order.orderNumber}</strong> has been logged. Total paid: <strong className="text-slate-900 dark:text-white">{formatCurrency(order.totalAmount)}</strong>.
           </p>

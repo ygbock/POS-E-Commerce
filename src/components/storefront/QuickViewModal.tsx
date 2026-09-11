@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Product,
   ProductVariant,
 } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import {
   Star,
   ShieldCheck,
@@ -67,6 +68,9 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
     }
   }, [product]);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(isOpen, onClose, modalRef);
+
   if (!isOpen || !product || !selectedVariant) return null;
 
   const availableStock = getTotalStockForVariant(selectedVariant);
@@ -99,7 +103,14 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quick-view-modal-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 focus:outline-none"
+      >
         {/* Modal Top Bar */}
         <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
@@ -230,7 +241,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   <span className="text-xs text-slate-500">({product.reviewCount} customer reviews)</span>
                 </div>
 
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-snug">
+                <h1 id="quick-view-modal-title" className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-snug">
                   {product.name}
                 </h1>
               </div>
