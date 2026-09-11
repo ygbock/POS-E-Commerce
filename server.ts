@@ -389,6 +389,22 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ------------------------------------------------------------------
   // 2. SYSTEM HEALTH & DIAGNOSTICS ENDPOINTS
   // ------------------------------------------------------------------
+  const runtimeRevision = (
+    process.env.GIT_COMMIT_SHA ||
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.APP_REVISION ||
+    ''
+  ).trim();
+
+  app.get('/api/version', (req: Request, res: Response) => {
+    res.json({
+      service: 'Centralized Product Service',
+      version: '2.6.0',
+      revision: runtimeRevision,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   app.get('/api/health', async (req: Request, res: Response) => {
     let isDbHealthy = false;
     try {
@@ -408,7 +424,8 @@ export async function createApp(options: CreateAppOptions = {}) {
         status: 'unhealthy',
         ready: false,
         service: 'Centralized Product Service',
-        version: '2.4.0',
+        version: '2.6.0',
+        revision: runtimeRevision,
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
         database: {
@@ -421,7 +438,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       status: 'ok',
       ready: true,
       service: 'Centralized Product Service',
-      version: '2.4.0',
+      version: '2.6.0',
+      revision: runtimeRevision,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       database: {

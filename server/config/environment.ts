@@ -41,49 +41,44 @@ const VALID_ENVS: DeployEnvironment[] = ['development', 'test', 'staging', 'prod
  * Fail-closed: Throws on any contract violation in staging or production.
  */
 export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): ValidatedConfig {
-  const nodeEnvRaw = env.NODE_ENV ? env.NODE_ENV.trim().toLowerCase() : '';
-  const deployEnvRaw = env.DEPLOY_ENV ? env.DEPLOY_ENV.trim().toLowerCase() : '';
+  const rawNode = env.NODE_ENV !== undefined ? env.NODE_ENV.trim() : '';
+  const nodeEnvRaw = (rawNode === 'undefined' || rawNode === 'null') ? '' : rawNode;
 
-  // 1. DEPLOY_ENV / NODE_ENV Resolution & Contradiction Detection
+  const rawDeploy = env.DEPLOY_ENV !== undefined ? env.DEPLOY_ENV.trim() : '';
+  const deployEnvRaw = (rawDeploy === 'undefined' || rawDeploy === 'null') ? '' : rawDeploy;
+
+  const normalizedNodeEnv = nodeEnvRaw.toLowerCase();
+  const normalizedDeployEnv = deployEnvRaw.toLowerCase();
+
+  // 1. Validate NODE_ENV if supplied
+  if (normalizedNodeEnv !== '') {
+    if (!VALID_ENVS.includes(normalizedNodeEnv as DeployEnvironment)) {
+      throw new Error(`[AbaCha Config Fatal] Invalid or unknown NODE_ENV "${nodeEnvRaw}". Must be one of: ${VALID_ENVS.join(', ')}`);
+    }
+  }
+
+  // 2. Validate DEPLOY_ENV if supplied
+  if (normalizedDeployEnv !== '') {
+    if (!VALID_ENVS.includes(normalizedDeployEnv as DeployEnvironment)) {
+      throw new Error(`[AbaCha Config Fatal] Invalid or unknown DEPLOY_ENV "${deployEnvRaw}". Must be one of: ${VALID_ENVS.join(', ')}`);
+    }
+  }
+
+  // 3. Strictly one-to-one contract: reject every mismatch when both are supplied
+  if (normalizedDeployEnv !== '' && normalizedNodeEnv !== '') {
+    if (normalizedDeployEnv !== normalizedNodeEnv) {
+      throw new Error(`[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=${normalizedDeployEnv} conflicts with NODE_ENV=${normalizedNodeEnv}.`);
+    }
+  }
+
+  // 4. Authoritative environment resolution
   let deployEnv: DeployEnvironment;
-
-  if (deployEnvRaw) {
-    if (!VALID_ENVS.includes(deployEnvRaw as DeployEnvironment)) {
-      throw new Error(`[AbaCha Config Fatal] Invalid DEPLOY_ENV "${deployEnvRaw}". Must be one of: ${VALID_ENVS.join(', ')}`);
-    }
-    deployEnv = deployEnvRaw as DeployEnvironment;
-
-      // Check for explicit contradiction with NODE_ENV
-      if (nodeEnvRaw) {
-        if (deployEnv === 'staging' && nodeEnvRaw === 'production') {
-          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=staging conflicts with NODE_ENV=production.');
-        }
-        if (deployEnv === 'production' && nodeEnvRaw === 'staging') {
-          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=production conflicts with NODE_ENV=staging.');
-        }
-        if (deployEnv === 'test' && nodeEnvRaw === 'production') {
-          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=test conflicts with NODE_ENV=production.');
-        }
-        if (deployEnv === 'development' && nodeEnvRaw === 'production') {
-          throw new Error('[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=development conflicts with NODE_ENV=production.');
-        }
-        if (deployEnv === 'production' && (nodeEnvRaw === 'development' || nodeEnvRaw === 'test')) {
-          throw new Error(`[AbaCha Config Fatal] Contradictory environment configuration: DEPLOY_ENV=production conflicts with NODE_ENV=${nodeEnvRaw}.`);
-        }
-      }
+  if (normalizedDeployEnv !== '') {
+    deployEnv = normalizedDeployEnv as DeployEnvironment;
+  } else if (normalizedNodeEnv !== '') {
+    deployEnv = normalizedNodeEnv as DeployEnvironment;
   } else {
-    // When DEPLOY_ENV is absent, derive it safely from NODE_ENV
-    if (nodeEnvRaw === 'production') {
-      deployEnv = 'production';
-    } else if (nodeEnvRaw === 'staging') {
-      deployEnv = 'staging';
-    } else if (nodeEnvRaw === 'test') {
-      deployEnv = 'test';
-    } else if (nodeEnvRaw === 'development') {
-      deployEnv = 'development';
-    } else {
-      deployEnv = 'development';
-    }
+    deployEnv = 'development';
   }
 
   // Mutually exclusive environment booleans

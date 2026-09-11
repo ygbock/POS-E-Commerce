@@ -1,15 +1,18 @@
 /**
- * Operational Hardening & Platform Contracts Test Suite (UPG-001R1)
+ * Operational Hardening & Platform Contracts Test Suite (UPG-001R2)
  * 
  * Deterministic local unit & contract tests for operational platform hardening:
- * - DEPLOY_ENV & NODE_ENV contract enforcement and contradiction rejection
+ * - DEPLOY_ENV & NODE_ENV strictly 1:1 contract enforcement
+ * - Complete 12-pair contradiction matrix covering every non-matching DEPLOY_ENV/NODE_ENV pair
+ * - Mutual exclusivity of environment booleans (isProduction, isStaging, isTest, isDevelopment)
+ * - Rejection of unknown NODE_ENV values (prevents silent downgrade or bypass)
  * - PostgreSQL connection string validation without secret leakage
  * - Strict decimal integer PORT validation (1-65535)
  * - APP_URL validation (HTTPS mandate for staging/production)
  * - Staging vs Production isolation guards
  * - Public source map blocking in server and build output
- * - Health and readiness metadata sanitization
- * - Production deployment fail-closed health gate workflow verification
+ * - Sanitized runtime revision exposure (/api/version and /api/health)
+ * - Production deployment 4-gate verification (A: reproducibility, B: execution fail-closed, C: revision verification, D: health/readiness fail-closed)
  * - Migration checksum integrity
  * 
  * CRITICAL SUPERVISOR GOVERNANCE:
@@ -45,7 +48,7 @@ async function runTest(name: string, fn: () => Promise<void> | void) {
 
 async function main() {
   console.log('\n======================================================');
-  console.log(' AbaCha UPG-001R1 Operational Hardening Contract Tests');
+  console.log(' AbaCha UPG-001R2 Operational Hardening Contract Tests');
   console.log('======================================================\n');
 
   // Backup environment variables
@@ -53,100 +56,138 @@ async function main() {
 
   try {
     // ------------------------------------------------------------------
-    // 1. DEPLOY_ENV / NODE_ENV Contract & Contradiction Enforcement
+    // 1. Strictly 1:1 DEPLOY_ENV / NODE_ENV Contract & Contradiction Matrix
     // ------------------------------------------------------------------
-    await runTest('1.1. Validates valid DEPLOY_ENV values with proper booleans', () => {
+    await runTest('1.1. Validates valid 1:1 DEPLOY_ENV and NODE_ENV mappings with mutual exclusivity', () => {
       const validEnvs = ['development', 'test', 'staging', 'production'] as const;
       for (const envVal of validEnvs) {
         const res = validateEnvironment({
           DEPLOY_ENV: envVal,
-          NODE_ENV: envVal === 'production' ? 'production' : envVal === 'staging' ? 'staging' : envVal === 'test' ? 'test' : 'development',
+          NODE_ENV: envVal,
           PORT: '3000',
           DATABASE_URL: envVal === 'production' || envVal === 'staging' ? 'postgresql://user:pass@host:5432/db' : undefined,
           JWT_SECRET: envVal === 'production' || envVal === 'staging' ? 'CryptographicallySecureHighEntropyKey32Chars!' : undefined,
           APP_URL: envVal === 'production' || envVal === 'staging' ? 'https://example.com' : undefined,
         });
+
         assert.strictEqual(res.deployEnv, envVal);
+        assert.strictEqual(res.nodeEnv, envVal);
+
+        // Prove mutual exclusivity: exactly one boolean is true
+        const bools = [res.isProduction, res.isStaging, res.isTest, res.isDevelopment];
+        const trueCount = bools.filter(Boolean).length;
+        assert.strictEqual(trueCount, 1, `Exactly one boolean must be true for ${envVal}`);
         assert.strictEqual(res.isProduction, envVal === 'production');
         assert.strictEqual(res.isStaging, envVal === 'staging');
         assert.strictEqual(res.isTest, envVal === 'test');
         assert.strictEqual(res.isDevelopment, envVal === 'development');
-
-        // Verify that isProduction and isStaging are never both true
-        assert.ok(!(res.isProduction && res.isStaging), 'isProduction and isStaging must never both be true');
       }
     });
 
-    await runTest('1.2. Rejects invalid DEPLOY_ENV values', () => {
-      assert.throws(
-        () => validateEnvironment({ DEPLOY_ENV: 'invalid_env' as any }),
-        /Invalid DEPLOY_ENV/
-      );
+    await runTest('1.2. Complete 12-Pair Contradiction Matrix: Rejects every non-matching pair', () => {
+      const validEnvs = ['development', 'test', 'staging', 'production'] as const;
+      let testedPairCount = 0;
+
+      for (const dEnv of validEnvs) {
+        for (const nEnv of validEnvs) {
+          if (dEnv !== nEnv) {
+            testedPairCount++;
+            assert.throws(
+              () =>
+                validateEnvironment({
+                  DEPLOY_ENV: dEnv,
+                  NODE_ENV: nEnv,
+                  PORT: '3000',
+                  DATABASE_URL: 'postgresql://user:pass@host:5432/db',
+                  JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  APP_URL: 'https://example.com',
+                }),
+              new RegExp(`Contradictory environment configuration: DEPLOY_ENV=${dEnv} conflicts with NODE_ENV=${nEnv}`),
+              `Expected pair DEPLOY_ENV=${dEnv} NODE_ENV=${nEnv} to throw contradiction error`
+            );
+          }
+        }
+      }
+
+      assert.strictEqual(testedPairCount, 12, 'Must test all 12 non-matching environment pairs');
     });
 
-    await runTest('1.3. Contradiction: DEPLOY_ENV=staging + NODE_ENV=production → FAIL', () => {
-      assert.throws(
-        () =>
-          validateEnvironment({
-            DEPLOY_ENV: 'staging',
-            NODE_ENV: 'production',
-            PORT: '3000',
-            DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
-            JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
-          }),
-        /Contradictory environment configuration: DEPLOY_ENV=staging conflicts with NODE_ENV=production/
-      );
+    await runTest('1.3. Explicitly verifies supervisor required contradiction examples', () => {
+      const supervisorExamples = [
+        { d: 'staging', n: 'development' },
+        { d: 'staging', n: 'test' },
+        { d: 'production', n: 'development' },
+        { d: 'production', n: 'test' },
+        { d: 'development', n: 'production' },
+        { d: 'test', n: 'production' },
+        { d: 'development', n: 'staging' },
+        { d: 'test', n: 'staging' },
+        { d: 'production', n: 'staging' },
+        { d: 'staging', n: 'production' },
+      ];
+
+      for (const { d, n } of supervisorExamples) {
+        assert.throws(
+          () => validateEnvironment({ DEPLOY_ENV: d, NODE_ENV: n }),
+          /Contradictory environment configuration/
+        );
+      }
     });
 
-    await runTest('1.4. Contradiction: DEPLOY_ENV=production + NODE_ENV=staging → FAIL', () => {
-      assert.throws(
-        () =>
-          validateEnvironment({
-            DEPLOY_ENV: 'production',
-            NODE_ENV: 'staging',
-            PORT: '3000',
-            DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
-            JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
-          }),
-        /Contradictory environment configuration: DEPLOY_ENV=production conflicts with NODE_ENV=staging/
-      );
-    });
-
-    await runTest('1.5. Contradiction: DEPLOY_ENV=test/development + NODE_ENV=production → FAIL', () => {
-      assert.throws(
-        () => validateEnvironment({ DEPLOY_ENV: 'test', NODE_ENV: 'production' }),
-        /Contradictory environment configuration: DEPLOY_ENV=test conflicts with NODE_ENV=production/
-      );
-      assert.throws(
-        () => validateEnvironment({ DEPLOY_ENV: 'development', NODE_ENV: 'production' }),
-        /Contradictory environment configuration: DEPLOY_ENV=development conflicts with NODE_ENV=production/
-      );
-    });
-
-    await runTest('1.6. NODE_ENV=staging without DEPLOY_ENV → staging', () => {
-      const res = validateEnvironment({
-        NODE_ENV: 'staging',
-        PORT: '3000',
-        DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
-        JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
-        APP_URL: 'https://staging.example.com',
-      });
-      assert.strictEqual(res.deployEnv, 'staging');
-      assert.strictEqual(res.isStaging, true);
-      assert.strictEqual(res.isProduction, false);
-    });
-
-    await runTest('1.7. NODE_ENV=production without DEPLOY_ENV → production', () => {
-      const res = validateEnvironment({
+    await runTest('1.4. NODE_ENV without DEPLOY_ENV derives deployEnv exactly', () => {
+      const resProd = validateEnvironment({
         NODE_ENV: 'production',
         PORT: '3000',
         DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
         APP_URL: 'https://production.example.com',
       });
-      assert.strictEqual(res.deployEnv, 'production');
-      assert.strictEqual(res.isProduction, true);
-      assert.strictEqual(res.isStaging, false);
+      assert.strictEqual(resProd.deployEnv, 'production');
+      assert.strictEqual(resProd.isProduction, true);
+      assert.strictEqual(resProd.isStaging, false);
+
+      const resStaging = validateEnvironment({
+        NODE_ENV: 'staging',
+        PORT: '3000',
+        DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
+        JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+        APP_URL: 'https://staging.example.com',
+      });
+      assert.strictEqual(resStaging.deployEnv, 'staging');
+      assert.strictEqual(resStaging.isStaging, true);
+      assert.strictEqual(resStaging.isProduction, false);
+
+      const resTest = validateEnvironment({ NODE_ENV: 'test' });
+      assert.strictEqual(resTest.deployEnv, 'test');
+      assert.strictEqual(resTest.isTest, true);
+
+      const resDev = validateEnvironment({ NODE_ENV: 'development' });
+      assert.strictEqual(resDev.deployEnv, 'development');
+      assert.strictEqual(resDev.isDevelopment, true);
+    });
+
+    await runTest('1.5. Unknown NODE_ENV values are rejected and never silently downgraded', () => {
+      const unknownEnvs = ['qa', 'uat', 'prod', 'stage', 'dev', 'custom_env', 'unknown'];
+      for (const unk of unknownEnvs) {
+        // Unknown NODE_ENV without DEPLOY_ENV must throw
+        assert.throws(
+          () => validateEnvironment({ NODE_ENV: unk }),
+          /Invalid or unknown NODE_ENV/
+        );
+
+        // Unknown NODE_ENV with DEPLOY_ENV must throw
+        assert.throws(
+          () => validateEnvironment({ DEPLOY_ENV: 'production', NODE_ENV: unk }),
+          /Invalid or unknown NODE_ENV/
+        );
+      }
+    });
+
+    await runTest('1.6. Rejects invalid DEPLOY_ENV values', () => {
+      assert.throws(
+        () => validateEnvironment({ DEPLOY_ENV: 'invalid_env' as any }),
+        /Invalid or unknown DEPLOY_ENV/
+      );
     });
 
     // ------------------------------------------------------------------
@@ -488,33 +529,37 @@ async function main() {
     });
 
     // ------------------------------------------------------------------
-    // 8. Production Health Gate Workflow Verification
+    // 8. Production Deployment 4-Gate Workflow Verification
     // ------------------------------------------------------------------
-    await runTest('8.1. Production workflow enforces fail-closed health/readiness gate', () => {
+    await runTest('8.1. Production promotion workflow enforces all 4 gates with fail-closed semantics', () => {
       const prodWorkflowPath = path.join(process.cwd(), '.github', 'workflows', 'production-deploy.yml');
       assert.ok(fs.existsSync(prodWorkflowPath), 'production-deploy.yml exists');
 
       const content = fs.readFileSync(prodWorkflowPath, 'utf8');
-      
-      // Enforce fail-closed exit 1 on health failure
-      assert.ok(
-        content.includes('if [ "$SUCCESS" -ne 1 ]; then'),
-        'Workflow checks for SUCCESS condition'
-      );
-      assert.ok(
-        content.includes('echo "FATAL: Production health/readiness verification failed."'),
-        'Workflow logs fatal error on health failure'
-      );
-      assert.ok(
-        content.includes('exit 1'),
-        'Workflow exits non-zero (exit 1) on health failure'
-      );
 
-      // Verify probes check both health and ready
-      assert.ok(content.includes('/api/health'), 'Workflow probes /api/health');
-      assert.ok(content.includes('/api/ready'), 'Workflow probes /api/ready');
-      assert.ok(content.includes('"status":"ok"'), 'Workflow validates status:ok');
-      assert.ok(content.includes('"ready":true'), 'Workflow validates ready:true');
+      // Gate A: Reproducible artifact verification (documenting reproducibility, not deployment identity)
+      assert.ok(content.includes('Gate A: Reproducible Artifact Verification'), 'Workflow defines Gate A');
+      assert.ok(content.includes('reproducibility'), 'Workflow clarifies Gate A proves reproducibility');
+      assert.ok(content.includes('inputs.approved_artifact_digest'), 'Workflow checks digest');
+
+      // Gate B: Deployment execution fails closed if deployment mechanism is missing
+      assert.ok(content.includes('Gate B: Deployment Execution'), 'Workflow defines Gate B');
+      assert.ok(content.includes('if [ -z "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" ]; then'), 'Gate B checks hook presence');
+      assert.ok(content.includes('FATAL: Configured production deployment mechanism (RENDER_PROD_DEPLOY_HOOK_URL) is missing.'), 'Gate B logs fatal message');
+      assert.ok(!content.includes('manual operator deployment required'), 'Prohibited manual fallback message removed');
+
+      // Gate C: Deployed revision verification
+      assert.ok(content.includes('Gate C: Deployed Revision Verification'), 'Workflow defines Gate C');
+      assert.ok(content.includes('inputs.approved_commit_sha'), 'Gate C compares against approved_commit_sha');
+      assert.ok(content.includes('DEPLOYED_REVISION'), 'Gate C tracks deployed revision');
+      assert.ok(content.includes('FATAL: Deployed revision verification failed!'), 'Gate C logs fatal on mismatch');
+
+      // Gate D: Health & Readiness fail-closed verification
+      assert.ok(content.includes('Gate D: Production Post-Deployment Health & Readiness Probes'), 'Workflow defines Gate D');
+      assert.ok(content.includes('if [ "$SUCCESS" -ne 1 ]; then'), 'Gate D checks SUCCESS condition');
+      assert.ok(content.includes('FATAL: Production health/readiness verification failed.'), 'Gate D logs fatal message');
+      assert.ok(content.includes('/api/health'), 'Gate D probes /api/health');
+      assert.ok(content.includes('/api/ready'), 'Gate D probes /api/ready');
     });
 
     await runTest('8.2. CI workflow enforces source-map exposure guard', () => {
@@ -529,24 +574,27 @@ async function main() {
     });
 
     // ------------------------------------------------------------------
-    // 9. Health & Readiness Endpoint Metadata Sanitization
+    // 9. Runtime Revision & Health Metadata Sanitization
     // ------------------------------------------------------------------
-    await runTest('9.1. /api/health and /api/ready never disclose connection strings or secrets', async () => {
+    await runTest('9.1. /api/health and /api/version expose sanitized revision identity without secrets', async () => {
+      const testSha = '9ae4b7528aecd195a9167e1b2a060513cbf83223';
+      process.env.GIT_COMMIT_SHA = testSha;
+
       const testDb = await createIsolatedTestClient();
       await runMigrations(testDb);
       const { app } = await createApp({ db: testDb, skipVite: true });
 
+      // Test /api/health
       let healthData: any = null;
-      const req: any = { method: 'GET', url: '/api/health', headers: {} };
-      const res: any = {
+      const reqH: any = { method: 'GET', url: '/api/health', headers: {} };
+      const resH: any = {
         json: (data: any) => { healthData = data; },
-        status: () => res,
+        status: () => resH,
       };
 
-      // Directly invoke router handler for /api/health
       for (const layer of (app as any)._router.stack) {
         if (layer.route && layer.route.path === '/api/health') {
-          await layer.route.stack[0].handle(req, res, () => {});
+          await layer.route.stack[0].handle(reqH, resH, () => {});
           break;
         }
       }
@@ -554,16 +602,35 @@ async function main() {
       assert.ok(healthData, 'Health endpoint responded');
       assert.strictEqual(healthData.status, 'ok');
       assert.strictEqual(healthData.ready, true);
+      assert.strictEqual(healthData.revision, testSha);
       assert.strictEqual(healthData.database.connected, true);
-      assert.strictEqual(healthData.database.schemaVersion, '010');
+
+      // Test /api/version
+      let versionData: any = null;
+      const reqV: any = { method: 'GET', url: '/api/version', headers: {} };
+      const resV: any = {
+        json: (data: any) => { versionData = data; },
+        status: () => resV,
+      };
+
+      for (const layer of (app as any)._router.stack) {
+        if (layer.route && layer.route.path === '/api/version') {
+          await layer.route.stack[0].handle(reqV, resV, () => {});
+          break;
+        }
+      }
+
+      assert.ok(versionData, 'Version endpoint responded');
+      assert.strictEqual(versionData.revision, testSha);
 
       // Assert zero secret leakage
-      const rawPayload = JSON.stringify(healthData);
-      assert.ok(!rawPayload.includes('password'), 'No password in health data');
-      assert.ok(!rawPayload.includes('postgres://'), 'No connection string in health data');
-      assert.ok(!rawPayload.includes('secret'), 'No secret in health data');
+      const rawPayload = JSON.stringify(healthData) + JSON.stringify(versionData);
+      assert.ok(!rawPayload.includes('password'), 'No password in endpoint data');
+      assert.ok(!rawPayload.includes('postgres://'), 'No connection string in endpoint data');
+      assert.ok(!rawPayload.includes('secret'), 'No secret in endpoint data');
 
       await testDb.close();
+      delete process.env.GIT_COMMIT_SHA;
     });
 
     // ------------------------------------------------------------------

@@ -44,10 +44,12 @@ jobs:
       - name: Install Clean Dependencies
         run: npm ci
 
-      - name: Reproduce & Verify Artifact Digest (Staging Match)
+      - name: Gate A: Reproducible Artifact Verification (Staging Match)
         id: verify-digest
         run: |
-          echo "=== 2. Artifact Digest Match Verification ==="
+          echo "=== Gate A: Reproducible Artifact Verification ==="
+          echo "Note: This step verifies local build reproducibility against the approved staging digest;"
+          echo "it does not verify deployment identity on the remote hosting provider."
           npm run build
           CURRENT_DIGEST=$(sha256sum dist/server.cjs | awk '{print $1}')
           EXPECTED_DIGEST="${{ inputs.approved_artifact_digest }}"
@@ -59,28 +61,64 @@ jobs:
             echo "FATAL: Artifact digest mismatch! The current build does not match the approved staging artifact."
             exit 1
           fi
-          echo "Artifact digest verified identical to approved staging release."
+          echo "Artifact digest verified identical to approved staging release (reproducibility confirmed)."
 
       - name: Verify Migration Checksums Integrity
         run: |
-          echo "=== 3. Migration Checksum Gate ==="
+          echo "=== Migration Checksum Gate ==="
           sha256sum server/db/migrations/*.sql
           # Verify no uncommitted or modified migration files exist
           git diff --exit-code server/db/migrations/
 
-      - name: Trigger Render Production Deployment
+      - name: Gate B: Deployment Execution
         run: |
-          echo "=== 4. Production Deployment Execution ==="
-          if [ -n "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" ]; then
-            echo "Executing Render production deployment webhook..."
-            curl -f -X POST "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}"
-          else
-            echo "[Notice] RENDER_PROD_DEPLOY_HOOK_URL not configured; manual operator deployment required."
+          echo "=== Gate B: Deployment Execution ==="
+          if [ -z "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" ]; then
+            echo "FATAL: Configured production deployment mechanism (RENDER_PROD_DEPLOY_HOOK_URL) is missing."
+            echo "Automated promotion cannot proceed without an approved, verified deployment mechanism."
+            exit 1
+          fi
+          echo "Executing Render production deployment webhook..."
+          curl -f -s -S -X POST "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" > /dev/null
+          echo "Production deployment webhook invoked successfully."
+
+      - name: Gate C: Deployed Revision Verification
+        run: |
+          echo "=== Gate C: Deployed Revision Verification ==="
+          PROD_URL="https://abacha-app.onrender.com"
+          EXPECTED_REVISION="${{ inputs.approved_commit_sha }}"
+          echo "Target Production Host: ${PROD_URL}"
+          echo "Expected Revision SHA:  ${EXPECTED_REVISION}"
+          
+          MAX_RETRIES=18
+          RETRY_COUNT=0
+          REVISION_MATCH=0
+          DEPLOYED_REVISION=""
+          
+          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+            echo "Checking deployed revision at ${PROD_URL}/api/version (attempt $((RETRY_COUNT+1))/${MAX_RETRIES})..."
+            VERSION_JSON=$(curl -s "${PROD_URL}/api/version" || true)
+            DEPLOYED_REVISION=$(echo "$VERSION_JSON" | grep -o '"revision":"[^"]*"' | cut -d'"' -f4 || true)
+            
+            if [ -n "$DEPLOYED_REVISION" ] && [ "$DEPLOYED_REVISION" = "$EXPECTED_REVISION" ]; then
+              echo "SUCCESS: Deployed runtime revision matches approved commit SHA: ${DEPLOYED_REVISION}"
+              REVISION_MATCH=1
+              break
+            fi
+            
+            echo "Current deployed revision: '${DEPLOYED_REVISION}' (waiting for rollout of '${EXPECTED_REVISION}')..."
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            sleep 10
+          done
+          
+          if [ "$REVISION_MATCH" -ne 1 ]; then
+            echo "FATAL: Deployed revision verification failed! Runtime revision '${DEPLOYED_REVISION}' does not match expected '${EXPECTED_REVISION}'."
+            exit 1
           fi
 
-      - name: Production Post-Deployment Health & Readiness Probe
+      - name: Gate D: Production Post-Deployment Health & Readiness Probes
         run: |
-          echo "=== 5. Production Health Verification ==="
+          echo "=== Gate D: Production Health & Readiness Verification ==="
           PROD_URL="https://abacha-app.onrender.com"
           
           MAX_RETRIES=12
@@ -88,7 +126,7 @@ jobs:
           SUCCESS=0
           
           until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-            echo "Pinging ${PROD_URL}/api/health (attempt $((RETRY_COUNT+1))/${MAX_RETRIES})..."
+            echo "Pinging ${PROD_URL}/api/health and /api/ready (attempt $((RETRY_COUNT+1))/${MAX_RETRIES})..."
             HEALTH_JSON=$(curl -s "${PROD_URL}/api/health" || true)
             READY_JSON=$(curl -s "${PROD_URL}/api/ready" || true)
             
@@ -105,3 +143,4 @@ jobs:
             echo "FATAL: Production health/readiness verification failed."
             exit 1
           fi
+          echo "All production deployment gates (A, B, C, D) completed successfully."
