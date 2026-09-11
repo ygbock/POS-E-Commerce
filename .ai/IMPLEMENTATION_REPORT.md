@@ -1,5 +1,24 @@
 # Implementation Report
 
+## REL-010 — Release Candidate Hardening & Production Gate
+
+- **Status**: `READY FOR REVIEW`
+- **Parent Task**: Strategic Roadmap / Final Release Hardening
+- **Operating Directive**: `INSPECT → FIX → TEST → VERIFY → DOCUMENT → REPORT`
+- **Current HEAD**: `9bf57deaf6526eedb45f86eb79333254ac004519`
+- **Scope Discipline**:
+  - Generated official, reproducible `package-lock.json` directly from `package.json` dependency graph.
+  - Performed clean installation (`npm ci`) in a clean environment with 0 errors.
+  - Executed static typing: `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors).
+  - Executed full test matrix: 151 / 151 PASS (100%), 0 failed, 0 blocked, 0 skipped.
+  - Compiled production bundle: `npm run build` cleanly produced `dist/index.html` (1.02 kB) and `dist/server.cjs` (420.6 kB).
+  - Resolved database architecture contract: PostgreSQL is the authoritative production database; PGlite is for local/test/demo sandbox; health probe honestly reports engine type (`engine: "embedded-pglite"` in local demo boot).
+  - Verified deployment smoke test on built `dist/server.cjs` (HTTP 200 on `/api/health` and `/api/ready`).
+  - Scanned codebase for security regressions (0 leaked secrets, 0 `Math.random` in server auth/keys/financials).
+  - Documented minimum CI/CD pipeline and marked external PostgreSQL verification as NOT EXECUTED locally.
+
+---
+
 ## 48-Hour Release Readiness & Customer Handover Mission
 
 - **Status**: `READY FOR FINAL SUPERVISOR RELEASE DECISION`

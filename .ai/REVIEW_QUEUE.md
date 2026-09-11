@@ -383,6 +383,19 @@ Status: READY FOR REVIEW
     - `npm run test:offline-pos`: **14/14 PASSED** (100%).
 - **Supervisor Action Required**: Independent supervisor review and final release decision.
 
+---
 
-
-
+## REL-010: Release Candidate Hardening & Production Gate
+- **Task ID**: REL-010
+- **Status**: PENDING REVIEW
+- **Agent Notes**:
+  - Successfully resolved the primary release-process blocker by generating a clean, reproducible `package-lock.json` from npm registry.
+  - Executed clean installation (`npm ci`) with 0 errors, 421 packages verified.
+  - Executed full static type validation: `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors).
+  - Executed entire test matrix: 151 / 151 tests PASS (100%), 0 failed, 0 blocked, 0 skipped across 10 core suites.
+  - Executed production build: Vite bundle + esbuild CommonJS backend cleanly generated (`dist/index.html` 1.02 kB, `dist/server.cjs` 420.6 kB).
+  - Audited database architecture: resolved PGlite vs PostgreSQL production contract in `server/db/client.ts`, `server.ts`, and `DEPLOYMENT_RUNBOOK.md`.
+  - Executed deployment smoke test on `dist/server.cjs`: `/api/health` and `/api/ready` responded HTTP 200 with accurate `engine: "embedded-pglite"` reporting.
+  - Audited security invariants: zero secrets in frontend, zero `Math.random` in server auth/keys/financials, server-authoritative money/inventory.
+  - Recommended release status: **YELLOW — CONDITIONALLY READY** (pending live PostgreSQL staging verification and GitHub Actions CI runner).
+- **Supervisor Action Required**: Final independent supervisor review and release gate decision.

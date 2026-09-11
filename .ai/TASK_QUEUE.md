@@ -506,4 +506,27 @@ PROD-001 (NOT STARTED)
   - [x] Behavioral test suites pass cleanly: `npm run test:hotkeys` (20/20 PASS), `npm run test:ux` (23/23 PASS), `npm run test:offline-pos` (14/14 PASS).
 - **Supervisor Gate**: Marked READY FOR REVIEW. Stopped at release gate for independent supervisor review.
 
+---
 
+### Task 10: REL-010 — Release Candidate Hardening & Production Gate
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Establish reproducible deterministic dependency installation, audit and resolve PGlite vs PostgreSQL runtime architecture contract, run full static validation (0 errors), execute the entire 151-test suite (100% pass), verify production build artifacts, and perform deployment smoke testing on built artifacts.
+- **Scope**:
+  - Generated official `package-lock.json` representing current `package.json` dependency tree.
+  - Executed clean installation `npm ci` with 0 missing or mismatched dependencies.
+  - Validated static types with `npx tsc --noEmit` and `npm run lint` (0 errors).
+  - Executed 151 / 151 passing tests across all 10 suites (`test:db`, `test:auth`, `test:inventory`, `test:transfer`, `test:pos`, `test:api`, `test:qa`, `test:ux`, `test:checkout`, `test:offline-pos`, `test:hotkeys`).
+  - Audited PGlite vs PostgreSQL production runtime architecture and confirmed fail-closed semantics and accurate health probe reporting.
+  - Verified production build and executed deployment smoke test on `node dist/server.cjs` (HTTP 200 on `/api/health` and `/api/ready`).
+  - Documented CI/CD pipeline and security regression scan.
+- **Dependencies**: `UX-001 Phase 2.5`
+- **Acceptance Criteria**:
+  - [x] Exact HEAD SHA recorded: `9bf57deaf6526eedb45f86eb79333254ac004519`.
+  - [x] Clean deterministic `package-lock.json` committed.
+  - [x] Clean `npm ci` verified.
+  - [x] `tsc --noEmit` and `npm run lint` pass with 0 errors.
+  - [x] 151 / 151 tests pass with 0 failures, 0 blocked, 0 skipped.
+  - [x] Production build produces `dist/index.html` and `dist/server.cjs`.
+  - [x] Production database architecture contract verified.
+  - [x] Deployment smoke test passes with accurate database engine reporting.
+- **Supervisor Gate**: Marked `READY FOR REVIEW`.
