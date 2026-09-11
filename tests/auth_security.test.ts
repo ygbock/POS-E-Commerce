@@ -5,7 +5,7 @@ import express from 'express';
 import { hashPassword, verifyPassword } from '../server/auth/password';
 import { issueToken, verifyToken, generateTokenId, signToken } from '../server/auth/token';
 import { ROLES, PERMISSIONS, ROLE_PERMISSIONS, hasPermission, getRolePermissions } from '../server/auth/roles';
-import { createIsolatedTestClient, DatabaseClient } from '../server/db/client';
+import { createIsolatedTestClient, getDatabaseClient, DatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
 import { UserRepository } from '../server/repositories/userRepository';
 import { AuditRepository } from '../server/repositories/auditRepository';
@@ -46,13 +46,19 @@ async function main() {
   console.log(' AbaCha SEC-001 Authentication & RBAC Security Tests');
   console.log('======================================================\n');
 
-  const db: DatabaseClient = createIsolatedTestClient();
+  // Use PostgreSQL if configured in environment, otherwise isolated in-memory test instance
+  const db: DatabaseClient = (process.env.DATABASE_URL || process.env.PGHOST)
+    ? getDatabaseClient({ forceNew: true })
+    : createIsolatedTestClient();
 
   try {
     // 1. Database Migrations
     await runTest('1. Apply Auth Migrations (001 + 002)', async () => {
       const migrationResult = await runMigrations(db);
-      assert.ok(migrationResult.applied.length >= 2, 'Migrations applied successfully');
+      assert.ok(
+        migrationResult.applied.length >= 2 || (migrationResult.applied.length + migrationResult.skipped.length >= 2),
+        'Migrations applied successfully'
+      );
 
       const tablesRes = await db.query(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"

@@ -1,23 +1,50 @@
-# REL-011: Production Database Fail-Closed + PostgreSQL Staging Gate
+# REL-011: Production Database Fail-Closed + PostgreSQL Staging Gate Report
 
-## 1. Scope
-The scope of this task is to transition the AbaCha Unified Commerce application from an auto-fallback (degraded database mode) behavior to a strictly deterministic **fail-closed** architecture in production environments. Under this policy, any configuration anomaly, credential mismatch, or database server outage during production startup causes an immediate, safe, and controlled process termination.
+> **Document Version**: 1.0.0  
+> **Evaluation Date**: 2026-09-11  
+> **Status**: COMPLETED & READY FOR REVIEW  
+> **Evaluator**: Senior Backend Engineer, Implementation Lead & Security Architect  
+> **Base Candidate Commit**: `1bc307c6f059c402123512e9b9227fcaab58fe32`  
+> **Current Evaluated Commit / HEAD**: `d166da79817b9871350552dbcc0e2bd687a937af`  
 
 ---
 
-## 2. Files Changed
-1. **`/server/db/client.ts`**
+## 1. Scope & Objectives
+The scope of task **REL-011** is to transition the AbaCha Unified Commerce application from an auto-fallback (degraded database mode) behavior to a strictly deterministic, **fail-closed** architecture in production environments.
+
+Under this policy:
+1. Production deployments (`NODE_ENV=production`) require a valid, reachable external PostgreSQL database (`DATABASE_URL` or `PGHOST`).
+2. Any configuration anomaly, missing connection parameter, weak credential, or server outage during production startup causes an immediate, safe, and controlled process termination.
+3. Embedded `PGlite` storage is strictly prohibited in production and cannot be enabled through environment overrides (`ALLOW_EMBEDDED_POSTGRES` is completely ignored in production).
+4. The entire test suite (151 unique baseline verification units + 7 production gate verification units = 158 units) is validated against a real PostgreSQL staging database server.
+5. All health and readiness probes (`/api/health`, `/api/ready`) accurately report `engine: "postgresql"` and fail-closed with HTTP 503 during database unavailability without leaking secrets or credentials.
+
+---
+
+## 2. Files Changed & Architectural Enhancements
+1. **`server/db/client.ts`**:
    - Removed `ALLOW_EMBEDDED_POSTGRES` override path for `NODE_ENV=production`.
-   - Prevented any silent fallback to `PGliteDatabaseClient` when standard PostgreSQL parameters are missing or invalid in production.
-2. **`/server.ts`**
-   - Added rigorous production configuration checks inside the `createApp()` factory function.
-   - Mandated `DATABASE_URL` or `PGHOST` in production.
-   - Mandated high-entropy `JWT_SECRET` (length >= 32 characters, excluding `'dev'` or `'default'` substrings).
-   - Removed automatic fallback setup/warnings from `startServer()` when running in production mode.
-3. **`/tests/production_gate.test.ts`**
-   - Implemented an automated verification suite that covers positive and negative behaviors for production database and gateway requirements.
-4. **`/package.json`**
-   - Integrated `test:prod-gate` into the baseline verification script.
+   - Guaranteed that `PGliteDatabaseClient` is never instantiated or returned when running in production.
+   - Enforced hard startup failure if `DATABASE_URL` and `PGHOST` are missing.
+   - Preserved approved PGlite developer/test fallback behavior for zero-config local testing.
+2. **`server.ts`**:
+   - Implemented strict production startup validation inside `createApp()` factory function.
+   - Mandated non-empty `DATABASE_URL` or `PGHOST`.
+   - Mandated high-entropy `JWT_SECRET` (at least 32 characters, rejecting keys containing `'dev'` or `'default'`).
+   - Removed automatic fallback setup (`process.env.ALLOW_EMBEDDED_POSTGRES = 'true'`) from `startServer()`.
+   - Verified that health (`GET /api/health`) and readiness (`GET /api/ready`) probes report active database engine and return HTTP 503 if database check fails.
+3. **`server/inventory/reservationService.ts`**:
+   - Wrapped concurrent reservation inserts in a PostgreSQL `SAVEPOINT sp_reservation_insert`.
+   - In PostgreSQL, unique constraint violations (`23505`) on concurrent idempotency collisions mark transactions aborted (`25P02`). The savepoint rollback cleanly recovers the transaction so idempotent reloads succeed without transaction abortion.
+4. **`tests/production_gate.test.ts`**:
+   - Implemented 7 automated verification units for fail-closed behavior, negative startup tests, entropy checks, and 503 outage probes.
+5. **`tests/persistence.test.ts` & `tests/auth_security.test.ts`**:
+   - Added support for `DATABASE_URL` / `PGHOST` so suites run natively against external PostgreSQL instances as well as isolated in-memory test databases.
+6. **`package.json` & `package-lock.json`**:
+   - Added `test:prod-gate` script and integrated into `npm test`.
+   - Preserved deterministic `package-lock.json` for reproducible `npm ci` builds.
+7. **`.ai/REL-010_RELEASE_CANDIDATE_HARDENING.md`**:
+   - Corrected historical candidate reference from `9bf57de` to `1bc307c6f059c402123512e9b9227fcaab58fe32`.
 
 ---
 
@@ -26,100 +53,138 @@ The platform strictly enforces the following state machine under `NODE_ENV=produ
 
 ```text
 NODE_ENV=production
-├── Valid Postgres Config & High-Entropy JWT_SECRET ──> Boots PostgresPoolClient (Active Connection)
-├── Missing Postgres Config (DATABASE_URL & PGHOST) ──> CONTROLLED TERMINATION (Fail-Closed)
-├── Invalid Postgres Config / Unreachable DB Socket  ──> CONTROLLED TERMINATION (Fail-Closed)
-└── Missing or Low-Entropy JWT_SECRET (e.g. "dev")   ──> CONTROLLED TERMINATION (Fail-Closed)
+├── Valid Postgres Config + High-Entropy JWT_SECRET ──> Boots PostgresPoolClient (PostgreSQL 16)
+├── Missing Postgres Config (DATABASE_URL & PGHOST) ──> CONTROLLED TERMINATION (Exit 1, Fail-Closed)
+├── Invalid Postgres Config / Unreachable DB Socket  ──> CONTROLLED TERMINATION (Exit 1, Fail-Closed)
+├── Missing or Weak JWT_SECRET (<32 chars or "dev")  ──> CONTROLLED TERMINATION (Exit 1, Fail-Closed)
+└── ALLOW_EMBEDDED_POSTGRES=true Override Attempt   ──> STRICTLY REJECTED (Zero Fallback)
 ```
 
-- **PGlite Restriction**: `PGlite` is strictly prohibited in production. Even if `ALLOW_EMBEDDED_POSTGRES=true` is set, it will be ignored and startup will terminate immediately with a fatal security violation error.
-- **Redaction of Secrets**: No raw credentials, database passwords, or secret strings are ever written to stdout or stderr during connection failure reports. Only sanitised operational errors are displayed.
+### Confidentiality & Non-Secret Operational Errors
+All error messages emitted during startup or connection failure are strictly sanitized:
+- No database passwords, tokens, or JWT secrets are printed to stdout, stderr, or log files.
+- Example sanitized error:
+  `[AbaCha DB Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST). PGlite is NEVER permitted in production.`
 
 ---
 
-## 4. Test Commands & Verification Suite
-The entire test suite can be executed via:
-```bash
-npm test
-```
-
-To run only the production gate tests:
-```bash
-npm run test:prod-gate
-```
+## 4. PostgreSQL Staging Environment Used
+- **Engine**: PostgreSQL 16.10 (x64 Windows Local Service / Cluster)
+- **Host**: `127.0.0.1`
+- **Port**: `5433` (isolated staging daemon instance, `task-2160`)
+- **Staging Databases**:
+  - `abacha_staging`: Dedicated staging database for server smoke testing, health, and readiness probes.
+  - `abacha_test_db`: Dedicated isolated test database for running the full verification suite.
+- **Connection String**: `postgresql://postgres@127.0.0.1:5433/abacha_staging`
 
 ---
 
-## 5. PostgreSQL Environment Used
-- **Development/Test Fallback**: Matches the standard `PGliteDatabaseClient` (WASM-based embedded PostgreSQL) for local testing and zero-config speed.
-- **Production Staging**: Leverages `PostgresPoolClient` built atop the robust `pg` node-postgres pool driver.
-- **Staging Database Verification**: Validated via rigorous simulated unreachable database nodes and local loopback address probes.
+## 5. Verification Suite & Results on Real PostgreSQL
+
+All **151 unique verification units** across the complete application suite plus **7 production gate verification units** (**158 units total**) were executed against the real PostgreSQL staging database:
+
+| Suite Command | Test File | Units | PostgreSQL Engine Result |
+| :--- | :--- | :---: | :---: |
+| `npm run test:db` | `tests/persistence.test.ts` | 15 | **15 / 15 PASS** |
+| `npm run test:security` | `tests/auth_security.test.ts` | 22 | **22 / 22 PASS** |
+| `npm run test:inventory` | `tests/inventory.test.ts` | 24 | **24 / 24 PASS** |
+| `npm run test:transfer` | `tests/transfer.test.ts` | 13 | **13 / 13 PASS** |
+| `npm run test:pos` | `tests/pos.test.ts` | 17 | **17 / 17 PASS** |
+| `npm run test:api` | `tests/api_hardening.test.ts` | 11 | **11 / 11 PASS** |
+| `npm run test:qa` | `tests/qa_verification.test.ts` | 5 | **5 / 5 PASS** |
+| `npm run test:ux` | `tests/ux_accessibility.test.ts` & `tests/ux_pos_hotkeys.test.ts` | 23 | **23 / 23 PASS** |
+| `npm run test:checkout` | `tests/ux_storefront_checkout_integrity.test.ts` | 7 | **7 / 7 PASS** |
+| `npm run test:offline-pos` | `tests/ux_offline_pos.test.ts` | 14 | **14 / 14 PASS** |
+| **Subtotal Baseline** | *(Unique baseline verification units)* | **151** | **151 / 151 PASS (100%)** |
+| `npm run test:prod-gate`| `tests/production_gate.test.ts` | 7 | **7 / 7 PASS** |
+| **Total Verification Units** | *(All automated tests)* | **158** | **158 / 158 PASS (100%)** |
+
+*(Note: `test:hotkeys` runs `tests/ux_pos_hotkeys.test.ts` and is covered under `test:ux` without double-counting).*
+
+### Quality Checks
+- **TypeScript Static Verification (`npm run lint`)**: `tsc --noEmit` passed with **0 errors**.
+- **Production Bundle (`npm run build`)**: Vite and esbuild completed with **Exit Code 0** (`dist/index.html` 1.02 kB, `dist/server.cjs` 411.7 kB).
 
 ---
 
-## 6. Verification Results
-All **158 verification units** across 11 test suites pass successfully.
+## 6. Health & Readiness Verification Evidence
 
+The built production bundle (`node dist/server.cjs`) was booted with:
+- `NODE_ENV="production"`
+- `DATABASE_URL="postgresql://postgres@127.0.0.1:5433/abacha_staging"`
+- `PORT="3000"`
+
+### Live Server Log
 ```text
-======================================================
- AbaCha REL-011 Production Database & Gateway Tests
-======================================================
+[AbaCha DB] Connected (postgresql). Schema: 010
+[Product Service API] Server running on http://0.0.0.0:3000
+```
 
-  [TEST] 1. Missing DATABASE_URL/PGHOST in Production throws Error... PASSED
-  [TEST] 2. PGlite cannot become the production fallback via environment override... PASSED
-  [TEST] 3. Missing JWT_SECRET in Production causes hard startup failure... PASSED
-  [TEST] 4. Insecure/Short JWT_SECRET in Production causes hard startup failure... PASSED
-  [TEST] 5. Development environment falls back to PGlite when external DB is missing... PASSED
-  [TEST] 6. Test environment respects explicit PostgreSQL when provided... PASSED
-  [TEST] 7. Health / Readiness probes respond with 503 when PostgreSQL is down... [AbaCha DB Fatal] Production PostgreSQL startup failed: connect ECONNREFUSED 127.0.0.1:23456
-  PASSED
+### Probe Evidence: `GET /api/health`
+**HTTP Status**: `200 OK`
+```json
+{
+  "status": "ok",
+  "ready": true,
+  "service": "Centralized Product Service",
+  "version": "2.4.0",
+  "uptime": 17.44,
+  "timestamp": "2026-09-11T16:41:28.478Z",
+  "database": {
+    "connected": true,
+    "engine": "postgresql",
+    "schemaVersion": "010",
+    "migrationsCount": 10
+  }
+}
+```
 
-----------------------------------------
-Results: 7 passed, 0 failed
-----------------------------------------
+### Probe Evidence: `GET /api/ready`
+**HTTP Status**: `200 OK`
+```json
+{
+  "ready": true,
+  "status": "ready",
+  "database": {
+    "connected": true,
+    "engine": "postgresql",
+    "schemaVersion": "010"
+  }
+}
 ```
 
 ---
 
-## 7. Health/Readiness Verification Evidence
-Under standard production execution, the system responds on `/api/health` and `/api/ready` endpoints:
+## 7. Negative-Test Coverage Evidence
 
-- **Unhealthy Connection State (Fail-Closed / Degraded)**:
-  - Return Status: `503 Service Unavailable`
-  - Response Body:
-    ```json
-    {
-      "status": "unhealthy",
-      "ready": false,
-      "error": "Production PostgreSQL connection failure"
-    }
-    ```
-- **Healthy Active Connection State**:
-  - Return Status: `200 OK`
-  - Response Body:
-    ```json
-    {
-      "status": "healthy",
-      "ready": true,
-      "db": "PostgreSQL"
-    }
-    ```
+The 4 required negative test scenarios were verified:
+
+| Test Scenario | Condition | Observed System Response | Status |
+| :--- | :--- | :--- | :---: |
+| **A. Missing Configuration** | `NODE_ENV=production`<br>`DATABASE_URL` unset<br>`PGHOST` unset | Server startup threw `[AbaCha Config Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST is missing)` and terminated immediately. | **PASSED** |
+| **B. Invalid Configuration** | `NODE_ENV=production`<br>`DATABASE_URL="postgresql://invaliduser:badpass@127.0.0.1:5433/bad_db"` | Connection attempt threw operational error `role "invaliduser" does not exist` without leaking passwords. Startup terminated immediately. | **PASSED** |
+| **C. PostgreSQL Unavailable** | Database daemon stopped / unreachable | Probes `/api/health` and `/api/ready` immediately returned **HTTP 503 Service Unavailable** (`{"ready": false, "status": "unhealthy"}`). Traffic was safely rejected. | **PASSED** |
+| **D. PGlite Fallback Block** | `NODE_ENV=production`<br>`ALLOW_EMBEDDED_POSTGRES=true`<br>No external PostgreSQL | `getDatabaseClient()` threw `[AbaCha DB Fatal] Production environment requires a valid PostgreSQL configuration... PGlite is NEVER permitted in production.` Fallback was completely blocked. | **PASSED** |
 
 ---
 
-## 8. Negative-Test Coverage Evidence
-1. **Missing DATABASE_URL/PGHOST**: Successfully validated that omitting required connection parameters raises a fatal error immediately on startup and prevents the server from listening on any ingress port.
-2. **Fallback Prevention**: Verified that even with `ALLOW_EMBEDDED_POSTGRES=true`, the production system rejects startup rather than utilizing PGlite.
-3. **Entropy Validation**: Confirmed that providing weak keys (e.g. `'short-key'` or containing `'dev'`) triggers a hard configuration abort.
-4. **Outage Grace**: Proved that if an active connection cannot be made to the database, startup yields a hard failure, and the `/api/ready` status falls back to 503 instantly to prevent ingress traffic from being routed to a crippled node.
+## 8. Regression Review Summary
+All core operational invariants remain intact and verified against real PostgreSQL:
+- **Authentication & RBAC**: Token verification, password hashing, and role hierarchy pass 22/22 checks.
+- **Tenant Isolation**: Cross-tenant data leaks and identity tampering are strictly rejected across all endpoints.
+- **Inventory & Reservations**: Exact-decimal arithmetic, weighted average cost, negative-stock defense, and concurrent reservation locks operate deterministically on PostgreSQL.
+- **Transfers & POS**: Row-level locking and transaction atomicity prevent double-spending or inventory corruption.
+- **Storefront & Checkout**: WCAG 2.2 AA focus trapping, modalManager lifecycle, and storefront checkout integrity verified 7/7 on PostgreSQL.
+- **Offline POS**: IndexedDB synchronization and offline transaction queueing verified 14/14.
 
 ---
 
-## 9. Remaining Risks
-- **Network Fluctuation**: Temporary staging network issues can trigger a 503 fail-closed. Cloud run ingress should have a reasonable start-up probe grace period to handle database node spin-up times.
-- **Environment Parity**: Local testing utilizes PGlite for rapid execution, which uses the WASM engine. While PGlite maintains 100% compatibility with PG dialect, staging environments should periodically perform cold integrations on physical PostgreSQL machines.
+## 9. Remaining Operational Risks
+1. **Cloud Database Provisioning**: Production deployments must ensure external managed PostgreSQL (e.g. AWS RDS, GCP Cloud SQL) is provisioned and network firewalls permit ingress from application containers before starting.
+2. **Startup Grace Period**: Because production fails closed immediately on database connection failure, orchestrators (Kubernetes / Cloud Run) should configure a startup probe grace period (e.g. 15-30 seconds) to allow database connections to warm up.
 
 ---
 
 ## 10. Final Recommendation
-The current release candidate is **APPROVED** and is officially **customer-handover ready** with regard to the fail-closed database architecture. The system successfully validates all 158 tests, and is type-safe and fully compliant with production quality gates.
+Task **REL-011** is **COMPLETE** and **READY FOR REVIEW**. The platform successfully enforces a deterministic fail-closed architecture, prohibits silent PGlite degradation in production, and passes all 158 tests natively against PostgreSQL 16.
+

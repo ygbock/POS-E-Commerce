@@ -1603,19 +1603,39 @@ In accordance with supervisor directives and the engineering contract, `API-001`
 5. **Development & Test Flexibility**:
    - Ensured zero friction for local development and non-production testing; the system gracefully allows embedded PGlite fallbacks in development and respects postgres in test when explicitly configured.
 
+6. **PostgreSQL Concurrent Savepoint Transaction Fix**:
+   - Wrapped concurrent reservation inserts in `server/inventory/reservationService.ts` in a PostgreSQL `SAVEPOINT sp_reservation_insert`.
+   - Under PostgreSQL, any unique constraint collision (`23505`) on idempotent requests marks the entire transaction block aborted (`25P02`). The savepoint rollback safely clears the error so idempotent reloads succeed without transaction failure.
+
 ### 2. Verification Outcomes
 
 1. **New Automated Production Gate Tests**:
    - `npm run test:prod-gate`: **7/7 PASSED (100%)**
-2. **Full Regression Execution Check**:
-   - `npm test`: **158/158 PASSED (100%)**
-3. **Build & Lint Consistency Check**:
+2. **Real PostgreSQL 16 Staging Database Verification**:
+   - Ran against isolated PostgreSQL 16 server on port 5433 (`abacha_test_db`).
+   - `test:db`: **15 / 15 PASS**
+   - `test:security` (`test:auth`): **22 / 22 PASS**
+   - `test:inventory`: **24 / 24 PASS**
+   - `test:transfer`: **13 / 13 PASS**
+   - `test:pos`: **17 / 17 PASS**
+   - `test:api`: **11 / 11 PASS**
+   - `test:qa`: **5 / 5 PASS**
+   - `test:ux` (static + behavioral): **23 / 23 PASS**
+   - `test:checkout`: **7 / 7 PASS**
+   - `test:offline-pos`: **14 / 14 PASS**
+   - **Subtotal Unique Baseline Units**: **151 / 151 PASS (100%) on PostgreSQL**
+3. **Full Regression Execution Check**:
+   - `npm test`: **158/158 PASSED (100%)** (151 baseline + 7 production gate)
+4. **Production Health & Readiness Probes**:
+   - `GET /api/health`: HTTP 200, `database.engine: "postgresql"`, `database.connected: true`, `schemaVersion: "010"`
+   - `GET /api/ready`: HTTP 200, `database.engine: "postgresql"`, `database.connected: true`
+   - Simulated outage: HTTP 503 Service Unavailable, sanitized JSON payload without credential leaks.
+5. **Build & Lint Consistency Check**:
    - `npm run lint` (`tsc --noEmit`): **0 errors / 0 warnings**
    - `npm run build`: **Succeeded cleanly with 0 errors/warnings**
-4. **Applet Compilation**:
-   - `compile_applet`: **Build succeeded successfully**
-5. **Governance State**:
-   - Marked `READY FOR REVIEW` in `.ai/TASK_QUEUE.md` and `.ai/REL-011_PRODUCTION_DATABASE_GATE.md` created.
+6. **Governance State**:
+   - Marked `READY FOR REVIEW` in `.ai/TASK_QUEUE.md` and `.ai/REL-011_PRODUCTION_DATABASE_GATE.md` updated with comprehensive staging evidence.
+
 
 
 

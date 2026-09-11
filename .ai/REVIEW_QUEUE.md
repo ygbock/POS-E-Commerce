@@ -48,6 +48,23 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
+### Queue Item: REL-011 — Production Database Fail-Closed + PostgreSQL Staging Gate
+- **Submitted By**: Senior Software Engineer / Implementation Lead & Security Architect
+- **Submission Date**: 2026-09-11
+- **Current Status**: `PENDING REVIEW`
+- **Scope**:
+  - Transitioned production database architecture to strict fail-closed enforcement under `NODE_ENV=production`.
+  - Removed automatic embedded PGlite fallback behavior from `startServer()`.
+  - Enforced mandatory high-entropy `JWT_SECRET` (>= 32 chars, no 'dev'/'default') during production startup.
+  - Wrapped concurrent reservation insert in PostgreSQL `SAVEPOINT sp_reservation_insert` in `reservationService.ts` to allow safe transaction recovery on unique key collisions.
+  - Verified `/api/health` and `/api/ready` report `engine: "postgresql"` and respond 503 during database outage.
+  - Validated 151 unique baseline verification units + 7 production gate units (158 units total) against real PostgreSQL 16 staging database with 100% pass rate.
+  - Verified 4 negative-test scenarios (missing config, invalid config, database outage, PGlite fallback rejection).
+  - Preserved deterministic `package-lock.json` and resolved stale candidate references in REL-010.
+- **Supervisor Action Required**: Review report in `.ai/REL-011_PRODUCTION_DATABASE_GATE.md` and approve release candidate gate.
+
+---
+
 ### Queue Item: 48-Hour Release Readiness & Customer Handover Assessment
 - **Submitted By**: Senior Software Engineer / Release Lead / Security Architect
 - **Submission Date**: 2026-09-11

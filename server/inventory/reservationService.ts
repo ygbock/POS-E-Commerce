@@ -105,8 +105,13 @@ export class ReservationService {
 
       // 4. Create reservation record with collision-resistant UUID
       const reservationId = generateInventoryId('res');
+      let reservation: InventoryReservationRecord;
+      const useSavepoint = !!idempotencyKey;
+      if (useSavepoint) {
+        await tx.exec('SAVEPOINT sp_reservation_insert');
+      }
       try {
-        return await this.reservationRepo.createReservation(
+        reservation = await this.reservationRepo.createReservation(
           {
             id: reservationId,
             organization_id: organizationId,
@@ -123,7 +128,18 @@ export class ReservationService {
           },
           tx
         );
+        if (useSavepoint) {
+          await tx.exec('RELEASE SAVEPOINT sp_reservation_insert');
+        }
+        return reservation;
       } catch (err: any) {
+        if (useSavepoint) {
+          try {
+            await tx.exec('ROLLBACK TO SAVEPOINT sp_reservation_insert');
+          } catch {
+            // ignore savepoint rollback error
+          }
+        }
         // Handle race condition on unique index uq_inventory_reservations_org_idempotency
         if (idempotencyKey && (err.code === '23505' || String(err.message).includes('uq_inventory_reservations_org_idempotency'))) {
           const existing = await this.reservationRepo.findByIdempotencyKey(organizationId, idempotencyKey, tx);

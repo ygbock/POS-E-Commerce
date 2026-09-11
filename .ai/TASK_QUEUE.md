@@ -521,7 +521,7 @@ PROD-001 (NOT STARTED)
   - Documented CI/CD pipeline and security regression scan.
 - **Dependencies**: `UX-001 Phase 2.5`
 - **Acceptance Criteria**:
-  - [x] Exact HEAD SHA recorded: `9bf57deaf6526eedb45f86eb79333254ac004519`.
+  - [x] Exact HEAD SHA recorded: `1bc307c6f059c402123512e9b9227fcaab58fe32` (evaluated from `9bf57deaf6526eedb45f86eb79333254ac004519`).
   - [x] Clean deterministic `package-lock.json` committed.
   - [x] Clean `npm ci` verified.
   - [x] `tsc --noEmit` and `npm run lint` pass with 0 errors.
@@ -530,3 +530,34 @@ PROD-001 (NOT STARTED)
   - [x] Production database architecture contract verified.
   - [x] Deployment smoke test passes with accurate database engine reporting.
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
+
+---
+
+### Task 11: REL-011 — Production Database Fail-Closed + PostgreSQL Staging Gate
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Make production database behavior deterministic and fail-closed, then validate the complete application against a real PostgreSQL staging database.
+- **Scope**:
+  - Enforced production database policy: `NODE_ENV=production` requires valid PostgreSQL configuration; missing or invalid config causes hard startup termination.
+  - Strictly prohibited embedded PGlite persistence in production; environment variable overrides (`ALLOW_EMBEDDED_POSTGRES`) are ignored under production.
+  - Removed automatic fallback to embedded storage from `startServer()` in `server.ts`.
+  - Enforced high-entropy `JWT_SECRET` (minimum 32 characters, no 'dev'/'default') during production startup.
+  - Wrapped concurrent reservation insert in PostgreSQL `SAVEPOINT sp_reservation_insert` in `reservationService.ts` to allow clean recovery without aborting active transaction.
+  - Validated health (`/api/health`) and readiness (`/api/ready`) probes report active database engine (`"engine": "postgresql"`) and return HTTP 503 during database outage.
+  - Executed complete verification suite (151 unique baseline units + 7 production gate units = 158 units) against real PostgreSQL 16 staging database with 100% pass rate.
+  - Validated negative test scenarios (missing config, invalid config, database outage, PGlite fallback rejection).
+- **Dependencies**: `REL-010`
+- **Acceptance Criteria**:
+  - [x] Production cannot start without valid PostgreSQL configuration.
+  - [x] Production cannot silently use PGlite.
+  - [x] PostgreSQL staging starts successfully.
+  - [x] `/api/health` reports PostgreSQL (`"engine": "postgresql"`).
+  - [x] `/api/ready` succeeds with PostgreSQL available.
+  - [x] `/api/ready` fails when PostgreSQL is unavailable (HTTP 503).
+  - [x] 151 unique verification units pass on PostgreSQL (158 total units).
+  - [x] `npm run lint` passes (0 errors).
+  - [x] `npm run build` passes (Exit Code 0).
+  - [x] No security regressions.
+  - [x] Release documentation matches actual GitHub HEAD.
+  - [x] No secrets committed.
+- **Supervisor Gate**: Marked `READY FOR REVIEW`.
+

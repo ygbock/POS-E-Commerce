@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { createIsolatedTestClient, DatabaseClient, resetDatabaseClient } from '../server/db/client';
+import { createIsolatedTestClient, getDatabaseClient, DatabaseClient, resetDatabaseClient } from '../server/db/client';
 import { runMigrations, getAppliedMigrations } from '../server/db/migrator';
 import {
   CatalogRepository,
@@ -34,8 +34,10 @@ async function main() {
   console.log(' AbaCha Database & Persistence Tests');
   console.log('========================================\n');
 
-  // Use an isolated in-memory PostgreSQL test instance
-  const db: DatabaseClient = createIsolatedTestClient();
+  // Use PostgreSQL if configured in environment, otherwise isolated in-memory test instance
+  const db: DatabaseClient = (process.env.DATABASE_URL || process.env.PGHOST)
+    ? getDatabaseClient({ forceNew: true })
+    : createIsolatedTestClient();
 
   try {
     // Test 1: Database Connection
@@ -48,7 +50,10 @@ async function main() {
     // Test 2: Migration Execution
     await runTest('2. Schema Migration Execution (Up)', async () => {
       const result = await runMigrations(db);
-      assert.ok(result.applied.length >= 1, 'At least initial migration applied');
+      assert.ok(
+        result.applied.length >= 1 || (result.applied.length + result.skipped.length >= 1),
+        'At least initial migration applied'
+      );
 
       const applied = await getAppliedMigrations(db);
       assert.ok(applied.has('001'), 'Migration 001 marked applied');
@@ -86,9 +91,9 @@ async function main() {
 
     // Seed test organization and location
     await db.exec(`
-      INSERT INTO organizations (id, name, code) VALUES ('test_org', 'Test Org', 'TEST_ORG');
+      INSERT INTO organizations (id, name, code) VALUES ('test_org', 'Test Org', 'TEST_ORG') ON CONFLICT (id) DO NOTHING;
       INSERT INTO locations (id, organization_id, code, name, type)
-      VALUES ('test_loc', 'test_org', 'LOC-TEST', 'Test Location', 'Retail Store');
+      VALUES ('test_loc', 'test_org', 'LOC-TEST', 'Test Location', 'Retail Store') ON CONFLICT (id) DO NOTHING;
     `);
 
     // Test 4: Primary Key Constraints
