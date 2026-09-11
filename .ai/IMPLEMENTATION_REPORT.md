@@ -1,5 +1,43 @@
 # Implementation Report
 
+## UPG-001R2 — Production Operations Hardening Supervisor Corrections
+
+- **Status**: `READY FOR SUPERVISOR REVIEW`
+- **Parent Task**: VERSION-2.6-UPGRADE / Platform Hardening
+- **Operating Directive**: `INSPECT → HARDEN → TEST → VERIFY → DOCUMENT → REPORT`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Exact Commits**:
+  - `661bafa`: `feat(hardening): UPG-001R2 complete 1:1 environment contract, 4-gate deployment workflow, and expanded contradiction matrix`
+  - `e840027`: `feat(hardening): UPG-001R1 production operations hardening corrections`
+  - `5e3f801`: `docs: add operational platform hardening specifications and runbooks (UPG-001)`
+  - `21ac17c`: `feat: add CI/CD deployment pipelines, operational hardening scripts, and backup verification utilities`
+- **Files Changed in UPG-001R2**:
+  - `server/config/environment.ts`
+  - `server.ts`
+  - `.github/workflows/production-deploy.yml`
+  - `tests/operational_hardening.test.ts`
+  - `tests/persistence.test.ts`
+- **Scope Discipline & Technical Implementation**:
+  - **Strictly 1:1 DEPLOY_ENV / NODE_ENV Contract**: Implemented a generalized comparison rule after normalization (`normalizedDeployEnv !== normalizedNodeEnv`) that rejects all 12 mismatch combinations. Unknown `NODE_ENV` values (e.g., `qa`, `uat`, `custom`) are explicitly rejected with a descriptive error and never silently downgraded.
+  - **Mutual Exclusivity Verified**: Guaranteed that across all valid environments (`development`, `test`, `staging`, `production`), exactly one of `isProduction`, `isStaging`, `isTest`, `isDevelopment` is `true` and the other three are `false`.
+  - **Production Deployment 4-Gate Structure**: Modified `.github/workflows/production-deploy.yml` to clearly establish and enforce 4 distinct promotion gates:
+    - **Gate A (Reproducible Artifact Verification)**: Validates `dist/server.cjs` sha256 checksum against `inputs.approved_artifact_digest`, explicitly documented as reproducibility proof rather than hosting deployment identity.
+    - **Gate B (Deployment Execution)**: Prohibits unverified continuation. Checks `[ -z "${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}" ]`, prints a sanitized `FATAL: Configured production deployment mechanism (RENDER_PROD_DEPLOY_HOOK_URL) is missing.` message, and exits with code 1.
+    - **Gate C (Deployed Revision Verification)**: Polls production runtime (`/api/version`), extracts `revision`, verifies `inputs.approved_commit_sha == deployed_runtime_revision`, and fails closed with `exit 1` on mismatch or rollout timeout.
+    - **Gate D (Health & Readiness Probes)**: Probes `/api/health` and `/api/ready` with exponential retries and fails closed (`exit 1`) if status is not healthy.
+  - **Runtime Revision Exposure**: Added sanitized runtime revision exposure in `server.ts` via `/api/version` and `/api/health` using `GIT_COMMIT_SHA || RENDER_GIT_COMMIT || APP_REVISION`, ensuring zero credential exposure.
+  - **Regression Immunity**: Resolved Node.js environment variable `process.env` coercion gotcha in `environment.ts` and `persistence.test.ts`.
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm run test:operational`: 24/24 passed (including 12-pair contradiction matrix and 4-gate workflow checks).
+  - `npm run test:prod-gate`: 9/9 passed.
+  - `npm test`: 184/184 passed across all 12 domain test suites.
+  - `npm run build`: 0 `.map` files in `dist/`.
+
+---
+
 ## UPG-001R1 — Production Operations Hardening Corrections
 
 - **Status**: `READY FOR REVIEW`

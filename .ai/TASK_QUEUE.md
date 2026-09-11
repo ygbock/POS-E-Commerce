@@ -659,30 +659,35 @@ PROD-001 (NOT STARTED)
 
 ---
 
-### Task 13: UPG-001 & UPG-001R1 — Production Operations Hardening & Platform Controls
+### Task 13: UPG-001, UPG-001R1 & UPG-001R2 — Production Operations Hardening & Platform Controls
 - **Status**: `READY FOR REVIEW`
 - **Parent Program**: `VERSION-2.6-UPGRADE` (`2.6.0-development`)
-- **Objective**: Establish production operational architecture, strict runtime environment separation, database URL validation, non-leaking error envelopes, fail-closed CI deployment health gates, and public source-map blocking on dedicated branch `upgrade/v2.6/upg-001-platform-hardening`.
+- **Objective**: Establish production operational architecture, strict 1:1 runtime environment contract, database URL validation, 4-gate deployment workflow (reproducibility, fail-closed execution, revision verification, health/ready), and public source-map blocking on dedicated branch `upgrade/v2.6/upg-001-platform-hardening`.
 - **Scope**:
-  - `server/config/environment.ts`: Centralized runtime environment validator ensuring `DEPLOY_ENV` authoritativeness, safe fallback derivation from `NODE_ENV`, strict contradiction rejection, decimal integer PORT validation, PostgreSQL connection URL protocol/host/db validation without error leakage, HTTPS `APP_URL` requirement in staging/production, and configurable cross-environment isolation.
-  - `.github/workflows/production-deploy.yml`: Fail-closed health gate (`exit 1` when `$SUCCESS -ne 1`).
+  - `server/config/environment.ts`: Centralized runtime environment validator ensuring strict 1:1 `DEPLOY_ENV` and `NODE_ENV` parity, generalized contradiction rejection for all 12 mismatch combinations, explicit rejection of unknown `NODE_ENV` values, decimal integer PORT validation, PostgreSQL connection URL protocol/host/db validation without error leakage, HTTPS `APP_URL` requirement in staging/production, and configurable cross-environment isolation.
+  - `.github/workflows/production-deploy.yml`: 4 distinct deployment gates: Gate A (reproducible artifact digest verification), Gate B (deployment execution fail-closed on missing webhook), Gate C (post-deploy runtime revision verification comparing `approved_commit_sha == deployed_runtime_revision`), and Gate D (health/readiness probes fail-closed).
+  - `server.ts`: Exposes sanitized runtime revision identity (`/api/version` and `/api/health`) without credential leakage.
   - `.github/workflows/ci.yml`: Source-map exposure guard rejecting all `.map` files in `dist/`.
   - `package.json`: Source-map stripping from production server bundle build.
-  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 25 test cases verifying all positive and negative failure paths.
+  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 24 test cases verifying all positive and negative failure paths, complete 12-pair contradiction matrix, unknown `NODE_ENV` handling, and 4-gate workflow checks.
 - **Dependencies**: None.
 - **Acceptance Criteria**:
   - [x] Dedicated branch `upgrade/v2.6/upg-001-platform-hardening` maintained.
   - [x] `main` and frozen production baseline `9ae4b7528aecd195a9167e1b2a060513cbf83223` untouched.
-  - [x] `DEPLOY_ENV` authoritative contract with strict contradiction rejection implemented.
-  - [x] `isProduction` and `isStaging` mutually exclusive booleans enforced.
+  - [x] `DEPLOY_ENV` / `NODE_ENV` strictly 1:1 contract with generalized mismatch rejection implemented.
+  - [x] Unknown `NODE_ENV` values rejected (never silently downgraded to development).
+  - [x] `isProduction`, `isStaging`, `isTest`, `isDevelopment` proven mutually exclusive.
   - [x] Strict decimal integer PORT validation (`1-65535`) enforced.
   - [x] PostgreSQL connection URL validated (protocol, host, db) without credential leakage.
   - [x] HTTPS `APP_URL` enforced in staging/production with configurable cross-environment isolation.
-  - [x] Production workflow post-deploy probe fails closed (`exit 1`) on failure.
+  - [x] Production workflow Gate A documents reproducibility, not deployment identity.
+  - [x] Production workflow Gate B fails closed (`exit 1`) if `RENDER_PROD_DEPLOY_HOOK_URL` is missing.
+  - [x] Production workflow Gate C verifies `approved_commit_sha == deployed_runtime_revision` and fails closed.
+  - [x] Production workflow Gate D fails closed (`exit 1`) on health probe failure.
   - [x] Source maps blocked on server route and stripped from deployable build output.
-  - [x] 25/25 operational tests pass deterministically.
+  - [x] 24/24 operational tests pass deterministically.
   - [x] 9/9 production gate tests pass deterministically.
-  - [x] Full regression suite (185 tests across 12 suites) passes 100%.
+  - [x] Full regression suite (184 tests across 12 suites) passes 100%.
   - [x] `npm run lint` passes with 0 errors.
   - [x] Zero secrets committed.
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
