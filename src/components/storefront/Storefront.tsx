@@ -51,6 +51,7 @@ import { StoreCartDrawer } from './StoreCartDrawer';
 import { CustomerAccountModal, AccountPortalTab } from './CustomerAccountModal';
 import { StoreCheckoutModal } from './StoreCheckoutModal';
 import { StorefrontOverlays } from './StorefrontOverlays';
+import { StorefrontHome } from './StorefrontHome';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileFilterDrawer } from './MobileFilterDrawer';
 
@@ -299,165 +300,23 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
       <main className="max-w-[1700px] 2xl:max-w-[1800px] mx-auto px-3 sm:px-6 lg:px-10 xl:px-12 pt-4 sm:pt-6 pb-32 lg:pb-12 space-y-10 sm:space-y-12">
         {/* HOMEPAGE VIEW */}
         {activeSection === 'home' && !hasActiveFilters && (
-          <div className="space-y-10 sm:space-y-14">
-            {/* 1. Hero Promotional Slider Banner */}
-            <StoreHeroBanner
-              onExploreCatalog={() => {
-                goShop();
-                const el = document.getElementById('store-catalog-section');
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              onFilterNewArrivals={() => {
-                const el = document.getElementById('store-new-arrivals');
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              onFilterDeals={() => {
-                setOnSaleOnly(true);
-                goShop();
-              }}
-            />
-
-            {/* 2. Trust Strip */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
-              <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-2.5 sm:space-x-3 shadow-lg">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center flex-shrink-0">
-                  <Truck className="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-900 dark:text-white text-xs">Same-Day Dispatch</p>
-                  <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-[11px]">Free delivery over $75</p>
-                </div>
-              </div>
-
-              <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-2.5 sm:space-x-3 shadow-lg">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0">
-                  <Boxes className="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-900 dark:text-white text-xs">Live Stock Accuracy</p>
-                  <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-[11px]">Zero latency POS sync</p>
-                </div>
-              </div>
-
-              <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-2.5 sm:space-x-3 shadow-lg">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center flex-shrink-0">
-                  <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-900 dark:text-white text-xs">Authentic Hardware</p>
-                  <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-[11px]">2-year full warranty</p>
-                </div>
-              </div>
-
-              <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-2.5 sm:space-x-3 shadow-lg">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0">
-                  <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-900 dark:text-white text-xs">30-Day Free Returns</p>
-                  <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-[11px]">In-store or postal pickup</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Featured Categories Showcase */}
-            <CategoryShowcase
-              selectedCategory={selectedCategory}
-              onSelectCategory={(cat) => goCategory(cat)}
-            />
-
-            {/* 4. Featured Products Section */}
-            <ProductCarouselSection
-              id="store-featured-products"
-              badgeIcon={<Sparkles className="w-3.5 h-3.5" />}
-              badgeText="Handpicked For Quality"
-              badgeColorClass="bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-500/30"
-              title="Featured Products"
-              subtitle="Curated premium hardware, culinary craft, and lifestyle essentials"
-              products={featuredProducts}
-              onSelectProduct={goProduct}
-              actionButton={{
-                text: 'View All Products',
-                onClick: goShop,
-                colorClass: 'text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300',
-              }}
-            />
-
-            {/* 5. Active Promotions & Coupons */}
-            <PromotionsBanner onOpenCart={goCart} />
-
-            {/* 6. Best Sellers Section */}
-            <ProductCarouselSection
-              id="store-best-sellers"
-              badgeIcon={<Flame className="w-3.5 h-3.5" />}
-              badgeText="Top Rated & High Volume"
-              badgeColorClass="bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-500/30"
-              title="Best Sellers"
-              subtitle="Customer favorites backed by verified multi-location reviews"
-              products={bestSellers}
-              onSelectProduct={goProduct}
-              actionButton={{
-                text: 'See Full Leaderboard',
-                onClick: () => {
-                  setSortBy('best-sellers');
-                  goShop();
-                },
-                colorClass: 'text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300',
-              }}
-            />
-
-            {/* 7. New Arrivals Section */}
-            <ProductCarouselSection
-              id="store-new-arrivals"
-              badgeIcon={<Clock className="w-3.5 h-3.5" />}
-              badgeText="Just Stocked In Logistics"
-              badgeColorClass="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30"
-              title="New Arrivals"
-              subtitle="Fresh releases with live barcode serial inventory tracking"
-              products={newArrivals}
-              onSelectProduct={goProduct}
-              actionButton={{
-                text: 'View Recent Stock',
-                onClick: () => {
-                  setSortBy('newest');
-                  goShop();
-                },
-                colorClass: 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300',
-              }}
-            />
-
-            {/* 8. Recommended For You Section */}
-            <ProductCarouselSection
-              id="store-recommended-products"
-              badgeIcon={<Sparkles className="w-3.5 h-3.5" />}
-              badgeText="Top Customer Satisfaction (4.5+ Rating)"
-              badgeColorClass="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/30"
-              title="Recommended For You"
-              subtitle="Algorithmic matches tailored to high community acclaim and quality scores"
-              products={recommendedProducts}
-              onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
-              actionButton={{
-                text: 'Explore Top Rated',
-                onClick: () => {
-                  setMinRating(4.5);
-                  goShop();
-                },
-                colorClass: 'text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300',
-              }}
-            />
-
-            {/* 9. Partner Brands Showcase */}
-            <BrandShowcase
-              selectedBrand={selectedBrand}
-              onSelectBrand={(b) => goBrand(b)}
-            />
-
-            {/* 10. High-Conversion Newsletter Subscription Section */}
-            <NewsletterSection onExploreDeals={() => {
-              setOnSaleOnly(true);
-              setActiveSection('catalog');
-            }} />
-          </div>
+          <StorefrontHome
+            selectedCategory={selectedCategory}
+            selectedBrand={selectedBrand}
+            featuredProducts={featuredProducts}
+            bestSellers={bestSellers}
+            newArrivals={newArrivals}
+            recommendedProducts={recommendedProducts}
+            goShop={goShop}
+            goCategory={goCategory}
+            goBrand={goBrand}
+            goProduct={goProduct}
+            setOnSaleOnly={setOnSaleOnly}
+            setSortBy={setSortBy}
+            setMinRating={setMinRating}
+            setActiveSection={setActiveSection}
+            onOpenCart={goCart}
+          />
         )}
 
         {/* FULL SHOPPING CATALOG VIEW (With Search, Filters, Sorting) */}
