@@ -47,7 +47,7 @@ const MainLayout: React.FC = () => {
   // When activeTab is 'storefront', render the full customer-facing store as the root page
   if (activeTab === 'storefront') {
     return (
-      <Storefront
+      <StorefrontRouteShell
         onOpenAdmin={() => setActiveTab('dashboard')}
         onOpenPos={() => setActiveTab('pos')}
       />
@@ -118,7 +118,9 @@ export default function App() {
     <ErrorBoundary>
       <ToastProvider>
         <CommerceProvider>
-          <MainLayout />
+          <StorefrontProvider>
+            <MainLayout />
+          </StorefrontProvider>
         </CommerceProvider>
       </ToastProvider>
     </ErrorBoundary>
