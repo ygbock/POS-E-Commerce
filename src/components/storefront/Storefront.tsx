@@ -29,6 +29,7 @@ import {
   Percent,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontRoute, buildStorefrontPath } from '../../router/StorefrontRouter';
 import { Product, ProductVariant, Order } from '../../types';
 import { StoreHeader } from './StoreHeader';
 import { StoreHeroBanner } from './StoreHeroBanner';
@@ -56,6 +57,7 @@ export interface StorefrontProps {
 }
 
 export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }) => {
+  const { route, navigate } = useStorefrontRoute();
   const {
     products,
     storeCart,
@@ -219,6 +221,60 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     inStockOnly ||
     onSaleOnly ||
     minRating > 0;
+
+  // Keep the existing storefront UI state synchronized with the canonical History API route.
+  // URL navigation is the source of truth for deep links, refreshes, and browser back/forward.
+  useEffect(() => {
+    if (route.name === 'home') {
+      setActiveSection('home');
+      setSelectedCategory('All');
+      setSelectedBrand('All');
+      setSearchQuery('');
+      return;
+    }
+    if (route.name === 'shop') {
+      setActiveSection('catalog');
+      return;
+    }
+    if (route.name === 'category') {
+      setActiveSection('catalog');
+      setSelectedCategory(route.slug);
+      return;
+    }
+    if (route.name === 'brand') {
+      setActiveSection('catalog');
+      setSelectedBrand(route.slug);
+      return;
+    }
+    if (route.name === 'search') {
+      setActiveSection('catalog');
+      setSearchQuery(route.query || '');
+      return;
+    }
+    if (route.name === 'product') {
+      const product = products.find((item) =>
+        item.id === route.slug || item.slug === route.slug
+      );
+      if (product) setSelectedDetailProduct(product);
+      return;
+    }
+    if (route.name === 'cart') {
+      setIsCartDrawerOpen(true);
+      return;
+    }
+    if (route.name === 'checkout') {
+      setIsCheckoutOpen(true);
+      return;
+    }
+    if (route.name === 'account') {
+      setAccountPortalTab('profile');
+      setIsAccountModalOpen(true);
+    }
+  }, [route, products]);
+
+  const navigateStorefront = (next: Parameters<typeof buildStorefrontPath>[0]) => {
+    navigate(next);
+  };
 
   return (
     <div className={`${isDarkMode ? 'dark' : ''}`}>
