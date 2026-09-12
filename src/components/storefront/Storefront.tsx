@@ -197,7 +197,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
   const handleBuyNow = (product: Product, variant: ProductVariant, qty: number) => {
     addToStoreCart(product, variant, qty);
     setIsCartDrawerOpen(false);
-    setIsCheckoutOpen(true);
+    goCheckout();
   };
 
   const handleClearAllFilters = () => {
@@ -343,7 +343,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
             {/* 1. Hero Promotional Slider Banner */}
             <StoreHeroBanner
               onExploreCatalog={() => {
-                setActiveSection('catalog');
+                goShop();
                 const el = document.getElementById('store-catalog-section');
                 el?.scrollIntoView({ behavior: 'smooth' });
               }}
@@ -353,7 +353,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
               }}
               onFilterDeals={() => {
                 setOnSaleOnly(true);
-                setActiveSection('catalog');
+                goShop();
               }}
             />
 
@@ -415,16 +415,16 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
               title="Featured Products"
               subtitle="Curated premium hardware, culinary craft, and lifestyle essentials"
               products={featuredProducts}
-              onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
+              onSelectProduct={goProduct}
               actionButton={{
                 text: 'View All Products',
-                onClick: () => setActiveSection('catalog'),
+                onClick: goShop,
                 colorClass: 'text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300',
               }}
             />
 
             {/* 5. Active Promotions & Coupons */}
-            <PromotionsBanner onOpenCart={() => setIsCartDrawerOpen(true)} />
+            <PromotionsBanner onOpenCart={goCart} />
 
             {/* 6. Best Sellers Section */}
             <ProductCarouselSection
@@ -435,12 +435,12 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
               title="Best Sellers"
               subtitle="Customer favorites backed by verified multi-location reviews"
               products={bestSellers}
-              onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
+              onSelectProduct={goProduct}
               actionButton={{
                 text: 'See Full Leaderboard',
                 onClick: () => {
                   setSortBy('best-sellers');
-                  setActiveSection('catalog');
+                  goShop();
                 },
                 colorClass: 'text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300',
               }}
@@ -455,12 +455,12 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
               title="New Arrivals"
               subtitle="Fresh releases with live barcode serial inventory tracking"
               products={newArrivals}
-              onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
+              onSelectProduct={goProduct}
               actionButton={{
                 text: 'View Recent Stock',
                 onClick: () => {
                   setSortBy('newest');
-                  setActiveSection('catalog');
+                  goShop();
                 },
                 colorClass: 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300',
               }}
@@ -480,7 +480,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
                 text: 'Explore Top Rated',
                 onClick: () => {
                   setMinRating(4.5);
-                  setActiveSection('catalog');
+                  goShop();
                 },
                 colorClass: 'text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300',
               }}
@@ -489,10 +489,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
             {/* 9. Partner Brands Showcase */}
             <BrandShowcase
               selectedBrand={selectedBrand}
-              onSelectBrand={(b) => {
-                setSelectedBrand(b);
-                setActiveSection('catalog');
-              }}
+              onSelectBrand={(b) => goBrand(b)}
             />
 
             {/* 10. High-Conversion Newsletter Subscription Section */}
@@ -760,7 +757,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
                       <ProductCard
                         key={prod.id}
                         product={prod}
-                        onSelectProduct={(p) => setSelectedDetailProduct(p)}
+                        onSelectProduct={goProduct}
                       />
                     ))}
                   </div>
@@ -1004,7 +1001,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
       <StoreCartDrawer
         isOpen={isCartDrawerOpen}
         onClose={() => setIsCartDrawerOpen(false)}
-        onProceedToCheckout={() => setIsCheckoutOpen(true)}
+        onProceedToCheckout={goCheckout}
       />
 
       {/* Wishlist Drawer */}
@@ -1012,7 +1009,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
         isOpen={isWishlistDrawerOpen}
         onClose={() => setIsWishlistDrawerOpen(false)}
         onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
-        onOpenCart={() => setIsCartDrawerOpen(true)}
+        onOpenCart={goCart}
       />
 
       {/* Customer Account Portal Modal with integrated Tracking & Wishlist */}
