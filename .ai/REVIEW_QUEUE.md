@@ -505,3 +505,40 @@ Status: READY FOR REVIEW
   - Ensured absolute zero changes were introduced to the underlying business rules, source code, and validation assertions.
 - **Supervisor Action Required**: Direct release candidate sign-off under YELLOW Go/Conditional Go handover.
 
+---
+
+### Queue Item: UPG-001 (and R1, R2, R2.1) — Production Platform Hardening & Operational Controls
+- **Submitted By**: Senior Software Engineer / Implementation Lead & Security Architect
+- **Submission Date**: 2026-09-12
+- **Current Status**: `APPROVED`
+- **Supervisor Decision**: **CLOSED & APPROVED**. Platform operational controls, 1:1 environment contract, and Render exact commit SHA deployment workflow approved.
+- **Scope**:
+  - 1:1 runtime environment contract in `server/config/environment.ts`.
+  - 4-gate deployment workflow in `.github/workflows/production-deploy.yml` with commit SHA regex validation.
+  - Sanitized runtime revision endpoints (`/api/version`, `/api/health`).
+  - Source-map blocking on server route and stripping from production bundles.
+  - 26/26 operational tests, 9/9 prod-gate tests, and 186/186 full regression suite passed.
+- **Next Directive**: Proceed to `UX-001A` Multi-Tenant Storefront Modernization.
+
+---
+
+### Queue Item: UX-001A Phase 13 — Multi-Tenant Storefront Modernization Architecture & Planning Deliverables
+- **Submitted By**: Senior Software Engineer / Implementation Lead & UX Architect
+- **Submission Date**: 2026-09-12
+- **Current Status**: `PENDING SUPERVISOR REVIEW`
+- **Scope**:
+  - Phase 1 Baseline Audit of 15 storefront components, contexts, and API routes; documented data flow trace and authority leaks.
+  - Phase 2 Tenant-Aware Storefront Contract: `GET /api/storefront/:tenantSlug/context`, dual-strategy tenant resolver, and schema migration `011_storefront_tenant_config.sql`.
+  - Phase 3 & 4 Tenant-Scoped Catalog & Server-Authoritative Commerce Engine (real-time inventory balances, server pricing, dynamic policy shipping).
+  - Phase 5 Native URL-Based Router (`/shop`, `/shop/category/:slug`, `/product/:slug`, `/cart`, `/checkout`, `/account`, `/order/:orderNumber`).
+  - Phase 6 & 7 Modular Component Decomposition (product detail and modern homepage views).
+  - Phase 8 & 9 Responsive ($375\text{px}$–$1440\text{px}+$, $\ge 44\times 44\text{px}$ touch targets) and WCAG 2.2 AA accessibility architecture.
+  - Phase 10 & 11 Dedicated `StorefrontContext` state decoupling; zero catalog in `localStorage`.
+  - Phase 12 Mapped all 14 acceptance criteria to deterministic test suites.
+  - Phase 13 Pre-implementation architectural documents delivered:
+    - `.ai/UX-001A_STOREFRONT_ARCHITECTURE.md`
+    - `.ai/UX-001A_STOREFRONT_IMPLEMENTATION_PLAN.md`
+    - `.ai/UX-001A_STOREFRONT_ACCEPTANCE_TESTS.md`
+- **Supervisor Action Required**: Review architectural deliverables and approve implementation plan before broad storefront code changes commence.
+
+

@@ -660,7 +660,7 @@ PROD-001 (NOT STARTED)
 ---
 
 ### Task 13: UPG-001, UPG-001R1, UPG-001R2 & UPG-001R2.1 — Production Operations Hardening & Platform Controls
-- **Status**: `READY FOR REVIEW`
+- **Status**: `APPROVED`
 - **Parent Program**: `VERSION-2.6-UPGRADE` (`2.6.0-development`)
 - **Objective**: Establish production operational architecture, strict 1:1 runtime environment contract, database URL validation, 4-gate deployment workflow (reproducibility, exact approved commit SHA deployment via parameterized hook, revision verification, health/ready), and public source-map blocking on dedicated branch `upgrade/v2.6/upg-001-platform-hardening`.
 - **Scope**:
@@ -690,6 +690,39 @@ PROD-001 (NOT STARTED)
   - [x] Full regression suite (186 tests across 12 suites) passes 100%.
   - [x] `npm run lint` passes with 0 errors.
   - [x] Zero secrets committed.
-- **Supervisor Gate**: Marked `READY FOR REVIEW`.
+- **Supervisor Gate**: Officially `APPROVED` and CLOSED by Supervisor on 2026-09-12.
+
+---
+
+### Task 14: UX-001A — Multi-Tenant Storefront Modernization
+- **Status**: `IN PROGRESS`
+- **Parent Program**: `VERSION-2.6-UPGRADE` (`2.6.0-development`)
+- **Objective**: Transform the existing client-centric prototype storefront into a professional, responsive, accessible, server-authoritative, multi-tenant commerce storefront.
+- **Scope**:
+  - **Phase 1 Baseline Audit**: Inspected 15 storefront components, contexts, and API routes; documented client-authoritative state leaks, missing public tenant resolution, and hardcoded commercial claims.
+  - **Phase 2 Tenant-Aware Storefront Contract**: Designed server-authoritative storefront context (`GET /api/storefront/:tenantSlug/context`), dual-strategy tenant resolver (domain, subdomain, slug path, query, default fallback), and database schema extension (`011_storefront_tenant_config.sql`).
+  - **Phase 3 & 4 Tenant-Scoped Catalog & Commerce Engine**: Designed tenant-isolated catalog queries (`/products`, `/:slugOrId`, `/categories`, `/brands`), real-time stock balances, server pricing, and dynamic policy-driven shipping calculations.
+  - **Phase 5 URL Routing Architecture**: Designed native lightweight HTML5 History router (`/shop`, `/shop/category/:slug`, `/product/:slug`, `/cart`, `/checkout`, `/account`, `/order/:orderNumber`).
+  - **Phase 6 & 7 Modular Component Decomposition**: Designed modular product detail views and modern tenant-branded homepage components.
+  - **Phase 8 & 9 Responsive & Accessibility Architecture**: Designed 4-tier breakpoint responsiveness ($375\text{px}$–$1440\text{px}+$, $\ge 44\times 44\text{px}$ touch targets) and WCAG 2.2 AA accessibility invariants.
+  - **Phase 10 & 11 Component Architecture**: Decoupled storefront state from monolithic `CommerceContext.tsx` into dedicated `StorefrontContext.tsx`; zero catalog in `localStorage`.
+  - **Phase 12 Acceptance Criteria**: Formulated testable verification specifications across all 14 criteria.
+  - **Phase 13 Deliverables**: Completed `.ai/UX-001A_STOREFRONT_ARCHITECTURE.md`, `.ai/UX-001A_STOREFRONT_IMPLEMENTATION_PLAN.md`, and `.ai/UX-001A_STOREFRONT_ACCEPTANCE_TESTS.md`.
+- **Dependencies**: `UPG-001` (Closed)
+- **Acceptance Criteria**:
+  - [x] Architectural baseline audit and data flow trace completed.
+  - [x] Architecture specification `.ai/UX-001A_STOREFRONT_ARCHITECTURE.md` delivered.
+  - [x] Implementation roadmap `.ai/UX-001A_STOREFRONT_IMPLEMENTATION_PLAN.md` delivered.
+  - [x] Acceptance test specification `.ai/UX-001A_STOREFRONT_ACCEPTANCE_TESTS.md` delivered.
+  - [ ] Migration `011_storefront_tenant_config.sql` implemented and executed.
+  - [ ] Server storefront API endpoints implemented with strict tenant isolation.
+  - [ ] Frontend lightweight URL router and dedicated `StorefrontContext` implemented.
+  - [ ] Modular storefront UI components implemented.
+  - [ ] Server-authoritative cart and checkout integrated.
+  - [ ] WCAG 2.2 AA accessibility and responsive breakpoints verified.
+  - [ ] Automated multi-tenant storefront integration tests passing 100%.
+  - [ ] Full regression test suite remains green.
+- **Supervisor Gate**: Phase 13 Architecture & Planning deliverables submitted for review.
+
 
 
