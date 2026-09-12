@@ -64,11 +64,7 @@ export const StorefrontFooter: React.FC<StorefrontFooterProps> = ({
                 ))}
                 <li>
                   <button
-                    onClick={() => {
-                      onOpenDeals();
-                      setActiveSection('catalog');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
+                    onClick={onOpenDeals}
                     className="text-amber-400 hover:text-amber-300 font-semibold"
                   >
                     Special Offers & Deals
