@@ -126,7 +126,12 @@ export async function resolveStorefrontTenant(
 ): Promise<TenantStorefrontConfig> {
   const db = dbClient || getDatabaseClient();
 
-  const hostHeader = (req.headers.host || '').split(':')[0].toLowerCase().trim();
+  const rawHostHeader = (
+    (req.headers['x-forwarded-host'] as string) ||
+    (req.headers['x-tenant-domain'] as string) ||
+    (req.headers.host || '')
+  );
+  const hostHeader = rawHostHeader.split(',')[0].split(':')[0].toLowerCase().trim();
   const rawQueryTenant = (req.query.tenant || req.query.store) as string | undefined;
   const explicitSlug = options?.explicitSlug || req.params.tenantSlug;
 

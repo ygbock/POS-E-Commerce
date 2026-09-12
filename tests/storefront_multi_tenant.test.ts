@@ -312,7 +312,7 @@ async function runStorefrontMultiTenantTests() {
 
       // 5B: Custom host header resolution
       const resHost = await fetch(`${baseUrl}/api/storefront/context`, {
-        headers: { Host: 'beta.abacha.test' },
+        headers: { 'x-forwarded-host': 'beta.abacha.test', Host: 'beta.abacha.test' },
       });
       assert.strictEqual(resHost.status, 200);
       const jsonHost = await resHost.json();
@@ -321,7 +321,7 @@ async function runStorefrontMultiTenantTests() {
 
       // 5C: Subdomain resolution (alpha.abacha.com)
       const resSub = await fetch(`${baseUrl}/api/storefront/context`, {
-        headers: { Host: 'alpha.abacha.com' },
+        headers: { 'x-forwarded-host': 'alpha.abacha.com', Host: 'alpha.abacha.com' },
       });
       assert.strictEqual(resSub.status, 200);
       const jsonSub = await resSub.json();
@@ -420,7 +420,7 @@ async function runStorefrontMultiTenantTests() {
 
       // 2. Unknown custom domain
       const resDomain = await fetch(`${baseUrl}/api/storefront/context`, {
-        headers: { Host: 'unregistered-domain.org' },
+        headers: { 'x-forwarded-host': 'unregistered-domain.org', Host: 'unregistered-domain.org' },
       });
       assert.strictEqual(resDomain.status, 404);
       const jsonDomain = await resDomain.json();
@@ -447,30 +447,89 @@ async function runStorefrontMultiTenantTests() {
     }
 
     // ------------------------------------------------------------------------
-    // SUPERVISOR TEST C: Production query override cannot switch tenant
+    // SUPERVISOR TEST C: Query parameter tenant override rules
     // ------------------------------------------------------------------------
     try {
       const prevEnv = process.env.NODE_ENV;
+      const prevStagingOverride = process.env.ALLOW_STAGING_TENANT_QUERY_OVERRIDE;
       try {
-        process.env.NODE_ENV = 'production';
-        // In production, ?tenant=beta on an alpha host must NOT switch to beta
-        const res = await fetch(`${baseUrl}/api/storefront/context?tenant=beta`, {
-          headers: { Host: 'alpha.abacha.test' },
+        // C1: Development query override resolves requested tenant
+        process.env.NODE_ENV = 'development';
+        const resDev = await fetch(`${baseUrl}/api/storefront/context?tenant=beta`, {
+          headers: { 'x-forwarded-host': 'alpha.abacha.test', Host: 'alpha.abacha.test' },
         });
-        assert.strictEqual(res.status, 200);
-        const json = await res.json();
+        assert.strictEqual(resDev.status, 200);
+        const jsonDev = await resDev.json();
+        assert.strictEqual(jsonDev.data.tenant.slug, 'beta', 'Dev query override MUST switch to beta');
+
+        // C2: Test query override resolves requested tenant
+        process.env.NODE_ENV = 'test';
+        const resTest = await fetch(`${baseUrl}/api/storefront/context?tenant=beta`, {
+          headers: { 'x-forwarded-host': 'alpha.abacha.test', Host: 'alpha.abacha.test' },
+        });
+        assert.strictEqual(resTest.status, 200);
+        const jsonTest = await resTest.json();
+        assert.strictEqual(jsonTest.data.tenant.slug, 'beta', 'Test query override MUST switch to beta');
+
+        // C3: Production query override cannot switch tenant
+        process.env.NODE_ENV = 'production';
+        const resProd = await fetch(`${baseUrl}/api/storefront/context?tenant=beta`, {
+          headers: { 'x-forwarded-host': 'alpha.abacha.test', Host: 'alpha.abacha.test' },
+        });
+        assert.strictEqual(resProd.status, 200);
+        const jsonProd = await resProd.json();
         assert.strictEqual(
-          json.data.tenant.slug,
+          jsonProd.data.tenant.slug,
           'alpha',
           'Production query parameter MUST NOT override authoritative domain binding'
         );
+
+        // C4: Staging follows explicit configuration
+        // C4a: Staging default (disabled)
+        process.env.NODE_ENV = 'staging';
+        delete process.env.ALLOW_STAGING_TENANT_QUERY_OVERRIDE;
+        const resStagingDisabled = await fetch(`${baseUrl}/api/storefront/context?tenant=beta`, {
+          headers: { 'x-forwarded-host': 'alpha.abacha.test', Host: 'alpha.abacha.test' },
+        });
+        assert.strictEqual(resStagingDisabled.status, 200);
+        const jsonStagingDisabled = await resStagingDisabled.json();
+        assert.strictEqual(
+          jsonStagingDisabled.data.tenant.slug,
+          'alpha',
+          'Staging without explicit flag MUST NOT switch tenant'
+        );
+
+        // C4b: Staging enabled via ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true
+        process.env.ALLOW_STAGING_TENANT_QUERY_OVERRIDE = 'true';
+        const resStagingEnabled = await fetch(`${baseUrl}/api/storefront/context?tenant=beta`, {
+          headers: { 'x-forwarded-host': 'alpha.abacha.test', Host: 'alpha.abacha.test' },
+        });
+        assert.strictEqual(resStagingEnabled.status, 200);
+        const jsonStagingEnabled = await resStagingEnabled.json();
+        assert.strictEqual(
+          jsonStagingEnabled.data.tenant.slug,
+          'beta',
+          'Staging with ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true MUST permit override'
+        );
+
+        // C5: Invalid query tenant fails closed
+        process.env.NODE_ENV = 'test';
+        const resInvalidQuery = await fetch(`${baseUrl}/api/storefront/context?tenant=nonexistent_store_999`);
+        assert.strictEqual(resInvalidQuery.status, 404);
+        const jsonInvalidQuery = await resInvalidQuery.json();
+        assert.strictEqual(jsonInvalidQuery.error.code, 'TENANT_NOT_FOUND');
       } finally {
         process.env.NODE_ENV = prevEnv;
+        if (prevStagingOverride !== undefined) {
+          process.env.ALLOW_STAGING_TENANT_QUERY_OVERRIDE = prevStagingOverride;
+        } else {
+          delete process.env.ALLOW_STAGING_TENANT_QUERY_OVERRIDE;
+        }
       }
 
-      markPassed('Supervisor Test C: Production query override cannot switch tenant');
+      markPassed('Supervisor Test C: Query parameter tenant override rules (dev/test/staging/prod/invalid)');
     } catch (err) {
-      markFailed('Supervisor Test C: Production query override cannot switch tenant', err);
+      markFailed('Supervisor Test C: Query parameter tenant override rules', err);
     }
 
     // ------------------------------------------------------------------------
@@ -479,7 +538,7 @@ async function runStorefrontMultiTenantTests() {
     try {
       // 1. Canonical entry point (localhost / shop.abacha.com without slug)
       const resCanonical = await fetch(`${baseUrl}/api/storefront/context`, {
-        headers: { Host: 'localhost' },
+        headers: { 'x-forwarded-host': 'localhost', Host: 'localhost' },
       });
       assert.strictEqual(resCanonical.status, 200);
       const jsonCanonical = await resCanonical.json();
@@ -487,7 +546,7 @@ async function runStorefrontMultiTenantTests() {
 
       // 2. Unknown subdomain on abacha.com MUST NOT become org_default
       const resUnknownSub = await fetch(`${baseUrl}/api/storefront/context`, {
-        headers: { Host: 'unknown-branch.abacha.com' },
+        headers: { 'x-forwarded-host': 'unknown-branch.abacha.com', Host: 'unknown-branch.abacha.com' },
       });
       assert.strictEqual(resUnknownSub.status, 404);
       const jsonUnknownSub = await resUnknownSub.json();
@@ -496,6 +555,8 @@ async function runStorefrontMultiTenantTests() {
       // 3. Unknown store path /store/unknown MUST NOT become org_default
       const resUnknownPath = await fetch(`${baseUrl}/api/storefront/unknown/context`);
       assert.strictEqual(resUnknownPath.status, 404);
+      const jsonUnknownPath = await resUnknownPath.json();
+      assert.strictEqual(jsonUnknownPath.error.code, 'TENANT_NOT_FOUND');
 
       markPassed('Supervisor Test D: Canonical default storefront works ONLY at canonical entry point');
     } catch (err) {

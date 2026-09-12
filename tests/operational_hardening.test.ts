@@ -823,13 +823,14 @@ async function main() {
     // ------------------------------------------------------------------
     // 10. Migration Checksum Integrity
     // ------------------------------------------------------------------
-    await runTest('10.1. Migration files 001-010 exist with consistent checksums', () => {
+    await runTest('10.1. Migration files 001-011 exist with consistent checksums', () => {
       const migrationsDir = path.join(process.cwd(), 'server', 'db', 'migrations');
       const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 
-      assert.strictEqual(files.length, 10, 'All 10 migrations must exist');
+      assert.strictEqual(files.length, 11, 'All 11 migrations must exist');
       assert.strictEqual(files[0].startsWith('001_'), true);
       assert.strictEqual(files[9].startsWith('010_'), true);
+      assert.strictEqual(files[10].startsWith('011_'), true);
 
       for (const file of files) {
         const content = fs.readFileSync(path.join(migrationsDir, file));
