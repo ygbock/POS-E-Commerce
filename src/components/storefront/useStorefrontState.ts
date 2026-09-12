@@ -3,11 +3,13 @@ import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontRoute } from '../../router/StorefrontRouter';
 import { Product, ProductVariant, Order } from '../../types';
 import { filterStorefrontProducts, sortStorefrontProducts } from './storefrontCatalog';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 
 export interface StorefrontStateProps { onOpenAdmin?: () => void; onOpenPos?: () => void; }
 export function useStorefrontState() {
   const { route, navigate } = useStorefrontRoute();
-  const { products, storeCart, addToStoreCart, wishlist, formatCurrency, getTotalStockForVariant, orders, isDarkMode, toggleTheme } = useCommerce();
+  const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency } = useStorefrontContext();
+  const { products, storeCart, addToStoreCart, wishlist, getTotalStockForVariant, orders, isDarkMode, toggleTheme } = useCommerce();
   // Navigation & View state
   const [activeSection, setActiveSection] = useState<'home' | 'catalog'>('home');
   const [searchQuery, setSearchQuery] = useState('');
