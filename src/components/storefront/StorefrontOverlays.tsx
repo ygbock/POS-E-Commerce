@@ -108,7 +108,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
         product={selectedDetailProduct}
         onClose={() => setSelectedDetailProduct(null)}
         onAddToCart={addToStoreCart}
-        onBuyNow={handleBuyNow}
+        onBuyNow={onBuyNow}
         onSelectRelatedProduct={(rel) => setSelectedDetailProduct(rel)}
       />
     )}
