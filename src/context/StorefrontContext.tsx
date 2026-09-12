@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { storefrontApi } from '../services/storefrontApi';
 
 export interface StorefrontBranding {
   storeName?: string;
@@ -46,6 +47,7 @@ interface StorefrontContextValue {
   setWishlist: React.Dispatch<React.SetStateAction<string[]>>;
   toggleWishlist: (productId: string) => void;
   formatCurrency: (amount: number) => string;
+  api: typeof storefrontApi;
 }
 
 const StorefrontContext = createContext<StorefrontContextValue | undefined>(undefined);
@@ -156,7 +158,7 @@ export const StorefrontProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [tenant]);
 
   const value = useMemo(() => ({
-    tenant, loading, error, cart, wishlist, refreshTenant, setCart, setWishlist, toggleWishlist, formatCurrency,
+    tenant, loading, error, cart, wishlist, refreshTenant, setCart, setWishlist, toggleWishlist, formatCurrency, api: storefrontApi,
   }), [tenant, loading, error, cart, wishlist, refreshTenant, toggleWishlist, formatCurrency]);
 
   return <StorefrontContext.Provider value={value}>{children}</StorefrontContext.Provider>;
