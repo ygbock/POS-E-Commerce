@@ -23,12 +23,13 @@ export interface StorefrontHomeProps {
   setSortBy: (value: 'featured' | 'best-sellers' | 'newest' | 'price-low' | 'price-high' | 'rating') => void;
   setMinRating: (value: number) => void;
   setActiveSection: (value: 'home' | 'catalog') => void;
+  onOpenCart: () => void;
 }
 
 export const StorefrontHome: React.FC<StorefrontHomeProps> = ({
   selectedCategory, selectedBrand, featuredProducts, bestSellers, newArrivals,
   recommendedProducts, goShop, goCategory, goBrand, goProduct, setOnSaleOnly,
-  setSortBy, setMinRating, setActiveSection,
+  setSortBy, setMinRating, setActiveSection, onOpenCart,
 }) => (
   <div className="space-y-10 sm:space-y-14">
     <StoreHeroBanner
@@ -47,13 +48,13 @@ export const StorefrontHome: React.FC<StorefrontHomeProps> = ({
 
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
       {[
-        { icon: <Truck className="w-4 h-4 sm:w-5 sm:h-5" />, title: 'Same-Day Dispatch', text: 'Free delivery over $75', tone: 'sky' },
-        { icon: <Boxes className="w-4 h-4 sm:w-5 sm:h-5" />, title: 'Live Stock Accuracy', text: 'Zero latency POS sync', tone: 'emerald' },
-        { icon: <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />, title: 'Authentic Hardware', text: '2-year full warranty', tone: 'indigo' },
-        { icon: <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />, title: '30-Day Free Returns', text: 'In-store or postal pickup', tone: 'amber' },
+        { icon: <Truck className="w-4 h-4 sm:w-5 sm:h-5" />, title: 'Same-Day Dispatch', text: 'Free delivery over $75', tone: 'sky', iconClass: 'bg-sky-500/10 text-sky-400' },
+        { icon: <Boxes className="w-4 h-4 sm:w-5 sm:h-5" />, title: 'Live Stock Accuracy', text: 'Zero latency POS sync', tone: 'emerald', iconClass: 'bg-emerald-500/10 text-emerald-400' },
+        { icon: <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />, title: 'Authentic Hardware', text: '2-year full warranty', tone: 'indigo', iconClass: 'bg-indigo-500/10 text-indigo-400' },
+        { icon: <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />, title: '30-Day Free Returns', text: 'In-store or postal pickup', tone: 'amber', iconClass: 'bg-amber-500/10 text-amber-400' },
       ].map((item) => (
         <div key={item.title} className="p-3 sm:p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-2.5 sm:space-x-3 shadow-lg">
-          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-${item.tone}-500/10 text-${item.tone}-400 flex items-center justify-center flex-shrink-0`}>
+          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl ${item.iconClass} flex items-center justify-center flex-shrink-0`}>
             {item.icon}
           </div>
           <div>
@@ -78,7 +79,7 @@ export const StorefrontHome: React.FC<StorefrontHomeProps> = ({
       actionButton={{ text: 'View All Products', onClick: goShop, colorClass: 'text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300' }}
     />
 
-    <PromotionsBanner onOpenCart={() => {}} />
+    <PromotionsBanner onOpenCart={onOpenCart} />
 
     <ProductCarouselSection
       id="store-best-sellers"
