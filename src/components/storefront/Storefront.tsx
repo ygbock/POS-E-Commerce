@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Search,
   ShoppingCart,
@@ -57,7 +57,7 @@ export interface StorefrontProps {
 }
 
 export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }) => {
-  const { route } = useStorefrontRoute();
+  const { route, navigate } = useStorefrontRoute();
   const {
     products,
     storeCart,
@@ -222,6 +222,20 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     onSaleOnly ||
     minRating > 0;
 
+  const tenantSlug = route.tenantSlug;
+  const goHome = () => navigate({ name: 'home', tenantSlug });
+  const goShop = () => navigate({ name: 'shop', tenantSlug });
+  const goCategory = (slug: string) => navigate({ name: 'category', tenantSlug, slug });
+  const goBrand = (slug: string) => navigate({ name: 'brand', tenantSlug, slug });
+  const goSearch = (query: string) => navigate({ name: 'search', tenantSlug, query });
+  const goProduct = (product: Product) => navigate({ name: 'product', tenantSlug, slug: product.slug || product.id });
+  const goCart = () => navigate({ name: 'cart', tenantSlug });
+  const goCheckout = () => navigate({ name: 'checkout', tenantSlug });
+  const goAccount = (tab: AccountPortalTab = 'profile') => {
+    setAccountPortalTab(tab);
+    navigate({ name: 'account', tenantSlug });
+  };
+
   // Keep the existing storefront UI state synchronized with the canonical History API route.
   // URL navigation is the source of truth for deep links, refreshes, and browser back/forward.
   useEffect(() => {
@@ -281,32 +295,29 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
         searchQuery={searchQuery}
         setSearchQuery={(q) => {
           setSearchQuery(q);
-          if (q.trim()) setActiveSection('catalog');
+          if (q.trim()) goSearch(q);
         }}
         selectedCategory={selectedCategory}
         setSelectedCategory={(cat) => {
           setSelectedCategory(cat);
-          if (cat !== 'All') setActiveSection('catalog');
+          if (cat !== 'All') goCategory(cat); else goShop();
         }}
         selectedBrand={selectedBrand}
         setSelectedBrand={(b) => {
           setSelectedBrand(b);
-          if (b !== 'All') setActiveSection('catalog');
+          if (b !== 'All') goBrand(b); else goShop();
         }}
-        onOpenCart={() => setIsCartDrawerOpen(true)}
+        onOpenCart={goCart}
         onOpenWishlist={() => {
-          setAccountPortalTab('wishlist');
-          setIsAccountModalOpen(true);
+          goAccount('wishlist');
         }}
         onOpenAccount={() => {
-          setAccountPortalTab('profile');
-          setIsAccountModalOpen(true);
+          goAccount('profile');
         }}
         onOpenOrderTracking={() => {
           setInitialTrackingNumber('');
           setInitialTrackingEmail('');
-          setAccountPortalTab('tracking');
-          setIsAccountModalOpen(true);
+          goAccount('tracking');
         }}
         onOpenNotificationHub={() => {
           const sampleOrder = orders[0] || null;
@@ -392,10 +403,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
             {/* 3. Featured Categories Showcase */}
             <CategoryShowcase
               selectedCategory={selectedCategory}
-              onSelectCategory={(cat) => {
-                setSelectedCategory(cat);
-                setActiveSection('catalog');
-              }}
+              onSelectCategory={(cat) => goCategory(cat)}
             />
 
             {/* 4. Featured Products Section */}
