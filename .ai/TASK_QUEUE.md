@@ -727,3 +727,24 @@ PROD-001 (NOT STARTED)
 
 
 
+
+
+### UX-001A Phase 3 — Initial Modular Storefront Decomposition
+- **Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`
+- **Date**: 2026-09-12
+- **Scope Completed**:
+  - Extracted `StorefrontFooter.tsx` from the monolithic storefront.
+  - Extracted catalog filtering/sorting into `storefrontCatalog.ts`.
+  - Added `tests/storefront_catalog.test.ts`.
+  - Registered `test:storefront-catalog` in the full regression command.
+  - Preserved tenant routing, checkout, POS/Admin handoffs, existing visual behavior, and existing modal workflows.
+- **Acceptance Progress**:
+  - [x] Initial modular decomposition increment implemented.
+  - [x] Catalog domain logic separated from presentation.
+  - [x] Footer parent-state dependencies replaced by explicit callback props.
+  - [x] Catalog unit/contract tests added.
+  - [ ] Local/CI lint verification.
+  - [ ] Full storefront and regression verification.
+  - [ ] Remaining route-specific Home/Catalog/Product decomposition.
+- **Governance Constraint**: No merge to `main` and no production deployment.
+- **Next Increment**: Extract modal/drawer orchestration, then route-specific Home/Catalog/Product views.
