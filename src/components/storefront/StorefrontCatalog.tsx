@@ -40,8 +40,9 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = (props) => {
     isMobileFilterOpen, setIsMobileFilterOpen, handleClearAllFilters, goProduct,
   } = props;
 
-  {/* FULL SHOPPING CATALOG VIEW (With Search, Filters, Sorting) */}
-  {(activeSection === 'catalog' || hasActiveFilters) && (
+  return (
+    <>
+
     <div id="store-catalog-section" className="space-y-6">
       {/* Catalog Top Header & Controls */}
       <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
@@ -305,6 +306,6 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = (props) => {
         </div>
       </div>
     </div>
-  )}
-
+    </>
+  );
 };
