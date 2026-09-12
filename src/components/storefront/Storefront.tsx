@@ -52,7 +52,7 @@ export interface StorefrontProps {
 export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }) => {
   const state = useStorefrontState();
   const {
-    route, navigate, products, storeCart, addToStoreCart, wishlist, formatCurrency, getTotalStockForVariant,
+    route, products, storeCart, addToStoreCart, wishlist, formatCurrency, getTotalStockForVariant,
     orders, isDarkMode, toggleTheme, activeSection, setActiveSection, searchQuery, setSearchQuery,
     selectedCategory, setSelectedCategory, selectedBrand, setSelectedBrand, sortBy, setSortBy,
     minPrice, setMinPrice, maxPrice, setMaxPrice, inStockOnly, setInStockOnly, onSaleOnly, setOnSaleOnly,
