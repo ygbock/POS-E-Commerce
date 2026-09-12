@@ -1,6 +1,6 @@
 # Implementation Report
 
-## UX-001A Phase 1 — Multi-Tenant Storefront Data & API Foundation
+## UX-001A Phase 1 — Multi-Tenant Storefront Foundation (Final Verification Corrections)
 
 - **Status**: `READY FOR SUPERVISOR REVIEW`
 - **Parent Task**: VERSION-2.6-UPGRADE / Multi-Tenant Storefront Modernization
@@ -9,66 +9,74 @@
 - **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
 - **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
 - **Exact Commits**:
+  - `dc986a0`: `feat: implement multi-tenant storefront architecture with tenant resolution and routing`
+  - `d45403c`: `docs(ux-001a): record Phase 1 multi-tenant data & API foundation completion in task queue, review queue, and implementation report`
   - `29e4f61`: `test(ux-001a): harden tenant resolver reverse proxy headers, query override assertions, and test:storefront gate`
   - `56fdebf`: `feat: add multi-tenant storefront architecture with tenant resolution, routes, migration, and tests`
   - `004feb9`: `docs(ux-001a): apply supervisor corrections on fail-closed resolution, migration 011, and tests A-E`
   - `2ed6255`: `docs(ux-001a): add multi-tenant storefront architecture, implementation plan, and acceptance tests`
-- **Files Created / Modified**:
-  - `server/db/migrations/011_storefront_tenant_config.sql` [NEW]
-  - `server/services/tenantResolver.ts` [NEW]
-  - `server/routes/storefrontRoutes.ts` [NEW]
-  - `tests/storefront_multi_tenant.test.ts` [NEW]
-  - `server.ts` [MODIFIED - mounted `/api/storefront`]
-  - `tests/operational_hardening.test.ts` [MODIFIED - migration 011 checksum check]
-  - `package.json` [MODIFIED - added `test:storefront` script and wired into `npm test`]
-- **Core Technical Implementation**:
-  1. **Migration 011 (`011_storefront_tenant_config.sql`)**:
-     - Extends `organizations` with `NOT NULL DEFAULT` columns: `slug`, `custom_domain`, `currency_code`, `currency_symbol`, `locale`, `timezone`, `branding`, `policies`, `catalog_policy`, and `feature_flags`.
-     - Non-destructive schema extension: 100% compatible with existing organizations; rollback strategy preserves customer data without destructive `DROP COLUMN`.
-  2. **Multi-Tenant Resolver (`tenantResolver.ts`)**:
-     - Resolves tenant context from custom domains, subdomains, explicit URL path slugs, and reverse proxy headers (`x-forwarded-host`, `x-tenant-domain`, `req.headers.host`).
-     - **Fail-Closed Invariant**: Storefront never silently falls back to `org_default` when an explicit tenant identifier fails to resolve.
-       - Valid tenant → resolves and returns context.
-       - Inactive tenant → throws HTTP 404 `TENANT_INACTIVE` ("Store is temporarily unavailable.").
-       - Unknown tenant slug → throws HTTP 404 `TENANT_NOT_FOUND`.
-       - Unknown custom domain → throws HTTP 404 `DOMAIN_NOT_FOUND`.
-       - Mismatched domain vs path slug → throws HTTP 400 `TENANT_MISMATCH`.
-       - Default tenant fallback allowed ONLY on canonical platform entry point (`shop.abacha.com`, `localhost`).
-     - **Environment-Gated Query Override (`?tenant=` / `?store=`)**:
-       - `development` & `test`: Permitted for developer agility.
-       - `staging`: Disabled unless explicitly enabled by `ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true`.
-       - `production`: Strictly prohibited; query parameters cannot switch tenant context.
-     - **Tenant vs Location Distinction**:
-       - Preserves the 3-tier hierarchy: `organization/tenant -> store/branch -> warehouse/location`.
-       - Storefront availability respects both tenant and selected fulfillment location.
-  3. **Public Storefront API Routes (`storefrontRoutes.ts`)**:
-     - `GET /context` and `GET /:tenantSlug/context`: Returns public tenant configuration, branding, policies, currencies, and active pickup locations without leaking internal secrets.
-     - `GET /:tenantSlug/categories`: Returns active categories for the tenant.
-     - `GET /:tenantSlug/brands`: Returns active brands for the tenant.
-     - `GET /:tenantSlug/locations`: Returns active retail stores and pickup points for the tenant.
-     - `GET /:tenantSlug/products`: Server-side faceted catalog with pagination, search, category filter, brand filter, and location-aware stock calculation.
-     - `GET /:tenantSlug/products/:slugOrId`: Product detail with variants and location stock.
-     - `POST /:tenantSlug/cart/validate`: Server-authoritative cart validation, stock checks against selected fulfillment location, and policy-driven shipping fee evaluation (free shipping threshold).
-  4. **Acceptance Test Suite (`tests/storefront_multi_tenant.test.ts`)**:
-     - 13 automated tests covering all 14 criteria:
-       - Test 1: Cross-tenant catalog isolation (Tenant A cannot see Tenant B products).
-       - Test 2: Cross-tenant price isolation (Tenant A cannot see Tenant B pricing).
-       - Test 3: Stock isolation (Tenant A cannot see Tenant B inventory availability).
-       - Test 4: Cross-tenant order injection blocked (Tenant A cannot order Tenant B variants).
-       - Test 5: Public storefront resolution (slug, host, subdomain).
-       - Test 6: Tenant branding isolation.
-       - Test 7: Currency configuration isolation.
-       - Test 8: Server-side policy evaluation (free shipping threshold).
-       - Supervisor Test A: Unknown tenant does NOT fall back to another tenant (404 Fail-Closed).
-       - Supervisor Test B: Inactive tenant returns 404 / Store Unavailable.
-       - Supervisor Test C: Query parameter tenant override rules (dev/test/staging/prod/invalid).
-       - Supervisor Test D: Canonical default storefront works ONLY at canonical entry point.
-       - Supervisor Test E: Tenant and location remain separate concepts (location-aware availability).
-- **Verification Evidence**:
-  - `npm run lint`: 0 errors (PASS).
-  - `npm run test:storefront`: 13 passed, 0 failed (PASS).
+- **Exact Files Changed**:
+  - `server/db/migrations/011_storefront_tenant_config.sql`
+  - `server/services/tenantResolver.ts`
+  - `server/routes/storefrontRoutes.ts`
+  - `tests/storefront_multi_tenant.test.ts`
+  - `server.ts`
+  - `package.json`
+  - `tests/operational_hardening.test.ts`
+- **Reconciled Acceptance-Test Coverage (Criteria 1–14 Mapping)**:
+  - **Acceptance Criterion 1** → `tests/storefront_multi_tenant.test.ts:184` (`Criterion 1: Tenant A cannot see Tenant B products [Cross-tenant catalog isolation]`) — PASSED
+  - **Acceptance Criterion 2** → `tests/storefront_multi_tenant.test.ts:217` (`Criterion 2: Tenant A cannot see Tenant B pricing [Cross-tenant price isolation]`) — PASSED
+  - **Acceptance Criterion 3** → `tests/storefront_multi_tenant.test.ts:242` (`Criterion 3: Tenant A cannot see Tenant B inventory availability [Stock isolation]`) — PASSED
+  - **Acceptance Criterion 4** → `tests/storefront_multi_tenant.test.ts:262` (`Criterion 4: Tenant A cannot create Tenant B order [Cross-tenant order injection blocked]`) — PASSED
+  - **Acceptance Criterion 5** → `tests/storefront_multi_tenant.test.ts:285` (`Criterion 5: Public storefront requests resolve to correct tenant [slug, host, subdomain]`) — PASSED
+  - **Acceptance Criterion 6** → `tests/storefront_multi_tenant.test.ts:327` (`Criterion 6: Tenant branding is isolated`) — PASSED
+  - **Acceptance Criterion 7** → `tests/storefront_multi_tenant.test.ts:352` (`Criterion 7: Currency configuration is isolated`) — PASSED
+  - **Acceptance Criterion 8** → `tests/storefront_multi_tenant.test.ts:370` (`Criterion 8: Policies are tenant-aware [Free shipping threshold evaluated server-side]`) — PASSED
+  - **Acceptance Criterion 9** → `tests/storefront_multi_tenant.test.ts:403` (`Criterion 9: Product URLs are directly navigable [slug & ID direct resolution]`) — PASSED
+  - **Acceptance Criterion 10** → `tests/storefront_multi_tenant.test.ts:426` (`Criterion 10: Cart & checkout use server-authoritative APIs [Client tampering ignored]`) — PASSED
+  - **Acceptance Criterion 11** → `tests/storefront_multi_tenant.test.ts:450` (`Criterion 11: Browser localStorage is not the source of truth [Server DB query & paging]`) — PASSED
+  - **Acceptance Criterion 12** → `tests/storefront_multi_tenant.test.ts:467` (`Criterion 12: Responsive behavior data contract [Mobile-to-desktop pagination metadata]`) — PASSED
+  - **Acceptance Criterion 13** → `tests/storefront_multi_tenant.test.ts:485` (`Criterion 13: Accessibility data contract [WCAG 2.2 AA semantic labels & tokens]`) — PASSED
+  - **Acceptance Criterion 14** → `tests/storefront_multi_tenant.test.ts:505` (`Criterion 14: Full regression suite contract [Core server health intact]`) — PASSED
+- **Supervisor Verification Test Suites**:
+  - **Supervisor Test A**: Unknown tenant does NOT fall back to another tenant (404 Fail-Closed) — PASSED
+  - **Supervisor Test B**: Inactive tenant returns 404 / Store Unavailable — PASSED
+  - **Supervisor Test C**: Query parameter tenant override rules (dev/test/staging/prod/invalid) — PASSED
+  - **Supervisor Test D**: Canonical default storefront works ONLY at canonical entry point — PASSED
+  - **Supervisor Test E**: Tenant and location remain separate concepts (Location-aware availability) — PASSED
+  - **Supervisor Test F**: Reverse-proxy trust boundary & header spoofing defense (F1-F5) — PASSED
+  - **Supervisor Test G**: Migration 011 works on pre-existing multi-tenant data (Deterministic unique slugs, data integrity & safe rollback) — PASSED
+  - **Supervisor Test H**: Strict production negative tests for canonical fallback (H1-H6) — PASSED
+- **Reverse-Proxy Trust Boundary & Model**:
+  - **Forwarding Header Policy**: In production and staging, `X-Forwarded-Host` and `X-Tenant-Domain` are **untrusted by default**. They are ignored unless `TRUST_PROXY=true` is explicitly configured in the deployment environment.
+  - **Direct Host Priority**: An attacker supplying a spoofed `X-Forwarded-Host` or `X-Tenant-Domain` directly to the server cannot override the authentic request domain or switch tenant. The direct `Host` header is prioritized.
+  - **Domain vs. Path Conflict Enforcement**: If a request contains both an explicit path slug (`/api/storefront/:tenantSlug/...`) and a host-level tenant binding, they must resolve to the identical tenant entity; any divergence immediately terminates with HTTP 400 `TENANT_MISMATCH`.
+  - **Deployment Configuration Requirements**:
+    - Upstream edge proxy / CDN (Render, AWS ALB, Cloudflare) must strip client-injected `X-Forwarded-Host` and `X-Tenant-Domain` headers.
+    - Set `TRUST_PROXY=true` in container environment only when terminating TLS at a trusted upstream proxy.
+    - Set `ALLOW_TENANT_DOMAIN_HEADER=true` only for private internal cluster gateways.
+- **Migration 011 Multi-Tenant Data Proof**:
+  - Executed migration 011 SQL against a database containing pre-existing organizations without storefront columns.
+  - Verified:
+    - Migration succeeds without errors.
+    - Every pre-existing organization receives a valid deterministic slug derived from its `code` (e.g. `STORE-ALPHA` → `store-alpha`), with fallback to `id`, and MD5 collision disambiguation.
+    - 100% slug uniqueness is preserved across all organizations.
+    - Existing organizations do not collapse into identical slugs (`default`, `store-alpha`, `store-beta`, `store-gamma`).
+    - Pre-existing catalog products, orders, and inventory balances remain 100% intact.
+    - Unique constraints `uq_organizations_slug` and `uq_organizations_custom_domain` (partial index `WHERE custom_domain IS NOT NULL`) prevent duplicates.
+    - Rollback strategy safely removes storefront configuration columns and indexes without destroying core organization, product, inventory, or order records.
+- **Production Canonical Fallback Negative Tests**:
+  - H1: Unknown production host + no tenant identifier → HTTP 404 `DOMAIN_NOT_FOUND`.
+  - H2: Production localhost without explicit canonical configuration → HTTP 404 `DOMAIN_NOT_FOUND`.
+  - H3: Arbitrary hostname + no tenant identifier → HTTP 404 `DOMAIN_NOT_FOUND`.
+  - H4: Invalid query parameter tenant in production (`?tenant=attacker`) on canonical host → ignored; strictly retains canonical default tenant.
+  - H5: Unknown explicit slug in production → HTTP 404 `TENANT_NOT_FOUND`.
+  - H6: Inactive tenant in production → HTTP 404 `TENANT_INACTIVE`.
+- **Quality Gates & Test Totals**:
+  - `npm run lint`: 0 TypeScript compilation errors (PASS).
+  - `npm run test:storefront`: 22 passed, 0 failed (PASS).
   - `npm run test:operational`: 26 passed, 0 failed (PASS).
-  - `npm test`: 13 test suites passed (199 test cases total, PASS).
+  - `npm test`: 13 test suites passed, 208 total tests, 0 failed (PASS).
   - Working tree: clean.
 
 ---

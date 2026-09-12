@@ -699,30 +699,31 @@ PROD-001 (NOT STARTED)
 - **Parent Program**: `VERSION-2.6-UPGRADE` (`2.6.0-development`)
 - **Objective**: Transform the existing client-centric prototype storefront into a professional, responsive, accessible, server-authoritative, multi-tenant commerce storefront.
 - **Scope**:
-  - **Phase 1 Baseline Audit**: Inspected 15 storefront components, contexts, and API routes; documented client-authoritative state leaks, missing public tenant resolution, and hardcoded commercial claims.
-  - **Phase 2 Tenant-Aware Storefront Contract**: Designed server-authoritative storefront context (`GET /api/storefront/:tenantSlug/context`), dual-strategy tenant resolver (domain, subdomain, slug path, query, default fallback), and database schema extension (`011_storefront_tenant_config.sql`).
-  - **Phase 3 & 4 Tenant-Scoped Catalog & Commerce Engine**: Designed tenant-isolated catalog queries (`/products`, `/:slugOrId`, `/categories`, `/brands`), real-time stock balances, server pricing, and dynamic policy-driven shipping calculations.
-  - **Phase 5 URL Routing Architecture**: Designed native lightweight HTML5 History router (`/shop`, `/shop/category/:slug`, `/product/:slug`, `/cart`, `/checkout`, `/account`, `/order/:orderNumber`).
-  - **Phase 6 & 7 Modular Component Decomposition**: Designed modular product detail views and modern tenant-branded homepage components.
-  - **Phase 8 & 9 Responsive & Accessibility Architecture**: Designed 4-tier breakpoint responsiveness ($375\text{px}$–$1440\text{px}+$, $\ge 44\times 44\text{px}$ touch targets) and WCAG 2.2 AA accessibility invariants.
-  - **Phase 10 & 11 Component Architecture**: Decoupled storefront state from monolithic `CommerceContext.tsx` into dedicated `StorefrontContext.tsx`; zero catalog in `localStorage`.
-  - **Phase 12 Acceptance Criteria**: Formulated testable verification specifications across all 14 criteria.
-  - **Phase 13 Deliverables**: Completed `.ai/UX-001A_STOREFRONT_ARCHITECTURE.md`, `.ai/UX-001A_STOREFRONT_IMPLEMENTATION_PLAN.md`, and `.ai/UX-001A_STOREFRONT_ACCEPTANCE_TESTS.md`.
+  - **Phase 1 Baseline Audit & Corrections**:
+    - Inspected 15 storefront components, contexts, and API routes; documented client-authoritative state leaks, missing public tenant resolution, and hardcoded commercial claims.
+    - Implemented server-authoritative storefront context (`GET /api/storefront/context`, `GET /api/storefront/:tenantSlug/context`), tenant resolver (`tenantResolver.ts`), and database schema extension (`011_storefront_tenant_config.sql`).
+    - Implemented reverse-proxy trust boundary (`X-Forwarded-Host`, `X-Tenant-Domain`), path vs. domain mismatch guards (HTTP 400 `TENANT_MISMATCH`), and strict canonical fallback isolation.
+    - Extended and executed migration 011 deterministic backfill, uniqueness preservation, collision disambiguation, and verified safe rollback.
+    - Reconciled all 14 Acceptance Criteria and 8 Supervisor Test Suites (22/22 PASSED, 0 FAILED).
+  - **Phase 2 URL Routing & State Architecture**: Native lightweight HTML5 History router (`/shop`, `/shop/category/:slug`, `/product/:slug`, `/cart`, `/checkout`, `/account`, `/order/:orderNumber`) and dedicated `StorefrontContext.tsx` (Pending Supervisor Authorization).
+  - **Phase 3 & 4 Modern Modular Storefront Components**: Modular product detail, responsive filters, and accessible commerce components.
 - **Dependencies**: `UPG-001` (Closed)
 - **Acceptance Criteria**:
   - [x] Architectural baseline audit and data flow trace completed.
   - [x] Architecture specification `.ai/UX-001A_STOREFRONT_ARCHITECTURE.md` delivered.
   - [x] Implementation roadmap `.ai/UX-001A_STOREFRONT_IMPLEMENTATION_PLAN.md` delivered.
   - [x] Acceptance test specification `.ai/UX-001A_STOREFRONT_ACCEPTANCE_TESTS.md` delivered.
-  - [x] Migration `011_storefront_tenant_config.sql` implemented and executed.
+  - [x] Migration `011_storefront_tenant_config.sql` implemented, deterministic backfill verified, and unique indexes added.
   - [x] Server storefront API endpoints implemented with strict tenant isolation.
-  - [ ] Frontend lightweight URL router and dedicated `StorefrontContext` implemented.
-  - [ ] Modular storefront UI components implemented.
-  - [ ] Server-authoritative cart and checkout integrated.
-  - [ ] WCAG 2.2 AA accessibility and responsive breakpoints verified.
-  - [x] Automated multi-tenant storefront integration tests passing 100% (`tests/storefront_multi_tenant.test.ts` 13/13 passed).
-  - [x] Full regression test suite remains green (`npm test` 13 suites passed).
-- **Supervisor Gate**: Phase 1 Foundation implemented & passing acceptance tests; ready for Phase 2 Frontend Architecture.
+  - [x] Reverse-proxy trust model implemented and verified against spoofing.
+  - [x] Strict production negative tests for canonical fallback passing (H1-H6).
+  - [ ] Frontend lightweight URL router and dedicated `StorefrontContext` implemented (Phase 2).
+  - [ ] Modular storefront UI components implemented (Phase 3).
+  - [ ] Server-authoritative cart and checkout integrated (Phase 4).
+  - [ ] WCAG 2.2 AA accessibility and responsive breakpoints verified (Phase 5).
+  - [x] Automated multi-tenant storefront integration tests passing 100% (`tests/storefront_multi_tenant.test.ts` 22/22 passed).
+  - [x] Full regression test suite remains green (`npm test` 13 suites passed, 208/208 tests).
+- **Supervisor Gate**: Phase 1 Foundation & Final Verification Corrections completed (22/22 PASSED); ready for Phase 2 Frontend Architecture authorization.
 
 
 

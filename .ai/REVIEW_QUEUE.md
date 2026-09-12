@@ -48,7 +48,7 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
-### Queue Item: UX-001A Phase 1 — Multi-Tenant Storefront Data & API Foundation
+### Queue Item: UX-001A Phase 1 — Multi-Tenant Storefront Data & API Foundation (Final Verification Corrections Completed)
 - **Submitted By**: Senior Software Engineer / Implementation Lead
 - **Submission Date**: 2026-09-12
 - **Current Status**: `READY FOR REVIEW`
@@ -56,24 +56,24 @@ Reviewers must evaluate submissions across these ten dimensions:
 - **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
 - **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
 - **Exact Commits**:
+  - `dc986a0`: `feat: implement multi-tenant storefront architecture with tenant resolution and routing`
+  - `d45403c`: `docs(ux-001a): record Phase 1 multi-tenant data & API foundation completion in task queue, review queue, and implementation report`
   - `29e4f61`: `test(ux-001a): harden tenant resolver reverse proxy headers, query override assertions, and test:storefront gate`
   - `56fdebf`: `feat: add multi-tenant storefront architecture with tenant resolution, routes, migration, and tests`
   - `004feb9`: `docs(ux-001a): apply supervisor corrections on fail-closed resolution, migration 011, and tests A-E`
   - `2ed6255`: `docs(ux-001a): add multi-tenant storefront architecture, implementation plan, and acceptance tests`
-- **Scope**:
-  - `server/db/migrations/011_storefront_tenant_config.sql`: Extends `organizations` with `NOT NULL DEFAULT` columns (`slug`, `custom_domain`, `currency_code`, `currency_symbol`, `locale`, `timezone`, `branding`, `policies`, `catalog_policy`, `feature_flags`). Non-destructive migration; preserves existing organizations.
-  - `server/services/tenantResolver.ts`: Authoritative multi-tenant resolution supporting custom domains, subdomains, explicit URL path slugs, and reverse proxy headers (`x-forwarded-host`, `x-tenant-domain`). Implements fail-closed invariant: explicit identifiers failing to resolve throw 404 (`TENANT_NOT_FOUND`, `DOMAIN_NOT_FOUND`), inactive tenants throw 404 (`TENANT_INACTIVE`), mismatched domain/slug throw 400 (`TENANT_MISMATCH`). Default tenant fallback (`org_default`) permitted ONLY on canonical platform entry points (`shop.abacha.com`, `localhost`).
-  - Query parameter tenant override (`?tenant=` / `?store=`): Permitted in `development` and `test`; in `staging` only when `ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true`; strictly forbidden in `production`.
-  - `server/routes/storefrontRoutes.ts`: Public tenant-scoped endpoints (`GET /context`, `GET /:tenantSlug/context`, `GET /:tenantSlug/categories`, `GET /:tenantSlug/brands`, `GET /:tenantSlug/locations`, `GET /:tenantSlug/products` with faceted search, `GET /:tenantSlug/products/:slugOrId`, `POST /:tenantSlug/cart/validate`). Respects tenant and fulfillment location distinction for inventory availability.
-  - `tests/storefront_multi_tenant.test.ts`: 13 automated tests covering all 14 criteria and Supervisor Tests A through E (fail-closed fallback, inactive 404, query override matrix, canonical default, and tenant vs location separation).
-  - `package.json`: Wired `test:storefront` into `npm test`.
+- **Scope & Final Corrections**:
+  - `server/db/migrations/011_storefront_tenant_config.sql`: Extends `organizations` with `slug`, `custom_domain`, and JSONB configurations. Proven against pre-existing multi-tenant data with deterministic backfill from unique codes, unique indexes on `slug` and `custom_domain`, and non-destructive rollback strategy preserving core tenant catalog and orders.
+  - `server/services/tenantResolver.ts`: Establishes reverse-proxy trust boundary (`isProxyTrusted()`, `isTenantDomainHeaderAllowed()`). Forwarded headers are untrusted by default in production/staging and only honored if `TRUST_PROXY=true`. Prioritizes direct `Host` header over untrusted forwarded headers. Enforces fail-closed semantics for unknown slugs, inactive tenants (HTTP 404), and mismatched domain/path slugs (HTTP 400 `TENANT_MISMATCH`). Default fallback to `org_default` occurs strictly on explicitly configured canonical production endpoints.
+  - `server/routes/storefrontRoutes.ts`: Standardized response contracts, including structured `pagination` metadata (`page`, `pageSize`, `totalCount`, `totalPages`, `hasMore`).
+  - `tests/storefront_multi_tenant.test.ts`: Reconciled full test suite with 22 passed assertions covering all 14 Acceptance Criteria and 8 Supervisor Test Suites (Tests A–H).
 - **Verification Evidence**:
   - `npm run lint`: 0 errors (PASS).
-  - `npm run test:storefront`: 13 passed, 0 failed (PASS).
+  - `npm run test:storefront`: 22 passed, 0 failed (PASS).
   - `npm run test:operational`: 26 passed, 0 failed (PASS).
-  - `npm test`: 13 test suites passed (199 test cases total, PASS).
+  - `npm test`: 13 test suites passed (208 test cases total, 0 failed, PASS).
   - Working tree: clean.
-- **Supervisor Action Required**: Review Phase 1 Data & API foundation; authorize Phase 2 Frontend Architecture (lightweight HTML5 History router and dedicated `StorefrontContext`).
+- **Supervisor Action Required**: Review Phase 1 Data & API foundation with final verification corrections; authorize Phase 2 Frontend Architecture (lightweight HTML5 History router and dedicated `StorefrontContext`).
 
 ---
 
