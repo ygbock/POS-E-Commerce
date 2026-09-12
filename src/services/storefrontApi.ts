@@ -52,6 +52,16 @@ export interface StorefrontProduct {
   isOutOfStock: boolean;
 }
 
+export interface StorefrontContextResponse {
+  tenant: { id: string; name: string; code: string; slug: string; customDomain?: string | null };
+  localization: { currencyCode: string; currencySymbol: string; locale: string; timezone: string };
+  branding: StorefrontTenantConfig['branding'];
+  policies: StorefrontTenantConfig['policies'];
+  catalogPolicy: Record<string, unknown>;
+  featureFlags: Record<string, boolean>;
+  pickupLocations: StorefrontTenantConfig['locations'];
+}
+
 export interface StorefrontProductQuery {
   category?: string;
   brand?: string;
@@ -133,7 +143,7 @@ const tenantBase = (tenantSlug?: string) =>
 
 export const storefrontApi = {
   getContext(tenantSlug?: string) {
-    return request<StorefrontTenantConfig>(`${tenantBase(tenantSlug)}/context`);
+    return request<StorefrontContextResponse>(`${tenantBase(tenantSlug)}/context`);
   },
 
   getCategories(tenantSlug: string) {
