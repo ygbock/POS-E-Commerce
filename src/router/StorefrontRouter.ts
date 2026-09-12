@@ -22,7 +22,7 @@ const decode = (value: string) => {
 };
 
 const normalizePath = (path: string) => {
-  const normalized = path.replace(//+/g, '/').replace(//$/, '');
+  const normalized = path.replace(/\/+/g, '/').replace(/\/$/, '');
   return normalized || '/';
 };
 
