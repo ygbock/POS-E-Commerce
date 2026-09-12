@@ -4,6 +4,7 @@ import { useStorefrontRoute } from '../../router/StorefrontRouter';
 import { Product, ProductVariant, Order } from '../../types';
 import { filterStorefrontProducts, sortStorefrontProducts } from './storefrontCatalog';
 import { useStorefrontContext } from '../../context/StorefrontContext';
+import { storefrontApi, StorefrontProduct } from '../../services/storefrontApi';
 
 export interface StorefrontStateProps { onOpenAdmin?: () => void; onOpenPos?: () => void; }
 export function useStorefrontState() {
@@ -46,9 +47,83 @@ export function useStorefrontState() {
   const [successOrder, setSuccessOrder] = useState<Order | null>(null);
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogPagination, setCatalogPagination] = useState<{ page: number; pageSize: number; totalCount: number; totalPages: number; hasMore: boolean } | null>(null);
 
+  const toProduct = (item: StorefrontProduct): Product => ({
+    id: item.id,
+    organizationId: item.organization_id,
+    name: item.name,
+    slug: item.slug,
+    brand: item.brand,
+    category: item.category,
+    subcategory: '',
+    description: item.description || '',
+    shortDescription: item.shortDescription || '',
+    unit: 'pcs',
+    productType: 'standard',
+    status: 'active',
+    channels: { pos: false, ecommerce: true, wholesale: false },
+    taxRate: 0,
+    rating: item.rating || 0,
+    reviewCount: item.reviewCount || 0,
+    tags: item.tags || [],
+    images: item.images || [],
+    variants: item.variants.map((v) => ({
+      id: v.id,
+      sku: v.sku || '',
+      barcode: v.barcode || '',
+      name: v.name || '',
+      attributes: Object.fromEntries(Object.entries(v.attributes || {}).map(([k, value]) => [k, String(value)])),
+      costPrice: 0,
+      retailPrice: Number(v.retailPrice ?? v.retail_price ?? 0),
+      wholesalePrice: Number(v.retailPrice ?? v.retail_price ?? 0),
+      memberPrice: Number(v.retailPrice ?? v.retail_price ?? 0),
+      minSellingPrice: Number(v.retailPrice ?? v.retail_price ?? 0),
+      stockByLocation: Object.fromEntries((v.locationBalances || []).map((b) => [b.locationId, b.available])),
+      lowStockThreshold: 0,
+      image: v.imageUrl || undefined,
+    })),
+    featured: item.featured,
+    compareAtPrice: item.compareAtPrice ?? undefined,
+    salesCount: item.salesCount || 0,
+    specifications: [],
+    reviewsList: [],
+    createdAt: new Date().toISOString(),
+  });
+
+  useEffect(() => {
+    if (!tenant?.slug || tenantLoading || tenantError) return;
+    let cancelled = false;
+    setCatalogLoading(true); setCatalogError(null);
+    void storefrontApi.getProducts(tenant.slug, {
+      category: selectedCategory,
+      brand: selectedBrand,
+      search: searchQuery,
+      minPrice,
+      maxPrice,
+      inStock: inStockOnly,
+      onSale: onSaleOnly,
+      sortBy,
+      page: 1,
+      limit: 48,
+    }).then((result) => {
+      if (cancelled) return;
+      setCatalogPagination(result.pagination);
+      setStorefrontProducts(result.products.map(toProduct));
+    }).catch((error) => {
+      if (cancelled) return;
+      setCatalogError(error instanceof Error ? error.message : 'Unable to load storefront catalog.');
+      setStorefrontProducts([]);
+    }).finally(() => { if (!cancelled) setCatalogLoading(false); });
+    return () => { cancelled = true; };
+  }, [tenant?.slug, tenantLoading, tenantError, selectedCategory, selectedBrand, searchQuery, minPrice, maxPrice, inStockOnly, onSaleOnly, sortBy]);
+
+  const [storefrontProducts, setStorefrontProducts] = useState<Product[]>([]);
   const categories = ['All', 'Electronics', 'Home & Kitchen', 'Food & Beverage', 'Apparel'];
-  const allBrands = ['All', ...Array.from(new Set(products.map((p) => p.brand)))];
+  const catalogProducts = storefrontProducts;
+  const allBrands = ['All', ...Array.from(new Set(catalogProducts.map((p) => p.brand)))];
 
   const filteredProducts = useMemo(() => filterStorefrontProducts(products, {
     category: selectedCategory,
@@ -60,7 +135,7 @@ export function useStorefrontState() {
     onSaleOnly,
     minRating,
   }, getTotalStockForVariant), [
-    products,
+    catalogProducts,
     selectedCategory,
     selectedBrand,
     searchQuery,
@@ -78,16 +153,16 @@ export function useStorefrontState() {
   );
 
   // Homepage specific product sections
-  const featuredProducts = products.filter((p) => p.featured && p.status === 'active');
-  const bestSellers = [...products]
+  const featuredProducts = catalogProducts.filter((p) => p.featured && p.status === 'active');
+  const bestSellers = [...catalogProducts]
     .filter((p) => p.status === 'active')
     .sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
     .slice(0, 10);
-  const newArrivals = [...products]
+  const newArrivals = [...catalogProducts]
     .filter((p) => p.status === 'active')
     .sort((a, b) => b.id.localeCompare(a.id))
     .slice(0, 10);
-  const recommendedProducts = [...products]
+  const recommendedProducts = [...catalogProducts]
     .filter((p) => p.rating >= 4.5 && p.status === 'active')
     .slice(0, 10);
 
@@ -194,7 +269,7 @@ export function useStorefrontState() {
 
 
 
-  return { route, navigate, tenant, tenantLoading, tenantError, products, storeCart, addToStoreCart, wishlist, formatCurrency: formatTenantCurrency, getTotalStockForVariant, orders, isDarkMode, toggleTheme,
+  return { route, navigate, tenant, tenantLoading, tenantError, products: catalogProducts, catalogLoading, catalogError, catalogPagination, storeCart, addToStoreCart, wishlist, formatCurrency: formatTenantCurrency, getTotalStockForVariant, orders, isDarkMode, toggleTheme,
     activeSection, setActiveSection, searchQuery, setSearchQuery, selectedCategory, setSelectedCategory, selectedBrand, setSelectedBrand, sortBy, setSortBy,
     minPrice, setMinPrice, maxPrice, setMaxPrice, inStockOnly, setInStockOnly, onSaleOnly, setOnSaleOnly, minRating, setMinRating, isMobileFilterOpen, setIsMobileFilterOpen,
     selectedDetailProduct, setSelectedDetailProduct, isCartDrawerOpen, setIsCartDrawerOpen, isWishlistDrawerOpen, setIsWishlistDrawerOpen, isAccountModalOpen, setIsAccountModalOpen,
