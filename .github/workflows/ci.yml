@@ -106,6 +106,17 @@ jobs:
 
       - name: 12. Operational Platform Hardening (test:operational)
         run: npm run test:operational
+      - name: 13. Multi-Tenant Storefront Acceptance (test:storefront)
+        run: npm run test:storefront
+
+      - name: 14. Storefront API Client Contract (test:storefront-api)
+        run: npm run test:storefront-api
+
+      - name: 15. Storefront URL Router Contract (test:storefront-router)
+        run: npm run test:storefront-router
+
+      - name: 16. Storefront Catalog Contract (test:storefront-catalog)
+        run: npm run test:storefront-catalog
 
   secret-scanning:
     name: Multi-Layer Secret Leakage Scan
