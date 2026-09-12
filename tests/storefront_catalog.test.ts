@@ -43,7 +43,7 @@ const products = [
     rating: 4.5,
     salesCount: 70,
     featured: false,
-    variants: [{ id: 'v-3', retailPrice: 25, compareAtPrice: 25 } as Product['variants'][number],
+    variants: [{ id: 'v-3', retailPrice: 25, compareAtPrice: 25 } as Product['variants'][number]],
   }),
 ];
 
