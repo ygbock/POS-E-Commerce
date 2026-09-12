@@ -194,7 +194,7 @@ export function useStorefrontState() {
 
 
 
-  return { route, navigate, products, storeCart, addToStoreCart, wishlist, formatCurrency, getTotalStockForVariant, orders, isDarkMode, toggleTheme,
+  return { route, navigate, tenant, tenantLoading, tenantError, products, storeCart, addToStoreCart, wishlist, formatCurrency: formatTenantCurrency, getTotalStockForVariant, orders, isDarkMode, toggleTheme,
     activeSection, setActiveSection, searchQuery, setSearchQuery, selectedCategory, setSelectedCategory, selectedBrand, setSelectedBrand, sortBy, setSortBy,
     minPrice, setMinPrice, maxPrice, setMaxPrice, inStockOnly, setInStockOnly, onSaleOnly, setOnSaleOnly, minRating, setMinRating, isMobileFilterOpen, setIsMobileFilterOpen,
     selectedDetailProduct, setSelectedDetailProduct, isCartDrawerOpen, setIsCartDrawerOpen, isWishlistDrawerOpen, setIsWishlistDrawerOpen, isAccountModalOpen, setIsAccountModalOpen,
