@@ -48,10 +48,39 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
+### Queue Item: UX-001A Phase 1 — Multi-Tenant Storefront Data & API Foundation
+- **Submitted By**: Senior Software Engineer / Implementation Lead
+- **Submission Date**: 2026-09-12
+- **Current Status**: `READY FOR REVIEW`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Exact Commits**:
+  - `29e4f61`: `test(ux-001a): harden tenant resolver reverse proxy headers, query override assertions, and test:storefront gate`
+  - `56fdebf`: `feat: add multi-tenant storefront architecture with tenant resolution, routes, migration, and tests`
+  - `004feb9`: `docs(ux-001a): apply supervisor corrections on fail-closed resolution, migration 011, and tests A-E`
+  - `2ed6255`: `docs(ux-001a): add multi-tenant storefront architecture, implementation plan, and acceptance tests`
+- **Scope**:
+  - `server/db/migrations/011_storefront_tenant_config.sql`: Extends `organizations` with `NOT NULL DEFAULT` columns (`slug`, `custom_domain`, `currency_code`, `currency_symbol`, `locale`, `timezone`, `branding`, `policies`, `catalog_policy`, `feature_flags`). Non-destructive migration; preserves existing organizations.
+  - `server/services/tenantResolver.ts`: Authoritative multi-tenant resolution supporting custom domains, subdomains, explicit URL path slugs, and reverse proxy headers (`x-forwarded-host`, `x-tenant-domain`). Implements fail-closed invariant: explicit identifiers failing to resolve throw 404 (`TENANT_NOT_FOUND`, `DOMAIN_NOT_FOUND`), inactive tenants throw 404 (`TENANT_INACTIVE`), mismatched domain/slug throw 400 (`TENANT_MISMATCH`). Default tenant fallback (`org_default`) permitted ONLY on canonical platform entry points (`shop.abacha.com`, `localhost`).
+  - Query parameter tenant override (`?tenant=` / `?store=`): Permitted in `development` and `test`; in `staging` only when `ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true`; strictly forbidden in `production`.
+  - `server/routes/storefrontRoutes.ts`: Public tenant-scoped endpoints (`GET /context`, `GET /:tenantSlug/context`, `GET /:tenantSlug/categories`, `GET /:tenantSlug/brands`, `GET /:tenantSlug/locations`, `GET /:tenantSlug/products` with faceted search, `GET /:tenantSlug/products/:slugOrId`, `POST /:tenantSlug/cart/validate`). Respects tenant and fulfillment location distinction for inventory availability.
+  - `tests/storefront_multi_tenant.test.ts`: 13 automated tests covering all 14 criteria and Supervisor Tests A through E (fail-closed fallback, inactive 404, query override matrix, canonical default, and tenant vs location separation).
+  - `package.json`: Wired `test:storefront` into `npm test`.
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm run test:storefront`: 13 passed, 0 failed (PASS).
+  - `npm run test:operational`: 26 passed, 0 failed (PASS).
+  - `npm test`: 13 test suites passed (199 test cases total, PASS).
+  - Working tree: clean.
+- **Supervisor Action Required**: Review Phase 1 Data & API foundation; authorize Phase 2 Frontend Architecture (lightweight HTML5 History router and dedicated `StorefrontContext`).
+
+---
+
 ### Queue Item: UPG-001, UPG-001R1, UPG-001R2 & UPG-001R2.1 — Production Operations Hardening & Platform Controls
 - **Submitted By**: Senior Software Engineer / Implementation Lead
 - **Submission Date**: 2026-09-11
-- **Current Status**: `PENDING SUPERVISOR REVIEW`
+- **Current Status**: `APPROVED / CLOSED` (Approved by Supervisor 2026-09-12)
 - **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
 - **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
 - **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)

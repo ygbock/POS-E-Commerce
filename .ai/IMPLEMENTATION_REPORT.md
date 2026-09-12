@@ -1,5 +1,78 @@
 # Implementation Report
 
+## UX-001A Phase 1 — Multi-Tenant Storefront Data & API Foundation
+
+- **Status**: `READY FOR SUPERVISOR REVIEW`
+- **Parent Task**: VERSION-2.6-UPGRADE / Multi-Tenant Storefront Modernization
+- **Operating Directive**: `INSPECT → HARDEN → TEST → VERIFY → DOCUMENT → REPORT`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Exact Commits**:
+  - `29e4f61`: `test(ux-001a): harden tenant resolver reverse proxy headers, query override assertions, and test:storefront gate`
+  - `56fdebf`: `feat: add multi-tenant storefront architecture with tenant resolution, routes, migration, and tests`
+  - `004feb9`: `docs(ux-001a): apply supervisor corrections on fail-closed resolution, migration 011, and tests A-E`
+  - `2ed6255`: `docs(ux-001a): add multi-tenant storefront architecture, implementation plan, and acceptance tests`
+- **Files Created / Modified**:
+  - `server/db/migrations/011_storefront_tenant_config.sql` [NEW]
+  - `server/services/tenantResolver.ts` [NEW]
+  - `server/routes/storefrontRoutes.ts` [NEW]
+  - `tests/storefront_multi_tenant.test.ts` [NEW]
+  - `server.ts` [MODIFIED - mounted `/api/storefront`]
+  - `tests/operational_hardening.test.ts` [MODIFIED - migration 011 checksum check]
+  - `package.json` [MODIFIED - added `test:storefront` script and wired into `npm test`]
+- **Core Technical Implementation**:
+  1. **Migration 011 (`011_storefront_tenant_config.sql`)**:
+     - Extends `organizations` with `NOT NULL DEFAULT` columns: `slug`, `custom_domain`, `currency_code`, `currency_symbol`, `locale`, `timezone`, `branding`, `policies`, `catalog_policy`, and `feature_flags`.
+     - Non-destructive schema extension: 100% compatible with existing organizations; rollback strategy preserves customer data without destructive `DROP COLUMN`.
+  2. **Multi-Tenant Resolver (`tenantResolver.ts`)**:
+     - Resolves tenant context from custom domains, subdomains, explicit URL path slugs, and reverse proxy headers (`x-forwarded-host`, `x-tenant-domain`, `req.headers.host`).
+     - **Fail-Closed Invariant**: Storefront never silently falls back to `org_default` when an explicit tenant identifier fails to resolve.
+       - Valid tenant → resolves and returns context.
+       - Inactive tenant → throws HTTP 404 `TENANT_INACTIVE` ("Store is temporarily unavailable.").
+       - Unknown tenant slug → throws HTTP 404 `TENANT_NOT_FOUND`.
+       - Unknown custom domain → throws HTTP 404 `DOMAIN_NOT_FOUND`.
+       - Mismatched domain vs path slug → throws HTTP 400 `TENANT_MISMATCH`.
+       - Default tenant fallback allowed ONLY on canonical platform entry point (`shop.abacha.com`, `localhost`).
+     - **Environment-Gated Query Override (`?tenant=` / `?store=`)**:
+       - `development` & `test`: Permitted for developer agility.
+       - `staging`: Disabled unless explicitly enabled by `ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true`.
+       - `production`: Strictly prohibited; query parameters cannot switch tenant context.
+     - **Tenant vs Location Distinction**:
+       - Preserves the 3-tier hierarchy: `organization/tenant -> store/branch -> warehouse/location`.
+       - Storefront availability respects both tenant and selected fulfillment location.
+  3. **Public Storefront API Routes (`storefrontRoutes.ts`)**:
+     - `GET /context` and `GET /:tenantSlug/context`: Returns public tenant configuration, branding, policies, currencies, and active pickup locations without leaking internal secrets.
+     - `GET /:tenantSlug/categories`: Returns active categories for the tenant.
+     - `GET /:tenantSlug/brands`: Returns active brands for the tenant.
+     - `GET /:tenantSlug/locations`: Returns active retail stores and pickup points for the tenant.
+     - `GET /:tenantSlug/products`: Server-side faceted catalog with pagination, search, category filter, brand filter, and location-aware stock calculation.
+     - `GET /:tenantSlug/products/:slugOrId`: Product detail with variants and location stock.
+     - `POST /:tenantSlug/cart/validate`: Server-authoritative cart validation, stock checks against selected fulfillment location, and policy-driven shipping fee evaluation (free shipping threshold).
+  4. **Acceptance Test Suite (`tests/storefront_multi_tenant.test.ts`)**:
+     - 13 automated tests covering all 14 criteria:
+       - Test 1: Cross-tenant catalog isolation (Tenant A cannot see Tenant B products).
+       - Test 2: Cross-tenant price isolation (Tenant A cannot see Tenant B pricing).
+       - Test 3: Stock isolation (Tenant A cannot see Tenant B inventory availability).
+       - Test 4: Cross-tenant order injection blocked (Tenant A cannot order Tenant B variants).
+       - Test 5: Public storefront resolution (slug, host, subdomain).
+       - Test 6: Tenant branding isolation.
+       - Test 7: Currency configuration isolation.
+       - Test 8: Server-side policy evaluation (free shipping threshold).
+       - Supervisor Test A: Unknown tenant does NOT fall back to another tenant (404 Fail-Closed).
+       - Supervisor Test B: Inactive tenant returns 404 / Store Unavailable.
+       - Supervisor Test C: Query parameter tenant override rules (dev/test/staging/prod/invalid).
+       - Supervisor Test D: Canonical default storefront works ONLY at canonical entry point.
+       - Supervisor Test E: Tenant and location remain separate concepts (location-aware availability).
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm run test:storefront`: 13 passed, 0 failed (PASS).
+  - `npm run test:operational`: 26 passed, 0 failed (PASS).
+  - `npm test`: 13 test suites passed (199 test cases total, PASS).
+  - Working tree: clean.
+
+---
+
 ## UPG-001R2.1 — Final Production Deployment Correction
 
 - **Status**: `READY FOR SUPERVISOR REVIEW`

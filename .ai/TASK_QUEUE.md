@@ -714,15 +714,15 @@ PROD-001 (NOT STARTED)
   - [x] Architecture specification `.ai/UX-001A_STOREFRONT_ARCHITECTURE.md` delivered.
   - [x] Implementation roadmap `.ai/UX-001A_STOREFRONT_IMPLEMENTATION_PLAN.md` delivered.
   - [x] Acceptance test specification `.ai/UX-001A_STOREFRONT_ACCEPTANCE_TESTS.md` delivered.
-  - [ ] Migration `011_storefront_tenant_config.sql` implemented and executed.
-  - [ ] Server storefront API endpoints implemented with strict tenant isolation.
+  - [x] Migration `011_storefront_tenant_config.sql` implemented and executed.
+  - [x] Server storefront API endpoints implemented with strict tenant isolation.
   - [ ] Frontend lightweight URL router and dedicated `StorefrontContext` implemented.
   - [ ] Modular storefront UI components implemented.
   - [ ] Server-authoritative cart and checkout integrated.
   - [ ] WCAG 2.2 AA accessibility and responsive breakpoints verified.
-  - [ ] Automated multi-tenant storefront integration tests passing 100%.
-  - [ ] Full regression test suite remains green.
-- **Supervisor Gate**: Phase 13 Architecture & Planning deliverables submitted for review.
+  - [x] Automated multi-tenant storefront integration tests passing 100% (`tests/storefront_multi_tenant.test.ts` 13/13 passed).
+  - [x] Full regression test suite remains green (`npm test` 13 suites passed).
+- **Supervisor Gate**: Phase 1 Foundation implemented & passing acceptance tests; ready for Phase 2 Frontend Architecture.
 
 
 
