@@ -128,6 +128,101 @@ assert.strictEqual(window.localStorage.getItem('abacha_commerce_db_v1_products')
 
 ---
 
+### Additional Mandated Supervisor Tests (Tests A through E)
+
+#### Case A: Unknown Tenant Does Not Fall Back to Another Tenant
+```typescript
+// Requesting an unknown tenant slug must return 404 and NEVER fall back to org_default
+const res = await request(app).get('/api/storefront/unknown-tenant-xyz/context');
+assert.strictEqual(res.status, 404);
+assert.strictEqual(res.body.error.code, 'TENANT_NOT_FOUND');
+assert.strictEqual(res.body.data, undefined);
+
+// Similarly for unknown custom domain:
+const resDomain = await request(app)
+  .get('/api/storefront/auto/context')
+  .set('Host', 'unregistered-domain.com');
+assert.strictEqual(resDomain.status, 404);
+assert.strictEqual(resDomain.body.error.code, 'DOMAIN_NOT_FOUND');
+```
+
+#### Case B: Inactive Tenant Returns 404 / Store Unavailable
+```typescript
+// GIVEN an organization with is_active = false
+const res = await request(app).get('/api/storefront/inactive-tenant/context');
+assert.strictEqual(res.status, 404);
+assert.strictEqual(res.body.error.code, 'TENANT_INACTIVE');
+assert.strictEqual(res.body.error.message, 'Store is temporarily unavailable.');
+```
+
+#### Case C: Production Query Override Cannot Switch Tenant
+```typescript
+// When DEPLOY_ENV=production or NODE_ENV=production, query parameters MUST NOT switch tenant
+// Even if ?tenant=org_store_beta is supplied, the host/domain binding is authoritative
+const prevEnv = process.env.NODE_ENV;
+try {
+  process.env.NODE_ENV = 'production';
+  const res = await request(app)
+    .get('/api/storefront/alpha/context?tenant=beta')
+    .set('Host', 'alpha.abacha.test');
+  // Tenant must remain alpha, query parameter 'beta' is strictly ignored
+  assert.strictEqual(res.body.data.tenant.slug, 'alpha');
+  assert.notStrictEqual(res.body.data.tenant.slug, 'beta');
+} finally {
+  process.env.NODE_ENV = prevEnv;
+}
+```
+
+#### Case D: Canonical Default Storefront Works Only at Canonical Entry Point
+```typescript
+// Canonical entry point (e.g. root without slug or subdomain on primary domain):
+const resCanonical = await request(app)
+  .get('/api/storefront/default/context')
+  .set('Host', 'localhost:3000');
+assert.strictEqual(resCanonical.status, 200);
+assert.strictEqual(resCanonical.body.data.tenant.id, 'org_default');
+
+// But an unknown subdomain on the primary domain FAILS CLOSED:
+const resSubdomain = await request(app)
+  .get('/api/storefront/auto/context')
+  .set('Host', 'unknown-store.abacha.test');
+assert.strictEqual(resSubdomain.status, 404);
+assert.strictEqual(resSubdomain.body.error.code, 'DOMAIN_NOT_FOUND');
+
+// And an unknown path slug FAILS CLOSED:
+const resUnknownPath = await request(app).get('/api/storefront/store-does-not-exist/context');
+assert.strictEqual(resUnknownPath.status, 404);
+assert.strictEqual(resUnknownPath.body.error.code, 'TENANT_NOT_FOUND');
+```
+
+#### Case E: Tenant and Location Remain Separate Concepts
+```typescript
+// Verification that organization (tenant) owns master catalog & policies,
+// while locations (stores/branches/warehouses) hold distinct physical inventory balances.
+// 1. Query tenant pickup locations
+const resLocations = await request(app).get('/api/storefront/alpha/locations');
+assert.strictEqual(resLocations.status, 200);
+assert(resLocations.body.data.length >= 2);
+
+// 2. Location A has 10 units of variant 1; Location B has 0 units of variant 1
+const cartLocationA = await request(app)
+  .post('/api/storefront/alpha/cart/validate')
+  .send({
+    items: [{ variantId: 'var_alpha_multi_loc', quantity: 5 }],
+    fulfillmentLocationId: resLocations.body.data[0].id
+  });
+assert.strictEqual(cartLocationA.body.data.items[0].isAvailable, true);
+
+const cartLocationB = await request(app)
+  .post('/api/storefront/alpha/cart/validate')
+  .send({
+    items: [{ variantId: 'var_alpha_multi_loc', quantity: 5 }],
+    fulfillmentLocationId: resLocations.body.data[1].id
+  });
+// In Location B, stock is insufficient
+assert.strictEqual(cartLocationB.body.data.items[0].isAvailable, false);
+```
+
 ## 4. Accessibility (WCAG 2.2 AA) Verification Protocol
 
 1. **Keyboard Navigability**:

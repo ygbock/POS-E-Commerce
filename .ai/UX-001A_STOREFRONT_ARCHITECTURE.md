@@ -120,37 +120,144 @@ The diagram below traces the current data flow from unauthenticated storefront v
 
 ## 3. Phase 2 — Tenant-Aware Storefront Architecture & Contract
 
-### 3.1 Tenant Resolution Hierarchy
+### 3.1 Strict Fail-Closed Tenant Resolution Policy (No Unsafe Fallbacks)
 
-To support multi-tenancy without disrupting the existing backend isolation contract, tenant resolution for public storefronts will adhere to this priority order:
+To prevent cross-tenant contamination, data leakage, and false branding display, the storefront enforces **strict fail-closed tenant resolution**. The platform will **NEVER** silently fall back to `org_default` when an explicit tenant identifier fails to resolve.
 
-1. **Custom Hostname / Subdomain Mapping**:
-   - `tenant-alpha.abacha.com` → resolves to tenant slug `tenant-alpha`.
-   - `store.customdomain.com` → resolves via tenant domain lookup in database.
-2. **Explicit Storefront Path Slug**:
-   - `/store/:tenantSlug/...` → e.g. `/store/alpha/shop` resolves to tenant slug `alpha`.
-3. **Storefront Query Parameter (Development & Sandbox Mode)**:
-   - `?tenant=:tenantSlug` or `?store=:storeSlug`.
-4. **Platform Default Tenant Fallback**:
-   - `/` or `/shop` (without subdomain or slug) resolves to canonical default tenant (`org_default`).
+#### Mandatory Resolution Behavior:
+| Resolution Scenario | Request State | Outcome & Response |
+| :--- | :--- | :--- |
+| **Valid Tenant** | Slug, host domain, or authorized query matches an active organization. | **HTTP 200**: Return resolved tenant context, branding, and policies. |
+| **Inactive Tenant** | Target organization exists in database but has `is_active = false`. | **HTTP 404 / 403**: `TENANT_INACTIVE` ("Store Unavailable"). Never fall back. |
+| **Unknown Tenant Slug** | Path `/store/:tenantSlug` cannot be found in `organizations.slug`. | **HTTP 404**: `TENANT_NOT_FOUND` ("Store Not Found"). Never fall back to `org_default`. |
+| **Unknown Custom Domain** | `Host` header (e.g. `unknown.abacha.com`) cannot be found in database. | **HTTP 404**: `DOMAIN_NOT_FOUND` ("Store Not Found"). Never fall back to `org_default`. |
+| **Mismatched Host / Path** | Custom domain for Tenant Alpha combined with path `/store/beta`. | **HTTP 400 / 403**: `TENANT_MISMATCH` (Fail Closed). |
+| **Invalid Identifier** | Malformed, non-alphanumeric, or suspicious slug characters. | **HTTP 400**: `INVALID_TENANT_IDENTIFIER` (Rejected immediately). |
 
-```mermaid
-flowchart TD
-    Req[Incoming HTTP Request] --> CheckHost{Custom Domain or Subdomain?}
-    CheckHost -- Yes --> ResolveHost[DB Query: organizations.domain or slug]
-    CheckHost -- No --> CheckPath{Path starts with /store/:slug?}
-    CheckPath -- Yes --> ResolvePath[Extract :slug from URL path]
-    CheckPath -- No --> CheckQuery{Query param ?tenant=?}
-    CheckQuery -- Yes --> ResolveQuery[Extract query param value]
-    CheckQuery -- No --> FallbackDefault[Default Tenant: org_default]
+#### Canonical Default Storefront Entry Point:
+Default tenant behavior (`org_default`) is permitted **strictly and exclusively** for the platform's explicitly configured canonical public storefront entry point (e.g. `https://shop.abacha.com/` or `APP_URL` matching the root path `/` or `/shop` with **no tenant slug, subdomain, or custom domain specified**).
+- `https://shop.abacha.com/` → Canonical default storefront MAY resolve to `org_default`.
+- `https://unknown.abacha.com/` → **MUST NOT** become `org_default` (returns 404).
+- `/store/unknown` → **MUST NOT** become `org_default` (returns 404).
 
-    ResolveHost --> ValidateTenant[Verify Tenant Exists & is_active = true]
-    ResolvePath --> ValidateTenant
-    ResolveQuery --> ValidateTenant
-    FallbackDefault --> ValidateTenant
+---
 
-    ValidateTenant -- Found & Active --> ReturnContext[Return Tenant Storefront Context]
-    ValidateTenant -- Missing / Inactive --> Return404[HTTP 404 / 403 Tenant Not Available]
+### 3.2 Environment-Gated Query Parameter Override Policy (`?tenant=` / `?store=`)
+
+Query parameters (`?tenant=:slug` or `?store=:slug`) are strictly categorized as **development, testing, and sandbox conveniences**. They are **NEVER** trusted in production:
+
+| Runtime Environment | Query Override Permitted? | Enforcement Mechanism |
+| :--- | :---: | :--- |
+| **Development** (`NODE_ENV=development`) | **YES** | Allows developers to switch tenant contexts locally without altering local DNS or hosts files. |
+| **Test** (`NODE_ENV=test`) | **YES** | Enables deterministic automated testing of multi-tenant isolation and switching. |
+| **Staging** (`NODE_ENV=staging`) | **CONDITIONAL** | Disabled by default. Only enabled if explicitly set via `ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true` in environment configuration. |
+| **Production** (`NODE_ENV=production`) | **STRICTLY DISABLED** | **Zero trust**. Any query parameter attempting to override tenant context is ignored, and requests bind strictly to the authoritative domain/host or path slug. |
+
+---
+
+### 3.3 Tenant vs. Location Architectural Hierarchy
+
+To prevent conceptual conflation between legal entities and physical inventory sites, the storefront strictly maintains the three-tier hierarchy:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│ 1. ORGANIZATION / TENANT (Legal Entity, Tenant Boundary)              │
+│    - Identified by organization_id / slug                              │
+│    - Owns master catalog, branding, currency, policies, and ledger     │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ 2. STORE / BRANCH (Commercial Selling & Customer Pickup Point)         │
+│    - Identified by location_id where is_pos_enabled = true             │
+│    - Physical retail branch where customers can collect orders         │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ 3. WAREHOUSE / LOCATION (Physical Inventory Balances & Fulfillment)    │
+│    - Identified by location_id (Warehouse, Retail Store, DC)          │
+│    - Holds atomic inventory_balances (on_hand, reserved, damaged)      │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Multi-Tier Inventory Availability Contract:
+`organization_id` is **never** a substitute for location-aware inventory calculations:
+1. **Catalog Global Availability**:
+   $$\text{Available}_{\text{global}, v} = \sum_{\text{loc} \in \text{FulfillmentLocations}(\text{org})} \max(0, \text{on\_hand}_{\text{loc}, v} - \text{reserved}_{\text{loc}, v} - \text{damaged}_{\text{loc}, v} - \text{expired}_{\text{loc}, v})$$
+2. **Selected Pickup Branch Availability**:
+   When a shopper selects "In-Store Pickup" at Branch $B$, availability is evaluated strictly for Location $B$:
+   $$\text{Available}_{\text{pickup}, v} = \max(0, \text{on\_hand}_{B, v} - \text{reserved}_{B, v} - \text{damaged}_{B, v} - \text{expired}_{B, v})$$
+
+---
+
+### 3.4 Tenant Storefront Context API Contract
+
+#### `GET /api/storefront/:tenantSlug/context` (or via Host Header)
+```typescript
+// Conceptual Response DTO
+export interface StorefrontContextResponse {
+  success: true;
+  data: {
+    tenant: {
+      id: string;
+      code: string;
+      slug: string;
+      name: string;
+    };
+    branding: {
+      storeName: string;
+      logoUrl: string | null;
+      primaryColor: string;
+      accentColor: string;
+      heroTitle: string;
+      heroSubtitle: string;
+      trustBadges: Array<{
+        icon: string;
+        title: string;
+        subtitle: string;
+      }>;
+    };
+    localization: {
+      currencyCode: string;
+      currencySymbol: string;
+      locale: string;
+      timezone: string;
+    };
+    policies: {
+      freeShippingThreshold: number;
+      standardShippingFee: number;
+      expressShippingFee: number;
+      shippingPolicy: string;
+      returnPolicy: string;
+      warrantyPolicy: string;
+      deliveryPromise: string;
+      pickupEnabled: boolean;
+      pickupInstructions: string;
+    };
+    catalogPolicy: {
+      allowBackorders: boolean;
+      showInventoryCount: boolean;
+      lowStockThreshold: number;
+      defaultSort: string;
+    };
+    featureFlags: {
+      reviewsEnabled: boolean;
+      wishlistEnabled: boolean;
+      couponsEnabled: boolean;
+      pickupEnabled: boolean;
+      guestCheckoutEnabled: boolean;
+      orderTrackingEnabled: boolean;
+    };
+    pickupLocations: Array<{
+      id: string;
+      code: string;
+      name: string;
+      address: string;
+      phone: string;
+    }>;
+  };
+}
 ```
 
 ---
@@ -461,21 +568,83 @@ export interface StorefrontState {
 
 ---
 
-## 10. Migration Sequence & Backward Compatibility
+## 10. Database Migration Specification: Migration `011_storefront_tenant_config.sql`
 
-The storefront modernization is phased to preserve all existing functionality while introducing the new architecture incrementally:
+### 10.1 Schema Contract & Column Nullability
+Migration 011 augments `organizations` with structured configuration columns. To guarantee relational integrity across all multi-tenant operations, these columns are defined with **`NOT NULL` constraints and robust defaults** (they are **NOT** nullable):
 
-1. **Step 1: Database Migration**: Run `011_storefront_tenant_config.sql` to equip `organizations` with storefront parameters.
-2. **Step 2: Server API Endpoints**: Introduce `GET /api/storefront/:tenantSlug/context` and tenant-scoped catalog endpoints in `server.ts`.
-3. **Step 3: Lightweight Storefront Router**: Integrate client URL routing in `App.tsx` and `StorefrontShell.tsx`.
-4. **Step 4: Decomposed UI Components**: Replace monolithic modal views with dedicated route pages (`ProductDetailPage`, `StorefrontHomePage`, `StorefrontCatalogPage`).
-5. **Step 5: Server-Authoritative Cart & Checkout**: Wire cart validation and order placement directly to the new endpoints.
-6. **Step 6: Accessibility & Performance Validation**: Verify WCAG 2.2 AA compliance and verify full regression test suite.
+```sql
+-- Migration 011: Storefront Multi-Tenant Configuration & Domain Binding
+ALTER TABLE organizations
+  ADD COLUMN IF NOT EXISTS slug VARCHAR(64) UNIQUE,
+  ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255) UNIQUE,
+  ADD COLUMN IF NOT EXISTS currency_code VARCHAR(16) NOT NULL DEFAULT 'USD',
+  ADD COLUMN IF NOT EXISTS currency_symbol VARCHAR(8) NOT NULL DEFAULT '$',
+  ADD COLUMN IF NOT EXISTS locale VARCHAR(16) NOT NULL DEFAULT 'en-US',
+  ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+  ADD COLUMN IF NOT EXISTS branding JSONB NOT NULL DEFAULT '{
+    "storeName": "AbaCha Unified Commerce",
+    "logoUrl": null,
+    "faviconUrl": null,
+    "primaryColor": "#4f46e5",
+    "accentColor": "#f59e0b",
+    "heroTitle": "Modern Unified Commerce",
+    "heroSubtitle": "Engineered for speed, reliability, and precision inventory.",
+    "trustBadges": [
+      { "icon": "Truck", "title": "Free Delivery", "subtitle": "On qualifying orders" },
+      { "icon": "ShieldCheck", "title": "Official Warranty", "subtitle": "Guaranteed quality" },
+      { "icon": "RotateCcw", "title": "Hassle-Free Returns", "subtitle": "Customer first policy" }
+    ]
+  }'::jsonb,
+  ADD COLUMN IF NOT EXISTS policies JSONB NOT NULL DEFAULT '{
+    "freeShippingThreshold": 75.00,
+    "standardShippingFee": 9.99,
+    "expressShippingFee": 19.99,
+    "shippingPolicy": "Standard shipping delivers within 3-5 business days.",
+    "returnPolicy": "Returns accepted within 30 days of receipt in original condition.",
+    "warrantyPolicy": "Standard 1-year manufacturer warranty applies to all electronics.",
+    "deliveryPromise": "Orders placed before 2 PM dispatch same-day.",
+    "pickupEnabled": true,
+    "pickupInstructions": "Ready for pickup within 2 hours at your selected branch."
+  }'::jsonb,
+  ADD COLUMN IF NOT EXISTS catalog_policy JSONB NOT NULL DEFAULT '{
+    "allowBackorders": false,
+    "showInventoryCount": true,
+    "lowStockThreshold": 5,
+    "defaultSort": "featured"
+  }'::jsonb,
+  ADD COLUMN IF NOT EXISTS feature_flags JSONB NOT NULL DEFAULT '{
+    "reviewsEnabled": true,
+    "wishlistEnabled": true,
+    "couponsEnabled": true,
+    "pickupEnabled": true,
+    "guestCheckoutEnabled": true,
+    "orderTrackingEnabled": true
+  }'::jsonb;
+
+-- Ensure canonical default organization has valid slug
+UPDATE organizations 
+SET slug = 'default' 
+WHERE id = 'org_default' AND (slug IS NULL OR slug = '');
+```
+
+### 10.2 Forward Migration & Existing Organization Compatibility
+- **Existing Rows**: When executed against existing PostgreSQL databases, PostgreSQL seamlessly populates the `NOT NULL DEFAULT ...` columns for all existing organizations (including `org_default`, `org_store_alpha`, etc.) with their designated JSON defaults without lock contention or table rewrites.
+- **Slug & Domain Columns**: `slug` and `custom_domain` are nullable unique columns. Existing organizations are compatible immediately; `org_default` is initialized with slug `'default'`.
 
 ---
 
-## 11. Rollback Considerations
+## 11. Rollback & Disaster Recovery Strategy
 
-- **Database Non-Destructive**: Migration 011 adds optional columns with sensible defaults (`DEFAULT 'USD'`, `DEFAULT '{...}'::jsonb`), requiring no table drops or breaking schema changes.
-- **Dual API Compatibility**: Existing `/api/products` and `/api/orders` endpoints remain intact for back-office and POS terminal workflows.
-- **Frontend Fallback**: If a tenant slug is unresolvable, the storefront gracefully falls back to the default tenant (`org_default`), ensuring uninterrupted customer service.
+### 11.1 Non-Destructive Code Rollback
+- **Forward-Compatible Schema**: Migration 011 only adds columns; it does not drop or rename existing columns, modify constraints on existing columns, or mutate historical records.
+- **Dual Compatibility**: If the application server code is rolled back to a previous commit, the older server version simply ignores the added columns. The database remains completely healthy and fully compatible.
+
+### 11.2 Why Destructive Column Removal (`DROP COLUMN`) is Prohibited
+- **Risk of Irreversible Data Loss**: In a multi-tenant production environment, once tenants customize their branding, set custom domains, or define specific delivery policies, executing `ALTER TABLE organizations DROP COLUMN ...` permanently destroys customer configuration data.
+- **Zero-Downtime Safe Deploys**: Industry best practices dictate that database schema changes proceed as additive forward migrations. Destructive column removal is **strictly excluded** from standard application rollback runbooks.
+- **Recovery Protocol**: If an erroneous configuration is saved, recovery proceeds via data correction transactions (`UPDATE organizations SET policies = ...`) rather than structural DDL rollbacks.
+
+### 11.3 Strict Resolution Fail-Closed Invariant
+- If a tenant cannot be resolved, the application **fails closed** with an explicit error (HTTP 404 / 403) rather than silently falling back to `org_default`. Silent fallbacks risk displaying incorrect branding, wrong currencies, and invalid pricing to customers.
+

@@ -49,27 +49,40 @@ Phase 6: Accessibility, Responsive Polish & Automated Test Suite
 
 ### Phase 1: Database Migration & Schema Expansion
 
+### Phase 1: Database Migration & Schema Expansion
+
 #### 1.1 Create Migration `011_storefront_tenant_config.sql`
 - **File**: `server/db/migrations/011_storefront_tenant_config.sql`
-- **Action**: Add columns `slug`, `custom_domain`, `currency_code`, `currency_symbol`, `locale`, `timezone`, `branding`, `policies`, `catalog_policy`, and `feature_flags` to `organizations` table.
-- **Data Integrity**: Provide non-null defaults with valid JSON structures to prevent regressions on existing test databases. Set slug for `'org_default'` to `'default'`.
+- **Action**: Add columns `slug VARCHAR(64) UNIQUE`, `custom_domain VARCHAR(255) UNIQUE`, and `NOT NULL` columns with structured defaults: `currency_code VARCHAR(16) NOT NULL DEFAULT 'USD'`, `currency_symbol VARCHAR(8) NOT NULL DEFAULT '$'`, `locale VARCHAR(16) NOT NULL DEFAULT 'en-US'`, `timezone VARCHAR(64) NOT NULL DEFAULT 'UTC'`, `branding JSONB NOT NULL DEFAULT ...`, `policies JSONB NOT NULL DEFAULT ...`, `catalog_policy JSONB NOT NULL DEFAULT ...`, and `feature_flags JSONB NOT NULL DEFAULT ...` to `organizations` table.
+- **Data Integrity**: Columns are `NOT NULL DEFAULT ...` (not nullable), ensuring every organization row possesses deterministic configuration. Migration initializes `'org_default'` with slug `'default'`.
 
 #### 1.2 Update Database Client & Migrator
 - **Files**: `server/db/migrator.ts`, `server/db/seeds/001_demo_seed.sql`
-- **Action**: Register migration 011; enrich demo seed data with multi-tenant storefront attributes for testing (e.g. `org_store_alpha` with slug `'alpha'` and `org_store_beta` with slug `'beta'`).
+- **Action**: Register migration 011; enrich demo seed data with multi-tenant storefront attributes for testing (`org_store_alpha` with slug `'alpha'` and `org_store_beta` with slug `'beta'`).
 
 ---
 
 ### Phase 2: Server-Side Storefront API Routes & Tenant Resolvers
 
-#### 2.1 Public Tenant Resolver
+#### 2.1 Public Fail-Closed Tenant Resolver & Environment-Gated Overrides
 - **File**: `server/services/tenantResolver.ts`
 - **Action**: Implement `resolveStorefrontTenant(req: Request, db: DatabaseClient): Promise<TenantStorefrontConfig>`:
-  1. Inspect `req.params.tenantSlug`.
-  2. Inspect `req.headers.host` for custom domain or subdomain matching.
-  3. Inspect `req.query.tenant` (for development / sandbox testing).
-  4. Fallback to default tenant (`org_default`).
-  5. Verify tenant is active in database; fail closed with HTTP 404 / 403 if inactive or not found.
+  1. **Strict Fail-Closed Enforcement**:
+     - Unknown tenant slug -> HTTP 404 `TENANT_NOT_FOUND` ("Store Not Found"). Never fall back to `org_default`.
+     - Inactive tenant -> HTTP 404 `TENANT_INACTIVE` ("Store Unavailable").
+     - Unknown custom domain -> HTTP 404 `DOMAIN_NOT_FOUND`.
+     - Mismatched host/path tenant -> HTTP 400 `TENANT_MISMATCH`.
+     - Invalid slug characters -> HTTP 400 `INVALID_TENANT_IDENTIFIER`.
+  2. **Canonical Default Entry Point**:
+     - Default tenant resolution (`org_default`) is permitted **strictly and exclusively** when the incoming request hits the configured canonical storefront entry point (e.g. `APP_URL`, `shop.abacha.com`) with **no slug, custom domain, or subdomain specified**.
+  3. **Environment-Gated Query Parameter Override (`?tenant=` / `?store=`)**:
+     - `NODE_ENV=development` -> Query override permitted.
+     - `NODE_ENV=test` -> Query override permitted.
+     - `NODE_ENV=staging` -> Disabled unless `ALLOW_STAGING_TENANT_QUERY_OVERRIDE=true`.
+     - `NODE_ENV=production` -> Strictly disabled. Untrusted production query parameters cannot switch tenants.
+  4. **Tenant vs. Location Separation**:
+     - Respects the 3-tier hierarchy: `organization (tenant) -> store/branch -> warehouse/location`.
+     - Catalog availability aggregates across tenant fulfillment locations; pickup availability resolves strictly against the customer's selected retail store location.
 
 #### 2.2 Storefront Endpoints in `server.ts`
 - **Files**: `server.ts`, `server/routes/storefrontRoutes.ts`
@@ -194,10 +207,14 @@ Phase 6: Accessibility, Responsive Polish & Automated Test Suite
 
 ## 5. Rollback & Contingency Protocol
 
-1. **Database Rollback**:
-   - The added columns in Migration 011 are nullable with default values; rolling back server code does not require dropping columns or altering database state.
+1. **Non-Destructive Forward Migration**:
+   - Migration 011 uses `ADD COLUMN IF NOT EXISTS ... NOT NULL DEFAULT ...` without dropping or renaming columns.
+   - Older server revisions ignore the added columns safely.
+   - **Destructive column removal (`DROP COLUMN`) is prohibited**: Dropping columns in multi-tenant production permanently destroys customer branding, domains, and custom policies. Rollbacks revert application code only.
 2. **Feature Branch Isolation**:
    - All development is strictly confined to `upgrade/v2.6/upg-001-platform-hardening`.
    - The production release (`main`) and approved baseline (`9ae4b7528aecd195a9167e1b2a060513cbf83223`) remain untouched.
-3. **Graceful Fallback**:
-   - If any component fails to resolve a custom tenant, it automatically defaults to `org_default`, ensuring zero fatal crashes.
+3. **Fail-Closed Resolution (No Silent Fallbacks)**:
+   - If an explicit tenant identifier (slug, custom domain, or query parameter) is invalid, inactive, or unknown, the resolver strictly fails closed with HTTP 404 / 403.
+   - It **NEVER** silently degrades to `org_default`, preventing false brand claims, incorrect currencies, and data leaks.
+
