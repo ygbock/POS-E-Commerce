@@ -82,8 +82,8 @@ jobs:
           APPROVED_COMMIT="${{ inputs.approved_commit_sha }}"
           DEPLOY_HOOK="${{ secrets.RENDER_PROD_DEPLOY_HOOK_URL }}"
 
-          if [ -z "$APPROVED_COMMIT" ]; then
-            echo "FATAL: inputs.approved_commit_sha is required for exact-commit deployment."
+          if [[ ! "$APPROVED_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "FATAL: approved_commit_sha must be exactly 40 lowercase hexadecimal characters."
             exit 1
           fi
 
