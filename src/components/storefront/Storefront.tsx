@@ -25,7 +25,7 @@ import {
 
   Percent,
 } from 'lucide-react';
-import { StoreHeader } from './StoreHeader';
+import { StorefrontHeader } from './StorefrontHeader';
 import { StorefrontFooter } from './StorefrontFooter';
 import { useStorefrontState } from './useStorefrontState';
 import { ProductCard } from './ProductCard';
@@ -78,7 +78,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     <div className={`${isDarkMode ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-sky-500 selection:text-slate-900 dark:text-white pb-20">
         {/* Top Main Navigation Header */}
-        <StoreHeader
+        <StorefrontHeader
         searchQuery={searchQuery}
         setSearchQuery={(q) => {
           setSearchQuery(q);
