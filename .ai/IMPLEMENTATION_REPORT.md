@@ -1907,3 +1907,23 @@ In accordance with supervisor directives and the engineering contract, `API-001`
 
 
 
+
+
+## UX-001A Phase 2 — Frontend Architecture Foundation
+
+**Status:** IMPLEMENTED — PENDING CI/WORKSTATION VERIFICATION
+**Date:** 2026-09-12
+
+Implemented the first frontend architecture increment without changing the existing storefront visual design:
+
+- Added `src/router/StorefrontRouter.ts` with zero-dependency HTML5 History API route parsing/building for home, shop, category, brand, search, product, cart, checkout, account, and order routes.
+- Added `src/router/useStorefrontRoute.ts` as the public router hook/export surface.
+- Added `src/context/StorefrontContext.tsx` to isolate tenant configuration, tenant-scoped cart/wishlist persistence, server-authoritative storefront context loading, and tenant currency formatting from the legacy `CommerceContext`.
+- Wired `StorefrontProvider` and the native route shell into `src/App.tsx` while preserving the existing `Storefront` component as the current view adapter.
+- Added `tests/storefront_router.test.ts` covering route parsing, explicit tenant prefixes, query search state, encoding, and unknown-route handling.
+- Added `npm run test:storefront-router` and included it in the full `npm test` chain.
+- Corrected frontend context mapping to the server's authoritative `{ success: true, data: TenantStorefrontConfig }` contract, including branding, localization, policies, feature flags, and pickup locations.
+
+**Safety boundary:** No changes were made to `main`, production deployment, or the existing storefront visual implementation. Product/catalog page decomposition remains a subsequent Phase 4 activity.
+
+**Verification note:** GitHub write access is confirmed at ADMIN level. The repository currently reports no workflow runs for the latest frontend-architecture commit, so CI execution evidence is not yet available through the connected GitHub Actions interface. Local test execution should be performed from the checked-out branch before marking this phase verified.
