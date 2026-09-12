@@ -134,6 +134,14 @@ export function useStorefrontState() {
   // Keep the existing storefront UI state synchronized with the canonical History API route.
   // URL navigation is the source of truth for deep links, refreshes, and browser back/forward.
   useEffect(() => {
+    // Route-bound overlays must follow the canonical History API route.
+    // Close stale route overlays first so browser back/forward cannot leave
+    // a product/cart/checkout/account modal visually mounted over another route.
+    setSelectedDetailProduct(null);
+    setIsCartDrawerOpen(false);
+    setIsCheckoutOpen(false);
+    setIsAccountModalOpen(false);
+
     if (route.name === 'home') {
       setActiveSection('home');
       setSelectedCategory('All');
@@ -176,7 +184,8 @@ export function useStorefrontState() {
       return;
     }
     if (route.name === 'account') {
-      setAccountPortalTab('profile');
+      // Preserve the tab selected by goAccount(); direct /account navigation
+      // naturally starts from the hook's default profile tab.
       setIsAccountModalOpen(true);
     }
   }, [route, products]);
