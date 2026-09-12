@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { DatabaseClient } from '../db/client';
 import { resolveStorefrontTenant, TenantStorefrontConfig } from '../services/tenantResolver';
 import { ApiError } from '../utils/errorSanitizer';
-import { parseExactQuantity, parseExactMoney } from '../inventory/inventoryPolicies';
+import { StorefrontCartService, StorefrontCartValidationError } from '../services/storefrontCartService';
 
 export function createStorefrontRouter(db: DatabaseClient): Router {
   const router = Router();
@@ -418,115 +418,37 @@ export function createStorefrontRouter(db: DatabaseClient): Router {
   // 4. SERVER-AUTHORITATIVE CART VALIDATION
   // --------------------------------------------------------------------------
 
+  // Cart validation is intentionally a read-only snapshot. Checkout MUST repeat
+  // pricing and stock validation inside its own database transaction.
   // POST /api/storefront/:tenantSlug/cart/validate
   router.post('/:tenantSlug/cart/validate', async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, {
         explicitSlug: req.params.tenantSlug,
       });
-      const orgId = config.tenant.id;
-      const { items, fulfillmentLocationId } = req.body;
 
-      if (!Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: { code: 'EMPTY_CART', message: 'Cart items array cannot be empty.' },
-        });
-      }
-
-      let subtotalCents = 0n;
-      const validatedItems: any[] = [];
-
-      for (const item of items) {
-        const variantId = item.variantId || item.variant_id;
-        const reqQty = parseExactQuantity(item.quantity?.toString() || '1', 'quantity');
-        const reqQtyNum = Number(reqQty);
-
-        const varRes = await db.query<any>(
-          `SELECT pv.id, pv.product_id, pv.sku, pv.barcode, pv.name, pv.retail_price::text,
-                  p.name as product_name, p.status as product_status, p.tax_rate::text
-           FROM product_variants pv
-           JOIN products p ON pv.product_id = p.id
-           WHERE pv.id = $1 AND pv.organization_id = $2`,
-          [variantId, orgId]
-        );
-
-        if (varRes.rows.length === 0) {
-          throw new ApiError('PRODUCT_NOT_FOUND', `Variant '${variantId}' not found in this store.`, 404);
-        }
-
-        const v = varRes.rows[0];
-        if (v.product_status !== 'active') {
-          throw new ApiError('PRODUCT_INACTIVE', `Product '${v.product_name}' is currently unavailable.`, 400);
-        }
-
-        // Check authoritative stock balance
-        let availQuery: string;
-        let availParams: any[];
-
-        if (fulfillmentLocationId) {
-          availQuery = `
-            SELECT COALESCE(SUM(on_hand - reserved - damaged - expired), 0) as available
-            FROM inventory_balances
-            WHERE variant_id = $1 AND organization_id = $2 AND location_id = $3
-          `;
-          availParams = [variantId, orgId, fulfillmentLocationId];
-        } else {
-          availQuery = `
-            SELECT COALESCE(SUM(on_hand - reserved - damaged - expired), 0) as available
-            FROM inventory_balances
-            WHERE variant_id = $1 AND organization_id = $2
-          `;
-          availParams = [variantId, orgId];
-        }
-
-        const stockRes = await db.query<{ available: string | number }>(availQuery, availParams);
-        const availableStock = Math.max(0, Number(stockRes.rows[0]?.available || 0));
-        const isAvailable = availableStock >= reqQtyNum;
-
-        const unitPriceStr = parseExactMoney(v.retail_price, 'retailPrice');
-        const unitPriceNum = Number(unitPriceStr);
-        const lineSubtotalNum = unitPriceNum * reqQtyNum;
-        const lineSubtotalCents = BigInt(Math.round(lineSubtotalNum * 100));
-        subtotalCents += lineSubtotalCents;
-
-        validatedItems.push({
-          variantId: v.id,
-          productId: v.product_id,
-          name: `${v.product_name} - ${v.name}`,
-          sku: v.sku,
-          unitPrice: unitPriceStr,
-          quantity: reqQtyNum,
-          lineSubtotal: (Number(lineSubtotalCents) / 100).toFixed(2),
-          availableStock,
-          isAvailable,
-        });
-      }
-
-      const subtotalNum = Number(subtotalCents) / 100;
-      const freeShippingThreshold = config.policies.freeShippingThreshold;
-      const isFreeShipping = subtotalNum >= freeShippingThreshold;
-      const shippingFeeNum = isFreeShipping ? 0.0 : config.policies.standardShippingFee;
-      const totalNum = subtotalNum + shippingFeeNum;
-
-      res.json({
-        success: true,
-        data: {
-          items: validatedItems,
-          subtotal: subtotalNum.toFixed(2),
-          shippingFee: shippingFeeNum.toFixed(2),
-          tax: '0.00',
-          total: totalNum.toFixed(2),
-          currency: config.localization.currencyCode,
-          currencySymbol: config.localization.currencySymbol,
-          freeShippingThreshold,
-          amountToFreeShipping: Math.max(0, Number((freeShippingThreshold - subtotalNum).toFixed(2))),
-        },
+      const result = await new StorefrontCartService(db).validate({
+        organizationId: config.tenant.id,
+        config,
+        items: req.body?.items,
+        fulfillmentLocationId: req.body?.fulfillmentLocationId,
       });
+
+      res.json({ success: true, data: result });
     } catch (err) {
+      if (err instanceof StorefrontCartValidationError) {
+        return res.status(err.status).json({
+          success: false,
+          error: {
+            code: err.code,
+            message: err.message,
+          },
+        });
+      }
       handleStorefrontError(res, err);
     }
   });
+
 
   return router;
 }
