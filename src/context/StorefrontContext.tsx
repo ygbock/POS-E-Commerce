@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { storefrontApi } from '../services/storefrontApi';
+import { parseStorefrontRoute } from '../router/StorefrontRouter';
 
 export interface StorefrontBranding {
   storeName?: string;
@@ -70,28 +71,13 @@ export const StorefrontProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [cart, setCart] = useState<StorefrontCartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
 
-  const resolveContextUrl = useCallback(() => {
-    const segments = window.location.pathname.split('/').filter(Boolean);
-    const tenantSlug = segments[0] === 'store' ? segments[1] : undefined;
-    return tenantSlug
-      ? `/api/storefront/${encodeURIComponent(tenantSlug)}/context`
-      : '/api/storefront/context';
-  }, []);
+  const resolveTenantSlug = useCallback(() => parseStorefrontRoute().tenantSlug, []);
 
   const refreshTenant = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(resolveContextUrl(), {
-        headers: { Accept: 'application/json' },
-        credentials: 'same-origin',
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error?.message || body?.message || 'Storefront is unavailable.');
-      }
-      const body = await response.json();
-      const data = (body?.data ?? body?.context ?? body) as Record<string, unknown>;
+      const data = await storefrontApi.getContext(resolveTenantSlug());
       const tenantRecord = data.tenant as Record<string, unknown> | undefined;
       const localization = data.localization as Record<string, unknown> | undefined;
       const nextTenant: StorefrontTenantConfig = {
@@ -110,9 +96,13 @@ export const StorefrontProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         policies: (data.policies || {}) as StorefrontPolicies,
         catalogPolicy: (data.catalogPolicy || {}) as Record<string, unknown>,
         featureFlags: (data.featureFlags || {}) as Record<string, boolean>,
-        locations: Array.isArray(data.pickupLocations) ? data.pickupLocations as StorefrontTenantConfig['locations'] : [],
+        locations: Array.isArray(data.pickupLocations)
+          ? data.pickupLocations as StorefrontTenantConfig['locations']
+          : [],
       };
-      if (!nextTenant.id || !nextTenant.slug) throw new Error('Invalid storefront context received from server.');
+      if (!nextTenant.id || !nextTenant.slug) {
+        throw new Error('Invalid storefront context received from server.');
+      }
       setTenant(nextTenant);
     } catch (err) {
       setTenant(null);
@@ -120,7 +110,7 @@ export const StorefrontProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       setLoading(false);
     }
-  }, [resolveContextUrl]);
+  }, [resolveTenantSlug]);
 
   useEffect(() => { void refreshTenant(); }, [refreshTenant]);
 
