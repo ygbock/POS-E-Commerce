@@ -8,6 +8,8 @@ import { AdminMobileBottomNav } from './components/layout/AdminMobileBottomNav';
 import { ExecutiveDashboard } from './components/dashboard/ExecutiveDashboard';
 import { PosTerminal } from './components/pos/PosTerminal';
 import { Storefront } from './components/storefront/Storefront';
+import { StorefrontProvider } from './context/StorefrontContext';
+import { useStorefrontRoute } from './router/StorefrontRouter';
 import { ProductManagement } from './components/catalog/ProductManagement';
 import { StockManagement } from './components/inventory/StockManagement';
 import { OrderFulfillment } from './components/orders/OrderFulfillment';
@@ -15,6 +17,15 @@ import { PurchasingManagement } from './components/purchasing/PurchasingManageme
 import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
 import { CustomerManagement } from './components/crm/CustomerManagement';
 import { AuditLogsView } from './components/admin/AuditLogsView';
+
+const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () => void }> = ({ onOpenAdmin, onOpenPos }) => {
+  const { route } = useStorefrontRoute();
+  return (
+    <div data-storefront-route={route.name} data-storefront-tenant={route.tenantSlug || ''} className="min-h-screen">
+      <Storefront onOpenAdmin={onOpenAdmin} onOpenPos={onOpenPos} />
+    </div>
+  );
+};
 
 const MainLayout: React.FC = () => {
   // Default first page is the public customer Storefront
