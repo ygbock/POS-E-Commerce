@@ -28,9 +28,10 @@
     "test:prod-gate": "tsx tests/production_gate.test.ts",
     "test:operational": "tsx tests/operational_hardening.test.ts",
     "test:storefront": "tsx tests/storefront_multi_tenant.test.ts",
-    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api && npm run test:qa && npm run test:ux && npm run test:checkout && npm run test:offline-pos && npm run test:prod-gate && npm run test:operational && npm run test:storefront && npm run test:storefront-router",
+    "test": "npm run test:db && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api && npm run test:qa && npm run test:ux && npm run test:checkout && npm run test:offline-pos && npm run test:prod-gate && npm run test:operational && npm run test:storefront && npm run test:storefront-api && npm run test:storefront-router",
     "test:coverage": "c8 --all --src server --lines 70 --branches 60 --functions 75 --statements 70 --reporter=text --reporter=html npm test",
-    "test:storefront-router": "tsx tests/storefront_router.test.ts"
+    "test:storefront-router": "tsx tests/storefront_router.test.ts",
+    "test:storefront-api": "tsx tests/storefront_api_client.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
