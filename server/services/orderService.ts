@@ -10,6 +10,8 @@ import {
   formatScaledToQtyString,
 } from '../inventory/inventoryPolicies.ts';
 import crypto from 'node:crypto';
+import { StorefrontCartService } from './storefrontCartService.ts';
+import { resolveStorefrontTenant } from './tenantResolver.ts';
 
 export class DomainError extends Error {
   constructor(public code: string, message: string) {
@@ -67,6 +69,7 @@ export class OrderService {
   private customerRepo: CustomerRepository;
   private invRepo: InventoryRepository;
   private auditRepo: AuditRepository;
+  private storefrontCartService: StorefrontCartService;
 
   constructor(
     orderRepo?: OrderRepository,
@@ -80,6 +83,7 @@ export class OrderService {
     this.customerRepo = customerRepo || new CustomerRepository(this.db);
     this.invRepo = invRepo || new InventoryRepository(this.db);
     this.auditRepo = auditRepo || new AuditRepository(this.db);
+    this.storefrontCartService = new StorefrontCartService(this.db);
   }
 
   private localDivideRoundHalfUp(num: bigint, denom: bigint): bigint {
@@ -317,12 +321,24 @@ export class OrderService {
           });
         }
 
-        // D. Calculate Shipping Fee
+        // D. Shipping is policy-driven, never hard-coded in the order service.
+        // Keep the checkout arithmetic identical to cart validation.
+        const storefrontConfig = await resolveStorefrontTenant(
+          new Request('http://localhost/'),
+          tx,
+          { explicitSlug: undefined }
+        );
+
+        const shippingPolicy = storefrontConfig.policies;
+        const freeThreshold = this.localParseMoneyToCents(String(shippingPolicy.freeShippingThreshold));
         let shippingFeeCents = 0n;
         if (fulfillment_method === 'Express Delivery') {
-          shippingFeeCents = 1500n;
+          shippingFeeCents = this.localParseMoneyToCents(String(shippingPolicy.expressShippingFee));
         } else if (fulfillment_method === 'Standard Delivery') {
-          shippingFeeCents = 500n;
+          shippingFeeCents =
+            totalSubtotalCents >= freeThreshold
+              ? 0n
+              : this.localParseMoneyToCents(String(shippingPolicy.standardShippingFee));
         }
 
         const finalTotalCents = totalSubtotalCents + totalTaxCents + shippingFeeCents;
@@ -378,21 +394,15 @@ export class OrderService {
         try {
           const saved = await this.orderRepo.createOrderWithItems(orderRecord, orderItems, paymentRecord, tx);
 
-          // Record stock reservation / movements
+          // Reserve stock while the order is in "Stock Reserved" state.
+          // Do not decrement on_hand until fulfillment/dispatch is committed.
           for (const item of orderItems) {
-            await this.invRepo.recordMovement(
+            await this.invRepo.adjustReserved(
               {
                 organization_id,
                 location_id: fulfillmentLocId!,
                 variant_id: item.variant_id,
-                movement_type: 'ECOMMERCE_SALE',
-                quantity_change: `-${item.quantity}`,
-                unit_cost: this.localFormatCentsToMoneyString(this.localParseMoneyToCents(item.cost_price)),
-                reference_type: 'orders',
-                reference_id: orderId,
-                performed_by: 'Online Storefront',
-                idempotency_key: `${orderId}_${item.variant_id}`,
-                allowNegativeStock: false,
+                delta_reserved: item.quantity,
               },
               tx
             );
