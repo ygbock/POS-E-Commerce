@@ -6,6 +6,7 @@ export interface StorefrontTenantConfig {
   currency: { code: string; symbol: string }; locale: string; timezone: string;
   branding: Record<string, unknown>; policies: Record<string, unknown>;
   catalogPolicy: Record<string, unknown>; featureFlags: Record<string, boolean>;
+  pickupLocations: Array<{ id: string; code: string; name: string; type: string; address: string | null; phone: string | null; isPosEnabled: boolean }>;
 }
 interface StorefrontContextValue {
   tenant: StorefrontTenantConfig | null; loading: boolean; error: string | null;
@@ -20,7 +21,21 @@ async function loadContext(slug?: string): Promise<StorefrontTenantConfig> {
   const response = await fetch(path, { headers: { Accept: 'application/json' } });
   const body = await response.json().catch(() => null);
   if (!response.ok) throw new Error(body?.error?.message || body?.message || 'Storefront unavailable');
-  return body?.tenant ?? body?.context ?? body;
+  const data = body?.data ?? body?.context ?? body;
+  if (!data?.tenant || !data?.localization) throw new Error('Invalid storefront context response');
+  return {
+    id: data.tenant.id,
+    name: data.tenant.name,
+    slug: data.tenant.slug,
+    currency: { code: data.localization.currencyCode, symbol: data.localization.currencySymbol },
+    locale: data.localization.locale,
+    timezone: data.localization.timezone,
+    branding: data.branding || {},
+    policies: data.policies || {},
+    catalogPolicy: data.catalogPolicy || {},
+    featureFlags: data.featureFlags || {},
+    pickupLocations: Array.isArray(data.pickupLocations) ? data.pickupLocations : [],
+  };
 }
 export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const { route } = useStorefrontRoute(); const slug = route.tenantSlug;
