@@ -89,8 +89,28 @@ export const StorefrontProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         throw new Error(body?.error?.message || body?.message || 'Storefront is unavailable.');
       }
       const body = await response.json();
-      const nextTenant = (body?.tenant ?? body?.data?.tenant ?? body?.context) as StorefrontTenantConfig;
-      if (!nextTenant?.id || !nextTenant.slug) throw new Error('Invalid storefront context received from server.');
+      const data = (body?.data ?? body?.context ?? body) as Record<string, unknown>;
+      const tenantRecord = data.tenant as Record<string, unknown> | undefined;
+      const localization = data.localization as Record<string, unknown> | undefined;
+      const nextTenant: StorefrontTenantConfig = {
+        id: String(tenantRecord?.id || ''),
+        name: String(tenantRecord?.name || ''),
+        code: String(tenantRecord?.code || ''),
+        slug: String(tenantRecord?.slug || ''),
+        customDomain: (tenantRecord?.customDomain as string | null | undefined) ?? null,
+        currency: {
+          code: String(localization?.currencyCode || ''),
+          symbol: String(localization?.currencySymbol || ''),
+        },
+        locale: String(localization?.locale || 'en-US'),
+        timezone: String(localization?.timezone || 'UTC'),
+        branding: (data.branding || {}) as StorefrontBranding,
+        policies: (data.policies || {}) as StorefrontPolicies,
+        catalogPolicy: (data.catalogPolicy || {}) as Record<string, unknown>,
+        featureFlags: (data.featureFlags || {}) as Record<string, boolean>,
+        locations: Array.isArray(data.pickupLocations) ? data.pickupLocations as StorefrontTenantConfig['locations'] : [],
+      };
+      if (!nextTenant.id || !nextTenant.slug) throw new Error('Invalid storefront context received from server.');
       setTenant(nextTenant);
     } catch (err) {
       setTenant(null);
