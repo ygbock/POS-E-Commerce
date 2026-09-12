@@ -777,3 +777,60 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
         setClaimModalEmail={setClaimModalEmail}
       />
 
+      <MobileFilterDrawer
+        isOpen={isMobileFilterOpen}
+        onClose={() => setIsMobileFilterOpen(false)}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onSelectCategory={(cat) => {
+          setSelectedCategory(cat);
+          if (cat !== 'All') setActiveSection('catalog');
+        }}
+        allBrands={allBrands}
+        selectedBrand={selectedBrand}
+        onSelectBrand={(b) => {
+          setSelectedBrand(b);
+          if (b !== 'All') setActiveSection('catalog');
+        }}
+        minPrice={minPrice}
+        maxPrice={maxPrice}
+        onMinPriceChange={setMinPrice}
+        onMaxPriceChange={setMaxPrice}
+        inStockOnly={inStockOnly}
+        onInStockChange={setInStockOnly}
+        onSaleOnly={onSaleOnly}
+        onOnSaleChange={setOnSaleOnly}
+        minRating={minRating}
+        onMinRatingChange={setMinRating}
+        onClearFilters={handleClearAllFilters}
+        hasActiveFilters={hasActiveFilters}
+        totalProductsCount={products.length}
+        matchedCount={sortedProducts.length}
+      />
+
+      <MobileBottomNav
+        activeSection={activeSection}
+        setActiveSection={setActiveSection}
+        onNavigateHome={() => {
+          setActiveSection('home');
+          setSelectedCategory('All');
+          setSelectedBrand('All');
+          setSearchQuery('');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onNavigateCatalog={() => {
+          setActiveSection('catalog');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onOpenCart={() => setIsCartDrawerOpen(true)}
+        onOpenAccount={() => {
+          setAccountPortalTab('profile');
+          setIsAccountModalOpen(true);
+        }}
+        onOpenFilterDrawer={() => setIsMobileFilterOpen(true)}
+        hasActiveFilters={hasActiveFilters}
+      />
+      </div>
+    </div>
+  );
+};
