@@ -75,210 +75,171 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
   }
 
   return (
-    <div className={`${isDarkMode ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-sky-500 selection:text-slate-900 dark:text-white pb-20">
-        {/* Top Main Navigation Header */}
+    <div className={isDarkMode ? 'dark' : ''}>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-sky-500 selection:text-slate-900 pb-20">
         <StorefrontHeader
-        searchQuery={searchQuery}
-        setSearchQuery={(q) => {
-          setSearchQuery(q);
-          if (q.trim()) goSearch(q);
-        }}
-        selectedCategory={selectedCategory}
-        setSelectedCategory={(cat) => {
-          setSelectedCategory(cat);
-          if (cat !== 'All') goCategory(cat); else goShop();
-        }}
-        selectedBrand={selectedBrand}
-        setSelectedBrand={(b) => {
-          setSelectedBrand(b);
-          if (b !== 'All') goBrand(b); else goShop();
-        }}
-        onOpenCart={goCart}
-        onOpenWishlist={() => {
-          goAccount('wishlist');
-        }}
-        onOpenAccount={() => {
-          goAccount('profile');
-        }}
-        onOpenOrderTracking={() => {
-          setInitialTrackingNumber('');
-          setInitialTrackingEmail('');
-          goAccount('tracking');
-        }}
-        onOpenNotificationHub={() => {
-          const sampleOrder = orders[0] || null;
-          setSelectedNotificationOrder(sampleOrder);
-          setIsNotificationHubOpen(true);
-        }}
-        onOpenClaimModal={() => {
-          setClaimModalEmail('');
-          setIsClaimModalOpen(true);
-        }}
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        onOpenAdmin={onOpenAdmin}
-        onOpenPos={onOpenPos}
-        isDarkMode={isDarkMode}
-        onToggleTheme={toggleTheme}
-      />
+          searchQuery={searchQuery}
+          setSearchQuery={(q) => { setSearchQuery(q); if (q.trim()) goSearch(q); }}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={(cat) => { setSelectedCategory(cat); if (cat !== 'All') goCategory(cat); else goShop(); }}
+          selectedBrand={selectedBrand}
+          setSelectedBrand={(b) => { setSelectedBrand(b); if (b !== 'All') goBrand(b); else goShop(); }}
+          onOpenCart={goCart}
+          onOpenWishlist={() => goAccount('wishlist')}
+          onOpenAccount={() => goAccount('profile')}
+          onOpenOrderTracking={() => { setInitialTrackingNumber(''); setInitialTrackingEmail(''); goAccount('tracking'); }}
+          onOpenNotificationHub={() => { setSelectedNotificationOrder(orders[0] || null); setIsNotificationHubOpen(true); }}
+          onOpenClaimModal={() => { setClaimModalEmail(''); setIsClaimModalOpen(true); }}
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
+          onOpenAdmin={onOpenAdmin}
+          onOpenPos={onOpenPos}
+          isDarkMode={isDarkMode}
+          onToggleTheme={toggleTheme}
+        />
 
-      <main className="max-w-[1700px] 2xl:max-w-[1800px] mx-auto px-3 sm:px-6 lg:px-10 xl:px-12 pt-4 sm:pt-6 pb-32 lg:pb-12 space-y-10 sm:space-y-12">
-        {/* HOMEPAGE VIEW */}
-        {activeSection === 'home' && !hasActiveFilters && (
-          <StorefrontHome
-            selectedCategory={selectedCategory}
-            selectedBrand={selectedBrand}
-            featuredProducts={featuredProducts}
-            bestSellers={bestSellers}
-            newArrivals={newArrivals}
-            recommendedProducts={recommendedProducts}
-            goShop={goShop}
-            goCategory={goCategory}
-            goBrand={goBrand}
-            goProduct={goProduct}
-            setOnSaleOnly={setOnSaleOnly}
-            setSortBy={setSortBy}
-            setMinRating={setMinRating}
-            setActiveSection={setActiveSection}
-        {(activeSection === 'catalog' || hasActiveFilters) && (
-          <StorefrontCatalog
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            selectedBrand={selectedBrand}
-            setSelectedBrand={setSelectedBrand}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            inStockOnly={inStockOnly}
-            setInStockOnly={setInStockOnly}
-            onSaleOnly={onSaleOnly}
-            setOnSaleOnly={setOnSaleOnly}
-            minRating={minRating}
-            setMinRating={setMinRating}
-            maxPrice={maxPrice}
-            setMaxPrice={setMaxPrice}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
-            categories={categories}
-            allBrands={allBrands}
-            products={products}
-            sortedProducts={sortedProducts}
-            hasActiveFilters={hasActiveFilters}
-            isMobileFilterOpen={isMobileFilterOpen}
-            setIsMobileFilterOpen={setIsMobileFilterOpen}
-            handleClearAllFilters={handleClearAllFilters}
-            goProduct={goProduct}
-          />
-        )}
+        <main className="max-w-[1700px] 2xl:max-w-[1800px] mx-auto px-3 sm:px-6 lg:px-10 xl:px-12 pt-4 sm:pt-6 pb-32 lg:pb-12 space-y-10 sm:space-y-12">
+          {activeSection === 'home' && !hasActiveFilters && (
+            <StorefrontHome
+              selectedCategory={selectedCategory}
+              selectedBrand={selectedBrand}
+              featuredProducts={featuredProducts}
+              bestSellers={bestSellers}
+              newArrivals={newArrivals}
+              recommendedProducts={recommendedProducts}
+              goShop={goShop}
+              goCategory={goCategory}
+              goBrand={goBrand}
+              goProduct={goProduct}
+              setOnSaleOnly={setOnSaleOnly}
+              setSortBy={setSortBy}
+              setMinRating={setMinRating}
+              setActiveSection={setActiveSection}
+              products={products}
+              formatCurrency={formatCurrency}
+              getTotalStockForVariant={getTotalStockForVariant}
+              addToStoreCart={addToStoreCart}
+            />
+          )}
 
-   </div>
-            </div>
-          </div>
-        )}
-      </main>
+          {(activeSection === 'catalog' || hasActiveFilters) && (
+            <StorefrontCatalog
+              selectedCategory={selectedCategory}
+              setSelectedCategory={setSelectedCategory}
+              selectedBrand={selectedBrand}
+              setSelectedBrand={setSelectedBrand}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              inStockOnly={inStockOnly}
+              setInStockOnly={setInStockOnly}
+              onSaleOnly={onSaleOnly}
+              setOnSaleOnly={setOnSaleOnly}
+              minRating={minRating}
+              setMinRating={setMinRating}
+              maxPrice={maxPrice}
+              setMaxPrice={setMaxPrice}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              categories={categories}
+              allBrands={allBrands}
+              products={products}
+              sortedProducts={sortedProducts}
+              hasActiveFilters={hasActiveFilters}
+              isMobileFilterOpen={isMobileFilterOpen}
+              setIsMobileFilterOpen={setIsMobileFilterOpen}
+              handleClearAllFilters={handleClearAllFilters}
+              goProduct={goProduct}
+              formatCurrency={formatCurrency}
+              addToStoreCart={addToStoreCart}
+              getTotalStockForVariant={getTotalStockForVariant}
+            />
+          )}
+        </main>
 
-      <StorefrontFooter
-        categories={categories}
-        wishlistCount={wishlist.length}
-        onSelectCategory={(cat) => { setSelectedCategory(cat); setActiveSection('catalog'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-        onOpenDeals={() => { setOnSaleOnly(true); setActiveSection('catalog'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-        onOpenTracking={() => { setInitialTrackingNumber(''); setInitialTrackingEmail(''); setAccountPortalTab('tracking'); setIsAccountModalOpen(true); }}
-        onOpenNotifications={() => { const sampleOrder = orders[0] || null; setSelectedNotificationOrder(sampleOrder); setIsNotificationHubOpen(true); }}
-        onOpenClaimOrders={() => { setClaimModalEmail(''); setIsClaimModalOpen(true); }}
-        onOpenOrderHistory={() => { setAccountPortalTab('orders'); setIsAccountModalOpen(true); }}
-        onOpenWishlist={() => { setAccountPortalTab('wishlist'); setIsAccountModalOpen(true); }}
-        onOpenAdmin={onOpenAdmin}
-        onOpenPos={onOpenPos}
-      />
+        <StorefrontFooter
+          categories={categories}
+          wishlistCount={wishlist.length}
+          onSelectCategory={(cat) => { setSelectedCategory(cat); setActiveSection('catalog'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+          onOpenDeals={() => { setOnSaleOnly(true); setActiveSection('catalog'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+          onOpenTracking={() => { setAccountPortalTab('tracking'); setIsAccountModalOpen(true); }}
+          onOpenNotifications={() => { setSelectedNotificationOrder(orders[0] || null); setIsNotificationHubOpen(true); }}
+          onOpenClaimOrders={() => { setClaimModalEmail(''); setIsClaimModalOpen(true); }}
+          onOpenOrderHistory={() => { setAccountPortalTab('orders'); setIsAccountModalOpen(true); }}
+          onOpenWishlist={() => { setAccountPortalTab('wishlist'); setIsAccountModalOpen(true); }}
+          onOpenAdmin={onOpenAdmin}
+          onOpenPos={onOpenPos}
+        />
 
-      <StorefrontOverlays
-        selectedDetailProduct={selectedDetailProduct}
-        setSelectedDetailProduct={setSelectedDetailProduct}
-        addToStoreCart={addToStoreCart}
-        onBuyNow={handleBuyNow}
-        isOrderTrackingOpen={isOrderTrackingOpen}
-        setIsOrderTrackingOpen={setIsOrderTrackingOpen}
-        initialTrackingNumber={initialTrackingNumber}
-        initialTrackingEmail={initialTrackingEmail}
-        isNotificationHubOpen={isNotificationHubOpen}
-        setIsNotificationHubOpen={setIsNotificationHubOpen}
-        selectedNotificationOrder={selectedNotificationOrder}
-        setSelectedNotificationOrder={setSelectedNotificationOrder}
-        isClaimModalOpen={isClaimModalOpen}
-        setIsClaimModalOpen={setIsClaimModalOpen}
-        claimModalEmail={claimModalEmail}
-        isCartDrawerOpen={isCartDrawerOpen}
-        setIsCartDrawerOpen={setIsCartDrawerOpen}
-        goCart={goCart}
-        goCheckout={goCheckout}
-        isWishlistDrawerOpen={isWishlistDrawerOpen}
-        setIsWishlistDrawerOpen={setIsWishlistDrawerOpen}
-        isAccountModalOpen={isAccountModalOpen}
-        setIsAccountModalOpen={setIsAccountModalOpen}
-        accountPortalTab={accountPortalTab}
-        isCheckoutOpen={isCheckoutOpen}
-        setIsCheckoutOpen={setIsCheckoutOpen}
-        isSuccessModalOpen={isSuccessModalOpen}
-        setIsSuccessModalOpen={setIsSuccessModalOpen}
-        successOrder={successOrder}
-        setInitialTrackingNumber={setInitialTrackingNumber}
-        setInitialTrackingEmail={setInitialTrackingEmail}
-        setClaimModalEmail={setClaimModalEmail}
-      />
+        <StorefrontOverlays
+          selectedDetailProduct={selectedDetailProduct}
+          setSelectedDetailProduct={setSelectedDetailProduct}
+          addToStoreCart={addToStoreCart}
+          onBuyNow={handleBuyNow}
+          isOrderTrackingOpen={isOrderTrackingOpen}
+          setIsOrderTrackingOpen={setIsOrderTrackingOpen}
+          initialTrackingNumber={initialTrackingNumber}
+          initialTrackingEmail={initialTrackingEmail}
+          isNotificationHubOpen={isNotificationHubOpen}
+          setIsNotificationHubOpen={setIsNotificationHubOpen}
+          selectedNotificationOrder={selectedNotificationOrder}
+          setSelectedNotificationOrder={setSelectedNotificationOrder}
+          isClaimModalOpen={isClaimModalOpen}
+          setIsClaimModalOpen={setIsClaimModalOpen}
+          claimModalEmail={claimModalEmail}
+          isCartDrawerOpen={isCartDrawerOpen}
+          setIsCartDrawerOpen={setIsCartDrawerOpen}
+          goCart={goCart}
+          goCheckout={goCheckout}
+          isWishlistDrawerOpen={isWishlistDrawerOpen}
+          setIsWishlistDrawerOpen={setIsWishlistDrawerOpen}
+          isAccountModalOpen={isAccountModalOpen}
+          setIsAccountModalOpen={setIsAccountModalOpen}
+          accountPortalTab={accountPortalTab}
+          isCheckoutOpen={isCheckoutOpen}
+          setIsCheckoutOpen={setIsCheckoutOpen}
+          isSuccessModalOpen={isSuccessModalOpen}
+          setIsSuccessModalOpen={setIsSuccessModalOpen}
+          successOrder={successOrder}
+          setInitialTrackingNumber={setInitialTrackingNumber}
+          setInitialTrackingEmail={setInitialTrackingEmail}
+          setClaimModalEmail={setClaimModalEmail}
+        />
 
-      <MobileFilterDrawer
-        isOpen={isMobileFilterOpen}
-        onClose={() => setIsMobileFilterOpen(false)}
-        categories={categories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={(cat) => {
-          setSelectedCategory(cat);
-          if (cat !== 'All') setActiveSection('catalog');
-        }}
-        allBrands={allBrands}
-        selectedBrand={selectedBrand}
-        onSelectBrand={(b) => {
-          setSelectedBrand(b);
-          if (b !== 'All') setActiveSection('catalog');
-        }}
-        minPrice={minPrice}
-        maxPrice={maxPrice}
-        onMinPriceChange={setMinPrice}
-        onMaxPriceChange={setMaxPrice}
-        inStockOnly={inStockOnly}
-        onInStockChange={setInStockOnly}
-        onSaleOnly={onSaleOnly}
-        onOnSaleChange={setOnSaleOnly}
-        minRating={minRating}
-        onMinRatingChange={setMinRating}
-        onClearFilters={handleClearAllFilters}
-        hasActiveFilters={hasActiveFilters}
-        totalProductsCount={products.length}
-        matchedCount={sortedProducts.length}
-      />
+        <MobileFilterDrawer
+          isOpen={isMobileFilterOpen}
+          onClose={() => setIsMobileFilterOpen(false)}
+          categories={categories}
+          selectedCategory={selectedCategory}
+          onSelectCategory={(cat) => { setSelectedCategory(cat); if (cat !== 'All') setActiveSection('catalog'); }}
+          allBrands={allBrands}
+          selectedBrand={selectedBrand}
+          onSelectBrand={(b) => { setSelectedBrand(b); if (b !== 'All') setActiveSection('catalog'); }}
+          minPrice={minPrice}
+          maxPrice={maxPrice}
+          onMinPriceChange={setMinPrice}
+          onMaxPriceChange={setMaxPrice}
+          inStockOnly={inStockOnly}
+          onInStockChange={setInStockOnly}
+          onSaleOnly={onSaleOnly}
+          onOnSaleChange={setOnSaleOnly}
+          minRating={minRating}
+          onMinRatingChange={setMinRating}
+          onClearFilters={handleClearAllFilters}
+          hasActiveFilters={hasActiveFilters}
+          totalProductsCount={products.length}
+          matchedCount={sortedProducts.length}
+        />
 
-      <MobileBottomNav
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        onNavigateHome={() => {
-          setActiveSection('home');
-          setSelectedCategory('All');
-          setSelectedBrand('All');
-          setSearchQuery('');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        onNavigateCatalog={() => {
-          setActiveSection('catalog');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        onOpenCart={() => setIsCartDrawerOpen(true)}
-        onOpenAccount={() => {
-          setAccountPortalTab('profile');
-          setIsAccountModalOpen(true);
-        }}
-        onOpenFilterDrawer={() => setIsMobileFilterOpen(true)}
-        hasActiveFilters={hasActiveFilters}
-      />
+        <MobileBottomNav
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
+          onNavigateHome={() => { setActiveSection('home'); setSelectedCategory('All'); setSelectedBrand('All'); setSearchQuery(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+          onNavigateCatalog={() => { setActiveSection('catalog'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+          onOpenCart={() => setIsCartDrawerOpen(true)}
+          onOpenAccount={() => { setAccountPortalTab('profile'); setIsAccountModalOpen(true); }}
+          onOpenFilterDrawer={() => setIsMobileFilterOpen(true)}
+          hasActiveFilters={hasActiveFilters}
+        />
       </div>
     </div>
   );
