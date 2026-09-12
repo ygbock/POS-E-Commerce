@@ -571,3 +571,31 @@ Status: READY FOR REVIEW
 - **Supervisor Action Required**: Review architectural deliverables and approve implementation plan before broad storefront code changes commence.
 
 
+
+
+---
+
+### Queue Item: UX-001A Phase 3 — Initial Modular Storefront Decomposition
+- **Submitted By**: Senior Software Engineer / Implementation Lead
+- **Submission Date**: 2026-09-12
+- **Current Status**: `PENDING LOCAL/CI VERIFICATION`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Implementation**:
+  - `src/components/storefront/StorefrontFooter.tsx` extracted from `Storefront.tsx`.
+  - `src/components/storefront/storefrontCatalog.ts` now owns catalog filtering and sorting rules.
+  - `tests/storefront_catalog.test.ts` added for extracted domain behavior.
+  - `package.json` registers the catalog test as a standalone gate and in `npm test`.
+- **Security/Architecture**:
+  - No new tenant authority is introduced in the client.
+  - Catalog filtering is a presentation/query concern and does not replace server-authoritative inventory, pricing, or tenant isolation.
+  - Footer actions are callback-driven and no longer depend directly on parent state.
+  - Existing route and checkout architecture remains intact.
+- **Verification Required Before Approval**:
+  - `npm run lint`
+  - `npm run test:storefront-catalog`
+  - `npm run test:storefront-router`
+  - `npm run test:storefront-api`
+  - `npm run test:storefront`
+  - `npm test`
+  - `npm run build`
+- **Supervisor Action Required**: Review the incremental decomposition and local/CI verification evidence before approving the Phase 3 increment.
