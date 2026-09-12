@@ -65,6 +65,15 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     categories, allBrands, filteredProducts, sortedProducts, featuredProducts, bestSellers, newArrivals, recommendedProducts,
     handleBuyNow, handleClearAllFilters, hasActiveFilters, tenantSlug, goHome, goShop, goCategory, goBrand, goSearch, goProduct, goCart, goCheckout, goAccount
   } = state;
+
+  if (tenantLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950" role="status" aria-live="polite">Loading storefront…</div>;
+  }
+
+  if (tenantError || !tenant) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-6"><div role="alert" className="max-w-md text-center"><h1 className="text-xl font-semibold">Storefront unavailable</h1><p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{tenantError || 'This store could not be resolved.'}</p></div></div>;
+  }
+
   return (
     <div className={`${isDarkMode ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-sky-500 selection:text-slate-900 dark:text-white pb-20">
