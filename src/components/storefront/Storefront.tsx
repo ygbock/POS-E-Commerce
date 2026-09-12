@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React from 'react';
 import {
   Search,
   ShoppingCart,
@@ -25,9 +25,6 @@ import {
 
   Percent,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
-import { useStorefrontRoute } from '../../router/StorefrontRouter';
-import { Product, ProductVariant, Order } from '../../types';
 import { StoreHeader } from './StoreHeader';
 import { StorefrontFooter } from './StorefrontFooter';
 import { useStorefrontState } from './useStorefrontState';
@@ -53,19 +50,6 @@ export interface StorefrontProps {
 }
 
 export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }) => {
-  const { route, navigate } = useStorefrontRoute();
-  const {
-    products,
-    storeCart,
-    addToStoreCart,
-    wishlist,
-    formatCurrency,
-    getTotalStockForVariant,
-    orders,
-    isDarkMode,
-    toggleTheme,
-  } = useCommerce();
-
   const state = useStorefrontState();
   const {
     route, navigate, products, storeCart, addToStoreCart, wishlist, formatCurrency, getTotalStockForVariant,
@@ -81,7 +65,6 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     categories, allBrands, filteredProducts, sortedProducts, featuredProducts, bestSellers, newArrivals, recommendedProducts,
     handleBuyNow, handleClearAllFilters, hasActiveFilters, tenantSlug, goHome, goShop, goCategory, goBrand, goSearch, goProduct, goCart, goCheckout, goAccount
   } = state;
-
   return (
     <div className={`${isDarkMode ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-sky-500 selection:text-slate-900 dark:text-white pb-20">
