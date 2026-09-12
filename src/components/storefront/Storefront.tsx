@@ -4,17 +4,14 @@ import {
   ShoppingCart,
   Heart,
   Star,
-  Sparkles,
+
   Tag,
   ArrowRight,
   Plus,
   Minus,
   Trash2,
   Check,
-  ShieldCheck,
-  Truck,
-  RotateCcw,
-  Boxes,
+
   X,
   Package,
   SlidersHorizontal,
@@ -25,7 +22,7 @@ import {
   Award,
   Layers,
   ShoppingBag,
-  Clock,
+
   Percent,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
@@ -34,18 +31,12 @@ import { Product, ProductVariant, Order } from '../../types';
 import { StoreHeader } from './StoreHeader';
 import { StorefrontFooter } from './StorefrontFooter';
 import { filterStorefrontProducts, sortStorefrontProducts } from './storefrontCatalog';
-import { StoreHeroBanner } from './StoreHeroBanner';
-import { CategoryShowcase } from './CategoryShowcase';
-import { BrandShowcase } from './BrandShowcase';
-import { PromotionsBanner } from './PromotionsBanner';
 import { ProductCard } from './ProductCard';
-import { ProductCarouselSection } from './ProductCarouselSection';
 import { ProductDetailModal } from './ProductDetailModal';
 import { OrderTrackingModal } from './OrderTrackingModal';
 import { OrderNotificationHubModal } from './OrderNotificationHubModal';
 import { AccountClaimModal } from './AccountClaimModal';
 import { OrderSuccessModal } from './OrderSuccessModal';
-import { NewsletterSection } from './NewsletterSection';
 import { WishlistDrawer } from './WishlistDrawer';
 import { StoreCartDrawer } from './StoreCartDrawer';
 import { CustomerAccountModal, AccountPortalTab } from './CustomerAccountModal';
