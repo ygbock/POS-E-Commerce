@@ -669,7 +669,7 @@ PROD-001 (NOT STARTED)
   - `server.ts`: Exposes sanitized runtime revision identity (`/api/version` and `/api/health`) without credential leakage.
   - `.github/workflows/ci.yml`: Source-map exposure guard rejecting all `.map` files in `dist/`.
   - `package.json`: Source-map stripping from production server bundle build.
-  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 25 test cases verifying all positive and negative failure paths, complete 12-pair contradiction matrix, unknown `NODE_ENV` handling, 4-gate workflow checks, and exact-commit deploy URL construction (`?ref=` and `&ref=`).
+  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 26 test cases verifying all positive and negative failure paths, complete 12-pair contradiction matrix, unknown `NODE_ENV` handling, 4-gate workflow checks, exact-commit deploy URL construction (`?ref=` and `&ref=`), and commit-input SHA regex validation.
 - **Dependencies**: None.
 - **Acceptance Criteria**:
   - [x] Dedicated branch `upgrade/v2.6/upg-001-platform-hardening` maintained.
@@ -681,13 +681,13 @@ PROD-001 (NOT STARTED)
   - [x] PostgreSQL connection URL validated (protocol, host, db) without credential leakage.
   - [x] HTTPS `APP_URL` enforced in staging/production with configurable cross-environment isolation.
   - [x] Production workflow Gate A documents reproducibility, not deployment identity.
-  - [x] Production workflow Gate B deploys exact approved commit SHA via `ref=${APPROVED_COMMIT}` and fails closed (`exit 1`) if `RENDER_PROD_DEPLOY_HOOK_URL` is missing.
+  - [x] Production workflow Gate B validates `approved_commit_sha` matches `^[0-9a-f]{40}$`, deploys exact approved commit SHA via `ref=${APPROVED_COMMIT}`, and fails closed (`exit 1`) if `RENDER_PROD_DEPLOY_HOOK_URL` is missing.
   - [x] Production workflow Gate C verifies `approved_commit_sha == deployed_runtime_revision` and fails closed.
   - [x] Production workflow Gate D fails closed (`exit 1`) on health probe failure.
   - [x] Source maps blocked on server route and stripped from deployable build output.
-  - [x] 25/25 operational tests pass deterministically (including test 8.3 exact-commit deploy URL tests).
+  - [x] 26/26 operational tests pass deterministically (including test 8.3 deploy URL tests and test 8.4 commit SHA validation).
   - [x] 9/9 production gate tests pass deterministically.
-  - [x] Full regression suite (185 tests across 12 suites) passes 100%.
+  - [x] Full regression suite (186 tests across 12 suites) passes 100%.
   - [x] `npm run lint` passes with 0 errors.
   - [x] Zero secrets committed.
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
