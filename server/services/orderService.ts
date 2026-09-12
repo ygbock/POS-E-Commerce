@@ -11,7 +11,6 @@ import {
 } from '../inventory/inventoryPolicies.ts';
 import crypto from 'node:crypto';
 import { StorefrontCartService } from './storefrontCartService.ts';
-import { resolveStorefrontTenant } from './tenantResolver.ts';
 
 export class DomainError extends Error {
   constructor(public code: string, message: string) {
@@ -323,22 +322,37 @@ export class OrderService {
 
         // D. Shipping is policy-driven, never hard-coded in the order service.
         // Keep the checkout arithmetic identical to cart validation.
-        const storefrontConfig = await resolveStorefrontTenant(
-          new Request('http://localhost/'),
-          tx,
-          { explicitSlug: undefined }
+        const orgPolicyRes = await tx.query<any>(
+          `SELECT policies, currency_code
+           FROM organizations
+           WHERE id = $1 AND is_active = true
+           LIMIT 1`,
+          [organization_id]
         );
+        if (orgPolicyRes.rows.length === 0) {
+          throw new DomainError('TENANT_NOT_FOUND', 'Store tenant is unavailable.');
+        }
 
-        const shippingPolicy = storefrontConfig.policies;
-        const freeThreshold = this.localParseMoneyToCents(String(shippingPolicy.freeShippingThreshold));
+        const rawPolicies =
+          typeof orgPolicyRes.rows[0].policies === 'string'
+            ? JSON.parse(orgPolicyRes.rows[0].policies)
+            : (orgPolicyRes.rows[0].policies || {});
+
+        const freeThreshold = this.localParseMoneyToCents(
+          String(rawPolicies.freeShippingThreshold ?? '75.00')
+        );
         let shippingFeeCents = 0n;
         if (fulfillment_method === 'Express Delivery') {
-          shippingFeeCents = this.localParseMoneyToCents(String(shippingPolicy.expressShippingFee));
+          shippingFeeCents = this.localParseMoneyToCents(
+            String(rawPolicies.expressShippingFee ?? '19.99')
+          );
         } else if (fulfillment_method === 'Standard Delivery') {
           shippingFeeCents =
             totalSubtotalCents >= freeThreshold
               ? 0n
-              : this.localParseMoneyToCents(String(shippingPolicy.standardShippingFee));
+              : this.localParseMoneyToCents(
+                  String(rawPolicies.standardShippingFee ?? '9.99')
+                );
         }
 
         const finalTotalCents = totalSubtotalCents + totalTaxCents + shippingFeeCents;
