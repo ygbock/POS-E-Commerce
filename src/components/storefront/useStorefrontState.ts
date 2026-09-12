@@ -125,7 +125,7 @@ export function useStorefrontState() {
   const catalogProducts = storefrontProducts;
   const allBrands = ['All', ...Array.from(new Set(catalogProducts.map((p) => p.brand)))];
 
-  const filteredProducts = useMemo(() => filterStorefrontProducts(products, {
+  const filteredProducts = useMemo(() => filterStorefrontProducts(catalogProducts, {
     category: selectedCategory,
     brand: selectedBrand,
     searchQuery,
