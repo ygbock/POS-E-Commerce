@@ -50,6 +50,7 @@ import { WishlistDrawer } from './WishlistDrawer';
 import { StoreCartDrawer } from './StoreCartDrawer';
 import { CustomerAccountModal, AccountPortalTab } from './CustomerAccountModal';
 import { StoreCheckoutModal } from './StoreCheckoutModal';
+import { StorefrontOverlays } from './StorefrontOverlays';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileFilterDrawer } from './MobileFilterDrawer';
 
@@ -741,182 +742,38 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
         onOpenPos={onOpenPos}
       />
 
-      {/* Order Tracking Live Modal (Method 1 & on-site tracking) */}
-      <OrderTrackingModal
-        isOpen={isOrderTrackingOpen}
-        onClose={() => setIsOrderTrackingOpen(false)}
-        initialOrderNumber={initialTrackingNumber}
-        initialEmail={initialTrackingEmail}
-        onOpenNotificationHub={(ord) => {
-          setSelectedNotificationOrder(ord);
-          setIsNotificationHubOpen(true);
-        }}
-        onOpenClaimAccount={(email) => {
-          setClaimModalEmail(email || '');
-          setIsClaimModalOpen(true);
-        }}
-      />
-
-      {/* Order Notification & Magic Links Hub Modal (Method 2 & Method 3) */}
-      <OrderNotificationHubModal
-        isOpen={isNotificationHubOpen}
-        onClose={() => setIsNotificationHubOpen(false)}
-        order={selectedNotificationOrder}
-        onOpenLiveTracking={(orderNumber, email) => {
-          setInitialTrackingNumber(orderNumber);
-          setInitialTrackingEmail(email || '');
-          setIsOrderTrackingOpen(true);
-        }}
-        onOpenClaimModal={(email) => {
-          setClaimModalEmail(email || '');
-          setIsClaimModalOpen(true);
-        }}
-      />
-
-      {/* Retroactive Account Claim Modal (Method 4) */}
-      <AccountClaimModal
-        isOpen={isClaimModalOpen}
-        onClose={() => setIsClaimModalOpen(false)}
-        initialEmail={claimModalEmail}
-        onOpenOrderTracking={(orderNumber, email) => {
-          setInitialTrackingNumber(orderNumber);
-          setInitialTrackingEmail(email || '');
-          setIsOrderTrackingOpen(true);
-        }}
-      />
-
-      {/* Product Detail Modal */}
-      {selectedDetailProduct && (
-        <ProductDetailModal
-          product={selectedDetailProduct}
-          onClose={() => setSelectedDetailProduct(null)}
-          onAddToCart={addToStoreCart}
-          onBuyNow={handleBuyNow}
-          onSelectRelatedProduct={(rel) => setSelectedDetailProduct(rel)}
-        />
-      )}
-
-      {/* Cart Drawer */}
-      <StoreCartDrawer
-        isOpen={isCartDrawerOpen}
-        onClose={() => setIsCartDrawerOpen(false)}
-        onProceedToCheckout={goCheckout}
-      />
-
-      {/* Wishlist Drawer */}
-      <WishlistDrawer
-        isOpen={isWishlistDrawerOpen}
-        onClose={() => setIsWishlistDrawerOpen(false)}
-        onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
-        onOpenCart={goCart}
-      />
-
-      {/* Customer Account Portal Modal with integrated Tracking & Wishlist */}
-      <CustomerAccountModal
-        isOpen={isAccountModalOpen}
-        onClose={() => setIsAccountModalOpen(false)}
-        initialTab={accountPortalTab}
-        initialOrderNumber={initialTrackingNumber}
+      <StorefrontOverlays
+        selectedDetailProduct={selectedDetailProduct}
+        setSelectedDetailProduct={setSelectedDetailProduct}
+        addToStoreCart={addToStoreCart}
+        onBuyNow={handleBuyNow}
+        isOrderTrackingOpen={isOrderTrackingOpen}
+        setIsOrderTrackingOpen={setIsOrderTrackingOpen}
+        initialTrackingNumber={initialTrackingNumber}
         initialTrackingEmail={initialTrackingEmail}
-        onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
-        onOpenCart={() => setIsCartDrawerOpen(true)}
-        onOpenNotificationHub={(ord) => {
-          setSelectedNotificationOrder(ord);
-          setIsNotificationHubOpen(true);
-        }}
-        onOpenClaimModal={(email) => {
-          setClaimModalEmail(email || '');
-          setIsClaimModalOpen(true);
-        }}
+        isNotificationHubOpen={isNotificationHubOpen}
+        setIsNotificationHubOpen={setIsNotificationHubOpen}
+        selectedNotificationOrder={selectedNotificationOrder}
+        setSelectedNotificationOrder={setSelectedNotificationOrder}
+        isClaimModalOpen={isClaimModalOpen}
+        setIsClaimModalOpen={setIsClaimModalOpen}
+        claimModalEmail={claimModalEmail}
+        isCartDrawerOpen={isCartDrawerOpen}
+        setIsCartDrawerOpen={setIsCartDrawerOpen}
+        goCart={goCart}
+        goCheckout={goCheckout}
+        isWishlistDrawerOpen={isWishlistDrawerOpen}
+        setIsWishlistDrawerOpen={setIsWishlistDrawerOpen}
+        isAccountModalOpen={isAccountModalOpen}
+        setIsAccountModalOpen={setIsAccountModalOpen}
+        accountPortalTab={accountPortalTab}
+        isCheckoutOpen={isCheckoutOpen}
+        setIsCheckoutOpen={setIsCheckoutOpen}
+        isSuccessModalOpen={isSuccessModalOpen}
+        setIsSuccessModalOpen={setIsSuccessModalOpen}
+        successOrder={successOrder}
+        setInitialTrackingNumber={setInitialTrackingNumber}
+        setInitialTrackingEmail={setInitialTrackingEmail}
+        setClaimModalEmail={setClaimModalEmail}
       />
 
-      {/* Checkout Modal */}
-      <StoreCheckoutModal
-        isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
-        onOrderSuccess={(order) => {
-          setSuccessOrder(order);
-          setIsSuccessModalOpen(true);
-        }}
-      />
-
-      {/* Enhanced Order Success Modal with 4-Way Tracking Access */}
-      <OrderSuccessModal
-        isOpen={isSuccessModalOpen}
-        onClose={() => setIsSuccessModalOpen(false)}
-        order={successOrder}
-        onOpenTracking={(num, email) => {
-          setInitialTrackingNumber(num);
-          setInitialTrackingEmail(email || '');
-          setAccountPortalTab('tracking');
-          setIsAccountModalOpen(true);
-        }}
-        onOpenNotificationHub={(ord) => {
-          setSelectedNotificationOrder(ord);
-          setIsNotificationHubOpen(true);
-        }}
-        onOpenClaimModal={(email) => {
-          setClaimModalEmail(email || '');
-          setIsClaimModalOpen(true);
-        }}
-      />
-
-      {/* Mobile Slide-Over Filter Drawer */}
-      <MobileFilterDrawer
-        isOpen={isMobileFilterOpen}
-        onClose={() => setIsMobileFilterOpen(false)}
-        categories={categories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={(cat) => {
-          setSelectedCategory(cat);
-          if (cat !== 'All') setActiveSection('catalog');
-        }}
-        allBrands={allBrands}
-        selectedBrand={selectedBrand}
-        onSelectBrand={(b) => {
-          setSelectedBrand(b);
-          if (b !== 'All') setActiveSection('catalog');
-        }}
-        minPrice={minPrice}
-        maxPrice={maxPrice}
-        onMinPriceChange={setMinPrice}
-        onMaxPriceChange={setMaxPrice}
-        inStockOnly={inStockOnly}
-        onInStockChange={setInStockOnly}
-        onSaleOnly={onSaleOnly}
-        onOnSaleChange={setOnSaleOnly}
-        minRating={minRating}
-        onMinRatingChange={setMinRating}
-        onClearFilters={handleClearAllFilters}
-        hasActiveFilters={hasActiveFilters}
-        totalProductsCount={products.length}
-        matchedCount={sortedProducts.length}
-      />
-
-      {/* Mobile Bottom Navigation Dock */}
-      <MobileBottomNav
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        onNavigateHome={() => {
-          setActiveSection('home');
-          setSelectedCategory('All');
-          setSelectedBrand('All');
-          setSearchQuery('');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        onNavigateCatalog={() => {
-          setActiveSection('catalog');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        onOpenCart={() => setIsCartDrawerOpen(true)}
-        onOpenAccount={() => {
-          setAccountPortalTab('profile');
-          setIsAccountModalOpen(true);
-        }}
-        onOpenFilterDrawer={() => setIsMobileFilterOpen(true)}
-        hasActiveFilters={hasActiveFilters}
-      />
-      </div>
-    </div>
-  );
-};
