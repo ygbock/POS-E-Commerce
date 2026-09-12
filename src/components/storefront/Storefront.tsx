@@ -33,6 +33,7 @@ import { useStorefrontRoute } from '../../router/StorefrontRouter';
 import { Product, ProductVariant, Order } from '../../types';
 import { StoreHeader } from './StoreHeader';
 import { StorefrontFooter } from './StorefrontFooter';
+import { filterStorefrontProducts, sortStorefrontProducts } from './storefrontCatalog';
 import { StoreHeroBanner } from './StoreHeroBanner';
 import { CategoryShowcase } from './CategoryShowcase';
 import { BrandShowcase } from './BrandShowcase';
@@ -111,49 +112,16 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
   const categories = ['All', 'Electronics', 'Home & Kitchen', 'Food & Beverage', 'Apparel'];
   const allBrands = ['All', ...Array.from(new Set(products.map((p) => p.brand)))];
 
-  // Filter products
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      if (p.status !== 'active') return false;
-
-      // Category filter
-      if (selectedCategory !== 'All' && p.category !== selectedCategory) return false;
-
-      // Brand filter
-      if (selectedBrand !== 'All' && p.brand.toLowerCase() !== selectedBrand.toLowerCase()) return false;
-
-      // Search query
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesName = p.name.toLowerCase().includes(query);
-        const matchesBrand = p.brand.toLowerCase().includes(query);
-        const matchesCat = p.category.toLowerCase().includes(query);
-        const matchesTags = p.tags.some((t) => t.toLowerCase().includes(query));
-        if (!matchesName && !matchesBrand && !matchesCat && !matchesTags) return false;
-      }
-
-      // Price filter
-      const primaryPrice = p.variants[0]?.retailPrice || 0;
-      if (primaryPrice < minPrice || primaryPrice > maxPrice) return false;
-
-      // In stock filter
-      if (inStockOnly) {
-        const stock = getTotalStockForVariant(p.variants[0]);
-        if (stock <= 0) return false;
-      }
-
-      // On sale filter
-      if (onSaleOnly) {
-        const compareAt = p.variants[0]?.compareAtPrice || p.compareAtPrice;
-        if (!compareAt || compareAt <= primaryPrice) return false;
-      }
-
-      // Rating filter
-      if (minRating > 0 && p.rating < minRating) return false;
-
-      return true;
-    });
-  }, [
+  const filteredProducts = useMemo(() => filterStorefrontProducts(products, {
+    category: selectedCategory,
+    brand: selectedBrand,
+    searchQuery,
+    minPrice,
+    maxPrice,
+    inStockOnly,
+    onSaleOnly,
+    minRating,
+  }, getTotalStockForVariant), [
     products,
     selectedCategory,
     selectedBrand,
@@ -166,20 +134,10 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     getTotalStockForVariant,
   ]);
 
-  // Sort products
-  const sortedProducts = useMemo(() => {
-    return [...filteredProducts].sort((a, b) => {
-      const priceA = a.variants[0]?.retailPrice || 0;
-      const priceB = b.variants[0]?.retailPrice || 0;
-
-      if (sortBy === 'price-low') return priceA - priceB;
-      if (sortBy === 'price-high') return priceB - priceA;
-      if (sortBy === 'rating') return b.rating - a.rating;
-      if (sortBy === 'best-sellers') return (b.salesCount || 0) - (a.salesCount || 0);
-      if (sortBy === 'newest') return b.id.localeCompare(a.id);
-      return (b.featured ? 1 : 0) - (a.featured ? 1 : 0);
-    });
-  }, [filteredProducts, sortBy]);
+  const sortedProducts = useMemo(
+    () => sortStorefrontProducts(filteredProducts, sortBy),
+    [filteredProducts, sortBy],
+  );
 
   // Homepage specific product sections
   const featuredProducts = products.filter((p) => p.featured && p.status === 'active');
