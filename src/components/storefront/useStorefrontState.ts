@@ -50,6 +50,8 @@ export function useStorefrontState() {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogPagination, setCatalogPagination] = useState<{ page: number; pageSize: number; totalCount: number; totalPages: number; hasMore: boolean } | null>(null);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [brandOptions, setBrandOptions] = useState<string[]>([]);
 
   const toProduct = (item: StorefrontProduct): Product => ({
     id: item.id,
@@ -121,9 +123,24 @@ export function useStorefrontState() {
   }, [tenant?.slug, tenantLoading, tenantError, selectedCategory, selectedBrand, searchQuery, minPrice, maxPrice, inStockOnly, onSaleOnly, sortBy]);
 
   const [storefrontProducts, setStorefrontProducts] = useState<Product[]>([]);
-  const categories = ['All', 'Electronics', 'Home & Kitchen', 'Food & Beverage', 'Apparel'];
+  useEffect(() => {
+    if (!tenant?.slug || tenantLoading || tenantError) return;
+    let cancelled = false;
+    void Promise.all([storefrontApi.getCategories(tenant.slug), storefrontApi.getBrands(tenant.slug)])
+      .then(([categoriesResult, brandsResult]) => {
+        if (cancelled) return;
+        const categoryNames = categoriesResult.map((v: unknown) => typeof v === 'string' ? v : String((v as { name?: unknown })?.name || '')).filter(Boolean);
+        const brandNames = brandsResult.map((v: unknown) => typeof v === 'string' ? v : String((v as { name?: unknown })?.name || '')).filter(Boolean);
+        setCategoryOptions([...new Set(categoryNames)]);
+        setBrandOptions([...new Set(brandNames)]);
+      })
+      .catch(() => { if (!cancelled) { setCategoryOptions([]); setBrandOptions([]); } });
+    return () => { cancelled = true; };
+  }, [tenant?.slug, tenantLoading, tenantError]);
+
   const catalogProducts = storefrontProducts;
-  const allBrands = ['All', ...Array.from(new Set(catalogProducts.map((p) => p.brand)))];
+  const categories = ['All', ...categoryOptions];
+  const allBrands = ['All', ...brandOptions];
 
   const filteredProducts = useMemo(() => filterStorefrontProducts(catalogProducts, {
     category: selectedCategory,
