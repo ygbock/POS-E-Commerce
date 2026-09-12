@@ -297,6 +297,13 @@ export function createStorefrontRouter(db: DatabaseClient): Router {
         total,
         page: pageNum,
         totalPages: Math.ceil(total / limitNum),
+        pagination: {
+          page: pageNum,
+          pageSize: limitNum,
+          totalCount: total,
+          totalPages: Math.ceil(total / limitNum),
+          hasMore: pageNum * limitNum < total,
+        },
         data: products,
       });
     } catch (err) {

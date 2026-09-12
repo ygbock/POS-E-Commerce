@@ -13,13 +13,6 @@ export interface TenantBranding {
   trustBadges: Array<{ icon: string; title: string; subtitle: string }>;
 }
 
-export interface TenantLocalization {
-  currencyCode: string;
-  currencySymbol: string;
-  locale: string;
-  timezone: string;
-}
-
 export interface TenantPolicies {
   freeShippingThreshold: number;
   standardShippingFee: number;
@@ -30,6 +23,13 @@ export interface TenantPolicies {
   deliveryPromise: string;
   pickupEnabled: boolean;
   pickupInstructions: string;
+}
+
+export interface TenantLocalization {
+  currencyCode: string;
+  currencySymbol: string;
+  locale: string;
+  timezone: string;
 }
 
 export interface TenantCatalogPolicy {
@@ -55,16 +55,17 @@ export interface StorefrontLocationRecord {
   type: string;
   address: string | null;
   phone: string | null;
-  is_pos_enabled: boolean;
-  is_active: boolean;
+  isPosEnabled: boolean;
 }
 
 export interface TenantStorefrontConfig {
   tenant: {
     id: string;
+    name: string;
     code: string;
     slug: string;
-    name: string;
+    customDomain: string | null;
+    isActive: boolean;
   };
   branding: TenantBranding;
   localization: TenantLocalization;
@@ -93,18 +94,80 @@ export function isQueryTenantOverridePermitted(): boolean {
 }
 
 /**
+ * Determines whether reverse-proxy forwarding headers (X-Forwarded-Host, X-Tenant-Domain)
+ * should be trusted for the current request.
+ * 
+ * TRUST MODEL:
+ * In production / staging:
+ * - Forwarding headers are UNTRUSTED by default to protect against client spoofing.
+ * - Only trusted if TRUST_PROXY is explicitly enabled ('true' or '1') in environment configuration,
+ *   signaling that an upstream edge proxy (e.g., Render, AWS ALB, Cloudflare) sanitizes client headers.
+ * - X-Tenant-Domain is a private internal gateway header and is only honored if ALLOW_TENANT_DOMAIN_HEADER === 'true'
+ *   AND TRUST_PROXY is enabled.
+ * 
+ * In development / test:
+ * - Forwarding headers are trusted by default to facilitate local multi-domain emulation,
+ *   UNLESS SIMULATE_UNTRUSTED_PROXY === 'true' or TRUST_PROXY === 'false'.
+ */
+export function isProxyTrusted(req?: Request): boolean {
+  const env = (process.env.NODE_ENV || 'development').toLowerCase();
+  const trustProxyEnv = (process.env.TRUST_PROXY || '').toLowerCase().trim();
+
+  if (trustProxyEnv === 'false' || trustProxyEnv === '0') {
+    return false;
+  }
+
+  if (env === 'production' || env === 'staging') {
+    return trustProxyEnv === 'true' || trustProxyEnv === '1';
+  }
+
+  if (process.env.SIMULATE_UNTRUSTED_PROXY === 'true') {
+    return false;
+  }
+
+  return true;
+}
+
+export function isTenantDomainHeaderAllowed(): boolean {
+  const env = (process.env.NODE_ENV || 'development').toLowerCase();
+  if (env === 'production' || env === 'staging') {
+    return process.env.ALLOW_TENANT_DOMAIN_HEADER === 'true';
+  }
+  return process.env.SIMULATE_UNTRUSTED_PROXY !== 'true';
+}
+
+/**
  * Checks whether a given host represents the canonical platform entry point.
+ * In production:
+ * - localhost and 127.0.0.1 are NOT canonical platform hosts unless explicitly configured in APP_URL or CANONICAL_STOREFRONT_HOST.
+ * - Only shop.abacha.com or explicitly configured CANONICAL_STOREFRONT_HOST / APP_URL are canonical.
  */
 export function isCanonicalPlatformHost(hostHeader: string | undefined): boolean {
   if (!hostHeader) return false;
   const rawHost = hostHeader.split(':')[0].toLowerCase().trim();
-  const canonicalAppUrl = process.env.APP_URL ? process.env.APP_URL.replace(/^https?:\/\//, '').split('/')[0].split(':')[0].toLowerCase() : null;
+  const env = (process.env.NODE_ENV || 'development').toLowerCase();
+
+  const canonicalAppUrl = process.env.APP_URL 
+    ? process.env.APP_URL.replace(/^https?:\/\//, '').split('/')[0].split(':')[0].toLowerCase() 
+    : null;
+  const explicitCanonicalHost = process.env.CANONICAL_STOREFRONT_HOST 
+    ? process.env.CANONICAL_STOREFRONT_HOST.toLowerCase().trim() 
+    : null;
+
+  if (env === 'production') {
+    return (
+      rawHost === 'shop.abacha.com' ||
+      (explicitCanonicalHost !== null && rawHost === explicitCanonicalHost) ||
+      (canonicalAppUrl !== null && rawHost === canonicalAppUrl)
+    );
+  }
 
   return (
     rawHost === 'localhost' ||
     rawHost === '127.0.0.1' ||
     rawHost === 'shop.abacha.com' ||
     rawHost === 'abacha-app.onrender.com' ||
+    (explicitCanonicalHost !== null && rawHost === explicitCanonicalHost) ||
     (canonicalAppUrl !== null && rawHost === canonicalAppUrl)
   );
 }
@@ -115,9 +178,10 @@ export function isCanonicalPlatformHost(hostHeader: string | undefined): boolean
  * FAIL-CLOSED INVARIANTS:
  * 1. An explicit identifier (slug, custom domain, or query override) that cannot be found MUST throw HTTP 404.
  * 2. An inactive organization MUST throw HTTP 404 (Store Unavailable).
- * 3. A mismatched custom domain + path slug MUST fail closed with HTTP 400.
+ * 3. A mismatched custom domain/host + path slug MUST fail closed with HTTP 400 (TENANT_MISMATCH).
  * 4. Production query parameters MUST NOT switch the tenant context.
  * 5. Default fallback to 'org_default' is allowed ONLY on the canonical entry point without an explicit tenant identifier.
+ * 6. Reverse proxy headers (X-Forwarded-Host, X-Tenant-Domain) are strictly ignored when untrusted.
  */
 export async function resolveStorefrontTenant(
   req: Request,
@@ -126,56 +190,64 @@ export async function resolveStorefrontTenant(
 ): Promise<TenantStorefrontConfig> {
   const db = dbClient || getDatabaseClient();
 
-  const rawHostHeader = (
-    (req.headers['x-forwarded-host'] as string) ||
-    (req.headers['x-tenant-domain'] as string) ||
-    (req.headers.host || '')
-  );
+  // 1. Resolve host header subject to reverse-proxy trust boundary
+  const proxyTrusted = isProxyTrusted(req);
+  let rawHostHeader = req.headers.host || '';
+
+  if (proxyTrusted) {
+    const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+    const tenantDomain = isTenantDomainHeaderAllowed()
+      ? (req.headers['x-tenant-domain'] as string | undefined)
+      : undefined;
+    rawHostHeader = tenantDomain || forwardedHost || req.headers.host || '';
+  }
+
   const hostHeader = rawHostHeader.split(',')[0].split(':')[0].toLowerCase().trim();
   const rawQueryTenant = (req.query.tenant || req.query.store) as string | undefined;
-  const explicitSlug = options?.explicitSlug || req.params.tenantSlug;
+  const explicitSlug = (options?.explicitSlug || req.params.tenantSlug || '').trim().toLowerCase();
 
   let targetSlug: string | null = null;
   let targetDomain: string | null = null;
-  let isExplicit = false;
+  let hostIdentifiedSlug: string | null = null;
+  let hostIdentifiedDomain: string | null = null;
 
-  // 1. Environment-Gated Query Parameter Override
+  // 2. Identify host-level tenant binding (if any)
+  if (hostHeader && !isCanonicalPlatformHost(hostHeader)) {
+    if (hostHeader.endsWith('.abacha.com') || hostHeader.endsWith('.abacha.test')) {
+      const sub = hostHeader.split('.')[0];
+      if (sub && sub !== 'www' && sub !== 'shop' && sub !== 'api') {
+        hostIdentifiedSlug = sub;
+      }
+    } else {
+      hostIdentifiedDomain = hostHeader;
+    }
+  }
+
+  // 3. Environment-Gated Query Parameter Override
   if (rawQueryTenant && typeof rawQueryTenant === 'string' && rawQueryTenant.trim() !== '') {
     if (isQueryTenantOverridePermitted()) {
       targetSlug = rawQueryTenant.trim().toLowerCase();
-      isExplicit = true;
     }
   }
 
-  // 2. Explicit Path Slug (e.g. /api/storefront/:tenantSlug/...)
-  if (!targetSlug && explicitSlug && typeof explicitSlug === 'string' && explicitSlug.trim() !== '') {
-    const cleaned = explicitSlug.trim().toLowerCase();
-    if (cleaned !== 'auto') {
-      targetSlug = cleaned;
-      isExplicit = true;
+  // 4. Explicit Path Slug (e.g. /api/storefront/:tenantSlug/...)
+  let hasExplicitPathSlug = false;
+  if (!targetSlug && explicitSlug && explicitSlug !== '' && explicitSlug !== 'auto') {
+    targetSlug = explicitSlug;
+    hasExplicitPathSlug = true;
+  }
+
+  // 5. Host Binding (Subdomain or Custom Domain)
+  if (!targetSlug) {
+    if (hostIdentifiedSlug) {
+      targetSlug = hostIdentifiedSlug;
+    } else if (hostIdentifiedDomain) {
+      targetDomain = hostIdentifiedDomain;
     }
   }
 
-  // 3. Host / Subdomain / Custom Domain Resolution
-  if (!targetSlug && hostHeader) {
-    if (!isCanonicalPlatformHost(hostHeader)) {
-      // Check if it's a subdomain on abacha.com or abacha.test
-      if (hostHeader.endsWith('.abacha.com') || hostHeader.endsWith('.abacha.test')) {
-        const sub = hostHeader.split('.')[0];
-        if (sub && sub !== 'www' && sub !== 'shop' && sub !== 'api') {
-          targetSlug = sub;
-          isExplicit = true;
-        }
-      } else {
-        // Treat as a custom domain
-        targetDomain = hostHeader;
-        isExplicit = true;
-      }
-    }
-  }
-
-  // 4. Canonical Default Entry Point Fallback
-  // ONLY permitted if NO explicit identifier (slug or domain) was supplied
+  // 6. Canonical Default Entry Point Fallback
+  // ONLY permitted if NO explicit identifier (query, path slug, subdomain, custom domain) was supplied
   if (!targetSlug && !targetDomain) {
     if (isCanonicalPlatformHost(hostHeader) || !hostHeader) {
       targetSlug = 'default';
@@ -185,7 +257,7 @@ export async function resolveStorefrontTenant(
     }
   }
 
-  // 5. Query Organization from Database
+  // 7. Query Organization from Database
   let orgRow: any = null;
   if (targetDomain) {
     const res = await db.query<any>(
@@ -211,19 +283,23 @@ export async function resolveStorefrontTenant(
     throw new ApiError('TENANT_NOT_FOUND', 'Store not found.', 404);
   }
 
-  // 6. Fail-Closed Inactive Verification
+  // 8. Fail-Closed Inactive Verification
   if (!orgRow.is_active) {
     throw new ApiError('TENANT_INACTIVE', 'Store is temporarily unavailable.', 404);
   }
 
-  // 7. Check Mismatched Custom Domain vs Path Slug
-  if (targetDomain && explicitSlug && explicitSlug !== 'auto') {
-    if (orgRow.slug !== explicitSlug && orgRow.id !== explicitSlug) {
-      throw new ApiError('TENANT_MISMATCH', `Store domain '${targetDomain}' does not match path '${explicitSlug}'.`, 400);
+  // 9. Host vs Path Conflict Detection (Fail-Closed)
+  // If request has both an explicit path slug AND a host-level tenant binding, they MUST match!
+  if (hasExplicitPathSlug && (hostIdentifiedDomain || hostIdentifiedSlug)) {
+    if (hostIdentifiedDomain && orgRow.custom_domain !== hostIdentifiedDomain) {
+      throw new ApiError('TENANT_MISMATCH', `Store domain '${hostIdentifiedDomain}' does not match path '${explicitSlug}'.`, 400);
+    }
+    if (hostIdentifiedSlug && orgRow.slug !== hostIdentifiedSlug && orgRow.id !== hostIdentifiedSlug) {
+      throw new ApiError('TENANT_MISMATCH', `Store host '${hostHeader}' does not match path '${explicitSlug}'.`, 400);
     }
   }
 
-  // 8. Fetch Active Pickup / Store Locations for Tenant
+  // 10. Fetch Active Pickup / Store Locations for Tenant
   const locRes = await db.query<any>(
     `SELECT id, code, name, type, address, phone, is_pos_enabled, is_active
      FROM locations 
@@ -240,9 +316,11 @@ export async function resolveStorefrontTenant(
   return {
     tenant: {
       id: orgRow.id,
+      name: orgRow.name,
       code: orgRow.code,
       slug: orgRow.slug || orgRow.id,
-      name: orgRow.name,
+      customDomain: orgRow.custom_domain || null,
+      isActive: orgRow.is_active,
     },
     branding: {
       storeName: rawBranding.storeName || orgRow.name,
@@ -265,39 +343,38 @@ export async function resolveStorefrontTenant(
       timezone: orgRow.timezone || 'UTC',
     },
     policies: {
-      freeShippingThreshold: typeof rawPolicies.freeShippingThreshold === 'number' ? rawPolicies.freeShippingThreshold : 75.0,
-      standardShippingFee: typeof rawPolicies.standardShippingFee === 'number' ? rawPolicies.standardShippingFee : 9.99,
-      expressShippingFee: typeof rawPolicies.expressShippingFee === 'number' ? rawPolicies.expressShippingFee : 19.99,
+      freeShippingThreshold: Number(rawPolicies.freeShippingThreshold ?? 75.00),
+      standardShippingFee: Number(rawPolicies.standardShippingFee ?? 9.99),
+      expressShippingFee: Number(rawPolicies.expressShippingFee ?? 19.99),
       shippingPolicy: rawPolicies.shippingPolicy || 'Standard shipping delivers within 3-5 business days.',
       returnPolicy: rawPolicies.returnPolicy || 'Returns accepted within 30 days of receipt in original condition.',
       warrantyPolicy: rawPolicies.warrantyPolicy || 'Standard 1-year manufacturer warranty applies to all electronics.',
       deliveryPromise: rawPolicies.deliveryPromise || 'Orders placed before 2 PM dispatch same-day.',
-      pickupEnabled: rawPolicies.pickupEnabled !== false,
+      pickupEnabled: Boolean(rawPolicies.pickupEnabled ?? true),
       pickupInstructions: rawPolicies.pickupInstructions || 'Ready for pickup within 2 hours at your selected branch.',
     },
     catalogPolicy: {
-      allowBackorders: Boolean(rawCatalogPolicy.allowBackorders),
-      showInventoryCount: rawCatalogPolicy.showInventoryCount !== false,
-      lowStockThreshold: typeof rawCatalogPolicy.lowStockThreshold === 'number' ? rawCatalogPolicy.lowStockThreshold : 5,
+      allowBackorders: Boolean(rawCatalogPolicy.allowBackorders ?? false),
+      showInventoryCount: Boolean(rawCatalogPolicy.showInventoryCount ?? true),
+      lowStockThreshold: Number(rawCatalogPolicy.lowStockThreshold ?? 5),
       defaultSort: rawCatalogPolicy.defaultSort || 'featured',
     },
     featureFlags: {
-      reviewsEnabled: rawFeatureFlags.reviewsEnabled !== false,
-      wishlistEnabled: rawFeatureFlags.wishlistEnabled !== false,
-      couponsEnabled: rawFeatureFlags.couponsEnabled !== false,
-      pickupEnabled: rawFeatureFlags.pickupEnabled !== false,
-      guestCheckoutEnabled: rawFeatureFlags.guestCheckoutEnabled !== false,
-      orderTrackingEnabled: rawFeatureFlags.orderTrackingEnabled !== false,
+      reviewsEnabled: Boolean(rawFeatureFlags.reviewsEnabled ?? true),
+      wishlistEnabled: Boolean(rawFeatureFlags.wishlistEnabled ?? true),
+      couponsEnabled: Boolean(rawFeatureFlags.couponsEnabled ?? true),
+      pickupEnabled: Boolean(rawFeatureFlags.pickupEnabled ?? true),
+      guestCheckoutEnabled: Boolean(rawFeatureFlags.guestCheckoutEnabled ?? true),
+      orderTrackingEnabled: Boolean(rawFeatureFlags.orderTrackingEnabled ?? true),
     },
-    pickupLocations: locRes.rows.map((row: any) => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      type: row.type,
-      address: row.address,
-      phone: row.phone,
-      is_pos_enabled: row.is_pos_enabled,
-      is_active: row.is_active,
+    pickupLocations: locRes.rows.map((r: any) => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      type: r.type,
+      address: r.address,
+      phone: r.phone,
+      isPosEnabled: Boolean(r.is_pos_enabled),
     })),
   };
 }

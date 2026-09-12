@@ -2,8 +2,8 @@
 -- Migration 011: Storefront Multi-Tenant Configuration & Domain Binding
 
 ALTER TABLE organizations
-  ADD COLUMN IF NOT EXISTS slug VARCHAR(64) UNIQUE,
-  ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255) UNIQUE,
+  ADD COLUMN IF NOT EXISTS slug VARCHAR(64),
+  ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255),
   ADD COLUMN IF NOT EXISTS currency_code VARCHAR(16) NOT NULL DEFAULT 'USD',
   ADD COLUMN IF NOT EXISTS currency_symbol VARCHAR(8) NOT NULL DEFAULT '$',
   ADD COLUMN IF NOT EXISTS locale VARCHAR(16) NOT NULL DEFAULT 'en-US',
@@ -48,7 +48,32 @@ ALTER TABLE organizations
     "orderTrackingEnabled": true
   }'::jsonb;
 
--- Ensure canonical default organization has valid slug
+-- 1. Ensure canonical default organization has valid slug 'default'
 UPDATE organizations 
 SET slug = 'default' 
 WHERE id = 'org_default' AND (slug IS NULL OR slug = '');
+
+-- 2. Deterministically backfill existing organizations with a slug derived from their unique code
+UPDATE organizations 
+SET slug = LOWER(REGEXP_REPLACE(code, '[^a-zA-Z0-9]+', '-', 'g'))
+WHERE (slug IS NULL OR slug = '') AND code IS NOT NULL AND code != '';
+
+-- 3. Fallback: derive slug from id if code was empty or not populated
+UPDATE organizations 
+SET slug = LOWER(REGEXP_REPLACE(id, '[^a-zA-Z0-9]+', '-', 'g'))
+WHERE slug IS NULL OR slug = '';
+
+-- 4. In the rare event of slug collision among pre-existing rows, append deterministic suffix
+UPDATE organizations o
+SET slug = o.slug || '-' || SUBSTRING(MD5(o.id) FROM 1 FOR 6)
+WHERE o.id IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY slug ORDER BY created_at ASC, id ASC) as rn
+    FROM organizations
+  ) duplicates
+  WHERE rn > 1
+);
+
+-- 5. Enforce uniqueness on slug and custom_domain
+CREATE UNIQUE INDEX IF NOT EXISTS uq_organizations_slug ON organizations (slug);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_organizations_custom_domain ON organizations (custom_domain) WHERE custom_domain IS NOT NULL;
