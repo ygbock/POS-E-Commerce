@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order } from '../../types';
+import { useStorefrontContext } from '../../context/StorefrontContext';
+import { storefrontApi } from '../../services/storefrontApi';
 
 interface StoreCheckoutModalProps {
   isOpen: boolean;
@@ -153,6 +155,35 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
   const currentBrand = getCardBrand(cardNumber);
 
+  const { tenant } = useStorefrontContext();
+
+  const validateServerCart = async () => {
+    if (!tenant?.slug) {
+      throw new Error('Storefront tenant context is unavailable. Please refresh and try again.');
+    }
+
+    const validation = await storefrontApi.validateCart(
+      tenant.slug,
+      storeCart.map((item) => ({
+        variantId: item.variantId,
+        quantity: item.quantity,
+      })),
+    );
+
+    const unavailable = validation.items.filter((item) => !item.isAvailable);
+    if (unavailable.length > 0) {
+      const first = unavailable[0];
+      throw new Error(
+        first
+          ? `${first.name} has only ${first.availableStock} available. Please update your cart.`
+          : 'One or more cart items are no longer available.'
+      );
+    }
+
+    return validation;
+  };
+
+
   // Calculate totals
   let subtotal = 0;
   let tax = 0;
@@ -193,6 +224,8 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     setIsSubmitting(true);
     setErrorMsg('');
     try {
+      await validateServerCart();
+
       const order = await placeEcommerceOrder({
         customer: {
           name: customerName,
@@ -233,6 +266,8 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     setErrorMsg('');
 
     try {
+      await validateServerCart();
+
       const selectedPayment: 'Credit Card' | 'Mobile Money' | 'Fintech Wallet' =
         paymentMethod === 'Store Credit' || paymentMethod === 'BNPL' ? 'Fintech Wallet' : paymentMethod;
 
