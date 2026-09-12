@@ -81,26 +81,31 @@ export interface StorefrontProductList {
 }
 
 export interface StorefrontCartValidation {
-  valid: boolean;
-  items: Array<StorefrontCartItem & {
-    name?: string;
-    variantName?: string;
-    unitPrice: number;
-    availableStock: number;
-    acceptedQuantity: number;
-    lineTotal: number;
-    changed?: boolean;
-    error?: string;
+  items: Array<{
+    variantId: string;
+    productId: string;
+    name: string;
+    sku: string;
+    unitPrice: string;
+    quantity: string;
+    lineSubtotal: string;
+    taxRate: string;
+    lineTax: string;
+    lineTotal: string;
+    availableStock: string;
+    isAvailable: boolean;
   }>;
-  subtotal: number;
-  shipping: number;
-  total: number;
-  currency: { code: string; symbol: string };
-  freeShippingThreshold?: number;
-  fulfillmentLocationId?: string | null;
-  errors?: string[];
+  subtotal: string;
+  tax: string;
+  shippingFee: string;
+  total: string;
+  currency: string;
+  currencySymbol: string;
+  freeShippingThreshold: string;
+  amountToFreeShipping: string;
+  fulfillmentLocationId: string | null;
+  stockSnapshotAt: string;
 }
-
 export class StorefrontApiError extends Error {
   readonly code: string;
   readonly status: number;
@@ -194,7 +199,10 @@ export const storefrontApi = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items,
+          items: items.map((item) => ({
+            variantId: item.variantId,
+            quantity: String(item.quantity),
+          })),
           ...(fulfillmentLocationId ? { fulfillmentLocationId } : {}),
         }),
       },
