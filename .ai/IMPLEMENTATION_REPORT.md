@@ -1927,3 +1927,76 @@ Implemented the first frontend architecture increment without changing the exist
 **Safety boundary:** No changes were made to `main`, production deployment, or the existing storefront visual implementation. Product/catalog page decomposition remains a subsequent Phase 4 activity.
 
 **Verification note:** GitHub write access is confirmed at ADMIN level. The repository currently reports no workflow runs for the latest frontend-architecture commit, so CI execution evidence is not yet available through the connected GitHub Actions interface. Local test execution should be performed from the checked-out branch before marking this phase verified.
+
+
+---
+
+## UX-001A Phase 3 — Modular Storefront Decomposition (Initial Increment)
+
+**Status:** IMPLEMENTED — PENDING LOCAL LINT/TEST VERIFICATION  
+**Date:** 2026-09-12  
+**Working Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+
+### Implementation Scope
+
+The storefront modernization has moved from architecture-only work into incremental component decomposition while preserving the existing customer-facing visual behavior.
+
+1. **Dedicated Storefront Footer**
+   - Added `src/components/storefront/StorefrontFooter.tsx`.
+   - Removed the footer markup from the monolithic `Storefront.tsx`.
+   - Footer interactions are now expressed through explicit callback props rather than reaching into parent state.
+   - Staff/Admin and POS entry points remain optional and are preserved.
+
+2. **Extracted Catalog Domain Logic**
+   - Added `src/components/storefront/storefrontCatalog.ts`.
+   - Extracted product filtering and sorting from the presentation component.
+   - Filtering remains responsible for active status, category, brand, search, price range, stock, sale status, and minimum rating.
+   - Sorting remains responsible for featured, price ascending/descending, rating, best sellers, and newest ordering.
+   - Sorting returns a new array, preserving caller-owned product collections.
+
+3. **Regression Contract**
+   - Added `tests/storefront_catalog.test.ts`.
+   - Covers search matching, category/brand filtering, price boundaries, stock filtering, sale filtering, rating filtering, sorting order, and non-mutating behavior.
+   - Added `npm run test:storefront-catalog`.
+   - Registered the catalog contract test in the full `npm test` chain.
+
+### GitHub Write/Implementation Capability Verification
+
+The connected GitHub repository `ygbock/POS-E-Commerce` reports authenticated repository permissions of:
+
+- **admin:** true
+- **maintain:** true
+- **push:** true
+- **pull:** true
+
+The implementation was therefore not merely simulated: files were created/updated and commits were written to the authorized work branch.
+
+### Current Verification Boundary
+
+The GitHub connector does not expose a general arbitrary shell runner for the repository. Therefore, the following must still be executed from the checked-out branch/workstation or a CI runner before these Phase 3 changes are marked fully verified:
+
+- `npm run lint`
+- `npm run test:storefront-catalog`
+- `npm run test:storefront-router`
+- `npm run test:storefront-api`
+- `npm run test:storefront`
+- `npm test`
+- `npm run build`
+
+No production deployment or merge to `main` was performed.
+
+### Relevant Commits
+
+- `5575a838` — extracted Storefront footer
+- `3d365365` — removed footer from monolithic Storefront
+- `dc0d56b` — corrected extracted footer parent-state dependencies
+- `50f76a2` — extracted catalog filtering/sorting logic
+- `b4a0bd9` — added storefront catalog contract tests
+- `b672924` — corrected catalog test fixture syntax
+- `4418d97` — registered catalog test in package scripts/full regression chain
+
+### Architectural Position
+
+This is intentionally an **incremental decomposition**, not a big-bang rewrite. Existing Storefront modals, checkout, POS/Admin handoffs, tenant routing, and server-authoritative APIs remain intact while presentation and domain responsibilities are progressively separated.
+
+**Next implementation increment:** extract the storefront modal/drawer orchestration from `Storefront.tsx` into a dedicated orchestration component, then proceed to route-specific Home/Catalog/Product views.
