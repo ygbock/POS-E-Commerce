@@ -410,7 +410,7 @@ export class OrderService {
           order_id: orderId,
           payment_method,
           amount: this.localFormatCentsToMoneyString(finalTotalCents),
-          currency: 'SLE',
+          currency: String(orgPolicyRes.rows[0].currency_code || 'SLE'),
           status: 'Pending', // Honest Pending status
           reference: orderNumber,
           provider: 'Storefront',
