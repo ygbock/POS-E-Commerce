@@ -1384,7 +1384,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
   app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
   app.use('/api/pos', createPosRouter(db, posService));
-  app.use('/api/storefront', createStorefrontRouter(db));
+  app.use('/api/storefront', createStorefrontRouter(db, orderService));
   if (process.env.NODE_ENV !== 'test') {
     app.locals.reservationExpiryWorker = startReservationExpiryWorker({ db });
   }
