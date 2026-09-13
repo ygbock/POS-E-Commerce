@@ -244,45 +244,52 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
     });
   }, [locations, products, orders]);
 
-  // Dynamic Multi-period revenue trend chart data
+  // Revenue trend must be derived from real orders. Never render fabricated/demo business data.
   const revenueTrendData = useMemo(() => {
-    if (timeframe === 'today') {
-      return [
-        { period: '08:00', pos: 320, online: 180, total: 500, volume: 4 },
-        { period: '10:00', pos: 640, online: 420, total: 1060, volume: 8 },
-        { period: '12:00', pos: 1100, online: 890, total: 1990, volume: 15 },
-        { period: '14:00', pos: 1450, online: 1120, total: 2570, volume: 21 },
-        { period: '16:00', pos: 1820, online: 1480, total: 3300, volume: 28 },
-        { period: '18:00', pos: posRevenue || 2200, online: ecomRevenue || 1750, total: (posRevenue + ecomRevenue) || 3950, volume: 34 },
-      ];
-    } else if (timeframe === '30days') {
-      return [
-        { period: 'Week 1', pos: 8400, online: 6200, total: 14600, volume: 110 },
-        { period: 'Week 2', pos: 9800, online: 7500, total: 17300, volume: 135 },
-        { period: 'Week 3', pos: 11200, online: 8900, total: 20100, volume: 160 },
-        { period: 'Week 4', pos: posRevenue || 12800, online: ecomRevenue || 9400, total: (posRevenue + ecomRevenue) || 22200, volume: 185 },
-      ];
-    } else if (timeframe === 'ytd') {
-      return [
-        { period: 'Q1', pos: 34000, online: 28000, total: 62000, volume: 480 },
-        { period: 'Q2', pos: 41000, online: 34000, total: 75000, volume: 590 },
-        { period: 'Q3', pos: 48000, online: 39000, total: 87000, volume: 680 },
-        { period: 'Q4 (Est)', pos: posRevenue || 52000, online: ecomRevenue || 43000, total: (posRevenue + ecomRevenue) || 95000, volume: 740 },
-      ];
-    }
-    // Default 7 days
-    return [
-      { period: 'Mon', pos: 1240, online: 850, total: 2090, volume: 14 },
-      { period: 'Tue', pos: 1580, online: 1100, total: 2680, volume: 19 },
-      { period: 'Wed', pos: 1420, online: 950, total: 2370, volume: 17 },
-      { period: 'Thu', pos: 1890, online: 1400, total: 3290, volume: 24 },
-      { period: 'Fri', pos: 2450, online: 1980, total: 4430, volume: 31 },
-      { period: 'Sat', pos: 3100, online: 2400, total: 5500, volume: 42 },
-      { period: 'Sun', pos: posRevenue || 1850, online: ecomRevenue || 1420, total: (posRevenue + ecomRevenue) || 3270, volume: 26 },
-    ];
-  }, [timeframe, posRevenue, ecomRevenue]);
+    const now = new Date();
+    const paidOrders = orders.filter((o) => o.paymentStatus === 'Paid' && o.createdAt);
+    const buckets = timeframe === 'today' ? 6 : timeframe === '30days' ? 4 : timeframe === 'ytd' ? 4 : 7;
+    const labels = timeframe === 'today'
+      ? Array.from({ length: 6 }, (_, i) => String(8 + i * 2).padStart(2, '0') + ':00')
+      : timeframe === '30days'
+      ? ['Week 1', 'Week 2', 'Week 3', 'Week 4']
+      : timeframe === 'ytd'
+      ? ['Q1', 'Q2', 'Q3', 'Q4']
+      : Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(now);
+          d.setDate(now.getDate() - (6 - i));
+          return d.toLocaleDateString(undefined, { weekday: 'short' });
+        });
 
-  const channelSplitData = [
+    const result = labels.map((period) => ({ period, pos: 0, online: 0, total: 0, volume: 0 }));
+    paidOrders.forEach((order) => {
+      const date = new Date(order.createdAt!);
+      let index = 0;
+      if (timeframe === 'today') {
+        if (date.toDateString() !== now.toDateString()) return;
+        index = Math.max(0, Math.min(buckets - 1, Math.floor((date.getHours() - 8) / 2)));
+      } else if (timeframe === '30days') {
+        const daysAgo = Math.floor((now.getTime() - date.getTime()) / 86400000);
+        if (daysAgo < 0 || daysAgo >= 30) return;
+        index = Math.min(3, Math.floor((29 - daysAgo) / 7));
+      } else if (timeframe === 'ytd') {
+        if (date.getFullYear() !== now.getFullYear()) return;
+        index = Math.min(3, Math.floor(date.getMonth() / 3));
+      } else {
+        const daysAgo = Math.floor((now.getTime() - date.getTime()) / 86400000);
+        if (daysAgo < 0 || daysAgo >= 7) return;
+        index = 6 - daysAgo;
+      }
+      const amount = Number(order.totalAmount) || 0;
+      result[index].total += amount;
+      result[index].volume += 1;
+      if (order.source === 'POS') result[index].pos += amount;
+      else if (order.source === 'ECOMMERCE') result[index].online += amount;
+    });
+    return result;
+  }, [orders, timeframe]);
+
+    const channelSplitData = [
     { name: 'POS Retail In-Store', value: posRevenue > 0 ? posRevenue : 58, color: '#0284c7' },
     { name: 'Online Storefront', value: ecomRevenue > 0 ? ecomRevenue : 42, color: '#6366f1' },
   ];
