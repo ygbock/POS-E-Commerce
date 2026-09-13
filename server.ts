@@ -327,7 +327,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Central Cryptographic Authentication Extraction (SEC-001)
   app.use('/api', createAuthenticateMiddleware(authService));
 
-  // SaaS control-plane routes. Authorization is enforced inside the router.\n  app.use('/api/platform', createPlatformRouter(db));\n\n  // Request Header Metadata
+  // SaaS control-plane routes. Authorization is enforced inside the router.
+  app.use('/api/platform', createPlatformRouter(db));
+
+  // Request Header Metadata
   app.use('/api', (req, res, next) => {
     res.setHeader('X-Product-Service-Version', 'v2.4-Enterprise');
     res.setHeader('X-Catalog-Source-Of-Truth', 'Active');

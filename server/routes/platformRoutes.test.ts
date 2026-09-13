@@ -1,23 +1,27 @@
-import { describe, expect, it } from 'vitest';
-import { canAccessPlatform, getPermissionsForRole } from '../auth/roles.ts';
+import assert from 'node:assert/strict';
+import { canAccessPlatform, getPermissionsForRole, isPlatformRole } from '../auth/roles.ts';
 
-describe('platform authorization boundary', () => {
-  it('grants the system owner all platform permissions', () => {
-    const permissions = getPermissionsForRole('system_owner');
-    expect(canAccessPlatform('system_owner', 'platform.view')).toBe(true);
-    expect(permissions).toContain('platform.tenants');
-    expect(permissions).toContain('platform.billing');
-  });
+console.log('Platform route authorization boundary tests');
 
-  it('keeps tenant admin outside the platform control plane', () => {
-    expect(canAccessPlatform('admin', 'platform.view')).toBe(false);
-    expect(canAccessPlatform('manager', 'platform.tenants')).toBe(false);
-  });
+// System Owner
+const permissions = getPermissionsForRole('system_owner');
+assert.equal(canAccessPlatform('system_owner', 'platform.view'), true);
+assert.ok(permissions.includes('platform.tenants'));
+assert.ok(permissions.includes('platform.billing'));
+assert.ok(permissions.includes('platform.support'));
 
-  it('separates support and billing responsibilities', () => {
-    expect(canAccessPlatform('platform_support', 'platform.support')).toBe(true);
-    expect(canAccessPlatform('platform_support', 'platform.billing')).toBe(false);
-    expect(canAccessPlatform('platform_finance', 'platform.billing')).toBe(true);
-    expect(canAccessPlatform('platform_finance', 'platform.support')).toBe(false);
-  });
-});
+// Tenant admin and manager cannot access platform
+assert.equal(canAccessPlatform('admin', 'platform.view'), false);
+assert.equal(canAccessPlatform('manager', 'platform.tenants'), false);
+assert.equal(canAccessPlatform('super_admin', 'platform.view'), false);
+assert.equal(canAccessPlatform('cashier', 'platform.view'), false);
+
+// Role separation
+assert.equal(canAccessPlatform('platform_support', 'platform.support'), true);
+assert.equal(canAccessPlatform('platform_support', 'platform.billing'), false);
+assert.equal(canAccessPlatform('platform_finance', 'platform.billing'), true);
+assert.equal(canAccessPlatform('platform_finance', 'platform.support'), false);
+assert.equal(canAccessPlatform('platform_admin', 'platform.tenants'), true);
+assert.equal(canAccessPlatform('platform_admin', 'platform.billing'), false);
+
+console.log('PASS: platform route authorization boundary tests passed.');

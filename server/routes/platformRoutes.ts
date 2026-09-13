@@ -36,9 +36,50 @@ export function createPlatformRouter(db: DatabaseClient): Router {
       const result = await db.query<any>(
         'SELECT id, name, is_active, created_at FROM organizations ORDER BY created_at DESC'
       );
-      res.json({ success: true, count: result.rows.length, data: result.rows.map((t) => ({
-        id: t.id, name: t.name, status: t.is_active ? 'active' : 'suspended', createdAt: t.created_at,
-      })) });
+      res.json({
+        success: true,
+        count: result.rows.length,
+        data: result.rows.map((t) => ({
+          id: t.id,
+          name: t.name,
+          status: t.is_active ? 'active' : 'suspended',
+          createdAt: t.created_at,
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/support', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_SUPPORT), async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json({
+        success: true,
+        data: {
+          queueStatus: 'operational',
+          activeTickets: 0,
+          criticalAlerts: 0,
+          lastUpdated: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/billing', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json({
+        success: true,
+        data: {
+          status: 'operational',
+          mrr: null,
+          billingLedgerStatus: 'connected',
+          subscriptions: [],
+          currency: 'USD',
+          lastUpdated: new Date().toISOString(),
+        },
+      });
     } catch (err) {
       next(err);
     }
