@@ -1,4 +1,9 @@
-import type { StorefrontTenantConfig, StorefrontCartItem } from '../context/StorefrontContext';
+import type { StorefrontTenantConfig } from '../context/StorefrontContext';
+
+export interface StorefrontCartItem {
+  variantId: string;
+  quantity: number | string;
+}
 
 export interface StorefrontPagination {
   page: number;
@@ -59,7 +64,7 @@ export interface StorefrontContextResponse {
   policies: StorefrontTenantConfig['policies'];
   catalogPolicy: Record<string, unknown>;
   featureFlags: Record<string, boolean>;
-  pickupLocations: StorefrontTenantConfig['locations'];
+  pickupLocations: StorefrontTenantConfig['pickupLocations'];
 }
 
 export interface StorefrontProductQuery {
@@ -160,7 +165,7 @@ export const storefrontApi = {
   },
 
   getLocations(tenantSlug: string) {
-    return request<StorefrontTenantConfig['locations']>(`${tenantBase(tenantSlug)}/locations`);
+    return request<StorefrontTenantConfig['pickupLocations']>(`${tenantBase(tenantSlug)}/locations`);
   },
 
   getProducts(tenantSlug: string, query: StorefrontProductQuery = {}) {

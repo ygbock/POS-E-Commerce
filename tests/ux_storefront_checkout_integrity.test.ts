@@ -37,9 +37,9 @@ async function runStorefrontCheckoutIntegrityTests() {
 
   // Seed organizations, locations, customers, categories, products, variants, stock balances
   await db.exec(`
-    INSERT INTO organizations (id, name, code, is_active) VALUES
-      ('org_store_alpha', 'Store Org Alpha', 'STORE_ALPHA', TRUE),
-      ('org_store_beta', 'Store Org Beta', 'STORE_BETA', TRUE)
+    INSERT INTO organizations (id, name, code, slug, is_active, policies) VALUES
+      ('org_store_alpha', 'Store Org Alpha', 'STORE_ALPHA', 'store-alpha', TRUE, '{"standardShippingFee": 5.00, "freeShippingThreshold": 75.00, "expressShippingFee": 15.00}'),
+      ('org_store_beta', 'Store Org Beta', 'STORE_BETA', 'store-beta', TRUE, '{"standardShippingFee": 5.00, "freeShippingThreshold": 75.00, "expressShippingFee": 15.00}')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO locations (id, organization_id, code, name, type, is_pos_enabled, is_active) VALUES
@@ -275,7 +275,7 @@ async function runStorefrontCheckoutIntegrityTests() {
 
       // Query initial stock balance before concurrent requests
       const preReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const preOnHand = parseFloat(preReservations.rows[0].on_hand);
       const preReserved = parseFloat(preReservations.rows[0].reserved || '0');
@@ -374,9 +374,10 @@ async function runStorefrontCheckoutIntegrityTests() {
       };
 
       const pgPreReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const pgPreOnHand = parseFloat(pgPreReservations.rows[0].on_hand);
+      const pgPreReserved = parseFloat(pgPreReservations.rows[0].reserved || '0');
 
       // Execute simultaneously to trigger a real race/unique constraint condition
       const pgReqPromises = Array.from({ length: 4 }).map(() =>
@@ -408,12 +409,14 @@ async function runStorefrontCheckoutIntegrityTests() {
       );
       assert.strictEqual(pgDbPayments.rows.length, 1, 'Exactly one payment record must exist.');
 
-      // Prove exactly one inventory reservation/decrement occurs (on_hand balance goes down by exactly 1.0000)
+      // Prove exactly one inventory reservation occurs (on_hand unchanged, reserved increases by 1.0000)
       const pgPostReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const pgPostOnHand = parseFloat(pgPostReservations.rows[0].on_hand);
-      assert.strictEqual(pgPreOnHand - pgPostOnHand, 1.0000, 'Exactly one stock decrement of 1.0000 must occur.');
+      const pgPostReserved = parseFloat(pgPostReservations.rows[0].reserved || '0');
+      assert.strictEqual(pgPostOnHand, pgPreOnHand, 'Checkout reservation must not decrement on_hand.');
+      assert.strictEqual(pgPostReserved - pgPreReserved, 1.0000, 'Exactly one stock reservation of 1.0000 must occur.');
 
       // Prove identical replay returns the original order (201 status and identical order ID)
       const pgReplayRes = await fetch(`${baseUrl}/api/orders`, {

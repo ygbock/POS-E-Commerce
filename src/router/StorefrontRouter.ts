@@ -37,23 +37,27 @@ export function parseStorefrontRoute(pathname = window.location.pathname, search
 
   const [first, second] = segments;
   const params = new URLSearchParams(search);
+  const base = tenantSlug ? { tenantSlug } : {};
 
-  if (!first) return { name: 'home', tenantSlug };
-  if (first === 'shop' && !second) return { name: 'shop', tenantSlug };
+  if (!first) return { name: 'home', ...base };
+  if (first === 'shop' && !second) return { name: 'shop', ...base };
   if (first === 'shop' && second === 'category' && segments[2]) {
-    return { name: 'category', tenantSlug, slug: segments[2] };
+    return { name: 'category', ...base, slug: segments[2] };
   }
   if (first === 'shop' && second === 'brand' && segments[2]) {
-    return { name: 'brand', tenantSlug, slug: segments[2] };
+    return { name: 'brand', ...base, slug: segments[2] };
   }
-  if (first === 'search') return { name: 'search', tenantSlug, query: params.get('q') || undefined };
-  if (first === 'product' && second) return { name: 'product', tenantSlug, slug: second };
-  if (first === 'cart') return { name: 'cart', tenantSlug };
-  if (first === 'checkout') return { name: 'checkout', tenantSlug };
-  if (first === 'account') return { name: 'account', tenantSlug };
-  if (first === 'order' && second) return { name: 'order', tenantSlug, orderNumber: second };
+  if (first === 'search') {
+    const query = params.get('q');
+    return { name: 'search', ...base, ...(query ? { query } : {}) };
+  }
+  if (first === 'product' && second) return { name: 'product', ...base, slug: second };
+  if (first === 'cart') return { name: 'cart', ...base };
+  if (first === 'checkout') return { name: 'checkout', ...base };
+  if (first === 'account') return { name: 'account', ...base };
+  if (first === 'order' && second) return { name: 'order', ...base, orderNumber: second };
 
-  return { name: 'not-found', tenantSlug };
+  return { name: 'not-found', ...base };
 }
 
 export function buildStorefrontPath(route: StorefrontRoute): string {

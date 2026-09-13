@@ -36,11 +36,13 @@ export interface StorefrontOverlaysProps {
   isAccountModalOpen: boolean;
   setIsAccountModalOpen: (open: boolean) => void;
   accountPortalTab: AccountPortalTab;
+  setAccountPortalTab: (tab: AccountPortalTab) => void;
   isCheckoutOpen: boolean;
   setIsCheckoutOpen: (open: boolean) => void;
   isSuccessModalOpen: boolean;
   setIsSuccessModalOpen: (open: boolean) => void;
   successOrder: Order | null;
+  setSuccessOrder: (order: Order | null) => void;
   setInitialTrackingNumber: (value: string) => void;
   setInitialTrackingEmail: (value: string) => void;
   setClaimModalEmail: (value: string) => void;
@@ -53,8 +55,8 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
   isClaimModalOpen, setIsClaimModalOpen, claimModalEmail,
   isCartDrawerOpen, setIsCartDrawerOpen, goCart, goCheckout,
   isWishlistDrawerOpen, setIsWishlistDrawerOpen,
-  isAccountModalOpen, setIsAccountModalOpen, accountPortalTab,
-  isCheckoutOpen, setIsCheckoutOpen, isSuccessModalOpen, setIsSuccessModalOpen, successOrder,
+  isAccountModalOpen, setIsAccountModalOpen, accountPortalTab, setAccountPortalTab,
+  isCheckoutOpen, setIsCheckoutOpen, isSuccessModalOpen, setIsSuccessModalOpen, successOrder, setSuccessOrder,
   setInitialTrackingNumber, setInitialTrackingEmail, setClaimModalEmail,
 }) => (
   <>

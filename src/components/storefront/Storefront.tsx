@@ -40,7 +40,7 @@ import { CustomerAccountModal, AccountPortalTab } from './CustomerAccountModal';
 import { StoreCheckoutModal } from './StoreCheckoutModal';
 import { StorefrontOverlays } from './StorefrontOverlays';
 import { StorefrontHome } from './StorefrontHome';
-import { StorefrontCatalog } from './StorefrontCatalog';
+import { StorefrontCatalog } from './StorefrontCatalog.tsx';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileFilterDrawer } from './MobileFilterDrawer';
 
@@ -195,11 +195,13 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
           isAccountModalOpen={isAccountModalOpen}
           setIsAccountModalOpen={setIsAccountModalOpen}
           accountPortalTab={accountPortalTab}
+          setAccountPortalTab={setAccountPortalTab}
           isCheckoutOpen={isCheckoutOpen}
           setIsCheckoutOpen={setIsCheckoutOpen}
           isSuccessModalOpen={isSuccessModalOpen}
           setIsSuccessModalOpen={setIsSuccessModalOpen}
           successOrder={successOrder}
+          setSuccessOrder={setSuccessOrder}
           setInitialTrackingNumber={setInitialTrackingNumber}
           setInitialTrackingEmail={setInitialTrackingEmail}
           setClaimModalEmail={setClaimModalEmail}

@@ -166,7 +166,6 @@ export class ReservationService {
 
     // Compose into an existing checkout transaction when supplied.
     return client ? execute(client) : this.db.withTransaction(execute);
-;
   }
 
   async releaseReservation(
@@ -219,7 +218,7 @@ export class ReservationService {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
       throw new Error('TENANT_REQUIRED: Organization context is required for fulfillReservation.');
     }
-    return this.db.withTransaction(async (tx) => {
+    const execute = async (tx: DatabaseClient) => {
       const reservation = await this.reservationRepo.findById(organizationId, reservationId, tx);
       if (!reservation) {
         throw new Error(`RESERVATION_NOT_FOUND: Reservation '${reservationId}' not found.`);
@@ -271,7 +270,8 @@ export class ReservationService {
   async cancelReservation(
     organizationId: string,
     reservationId: string,
-    performed_by: string
+    performed_by: string,
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
       throw new Error('TENANT_REQUIRED: Organization context is required for cancelReservation.');

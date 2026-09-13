@@ -31,7 +31,7 @@ try {
     return new Response(JSON.stringify({ data: [{ id: 'cat-1', name: 'Power Tools', slug: 'power-tools' }] }), { status: 200 });
   }) as typeof fetch;
   const categories = await storefrontApi.getCategories('alpha');
-  assert.equal(categories[0]?.name, 'Power Tools');
+  assert.equal((categories[0] as any)?.name, 'Power Tools');
   assert.equal(calls[0].url, '/api/storefront/alpha/categories');
 
   calls.length = 0;
@@ -40,7 +40,7 @@ try {
     return new Response(JSON.stringify({ data: [{ id: 'brand-1', name: 'Acme', slug: 'acme' }] }), { status: 200 });
   }) as typeof fetch;
   const brands = await storefrontApi.getBrands('alpha');
-  assert.equal(brands[0]?.name, 'Acme');
+  assert.equal((brands[0] as any)?.name, 'Acme');
   assert.equal(calls[0].url, '/api/storefront/alpha/brands');
 
   calls.length = 0;

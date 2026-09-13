@@ -290,19 +290,6 @@ export class OrderService {
             throw new DomainError('INSUFFICIENT_STOCK', `Insufficient stock for variant '${variant.sku}'. Requested: ${item.quantity}, Available: ${formatScaledToQtyString(availableQty)}.`);
           }
 
-          // Reserve the exact quantity under the same row lock used for the
-          // availability check. This is the concurrency boundary: a second
-          // checkout cannot observe the quantity as available after this point.
-          await tx.query(
-            `UPDATE inventory_balances
-             SET reserved = reserved + $1,
-                 updated_at = NOW()
-             WHERE location_id = $2
-               AND variant_id = $3
-               AND organization_id = $4`,
-            [item.quantity, fulfillmentLocId, item.variant_id, organization_id]
-          );
-
           const lineSubtotalScaled = retailPriceCents * qtyScaled;
           const lineSubtotalCents = this.localDivideRoundHalfUp(lineSubtotalScaled, 10000n);
 
@@ -558,7 +545,10 @@ export class OrderService {
         }
       }
       throw err;
-    }  /**
+    }
+  }
+
+  /**
    * Cancel a storefront order and atomically release all ACTIVE reservations.
    * Safe to retry: released/cancelled reservations are idempotent.
    */
@@ -656,7 +646,7 @@ export class OrderService {
         referenceType: 'orders',
         referenceId: orderId,
         status: 'ACTIVE',
-      });
+      }, tx);
 
       if (reservations.length === 0) {
         throw new DomainError('RESERVATION_NOT_FOUND', 'No active reservations remain for this order.');
@@ -673,7 +663,7 @@ export class OrderService {
 
       const updated = await tx.query<any>(
         `UPDATE orders
-         SET status = 'Fulfilled', updated_at = CURRENT_TIMESTAMP
+         SET status = 'Completed', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 AND organization_id = $2
          RETURNING *`,
         [orderId, organizationId]
@@ -692,8 +682,5 @@ export class OrderService {
 
       return updated.rows[0] as OrderRecord;
     });
-  }
-
-
   }
 }

@@ -5,6 +5,7 @@ import { Product, ProductVariant, Order } from '../../types';
 import { filterStorefrontProducts, sortStorefrontProducts } from './storefrontCatalog';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 import { storefrontApi, StorefrontProduct } from '../../services/storefrontApi';
+import { AccountPortalTab } from './CustomerAccountModal';
 
 export interface StorefrontStateProps { onOpenAdmin?: () => void; onOpenPos?: () => void; }
 export function useStorefrontState() {

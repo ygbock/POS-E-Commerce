@@ -443,7 +443,7 @@ async function runStorefrontMultiTenantTests() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: 1 }],
+          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: '1.0000' }],
         }),
       });
       assert.strictEqual(cartBelow.status, 200);
@@ -457,7 +457,7 @@ async function runStorefrontMultiTenantTests() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: 2 }],
+          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: '2.0000' }],
         }),
       });
       assert.strictEqual(cartAbove.status, 200);
@@ -500,7 +500,7 @@ async function runStorefrontMultiTenantTests() {
     try {
       // Client sends tampered price (e.g. $1.00 instead of $199.99)
       const tamperedPayload = {
-        items: [{ variantId: 'var_alpha_hp_black', quantity: 1, unitPrice: '1.00', lineTotal: '1.00' }],
+        items: [{ variantId: 'var_alpha_hp_black', quantity: '1.0000', unitPrice: '1.00', lineTotal: '1.00' }],
       };
       const res = await fetch(`${baseUrl}/api/storefront/alpha/cart/validate`, {
         method: 'POST',
@@ -765,28 +765,28 @@ async function runStorefrontMultiTenantTests() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: 5 }],
+          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: '5.0000' }],
           fulfillmentLocationId: retailStore.id,
         }),
       });
       assert.strictEqual(cartStore.status, 200);
       const jsonStore = await cartStore.json();
       assert.strictEqual(jsonStore.data.items[0].isAvailable, true);
-      assert.strictEqual(jsonStore.data.items[0].availableStock, 10);
+      assert.strictEqual(Number(jsonStore.data.items[0].availableStock), 10);
 
       // Validate cart specifying Warehouse -> unavailable (0 units)
       const cartWarehouse = await fetch(`${baseUrl}/api/storefront/alpha/cart/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: 5 }],
+          items: [{ variantId: 'var_alpha_multi_loc_1', quantity: '5.0000' }],
           fulfillmentLocationId: warehouse.id,
         }),
       });
       assert.strictEqual(cartWarehouse.status, 200);
       const jsonWarehouse = await cartWarehouse.json();
       assert.strictEqual(jsonWarehouse.data.items[0].isAvailable, false);
-      assert.strictEqual(jsonWarehouse.data.items[0].availableStock, 0);
+      assert.strictEqual(Number(jsonWarehouse.data.items[0].availableStock), 0);
 
       markPassed('Supervisor Test E: Tenant and location remain separate concepts (Location-aware availability)');
     } catch (err) {
