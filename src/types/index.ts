@@ -6,7 +6,11 @@ export type Role =
   | 'Cashier'
   | 'Store Manager'
   | 'Accountant'
-  | 'E-commerce Customer';
+  | 'E-commerce Customer'
+  | 'System Owner'
+  | 'Platform Admin'
+  | 'Platform Support'
+  | 'Platform Finance';
 
 export type BranchLocationId = 'loc-main-wh' | 'loc-store-downtown' | 'loc-branch-north' | 'loc-dist-center';
 
