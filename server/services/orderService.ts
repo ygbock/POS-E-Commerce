@@ -287,6 +287,19 @@ export class OrderService {
             throw new DomainError('INSUFFICIENT_STOCK', `Insufficient stock for variant '${variant.sku}'. Requested: ${item.quantity}, Available: ${formatScaledToQtyString(availableQty)}.`);
           }
 
+          // Reserve the exact quantity under the same row lock used for the
+          // availability check. This is the concurrency boundary: a second
+          // checkout cannot observe the quantity as available after this point.
+          await tx.query(
+            `UPDATE inventory_balances
+             SET reserved = reserved + $1,
+                 updated_at = NOW()
+             WHERE location_id = $2
+               AND variant_id = $3
+               AND organization_id = $4`,
+            [item.quantity, fulfillmentLocId, item.variant_id, organization_id]
+          );
+
           const lineSubtotalScaled = retailPriceCents * qtyScaled;
           const lineSubtotalCents = this.localDivideRoundHalfUp(lineSubtotalScaled, 10000n);
 
