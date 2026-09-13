@@ -11,6 +11,7 @@ import {
 } from '../inventory/inventoryPolicies.ts';
 import crypto from 'node:crypto';
 import { StorefrontCartService } from './storefrontCartService.ts';
+import { ReservationService } from '../inventory/reservationService.ts';
 
 export class DomainError extends Error {
   constructor(public code: string, message: string) {
@@ -69,6 +70,7 @@ export class OrderService {
   private invRepo: InventoryRepository;
   private auditRepo: AuditRepository;
   private storefrontCartService: StorefrontCartService;
+  private reservationService: ReservationService;
 
   constructor(
     orderRepo?: OrderRepository,
@@ -83,6 +85,7 @@ export class OrderService {
     this.invRepo = invRepo || new InventoryRepository(this.db);
     this.auditRepo = auditRepo || new AuditRepository(this.db);
     this.storefrontCartService = new StorefrontCartService(this.db);
+    this.reservationService = new ReservationService(undefined, undefined, this.db);
   }
 
   private localDivideRoundHalfUp(num: bigint, denom: bigint): bigint {
@@ -421,17 +424,23 @@ export class OrderService {
         try {
           const saved = await this.orderRepo.createOrderWithItems(orderRecord, orderItems, paymentRecord, tx);
 
-          // Reserve stock while the order is in "Stock Reserved" state.
-          // Do not decrement on_hand until fulfillment/dispatch is committed.
+          // Create first-class reservations while the order is in "Stock Reserved".
+          // Reservation records provide the lifecycle required for cancellation,
+          // expiry and fulfillment; their balance updates occur in this transaction.
           for (const item of orderItems) {
-            await this.invRepo.adjustReserved(
+            await this.reservationService.createReservation(
+              organization_id,
               {
-                organization_id,
                 location_id: fulfillmentLocId!,
                 variant_id: item.variant_id,
-                delta_reserved: item.quantity,
+                quantity: item.quantity,
+                reference_type: 'orders',
+                reference_id: orderId,
+                notes: `Storefront order ${orderNumber}`,
+                idempotency_key: `${orderId}:reservation:${item.variant_id}`,
               },
-              tx
+              'Online Storefront',
+              `${orderId}:reservation:${item.variant_id}`
             );
           }
 
