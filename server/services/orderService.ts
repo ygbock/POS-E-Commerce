@@ -558,6 +558,142 @@ export class OrderService {
         }
       }
       throw err;
-    }
+    }  /**
+   * Cancel a storefront order and atomically release all ACTIVE reservations.
+   * Safe to retry: released/cancelled reservations are idempotent.
+   */
+  async cancelStorefrontOrder(
+    organizationId: string,
+    orderId: string,
+    actor = 'System'
+  ): Promise<OrderRecord> {
+    return this.db.withTransaction(async (tx) => {
+      const orderRes = await tx.query<any>(
+        `SELECT * FROM orders
+         WHERE id = $1 AND organization_id = $2
+         FOR UPDATE`,
+        [orderId, organizationId]
+      );
+      if (orderRes.rows.length === 0) {
+        throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
+      }
+
+      const order = orderRes.rows[0];
+      if (order.status === 'Cancelled') {
+        return order as OrderRecord;
+      }
+      if (order.status === 'Fulfilled' || order.status === 'Completed') {
+        throw new DomainError('INVALID_ORDER_STATE', 'A fulfilled order cannot be cancelled through the reservation workflow.');
+      }
+
+      const reservations = await this.reservationService.listReservations(organizationId, {
+        referenceType: 'orders',
+        referenceId: orderId,
+        status: 'ACTIVE',
+      });
+
+      for (const reservation of reservations) {
+        await this.reservationService.releaseReservation(
+          organizationId,
+          reservation.id,
+          actor,
+          tx
+        );
+      }
+
+      const updated = await tx.query<any>(
+        `UPDATE orders
+         SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2
+         RETURNING *`,
+        [orderId, organizationId]
+      );
+
+      await this.auditRepo.recordEvent({
+        organization_id: organizationId,
+        actor_name: actor,
+        actor_role: 'System',
+        action: 'storefront.order_cancel',
+        entity_type: 'orders',
+        entity_id: orderId,
+        metadata: { released_reservation_count: reservations.length },
+        severity: 'Info',
+      }, tx);
+
+      return updated.rows[0] as OrderRecord;
+    });
+  }
+
+  /**
+   * Fulfill a storefront order atomically: every active reservation becomes
+   * fulfilled and on_hand is reduced exactly once.
+   */
+  async fulfillStorefrontOrder(
+    organizationId: string,
+    orderId: string,
+    actor = 'System'
+  ): Promise<OrderRecord> {
+    return this.db.withTransaction(async (tx) => {
+      const orderRes = await tx.query<any>(
+        `SELECT * FROM orders
+         WHERE id = $1 AND organization_id = $2
+         FOR UPDATE`,
+        [orderId, organizationId]
+      );
+      if (orderRes.rows.length === 0) {
+        throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
+      }
+
+      const order = orderRes.rows[0];
+      if (order.status === 'Fulfilled' || order.status === 'Completed') {
+        return order as OrderRecord;
+      }
+      if (order.status === 'Cancelled') {
+        throw new DomainError('INVALID_ORDER_STATE', 'A cancelled order cannot be fulfilled.');
+      }
+
+      const reservations = await this.reservationService.listReservations(organizationId, {
+        referenceType: 'orders',
+        referenceId: orderId,
+        status: 'ACTIVE',
+      });
+
+      if (reservations.length === 0) {
+        throw new DomainError('RESERVATION_NOT_FOUND', 'No active reservations remain for this order.');
+      }
+
+      for (const reservation of reservations) {
+        await this.reservationService.fulfillReservation(
+          organizationId,
+          reservation.id,
+          actor,
+          tx
+        );
+      }
+
+      const updated = await tx.query<any>(
+        `UPDATE orders
+         SET status = 'Fulfilled', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2
+         RETURNING *`,
+        [orderId, organizationId]
+      );
+
+      await this.auditRepo.recordEvent({
+        organization_id: organizationId,
+        actor_name: actor,
+        actor_role: 'System',
+        action: 'storefront.order_fulfill',
+        entity_type: 'orders',
+        entity_id: orderId,
+        metadata: { fulfilled_reservation_count: reservations.length },
+        severity: 'Info',
+      }, tx);
+
+      return updated.rows[0] as OrderRecord;
+    });
+  }
+
+
   }
 }
