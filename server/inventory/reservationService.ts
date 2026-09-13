@@ -47,7 +47,8 @@ export class ReservationService {
       idempotency_key?: string;
     },
     performed_by: string,
-    explicitIdempotencyKey?: string
+    explicitIdempotencyKey?: string,
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
       throw new Error('TENANT_REQUIRED: Organization context is required for createReservation.');
@@ -60,7 +61,7 @@ export class ReservationService {
       throw new Error('INVALID_QUANTITY: Reservation quantity must be greater than zero.');
     }
 
-    return this.db.withTransaction(async (tx) => {
+    const execute = async (tx: DatabaseClient) => {
       // 1. Check idempotency key if provided
       if (idempotencyKey) {
         const existing = await this.reservationRepo.findByIdempotencyKey(organizationId, idempotencyKey, tx);
@@ -161,7 +162,11 @@ export class ReservationService {
         }
         throw err;
       }
-    });
+    };
+
+    // Compose into an existing checkout transaction when supplied.
+    return client ? execute(client) : this.db.withTransaction(execute);
+;
   }
 
   async releaseReservation(
