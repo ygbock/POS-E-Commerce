@@ -164,7 +164,7 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
     orders.forEach((o) => {
       if (o.paymentStatus === 'Paid') {
         o.items.forEach((item) => {
-          cogs += (item.costPrice || item.price * 0.6) * item.quantity;
+          cogs += (item.costPrice ?? 0) * item.quantity;
         });
       }
     });
@@ -215,7 +215,8 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
   }, [orders]);
 
   const fulfillmentRate = orders.length > 0 ? Math.round((completedOrders.length / orders.length) * 100) : 100;
-  const averageOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
+  const paidOrderCount = orders.filter((o) => o.paymentStatus === 'Paid').length;
+  const averageOrderValue = paidOrderCount > 0 ? totalRevenue / paidOrderCount : 0;
 
   // Multi-location breakdown stats
   const locationStats = useMemo(() => {
@@ -290,17 +291,22 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
   }, [orders, timeframe]);
 
     const channelSplitData = [
-    { name: 'POS Retail In-Store', value: posRevenue > 0 ? posRevenue : 58, color: '#0284c7' },
-    { name: 'Online Storefront', value: ecomRevenue > 0 ? ecomRevenue : 42, color: '#6366f1' },
+    { name: 'POS Retail In-Store', value: posRevenue },
+    { name: 'Online Storefront', value: ecomRevenue },
   ];
 
-  // Payment Breakdown
-  const paymentMethodData = [
-    { name: 'Credit Card', value: 52, color: '#0ea5e9' },
-    { name: 'Apple / G-Pay', value: 26, color: '#10b981' },
-    { name: 'BNPL / Installments', value: 14, color: '#ec4899' },
-    { name: 'Store Credit / Cash', value: 8, color: '#f59e0b' },
-  ];
+  // Payment breakdown is derived from recorded payments on paid orders.
+  const paymentMethodData = useMemo(() => {
+    const totals = new Map<string, number>();
+    orders.filter((o) => o.paymentStatus === 'Paid').forEach((order) => {
+      order.payments.forEach((payment) => {
+        totals.set(payment.method, (totals.get(payment.method) || 0) + (Number(payment.amount) || 0));
+      });
+    });
+    return Array.from(totals.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [orders]);
 
   // Filtered orders for table display
   const filteredOrders = useMemo(() => {
@@ -396,7 +402,7 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
                 {formatCurrency(totalRevenue)}
               </span>
               <span className="text-[9px] sm:text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center">
-                <ArrowUpRight className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" /> +14%
+                <ArrowUpRight className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" /> Live
               </span>
             </div>
           </div>
