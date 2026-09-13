@@ -206,3 +206,15 @@ export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => stri
     next();
   };
 }
+
+/** Require a platform control-plane permission. Never infer platform access from client state. */
+export function requirePlatformPermission(...permissions: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.auth) return res.status(401).json({ success:false, error:{ code:'UNAUTHORIZED', message:'Authentication required.' } });
+    const platformRoles = ['system_owner','platform_admin','platform_support','platform_finance'];
+    if (!platformRoles.includes(req.auth.role)) return res.status(403).json({ success:false, error:{ code:'PLATFORM_ACCESS_DENIED', message:'Platform access required.' } });
+    const allowed = permissions.some(permission => hasPermission(req.auth!.permissions, permission));
+    if (!allowed) return res.status(403).json({ success:false, error:{ code:'PLATFORM_PERMISSION_DENIED', message:'Insufficient platform permission.' } });
+    next();
+  };
+}
