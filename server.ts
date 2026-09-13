@@ -15,6 +15,7 @@ import { AuditRepository } from './server/repositories/auditRepository.ts';
 import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
 import { createPosRouter } from './server/routes/posRoutes.ts';
 import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
+import { createPlatformRouter } from './server/routes/platformRoutes.ts';
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
