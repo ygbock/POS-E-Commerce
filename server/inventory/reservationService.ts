@@ -365,6 +365,7 @@ export class ReservationService {
     return this.reservationRepo.listReservations({
       organizationId,
       ...options,
+      client: undefined,
     });
   }
 }
