@@ -211,10 +211,13 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
   }, [orders]);
 
   const completedOrders = useMemo(() => {
-    return orders.filter((o) => o.status === 'Completed' || o.status === 'Shipped' || o.status === 'Delivered');
+    return orders.filter((o) => o.status === 'Completed' || o.status === 'Delivered');
   }, [orders]);
 
-  const fulfillmentRate = orders.length > 0 ? Math.round((completedOrders.length / orders.length) * 100) : 100;
+  const fulfillmentEligibleOrders = orders.filter((o) => o.status !== 'Cancelled' && o.status !== 'Refunded');
+  const fulfillmentRate = fulfillmentEligibleOrders.length > 0
+    ? Math.round((completedOrders.filter((o) => o.status !== 'Cancelled' && o.status !== 'Refunded').length / fulfillmentEligibleOrders.length) * 100)
+    : 100;
   const paidOrderCount = orders.filter((o) => o.paymentStatus === 'Paid').length;
   const averageOrderValue = paidOrderCount > 0 ? totalRevenue / paidOrderCount : 0;
 
@@ -233,7 +236,7 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
 
       // Calculate revenue attributed to this location (POS orders or fulfilled orders)
       const locRevenue = orders
-        .filter((o) => o.paymentStatus === 'Paid' && (o.fulfillmentLocationId === loc.id || (o.source === 'POS' && loc.id === 'loc-store-downtown')))
+        .filter((o) => o.paymentStatus === 'Paid' && (o.locationId === loc.id || (o.source === 'POS' && loc.id === 'loc-store-downtown')))
         .reduce((sum, o) => sum + o.totalAmount, 0);
 
       return {
@@ -268,7 +271,9 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
       let index = 0;
       if (timeframe === 'today') {
         if (date.toDateString() !== now.toDateString()) return;
-        index = Math.max(0, Math.min(buckets - 1, Math.floor((date.getHours() - 8) / 2)));
+        const hour = date.getHours();
+        if (hour < 8 || hour >= 20) return;
+        index = Math.floor((hour - 8) / 2);
       } else if (timeframe === '30days') {
         const daysAgo = Math.floor((now.getTime() - date.getTime()) / 86400000);
         if (daysAgo < 0 || daysAgo >= 30) return;
