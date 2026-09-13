@@ -3,8 +3,12 @@ import { DatabaseClient } from '../db/client';
 import { resolveStorefrontTenant, TenantStorefrontConfig } from '../services/tenantResolver';
 import { ApiError } from '../utils/errorSanitizer';
 import { StorefrontCartService, StorefrontCartValidationError } from '../services/storefrontCartService';
+import { OrderService } from '../services/orderService';
+import { PERMISSIONS } from '../auth/roles';
+import { requireAuth, requirePermission, requireTenantAccess } from '../middleware/auth';
 
-export function createStorefrontRouter(db: DatabaseClient): Router {
+export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderService): Router {
+  const orders = orderService || new OrderService(undefined, undefined, undefined, undefined, db);
   const router = Router();
 
   // Helper for error handling in storefront routes
@@ -449,6 +453,32 @@ export function createStorefrontRouter(db: DatabaseClient): Router {
     }
   });
 
+
+  // --------------------------------------------------------------------------
+  // 5. AUTHENTICATED ADMIN ORDER LIFECYCLE
+  // --------------------------------------------------------------------------
+
+  // POST /api/storefront/orders/:id/cancel
+  router.post('/orders/:id/cancel', requireAuth(), requirePermission(PERMISSIONS.ORDERS_CANCEL), requireTenantAccess(), async (req: Request, res: Response) => {
+    try {
+      const organizationId = req.auth!.organizationId;
+      const order = await orders.cancelStorefrontOrder(organizationId, req.params.id, req.auth!.userId);
+      res.json({ success: true, data: order });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
+  // POST /api/storefront/orders/:id/fulfill
+  router.post('/orders/:id/fulfill', requireAuth(), requirePermission(PERMISSIONS.ORDERS_FULFILL), requireTenantAccess(), async (req: Request, res: Response) => {
+    try {
+      const organizationId = req.auth!.organizationId;
+      const order = await orders.fulfillStorefrontOrder(organizationId, req.params.id, req.auth!.userId);
+      res.json({ success: true, data: order });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
 
   return router;
 }
