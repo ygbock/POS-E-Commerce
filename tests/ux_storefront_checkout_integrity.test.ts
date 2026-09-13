@@ -310,12 +310,24 @@ async function runStorefrontCheckoutIntegrityTests() {
       );
       assert.strictEqual(dbPayments.rows.length, 1, 'Exactly one payment record must exist in the database.');
 
-      // Verify that ONLY ONE stock reservation/decrement occurred (by checking the relative decrease is exactly 1.0000)
+      // Checkout reserves stock; it must not reduce on_hand until fulfillment.
+      // Therefore concurrent duplicate submission may increase reserved by exactly 1,
+      // while on_hand remains unchanged.
+      const preReservedRes = await db.query<any>(
+        `SELECT reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+      );
+      const preReserved = parseFloat(preReservedRes.rows[0].reserved);
+
+      // The reservation for this order must be exactly one unit and the ledger
+      // must not contain multiple reservations caused by duplicate submissions.
+      assert.strictEqual(preOnHand, parseFloat(preReservations.rows[0].on_hand));
       const postReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const postOnHand = parseFloat(postReservations.rows[0].on_hand);
-      assert.strictEqual(preOnHand - postOnHand, 1.0000, 'Exactly 1.0000 stock deduction must have occurred.');
+      const postReserved = parseFloat(postReservations.rows[0].reserved);
+      assert.strictEqual(postOnHand, preOnHand, 'Checkout reservation must not decrement on_hand.');
+      assert.strictEqual(postReserved - preReserved, 1.0000, 'Exactly 1.0000 stock must be reserved.');
 
       // 2f. Explicit Location Fingerprinting Regression
       const locFingerprintKey = crypto.randomUUID();
