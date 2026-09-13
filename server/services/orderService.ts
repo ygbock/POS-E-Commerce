@@ -590,7 +590,7 @@ export class OrderService {
         referenceType: 'orders',
         referenceId: orderId,
         status: 'ACTIVE',
-      });
+      }, tx);
 
       for (const reservation of reservations) {
         await this.reservationService.releaseReservation(
