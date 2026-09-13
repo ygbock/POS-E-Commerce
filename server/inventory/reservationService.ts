@@ -360,12 +360,12 @@ export class ReservationService {
       status?: ReservationStatus;
       limit?: number;
       offset?: number;
-    } = {}
+    } = {},
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord[]> {
     return this.reservationRepo.listReservations({
       organizationId,
       ...options,
-      client: undefined,
-    });
+    }, client);
   }
 }
