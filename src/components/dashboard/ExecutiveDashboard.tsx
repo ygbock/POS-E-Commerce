@@ -296,8 +296,8 @@ export const ExecutiveDashboard: React.FC<DashboardProps> = ({ setActiveTab }) =
   }, [orders, timeframe]);
 
     const channelSplitData = [
-    { name: 'POS Retail In-Store', value: posRevenue },
-    { name: 'Online Storefront', value: ecomRevenue },
+    { name: 'POS Retail In-Store', value: posRevenue, color: '#0284c7' },
+    { name: 'Online Storefront', value: ecomRevenue, color: '#6366f1' },
   ];
 
   // Payment breakdown is derived from recorded payments on paid orders.

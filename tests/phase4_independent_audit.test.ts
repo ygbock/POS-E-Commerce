@@ -111,7 +111,7 @@ async function main() {
   // TEST 1: Cart Authority & Price Manipulation Rejection
   // --------------------------------------------------------------------------
   try {
-    const alphaConfig = {
+    const alphaConfig: any = {
       tenant: { id: orgAlpha, name: 'Alpha Corp', code: 'ALPHA', slug: 'alpha-corp' },
       localization: { currencyCode: 'USD', currencySymbol: '$', locale: 'en-US', timezone: 'UTC' },
       branding: {},
@@ -155,7 +155,7 @@ async function main() {
   // TEST 2: Quantity Boundary & Tamper Testing
   // --------------------------------------------------------------------------
   try {
-    const alphaConfig = {
+    const alphaConfig: any = {
       tenant: { id: orgAlpha, name: 'Alpha Corp', code: 'ALPHA', slug: 'alpha-corp' },
       localization: { currencyCode: 'USD', currencySymbol: '$', locale: 'en-US', timezone: 'UTC' },
       branding: {},
@@ -206,7 +206,7 @@ async function main() {
   // TEST 3: Duplicate Cart Items Rejection
   // --------------------------------------------------------------------------
   try {
-    const alphaConfig = {
+    const alphaConfig: any = {
       tenant: { id: orgAlpha, name: 'Alpha Corp', code: 'ALPHA', slug: 'alpha-corp' },
       localization: { currencyCode: 'USD', currencySymbol: '$', locale: 'en-US', timezone: 'UTC' },
       branding: {},
@@ -251,7 +251,7 @@ async function main() {
           tenant: { id: orgAlpha, name: 'Alpha Corp', code: 'ALPHA', slug: 'alpha-corp' },
           localization: { currencyCode: 'USD', currencySymbol: '$', locale: 'en-US', timezone: 'UTC' },
           branding: {}, policies: {}, catalogPolicy: {}, featureFlags: {}, pickupLocations: [],
-        },
+        } as any,
         items: [{ variantId: varBeta, quantity: '1.0000' }],
       });
     } catch (err: any) {
