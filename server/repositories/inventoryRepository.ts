@@ -236,7 +236,7 @@ export class InventoryRepository {
     const orgId = params.organization_id;
     const db = this.getClient(client);
 
-    return db.withTransaction(async (tx) => {
+    const execute = async (tx: DatabaseClient) => {
       // 1. Validate location & variant tenant isolation
       const isLocValid = await this.verifyLocationOwnership(orgId, params.location_id, tx);
       if (!isLocValid) {
@@ -457,7 +457,10 @@ export class InventoryRepository {
         balance: mapBalanceRow(updatedBalRes.rows[0]),
         movement: mapMovementRow(movRes.rows[0]),
       };
-    });
+    };
+
+    // Reuse the caller's transaction during fulfillment/compound operations.
+    return client ? execute(client) : db.withTransaction(execute);;
   }
 
   /**
