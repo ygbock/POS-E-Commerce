@@ -440,7 +440,8 @@ export class OrderService {
                 idempotency_key: `${orderId}:reservation:${item.variant_id}`,
               },
               'Online Storefront',
-              `${orderId}:reservation:${item.variant_id}`
+              `${orderId}:reservation:${item.variant_id}`,
+              tx
             );
           }
 
