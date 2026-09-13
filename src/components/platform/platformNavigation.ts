@@ -11,7 +11,8 @@ export const PLATFORM_NAVIGATION: readonly PlatformNavItem[] = [
   { id: 'platform-dashboard', label: 'Platform Overview', permission: 'view' },
   { id: 'tenants', label: 'Tenants', permission: 'manage' },
   { id: 'subscriptions', label: 'Subscriptions', permission: 'billing' },
-  { id: 'security', label: 'Security', permission: 'view' },
+  { id: 'support', label: 'Platform Support', permission: 'support' },
+  { id: 'security', label: 'Security & Health', permission: 'view' },
 ];
 
 export function getPlatformNavigation(role: Role): PlatformNavItem[] {

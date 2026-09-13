@@ -131,6 +131,10 @@ class AuthClient {
       'Warehouse Manager': { email: 'inventory@abacha.internal', pass: 'InventoryPass123!' },
       'Accountant': { email: 'sales@abacha.internal', pass: 'SalesPass123!' },
       'E-commerce Customer': { email: 'viewer@abacha.internal', pass: 'ViewerPass123!' },
+      'System Owner': { email: 'owner@platform.internal', pass: 'PlatformOwner123!' },
+      'Platform Admin': { email: 'admin@platform.internal', pass: 'PlatformAdmin123!' },
+      'Platform Support': { email: 'support@platform.internal', pass: 'PlatformSupport123!' },
+      'Platform Finance': { email: 'finance@platform.internal', pass: 'PlatformFinance123!' },
     };
 
     const target = personaMap[roleName] || { email: 'viewer@abacha.internal', pass: 'ViewerPass123!' };

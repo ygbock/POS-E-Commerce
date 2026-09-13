@@ -17,6 +17,8 @@ import { PurchasingManagement } from './components/purchasing/PurchasingManageme
 import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
 import { CustomerManagement } from './components/crm/CustomerManagement';
 import { AuditLogsView } from './components/admin/AuditLogsView';
+import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
+import { isPlatformRole } from './components/platform/platformAccess';
 
 const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () => void }> = ({ onOpenAdmin, onOpenPos }) => {
   const { route } = useStorefrontRoute();
@@ -28,24 +30,37 @@ const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () =>
 };
 
 const MainLayout: React.FC = () => {
-  // Default first page is the public customer Storefront
-  const [activeTab, setActiveTab] = useState<string>('storefront');
+  const { currentRole } = useCommerce();
+  const isPlatform = isPlatformRole(currentRole);
+
+  // Default initial active tab: platform control plane for platform operators, storefront for customer/tenant
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    isPlatform ? 'platform-dashboard' : 'storefront'
+  );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
-  const { currentRole } = useCommerce();
 
-  // Handle role-based navigation changes
+  // Enforce strict boundary between platform control plane and tenant operations
   React.useEffect(() => {
-    if (currentRole === 'E-commerce Customer' && activeTab !== 'storefront') {
-      setActiveTab('storefront');
-    } else if (currentRole === 'Cashier' && activeTab === 'dashboard') {
-      setActiveTab('pos');
+    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support'];
+    if (isPlatform) {
+      if (!platformTabs.includes(activeTab) && activeTab !== 'security') {
+        setActiveTab('platform-dashboard');
+      }
+    } else {
+      if (platformTabs.includes(activeTab)) {
+        setActiveTab('dashboard');
+      } else if (currentRole === 'E-commerce Customer' && activeTab !== 'storefront') {
+        setActiveTab('storefront');
+      } else if (currentRole === 'Cashier' && activeTab === 'dashboard') {
+        setActiveTab('pos');
+      }
     }
-  }, [currentRole]);
+  }, [currentRole, isPlatform, activeTab]);
 
-  // When activeTab is 'storefront', render the full customer-facing store as the root page
-  if (activeTab === 'storefront') {
+  // When activeTab is 'storefront' (and user is not a platform operator), render customer storefront
+  if (activeTab === 'storefront' && !isPlatform) {
     return (
       <StorefrontRouteShell
         onOpenAdmin={() => setActiveTab('dashboard')}
@@ -84,6 +99,11 @@ const MainLayout: React.FC = () => {
         {/* Content Viewport */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 custom-scrollbar bg-[#f8fafc] dark:bg-slate-950">
           <div className="max-w-7xl mx-auto space-y-6">
+            {activeTab === 'platform-dashboard' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'tenants' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'subscriptions' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
             {activeTab === 'pos' && <PosTerminal />}
             {(activeTab === 'catalog' || activeTab === 'products') && <ProductManagement />}
