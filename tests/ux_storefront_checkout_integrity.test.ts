@@ -278,6 +278,7 @@ async function runStorefrontCheckoutIntegrityTests() {
         `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const preOnHand = parseFloat(preReservations.rows[0].on_hand);
+      const preReserved = parseFloat(preReservations.rows[0].reserved || '0');
 
       // Dispatched concurrent duplicate requests in parallel
       const reqPromises = Array.from({ length: 4 }).map(() =>
@@ -313,11 +314,6 @@ async function runStorefrontCheckoutIntegrityTests() {
       // Checkout reserves stock; it must not reduce on_hand until fulfillment.
       // Therefore concurrent duplicate submission may increase reserved by exactly 1,
       // while on_hand remains unchanged.
-      const preReservedRes = await db.query<any>(
-        `SELECT reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
-      );
-      const preReserved = parseFloat(preReservedRes.rows[0].reserved);
-
       // The reservation for this order must be exactly one unit and the ledger
       // must not contain multiple reservations caused by duplicate submissions.
       assert.strictEqual(preOnHand, parseFloat(preReservations.rows[0].on_hand));
