@@ -331,6 +331,27 @@ export class ReservationService {
               tx
             );
             await this.reservationRepo.updateStatus(current.organization_id, current.id, 'EXPIRED', tx);
+
+            // An expired reservation invalidates the pending storefront order when
+            // no other active reservation remains. Keep this transition atomic with
+            // the stock release so orders cannot remain indefinitely in Stock Reserved.
+            if (current.reference_type === 'orders') {
+              const activeRes = await this.reservationRepo.listReservations({
+                organizationId: current.organization_id,
+                referenceType: 'orders',
+                referenceId: current.reference_id,
+                status: 'ACTIVE',
+                limit: 1,
+                offset: 0,
+              }, tx);
+              if (activeRes.length === 0) {
+                await tx.query(
+                  "UPDATE orders SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND organization_id = $2 AND status = 'Stock Reserved'",
+                  [current.reference_id, current.organization_id]
+                );
+              }
+            }
+
             expiredIds.push(current.id);
           }
         });
