@@ -172,6 +172,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       .filter((g) => g.items.length > 0);
   }, [navGroups, navSearch]);
 
+  const roleLabel = currentRole === 'Super Admin' ? 'Administrator' : currentRole;
+  const roleInitial = roleLabel.trim().charAt(0).toUpperCase() || 'U';
+
   return (
     <>
       {/* Mobile & Tablet Backdrop Overlay */}
@@ -378,7 +381,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Operator Card */}
             <div className="flex items-center space-x-2.5 p-2 rounded-xl bg-slate-900/60 border border-slate-800/60">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600/30 to-indigo-600/30 border border-blue-500/40 flex items-center justify-center font-black text-xs text-blue-400 flex-shrink-0">
-                {currentRole.charAt(0)}
+                {roleInitial}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
@@ -419,7 +422,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
               <div
                 className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-black text-xs text-blue-400"
-                title={`Active: ${currentRole} (${currentLocation.name})`}
+                title={`Active: ${roleLabel} (${currentLocation.name})`}
               >
                 {currentRole.charAt(0)}
               </div>
