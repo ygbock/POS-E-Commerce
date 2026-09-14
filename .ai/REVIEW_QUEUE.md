@@ -48,6 +48,32 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
+### Queue Item: AUD-001 — Audit & Security Administration Modernization
+- **Submitted By**: Senior Software Architect, Security Engineer & Implementation Lead
+- **Submission Date**: 2026-09-14
+- **Current Status**: `READY FOR REVIEW`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Artifacts Delivered**:
+  - `server/db/migrations/013_audit_and_security_hardening.sql`: Append-only trigger (`trg_immutable_audit_events`), `result` check constraint, performance composite indexes, and slug trigger.
+  - `server/repositories/auditRepository.ts`: Deep recursive sanitization of credentials, bounded pagination, parameterized filtering/searching, authoritative tenant security metrics.
+  - `server/repositories/userRepository.ts`: Safe active admin counting and deleteUser method.
+  - `server.ts` & `server/middleware/auth.ts`: Mounted `/api/tenant/audit` and `/api/tenant/audit/overview`, staff status transition with owner guard and token revocation, role updates, and automated cross-tenant denial auditing.
+  - `src/services/auditApi.ts`: Client API for tenant audit and metrics.
+  - `src/components/admin/AuditLogsView.tsx`: Modernized responsive admin experience with 6 KPI summary cards, composable filters, safe search, and accessible slide-over drawer with formatted JSON.
+  - `tests/audit_security_administration.test.ts`: 13 automated test cases verifying immutability, sanitization, RBAC, tenant isolation, spoofing rejection, staff lifecycle mutations, and metrics.
+- **Verification Evidence**:
+  - `npm run lint`: **PASS** (0 errors)
+  - `npm test`: **PASS** (19/19 test suites passed, 258+ tests total)
+  - `npm run test:audit`: **PASS** (13/13 tests)
+  - `npm run test:security`: **PASS** (22/22 tests)
+  - `npm run test:tenant-business-plane`: **PASS** (18 assertions)
+  - `npm run build`: **PASS** (Exit 0, 2484 modules transformed, dist/server.cjs bundled)
+- **Supervisor Action Required**: Perform security and architecture review on the AUD-001 implementation, database immutability triggers, and credential sanitization routines.
+
+---
+
 ### Queue Item: PHASE-5 — Current-State Audit & Strategic Roadmap
 - **Submitted By**: Senior Software Architect & Principal Engineer
 - **Submission Date**: 2026-09-14

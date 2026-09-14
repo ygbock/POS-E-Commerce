@@ -51,7 +51,7 @@ export class AuthService {
     const email = credentials.email.toLowerCase().trim();
 
     if (!(await this.isOrganizationActive(orgId))) {
-      throw new Error('Organization is inactive');
+      throw new Error('INACTIVE_ORGANIZATION: Organization is inactive');
     }
 
     const user = await this.userRepo.findByEmail(orgId, email);

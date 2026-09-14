@@ -847,3 +847,32 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - `npm run build`
   - `npm test`
 - **Supervisor Gate**: `READY FOR VERIFICATION`
+
+---
+
+### Task 17: AUD-001 — Audit & Security Administration Modernization
+- **Status**: `READY FOR REVIEW`
+- **Parent Program**: `VERSION-2.6-UPGRADE` (`2.6.0-Enterprise`)
+- **Objective**: Conduct comprehensive review and modernization of MarkitHub's Audit & Security Administration experience, making it production-grade for tenant administrators while strictly enforcing server authority, tenant isolation, immutable ledger integrity, and credential sanitization.
+- **Scope**:
+  - Database Immutability & Indexing: Implemented migration `013_audit_and_security_hardening.sql` adding `result` enum check, multi-column indexes (`(organization_id, created_at DESC)`, `severity`, `action`, `entity_type`, `result`), and PostgreSQL BEFORE UPDATE OR DELETE trigger `trg_immutable_audit_events` enforcing append-only immutability with `IMMUTABLE_RECORD`. Added `trg_default_org_slug` trigger ensuring organizations receive a slug fallback.
+  - Deep Recursive Sanitization: Added `sanitizeAuditData()` in `server/repositories/auditRepository.ts` recursively redacting passwords, PINs, tokens, keys, secrets, and authorization payloads in `before_state`, `after_state`, and `metadata`.
+  - Authoritative Querying & Metrics: Implemented `queryAuditEvents()` supporting bounded pagination (max 100), cursor/offset, date range, action, module/entityType, target/entityId, actorId, severity, result, and parameterized text search. Implemented `getSecurityMetrics()` aggregating authoritative tenant metrics (`eventsToday`, `eventsThisWeek`, `staffSuspensions`, `rolePermissionChanges`, `ownershipEvents`, `failedDeniedOperations`, `criticalAndHigh`, `recentSecurityEvents`).
+  - Server API Endpoints & Auth Middleware: Mounted `GET /api/tenant/audit` and modernized `GET /api/audit-logs` using `queryAuditEvents`. Mounted `GET /api/tenant/audit/overview` for authoritative metrics. Added automated `SECURITY_CROSS_TENANT_DENIED` audit logging in `requireTenantAccess` middleware.
+  - Staff Lifecycle Hardening & Auditing: Implemented `POST /api/users` (`USER_CREATED`), `PATCH /api/users/:id/status` (`USER_SUSPENDED`/`USER_REACTIVATED` with owner protection, self-deactivation guard, token revocation), `PUT /api/users/:id` (`USER_ROLE_CHANGED`/`USER_UPDATED` with role escalation guards), and `DELETE /api/users/:id` (`USER_DELETED` with token revocation before cascade, self-deletion guard, owner protection).
+  - Modernized Tenant Admin UI: Created `src/services/auditApi.ts` and modernized `src/components/admin/AuditLogsView.tsx` with 6 KPI summary cards, multi-facet filtering, safe search, responsive table, and accessible event details slide-over drawer with JSON inspection.
+  - Automated Test Suite: Added `tests/audit_security_administration.test.ts` covering 13 comprehensive test cases. Registered `test:audit` in `package.json`.
+- **Dependencies**: `SEC-001`, `TASK-5.4.1`.
+- **Acceptance Criteria**:
+  - [x] Database append-only trigger prevents UPDATE and DELETE on `audit_events` failing closed with `IMMUTABLE_RECORD`.
+  - [x] Recursive sanitization redacts sensitive credentials in audit payloads.
+  - [x] Strict tenant isolation enforced on all audit endpoints; client-supplied tenant ID spoofing is ignored.
+  - [x] Super Admin cross-tenant audit lookups record audit trail.
+  - [x] Authoritative security overview metrics calculated server-side.
+  - [x] Staff status transitions, role changes, and deletions enforce owner protection, token revocation, and generate immutable audit logs.
+  - [x] Cross-tenant access denials automatically logged with actor context.
+  - [x] Modernized UI displays metrics, safe filters, and detail drawer.
+  - [x] 13/13 AUD-001 tests pass (`npm run test:audit`). Full regression suite (19 test suites, 258+ tests) passes 100%.
+  - [x] Zero TypeScript errors (`npm run lint`), successful production build (`npm run build`).
+- **Supervisor Gate**: Marked `READY FOR REVIEW`.
+

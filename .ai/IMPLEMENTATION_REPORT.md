@@ -1,5 +1,46 @@
 # Implementation Report
 
+## AUD-001 — Audit & Security Administration Modernization
+
+- **Status**: `IMPLEMENTED — READY FOR REVIEW`
+- **Program**: `VERSION-2.6-UPGRADE` / `Phase 5.4 Platform & Tenant Security Completion`
+- **Operating Directive**: `INSPECT → HARDEN → TEST → VERIFY → DOCUMENT → REPORT`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Release Anchor**: `2.5.0-Stable` (`REL-012` Handover Gate)
+- **Approved Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Scope & Changes**:
+  - **Database Migration 013 (`server/db/migrations/013_audit_and_security_hardening.sql`)**:
+    - Adds `result VARCHAR(32) NOT NULL DEFAULT 'SUCCESS'` with CHECK constraint `('SUCCESS', 'FAILED', 'DENIED')`.
+    - Composite performance indexes on `(organization_id, created_at DESC)`, `(organization_id, severity)`, `(organization_id, action)`, `(organization_id, entity_type)`, and `(organization_id, result)`.
+    - PostgreSQL BEFORE UPDATE OR DELETE trigger `trg_immutable_audit_events` enforcing append-only immutability with code `23506` (`IMMUTABLE_RECORD`).
+    - PostgreSQL trigger `trg_default_org_slug` ensuring new organizations receive deterministic derived slugs when omitted.
+  - **Authoritative Audit Repository (`server/repositories/auditRepository.ts`)**:
+    - `sanitizeAuditData()`: Deep recursive redaction of sensitive credentials (passwords, PINs, tokens, secrets, API keys, bearer auth) across `before_state`, `after_state`, and `metadata`.
+    - `queryAuditEvents()`: Bounded pagination (max 100), cursor/offset, date range, action, module/entityType, target/entityId, actorId, severity, result, and parameterized text search.
+    - `getSecurityMetrics()`: Authoritative tenant security metric aggregations (`eventsToday`, `eventsThisWeek`, `staffSuspensions`, `rolePermissionChanges`, `ownershipEvents`, `failedDeniedOperations`, `criticalAndHigh`, `recentSecurityEvents`).
+  - **API Hardening & Staff Lifecycle Integrity (`server.ts`, `server/middleware/auth.ts`, `server/repositories/userRepository.ts`)**:
+    - Endpoints mounted: `GET /api/tenant/audit` and `GET /api/tenant/audit/overview` with `AUDIT_VIEW` permission and strict tenant scoping.
+    - `requireTenantAccess` middleware enhanced to automatically record `SECURITY_CROSS_TENANT_DENIED` audit events.
+    - Staff creation (`POST /api/users`) logs `USER_CREATED` with actor identity and sanitization.
+    - Staff status mutation (`PATCH /api/users/:id/status`) enforces owner protection, self-deactivation guard, active admin count checks, token revocation, and records `USER_SUSPENDED`/`USER_REACTIVATED`.
+    - Staff update (`PUT /api/users/:id`) enforces role escalation checks and records `USER_ROLE_CHANGED`/`USER_UPDATED`.
+    - Staff deletion (`DELETE /api/users/:id`) enforces self-deletion guard, owner protection, pre-deletion token revocation before cascade, and records `USER_DELETED`.
+  - **Modernized Frontend Experience (`src/services/auditApi.ts`, `src/components/admin/AuditLogsView.tsx`)**:
+    - Created typed `AuditApiClient`.
+    - Modernized `AuditLogsView` with 6 KPI summary cards, multi-facet filtering, safe search input, responsive table with severity badges, and accessible slide-over drawer with JSON payload viewer.
+  - **Comprehensive Automated Test Suite (`tests/audit_security_administration.test.ts`)**:
+    - 13 comprehensive test cases covering trigger immutability, recursive sanitization, RBAC, tenant isolation, spoofing rejection, staff lifecycle mutations, and overview metrics.
+- **Verification Gates**:
+  - `npm run lint`: **PASS** (0 errors)
+  - `npm test`: **PASS** (19/19 test suites passed, 258+ tests total)
+  - `npm run test:audit`: **PASS** (13/13 tests)
+  - `npm run test:security`: **PASS** (22/22 tests)
+  - `npm run test:tenant-business-plane`: **PASS** (18 assertions)
+  - `npm run test:platform`: **PASS** (11/11 tests)
+  - `npm run test:operational`: **PASS** (26/26 tests)
+  - `npm run test:storefront`: **PASS** (22/22 tests)
+  - `npm run build`: **PASS** (Exit 0, 2484 modules transformed, dist/server.cjs generated)
+
 ## PHASE 5.1 — Current-State Engineering & Product Audit
 
 - **Status**: `AUDIT COMPLETE & ROADMAP PUBLISHED`

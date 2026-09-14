@@ -195,13 +195,23 @@ export function requireRole(...allowedRoles: UserRole[]) {
  * Super Admins are granted cross-tenant supervisory access.
  */
 export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => string | undefined) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
       return res.status(401).json({
         success: false,
         error: {
           code: 'UNAUTHORIZED',
           message: 'Authentication required.',
+        },
+      });
+    }
+
+    if (req.auth.organizationActive === false && !isPlatformRole(req.auth.role)) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'TENANT_ACCESS_DENIED',
+          message: 'This organization is currently inactive.',
         },
       });
     }
@@ -219,6 +229,31 @@ export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => stri
 
     // If request explicitly targets a different organization, forbid it
     if (targetOrgId && targetOrgId !== req.auth.organizationId) {
+      const auditRepo: any = req.app?.get?.('auditRepo');
+      if (auditRepo && typeof auditRepo.recordEvent === 'function') {
+        try {
+          await auditRepo.recordEvent({
+            organization_id: req.auth.organizationId,
+            actor_id: req.auth.userId,
+            actor_name: req.auth.email || req.auth.userId,
+            actor_role: req.auth.role,
+            action: 'SECURITY_CROSS_TENANT_DENIED',
+            entity_type: 'SECURITY',
+            entity_id: String(targetOrgId),
+            metadata: {
+              callerTenant: req.auth.organizationId,
+              attemptedTenant: targetOrgId,
+              path: req.originalUrl || req.url,
+              method: req.method,
+            },
+            severity: 'Critical',
+            result: 'DENIED',
+          });
+        } catch (e: any) {
+          console.warn('[Audit] Cross-tenant denial log failed:', e);
+        }
+      }
+
       return res.status(403).json({
         success: false,
         error: {

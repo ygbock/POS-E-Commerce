@@ -71,8 +71,8 @@ export const UserManagementView: React.FC = () => {
     <Modal isOpen={open} onClose={()=>setOpen(false)} title="Create Tenant User" footer={<><Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button><Button type="submit" form="user-form" isLoading={saving}>Create User</Button></>}>
       <form id="user-form" onSubmit={save} className="ui-form-grid ui-form-grid--wide">
         <Input label="Full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required />
-        <Input label="Email" type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required disabled={Boolean(editing)} />
-        {!editing&&<Input label="Temporary password" type="password" minLength={8} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required helperText="Minimum 8 characters." />}
+        <Input label="Email" type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required />
+        <Input label="Temporary password" type="password" minLength={8} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required helperText="Minimum 8 characters." />
         <Select label="Role" value={form.role} onChange={e=>setForm({...form,role:e.target.value})} options={roleOptions}/>
         <Select label="Location" value={form.locationId} onChange={e=>setForm({...form,locationId:e.target.value})} placeholder="Unassigned" options={locations.filter(l=>l.isActive).map(l=>({value:l.id,label:l.name}))}/>
       </form>

@@ -4,7 +4,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Modal } from '../ui/Modal';
-import { Table } from '../ui/Table';
+import { Table, Column } from '../ui/Table';
 import { authClient } from '../../services/authClient';
 
 type PlanTier = 'starter' | 'professional' | 'enterprise';
@@ -170,7 +170,7 @@ export const TenantManagementView: React.FC = () => {
       )}
 
       <div className="ui-surface overflow-hidden">
-        <Table
+        <Table<Tenant>
           caption="Tenant organizations"
           data={tenants}
           isLoading={isLoading}
