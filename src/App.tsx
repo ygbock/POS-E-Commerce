@@ -19,6 +19,8 @@ import { CustomerManagement } from './components/crm/CustomerManagement';
 import { AuditLogsView } from './components/admin/AuditLogsView';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
 import { TenantManagementView } from './components/platform/TenantManagementView';
+import { UserManagementView } from './components/admin/UserManagementView';
+import { LocationManagementView } from './components/admin/LocationManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
 
 const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () => void }> = ({ onOpenAdmin, onOpenPos }) => {
@@ -106,6 +108,8 @@ const MainLayout: React.FC = () => {
             {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
+            {activeTab === 'users' && <UserManagementView />}
+            {activeTab === 'locations' && <LocationManagementView />}
             {activeTab === 'pos' && <PosTerminal />}
             {(activeTab === 'catalog' || activeTab === 'products') && <ProductManagement />}
             {(activeTab === 'inventory' || activeTab === 'stock' || activeTab === 'movements' || activeTab === 'transfers' || activeTab === 'stocktaking') && (
