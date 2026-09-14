@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Search, ShoppingCart, Heart, User, Menu, X, Gift, LayoutDashboard, Monitor, Bell, Package } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface StorefrontHeaderProps {
