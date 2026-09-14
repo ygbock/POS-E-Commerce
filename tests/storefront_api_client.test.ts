@@ -99,6 +99,31 @@ try {
   assert.equal(orderBody.cart_items[0].quantity, '2');
   assert.equal(Object.prototype.hasOwnProperty.call(orderBody.cart_items[0], 'price'), false);
 
+  calls.length = 0;
+  globalThis.fetch = (async (input, init) => {
+    calls.push({ url: String(input), init });
+    return new Response(JSON.stringify({
+      data: {
+        id: 'ord-1',
+        orderNumber: 'ORD-1001',
+        status: 'Stock Reserved',
+        paymentStatus: 'Pending',
+        fulfillmentMethod: 'Standard Delivery',
+        carrierName: 'OmniTrack',
+        trackingNumber: 'TRK-1001',
+        createdAt: '2026-09-14T10:00:00Z',
+        items: [{ name: 'Drill', sku: 'DR-1', quantity: '2', unitPrice: '10.00', lineTotal: '20.00' }],
+        totals: { subtotal: '20.00', shippingFee: '0.00', taxAmount: '3.00', totalAmount: '23.00' },
+        customerName: 'Guest Buyer',
+        maskedEmail: 'g***@example.com',
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  const tracked = await storefrontApi.trackOrder('alpha', 'ORD-1001', 'guest@example.com');
+  assert.equal(tracked.orderNumber, 'ORD-1001');
+  assert.equal(new URL(calls[0].url, 'https://shop.abacha.com').pathname, '/api/storefront/alpha/orders/ORD-1001');
+  assert.equal(new URL(calls[0].url, 'https://shop.abacha.com').searchParams.get('contact'), 'guest@example.com');
+
   globalThis.fetch = (async () => new Response(JSON.stringify({
     error: { code: 'TENANT_NOT_FOUND', message: 'Store Not Found' },
   }), { status: 404, headers: { 'content-type': 'application/json' } })) as typeof fetch;
