@@ -42,7 +42,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | :--- | :--- | :--- | :---: |
 | **Phase 5.1** | Current-State Reconciliation | Baseline audit, matrix reconciliation, task synchronization | `IN PROGRESS` |
 | **Phase 5.2** | Design System & UI/UX Foundation | Design tokens, shared components, accessible forms & tables | `IMPLEMENTED — PENDING VERIFICATION` |
-| **Phase 5.3** | Platform Control-Plane Completion | Tenant onboarding wizard, plan mutations, operator tools | `PLANNED` |
+| **Phase 5.3** | Platform Control-Plane Completion | Tenant onboarding wizard, plan mutations, operator tools | `IMPLEMENTED — PENDING VERIFICATION` |
 | **Phase 5.4** | Tenant Business-Plane Completion | User administration table, location CRUD, customer mutations | `PLANNED` |
 | **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `PLANNED` |
 | **Phase 5.6** | SaaS Subscriptions & Billing Engine | Subscription tiers, invoices, MRR calculation, payment status | `PLANNED` |
@@ -154,9 +154,9 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 ### Phase 5.6 — SaaS Subscriptions and Billing Engine
 - **Task ID**: `TASK-5.6.1`
 - **Objective**: Build server-side subscription management, tenant billing tiers (Starter, Professional, Enterprise), invoice tracking, and webhook endpoints for payment gateway integration.
-- **Files / Components**: `server/db/migrations/012_saas_billing.sql`, `server/routes/billingRoutes.ts`, `src/components/platform/SystemOwnerDashboard.tsx`.
+- **Files / Components**: `server/db/migrations/013_saas_billing.sql`, `server/routes/billingRoutes.ts`, `src/components/platform/SystemOwnerDashboard.tsx`.
 - **Backend / API Impact**: `GET /api/platform/billing/invoices`, `POST /api/platform/billing/subscribe`, `POST /api/webhooks/billing`.
-- **Database Impact**: Migration 012 creating `subscriptions`, `invoices`, and `tenant_plans` tables.
+- **Database Impact**: Migration 013 creating `subscriptions`, `invoices`, and `tenant_plans` tables; Migration 012 is reserved for tenant lifecycle schema.
 - **UI Impact**: Dedicated Subscriptions and Invoicing panels in `SystemOwnerDashboard.tsx` and Tenant Settings.
 - **RBAC**: `platform.billing` permission.
 - **Security Requirements**: Cryptographic webhook signature verification, fail-closed subscription expiry.
