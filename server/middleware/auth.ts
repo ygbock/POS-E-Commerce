@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { UserRole, hasPermission } from '../auth/roles';
+import { UserRole, hasPermission, isPlatformRole } from '../auth/roles';
 import { AuthService } from '../services/authService';
 import { TokenClaims } from '../auth/token';
 
@@ -17,6 +17,7 @@ export interface AuthContext {
   locationId?: string | null;
   email?: string;
   jti?: string;
+  organizationActive?: boolean;
 }
 
 declare global {
@@ -54,6 +55,15 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
 
     try {
       const claims: TokenClaims = await service.verifySession(token);
+      let organizationActive = true;
+      if (!isPlatformRole(claims.role)) {
+        const org = await service['db'].query<{ is_active: boolean }>(
+          'SELECT is_active FROM organizations WHERE id = $1 LIMIT 1',
+          [claims.orgId],
+        );
+        organizationActive = org.rows[0]?.is_active === true;
+      }
+
       req.auth = {
         userId: claims.sub,
         organizationId: claims.orgId,
@@ -62,6 +72,7 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
         locationId: claims.locId,
         email: claims.email,
         jti: claims.jti,
+        organizationActive,
       };
       next();
     } catch {
@@ -84,6 +95,15 @@ export function requireAuth() {
         error: {
           code: 'UNAUTHORIZED',
           message: 'Authentication required.',
+        },
+      });
+    }
+    if (req.auth.organizationActive === false && !isPlatformRole(req.auth.role)) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'TENANT_ACCESS_DENIED',
+          message: 'This organization is currently inactive.',
         },
       });
     }
