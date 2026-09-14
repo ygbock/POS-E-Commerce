@@ -18,6 +18,7 @@ import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
 import { CustomerManagement } from './components/crm/CustomerManagement';
 import { AuditLogsView } from './components/admin/AuditLogsView';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
+import { TenantManagementView } from './components/platform/TenantManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
 
 const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () => void }> = ({ onOpenAdmin, onOpenPos }) => {
@@ -100,7 +101,7 @@ const MainLayout: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 custom-scrollbar bg-[#f8fafc] dark:bg-slate-950">
           <div className="max-w-7xl mx-auto space-y-6">
             {activeTab === 'platform-dashboard' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
-            {activeTab === 'tenants' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'tenants' && <TenantManagementView />}
             {activeTab === 'subscriptions' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'security' && <AuditLogsView />}
