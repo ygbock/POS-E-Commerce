@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, requirePermission, requireTenantAccess } from '../middleware/auth';
 import { PERMISSIONS } from '../auth/roles';
 import { PosService } from '../services/posService';
+import { SubscriptionService } from '../services/subscriptionService';
 import { PosRepository } from '../repositories/posRepository';
 import { OrderRepository } from '../repositories/orderRepository';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
@@ -230,10 +231,15 @@ export function handlePosRouteError(res: Response, err: any): Response {
   });
 }
 
-export function createPosRouter(db: DatabaseClient, posService: PosService): Router {
+export function createPosRouter(
+  db: DatabaseClient,
+  posService: PosService,
+  subscriptionService?: SubscriptionService
+): Router {
   const router = Router();
   const posRepo = new PosRepository(db);
   const orderRepo = new OrderRepository(db);
+  const subService = subscriptionService || new SubscriptionService(undefined, undefined, db);
 
   /**
    * GET /api/pos/products/search
@@ -450,6 +456,13 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
+
+        // Server-authoritative SaaS Plan Feature & Order Quota Enforcement
+        if (req.auth!.role !== 'super_admin') {
+          await subService.assertFeature(orgId, 'pos', { userId: req.auth!.userId, role: req.auth!.role });
+          await subService.assertWithinLimit(orgId, 'orders', 1, { userId: req.auth!.userId, role: req.auth!.role });
+        }
+
         const { locationId, sessionId, customerId, cartItems, paymentMethod, amountPaid, notes } = req.body;
 
         if (!locationId || !sessionId || !cartItems || !Array.isArray(cartItems) || !paymentMethod || amountPaid === undefined) {

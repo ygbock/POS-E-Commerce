@@ -45,10 +45,15 @@ import {
 import { apiErrorHandler, buildApiErrorResponse, ApiError } from './server/utils/errorSanitizer.ts';
 import { hashPassword } from './server/auth/password.ts';
 import { PERMISSIONS, ROLE_PERMISSIONS, VALID_ROLES } from './server/auth/roles.ts';
+import { SubscriptionRepository } from './server/repositories/subscriptionRepository.ts';
+import { SubscriptionService } from './server/services/subscriptionService.ts';
+import { requireFeature, requireWithinLimit } from './server/middleware/entitlements.ts';
 
 export interface CreateAppOptions {
   db?: DatabaseClient;
   authService?: AuthService;
+  subscriptionRepo?: SubscriptionRepository;
+  subscriptionService?: SubscriptionService;
   skipVite?: boolean;
   initialProducts?: Product[];
 }
@@ -137,6 +142,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   const customerRepo = new CustomerRepository(db);
   const inventoryRepo = new InventoryRepository(db);
   const auditRepo = new AuditRepository(db);
+  const subscriptionRepo = options.subscriptionRepo || new SubscriptionRepository(db);
+  const subscriptionService = options.subscriptionService || new SubscriptionService(subscriptionRepo, auditRepo, db);
   const posService = new PosService(undefined, orderRepo, inventoryRepo, auditRepo, db);
   const orderService = new OrderService(orderRepo, customerRepo, inventoryRepo, auditRepo, db);
 
@@ -583,6 +590,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     requireAuth(),
     requirePermission(PERMISSIONS.AUDIT_VIEW),
     requireTenantAccess(),
+    requireFeature('audit_logs', subscriptionService),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const isSuperAdmin = req.auth!.role === 'super_admin';
@@ -593,6 +601,124 @@ export async function createApp(options: CreateAppOptions = {}) {
           success: true,
           count: dbEvents.length,
           data: dbEvents,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // ------------------------------------------------------------------
+  // 3.5 SAAS SUBSCRIPTIONS & ENTITLEMENTS API
+  // ------------------------------------------------------------------
+  app.get(
+    '/api/tenant/subscription/entitlements',
+    requireAuth(),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        const entitlements = await subscriptionService.getEntitlements(orgId);
+        res.json({
+          success: true,
+          data: entitlements,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.put(
+    '/api/admin/subscriptions/:orgId',
+    requireAuth(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        if (req.auth!.role !== 'super_admin' && !req.auth!.permissions?.includes('admin.all')) {
+          return res.status(403).json({
+            success: false,
+            error: { code: 'FORBIDDEN', message: 'Admin authorization required to manage subscriptions.' },
+          });
+        }
+        const { orgId } = req.params;
+        const { planCode, status } = req.body;
+        const updated = await subscriptionRepo.upsertSubscription({
+          organizationId: orgId,
+          planCode: planCode || 'starter',
+          status: status || 'active',
+        });
+        res.json({ success: true, data: updated });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.get(
+    '/api/reports/advanced',
+    requireAuth(),
+    requireTenantAccess(),
+    requireFeature('advanced_reports', subscriptionService),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        res.json({
+          success: true,
+          data: { organizationId: orgId, report: 'Executive Advanced Sales Analysis' },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.get(
+    '/api/reports/analytics',
+    requireAuth(),
+    requireTenantAccess(),
+    requireFeature('advanced_analytics', subscriptionService),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        res.json({
+          success: true,
+          data: { organizationId: orgId, analytics: 'Predictive Analytics Engine' },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.get(
+    '/api/export/data',
+    requireAuth(),
+    requireTenantAccess(),
+    requireFeature('export', subscriptionService),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        res.json({
+          success: true,
+          data: { organizationId: orgId, downloadUrl: `/exports/${orgId}.csv` },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.get(
+    '/api/developer/api-keys',
+    requireAuth(),
+    requireTenantAccess(),
+    requireFeature('api_access', subscriptionService),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = req.auth!.organizationId;
+        res.json({
+          success: true,
+          data: { organizationId: orgId, keys: [] },
         });
       } catch (err) {
         next(err);
@@ -707,6 +833,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
         // Server-authoritative tenant assignment: stamped from authenticated context
         const authoritativeOrg = await resolveAuthorizedTenant(req, auditRepo, 'PRODUCT');
+
+        if (req.auth!.role !== 'super_admin') {
+          await subscriptionService.assertWithinLimit(authoritativeOrg, 'products', 1, {
+            userId: req.auth!.userId,
+            role: req.auth!.role,
+          });
+        }
 
         const newProduct: Product = {
           id,
@@ -1372,9 +1505,59 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
+  // Locations Creation API (Permission-protected, tenant-stamped & quota-enforced)
+  app.post(
+    '/api/locations',
+    requireAuth(),
+    requirePermission('locations.manage'),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
+        if (req.auth!.role !== 'super_admin') {
+          const count = await subscriptionRepo.countLocations(orgId);
+          if (count >= 1) {
+            await subscriptionService.assertFeature(orgId, 'multi_location', {
+              userId: req.auth!.userId,
+              role: req.auth!.role,
+            });
+          }
+          await subscriptionService.assertWithinLimit(orgId, 'locations', 1, {
+            userId: req.auth!.userId,
+            role: req.auth!.role,
+          });
+        }
+
+        const { code, name, type, address, phone, isPosEnabled } = req.body;
+        if (!name) {
+          return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Location name is required.' } });
+        }
+        const id = `loc_${randomUUID().slice(0, 8)}`;
+        const result = await db.query(
+          `INSERT INTO locations (id, organization_id, code, name, type, address, phone, is_pos_enabled, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+           RETURNING *`,
+          [
+            id,
+            orgId,
+            code || `LOC-${randomUUID().slice(0, 4).toUpperCase()}`,
+            name,
+            type || 'Retail Store',
+            address || '',
+            phone || '',
+            isPosEnabled ?? true,
+          ]
+        );
+        res.status(201).json({ success: true, data: result.rows[0] });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
   app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
-  app.use('/api/pos', createPosRouter(db, posService));
+  app.use('/api/pos', createPosRouter(db, posService, subscriptionService));
   if (process.env.NODE_ENV !== 'test') {
     app.locals.reservationExpiryWorker = startReservationExpiryWorker({ db });
   }
@@ -1405,6 +1588,20 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const orgId = await resolveAuthorizedTenant(req, auditRepo, 'ORDER');
+
+        if (req.auth!.role !== 'super_admin') {
+          if (req.body.channel === 'ecommerce' || req.body.channel === 'storefront') {
+            await subscriptionService.assertFeature(orgId, 'ecommerce', {
+              userId: req.auth!.userId,
+              role: req.auth!.role,
+            });
+          }
+          await subscriptionService.assertWithinLimitTx(db, orgId, 'orders', 1, {
+            userId: req.auth!.userId,
+            role: req.auth!.role,
+          });
+        }
+
         const actorName = (req.auth as any)?.name || req.auth!.userId;
 
         // Secure authentication/role boundary check
@@ -1461,7 +1658,11 @@ export async function createApp(options: CreateAppOptions = {}) {
         let status = 500;
         let message = 'An internal server error occurred while processing the order. Please try again later.';
 
-        if (err instanceof DomainError) {
+        if (err instanceof ApiError) {
+          status = err.status;
+          code = err.code;
+          message = err.message;
+        } else if (err instanceof DomainError) {
           code = err.code;
           message = err.message;
           if (code === 'IDEMPOTENCY_CONFLICT') {
@@ -1702,6 +1903,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
         // Server-authoritative tenant assignment via Model B
         const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+
+        if (!isSuperAdmin) {
+          await subscriptionService.assertWithinLimitTx(db, targetOrgId, 'users', 1, {
+            userId: req.auth!.userId,
+            role: req.auth!.role,
+          });
+        }
 
         const { hash, salt } = hashPassword(password);
         const created = await userRepo.createUser({
