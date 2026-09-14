@@ -479,7 +479,12 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         } : null,
         fulfillment_method: req.body?.fulfillmentMethod,
         payment_method: req.body?.paymentMethod,
-        cart_items: req.body?.cart_items,
+        cart_items: Array.isArray(req.body?.cart_items)
+          ? req.body.cart_items.map((item: any) => ({
+              variant_id: String(item?.variantId || item?.variant_id || ''),
+              quantity: String(item?.quantity ?? ''),
+            }))
+          : req.body?.cart_items,
         discount_code: req.body?.discount_code,
         location_id: req.body?.location_id,
       });
