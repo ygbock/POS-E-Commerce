@@ -324,6 +324,55 @@ export function validateCustomerPayload(body: any, isUpdate = false): Record<str
   return dto;
 }
 
+
+/**
+ * Location creation/update validator.
+ * Client cannot provide identity, organization, or audit fields.
+ */
+export function validateLocationPayload(body: any, isUpdate = false): Record<string, any> {
+  const errors: ValidationErrorDetail[] = [];
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
+  }
+
+  const allowedKeys = ['code', 'name', 'type', 'address', 'phone', 'manager_name', 'is_pos_enabled', 'is_active'];
+  errors.push(...assertAllowedKeys(body, allowedKeys, 'location payload'));
+
+  const types = ['Warehouse', 'Retail Store', 'Distribution Center'];
+  if (!isUpdate || body.code !== undefined) {
+    if (typeof body.code !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{1,63}$/.test(body.code.trim())) {
+      errors.push({ field: 'code', message: 'code must be 2-64 characters using letters, numbers, hyphens, or underscores' });
+    }
+  }
+  if (!isUpdate || body.name !== undefined) {
+    if (typeof body.name !== 'string' || body.name.trim().length < 2 || body.name.trim().length > 255) {
+      errors.push({ field: 'name', message: 'name must be between 2 and 255 characters' });
+    }
+  }
+  if (!isUpdate || body.type !== undefined) {
+    if (typeof body.type !== 'string' || !types.includes(body.type)) {
+      errors.push({ field: 'type', message: 'type must be Warehouse, Retail Store, or Distribution Center' });
+    }
+  }
+  for (const field of ['address', 'phone', 'manager_name'] as const) {
+    if (body[field] !== undefined && body[field] !== null && typeof body[field] !== 'string') {
+      errors.push({ field, message: `${field} must be a string or null` });
+    }
+  }
+  for (const field of ['is_pos_enabled', 'is_active'] as const) {
+    if (body[field] !== undefined && typeof body[field] !== 'boolean') {
+      errors.push({ field, message: `${field} must be boolean` });
+    }
+  }
+  if (errors.length > 0) throw new ValidationError('Location validation failed', errors);
+
+  const dto: Record<string, any> = {};
+  for (const key of allowedKeys) if (body[key] !== undefined) dto[key] = body[key];
+  if (dto.code) dto.code = dto.code.trim();
+  if (dto.name) dto.name = dto.name.trim();
+  return dto;
+}
+
 /**
  * Category Creation / Update Validator
  */
