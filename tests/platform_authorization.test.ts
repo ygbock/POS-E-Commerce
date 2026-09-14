@@ -329,6 +329,104 @@ async function main() {
       assert.equal(ownBody.success, true);
     });
 
+    // ------------------------------------------------------------------
+    // 2.8 TENANT LIFECYCLE MANAGEMENT
+    // ------------------------------------------------------------------
+    await runTest('2.8 Tenant lifecycle: create, plan update, suspend and activate', async () => {
+      const createRes = await fetch(`${baseUrl}/api/platform/tenants`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${systemOwnerToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Lifecycle Test Tenant',
+          slug: 'lifecycle-test',
+          code: 'LIFECYCLE_TEST',
+          planTier: 'professional',
+          adminName: 'Lifecycle Administrator',
+          adminEmail: 'lifecycle-admin@example.com',
+          adminPassword: 'StrongPassword123',
+        }),
+      });
+      assert.equal(createRes.status, 201);
+      const createdBody = await createRes.json();
+      assert.equal(createdBody.success, true);
+      assert.equal(createdBody.data.tenant.plan, 'professional');
+      assert.equal(createdBody.data.initialAdmin.role, 'admin');
+      assert.equal(createdBody.data.initialAdmin.email, 'lifecycle-admin@example.com');
+
+      const tenantId = createdBody.data.tenant.id;
+
+      const duplicateRes = await fetch(`${baseUrl}/api/platform/tenants`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${platformAdminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Duplicate',
+          slug: 'lifecycle-test',
+          code: 'LIFECYCLE_DUP',
+          adminName: 'Duplicate Admin',
+          adminEmail: 'duplicate@example.com',
+          adminPassword: 'StrongPassword123',
+        }),
+      });
+      assert.equal(duplicateRes.status, 409);
+
+      const updateRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${platformAdminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ planTier: 'enterprise' }),
+      });
+      assert.equal(updateRes.status, 200);
+      const updateBody = await updateRes.json();
+      assert.equal(updateBody.data.plan, 'enterprise');
+
+      const suspendRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${platformAdminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ isActive: false }),
+      });
+      assert.equal(suspendRes.status, 200);
+      const suspendBody = await suspendRes.json();
+      assert.equal(suspendBody.data.status, 'suspended');
+
+      const tenantToken = signToken({
+        userId: createdBody.data.initialAdmin.id,
+        email: createdBody.data.initialAdmin.email,
+        organizationId: tenantId,
+        role: 'admin',
+        permissions: ['products.view'],
+      });
+
+      const blockedRes = await fetch(`${baseUrl}/api/products`, {
+        headers: { 'Authorization': `Bearer ${tenantToken}` },
+      });
+      assert.equal(blockedRes.status, 403);
+      const blockedBody = await blockedRes.json();
+      assert.equal(blockedBody.error.code, 'TENANT_ACCESS_DENIED');
+
+      const activateRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${platformAdminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ isActive: true }),
+      });
+      assert.equal(activateRes.status, 200);
+      const activateBody = await activateRes.json();
+      assert.equal(activateBody.data.status, 'active');
+    });
+
     console.log('\n======================================================');
     console.log(' ALL PLATFORM AUTHORIZATION TESTS PASSED');
     console.log('======================================================\n');
