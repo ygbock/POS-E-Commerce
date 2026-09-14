@@ -458,16 +458,12 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   // 5. PUBLIC STOREFRONT ORDER CREATION
   // --------------------------------------------------------------------------
 
-  // Public shoppers may create orders without a tenant workspace session.
-  // Tenant identity is resolved exclusively from the canonical storefront slug;
-  // customer IDs are deliberately ignored so a guest cannot impersonate another
-  // tenant's customer record. Pricing, tax, stock and order state are recalculated
-  // by OrderService inside the database transaction.
-  router.post('/:tenantSlug/orders', async (req: Request, res: Response) => {
+  // Public checkout resolves the tenant from either the canonical URL slug or
+  // the request host. Customer IDs are never accepted from an unauthenticated
+  // request. OrderService recalculates price, tax, shipping and stock atomically.
+  const placePublicStorefrontOrder = async (req: Request, res: Response, explicitSlug?: string) => {
     try {
-      const config = await resolveStorefrontTenant(req, db, {
-        explicitSlug: req.params.tenantSlug,
-      });
+      const config = await resolveStorefrontTenant(req, db, explicitSlug ? { explicitSlug } : undefined);
       const customer = req.body?.customer;
       const result = await orders.placeStorefrontOrder({
         organization_id: config.tenant.id,
@@ -487,26 +483,14 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         discount_code: req.body?.discount_code,
         location_id: req.body?.location_id,
       });
-
-      return res.status(201).json({
-        success: true,
-        data: { ...result.order, items: result.items, payments: result.payments },
-      });
+      return res.status(201).json({ success: true, data: { ...result.order, items: result.items, payments: result.payments } });
     } catch (err: any) {
-      if (err instanceof ApiError || err instanceof StorefrontCartValidationError) {
-        return handleStorefrontError(res, err);
-      }
       const code = err?.code;
       const status = code === 'IDEMPOTENCY_CONFLICT' ? 409
         : code === 'PRODUCT_NOT_FOUND' ? 404
         : code === 'VALIDATION_ERROR' || code === 'INSUFFICIENT_STOCK' ? 400
         : 500;
-      if (status === 500) {
-        console.error('[Public Storefront Checkout Error]:', {
-          message: err?.message,
-          stack: err?.stack,
-        });
-      }
+      if (status === 500) console.error('[Public Storefront Checkout Error]:', { message: err?.message, stack: err?.stack });
       return res.status(status).json({
         success: false,
         error: {
@@ -515,7 +499,13 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         },
       });
     }
-  });
+  };
+
+  // Host-resolved storefront checkout: POST /api/storefront/orders
+  router.post('/orders', (req: Request, res: Response) => placePublicStorefrontOrder(req, res));
+
+  // Canonical tenant-scoped storefront checkout: POST /api/storefront/:tenantSlug/orders
+  router.post('/:tenantSlug/orders', (req: Request, res: Response) => placePublicStorefrontOrder(req, res, req.params.tenantSlug));
 
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED ADMIN ORDER LIFECYCLE
