@@ -147,7 +147,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         limit = '24',
       } = req.query;
 
-      const conditions: string[] = ['p.organization_id = $1', "p.status = 'active'"];
+      const conditions: string[] = ['p.organization_id = $1', "p.status = 'active'", 'p.channels_ecommerce = true', '(b.id IS NULL OR b.is_active = true)'];
       const params: any[] = [orgId];
 
       if (category && category !== 'All') {
@@ -332,7 +332,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
          FROM products p
          LEFT JOIN categories c ON p.category_id = c.id
          LEFT JOIN brands b ON p.brand_id = b.id
-         WHERE (p.slug = $1 OR p.id = $1) AND p.organization_id = $2 AND p.status = 'active'`,
+         WHERE (p.slug = $1 OR p.id = $1) AND p.organization_id = $2 AND p.status = 'active' AND p.channels_ecommerce = true AND (b.id IS NULL OR b.is_active = true)`,
         [slugOrId, orgId]
       );
 
@@ -506,6 +506,116 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
 
   // Canonical tenant-scoped storefront checkout: POST /api/storefront/:tenantSlug/orders
   router.post('/:tenantSlug/orders', (req: Request, res: Response) => placePublicStorefrontOrder(req, res, req.params.tenantSlug));
+
+  // --------------------------------------------------------------------------
+  // 6. PUBLIC ORDER TRACKING (CONTACT VERIFIED)
+  // --------------------------------------------------------------------------
+
+  const trackPublicOrder = async (req: Request, res: Response, explicitSlug?: string) => {
+    try {
+      const config = await resolveStorefrontTenant(req, db, explicitSlug ? { explicitSlug } : undefined);
+      const contact = String(req.query.contact || '').trim();
+      const orderNumber = String(req.params.orderNumber || '').trim();
+      if (!orderNumber || !contact) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ORDER_VERIFICATION_FAILED', message: 'Order not found or contact verification failed.' },
+        });
+      }
+
+      const orderRes = await db.query<any>(
+        `SELECT o.id, o.order_number, o.status, o.payment_status, o.fulfillment_method,
+                o.carrier_name, o.tracking_number, o.created_at,
+                o.subtotal, o.shipping_fee, o.tax_amount, o.total_amount,
+                c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id AND c.organization_id = o.organization_id
+         WHERE o.organization_id = $1
+           AND (o.order_number = $2 OR o.id = $2)
+         LIMIT 1`,
+        [config.tenant.id, orderNumber],
+      );
+      const order = orderRes.rows[0];
+      const normalizedContact = contact.toLowerCase().replace(/\\s+/g, '');
+      const normalizedPhone = contact.replace(/[^0-9]/g, '');
+      const emailMatches = order?.customer_email
+        ? String(order.customer_email).trim().toLowerCase() === normalizedContact
+        : false;
+      const phoneMatches = order?.customer_phone
+        ? String(order.customer_phone).replace(/[^0-9]/g, '') === normalizedPhone
+        : false;
+
+      if (!order || (!emailMatches && (!normalizedPhone || !phoneMatches))) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ORDER_VERIFICATION_FAILED', message: 'Order not found or contact verification failed.' },
+        });
+      }
+
+      const itemsRes = await db.query<any>(
+        `SELECT oi.product_name AS name, oi.sku, oi.quantity, oi.unit_price, oi.total_amount AS line_total,
+                p.images
+         FROM order_items oi
+         LEFT JOIN product_variants pv ON pv.id = oi.variant_id AND pv.organization_id = $1
+         LEFT JOIN products p ON p.id = pv.product_id AND p.organization_id = $1
+         WHERE oi.order_id = $2
+         ORDER BY oi.created_at ASC, oi.id ASC`,
+        [config.tenant.id, order.id],
+      );
+
+      const maskEmail = (email: string | null) => {
+        if (!email) return '';
+        const [local, domain] = email.split('@');
+        if (!domain) return '***';
+        return `${(local?.[0] || '*')}***@${domain}`;
+      };
+
+      const items = itemsRes.rows.map((item: any) => {
+        let images: unknown = item.images;
+        if (typeof images === 'string') {
+          try { images = JSON.parse(images); } catch { images = []; }
+        }
+        return {
+          name: String(item.name || 'Item'),
+          sku: item.sku || undefined,
+          quantity: String(item.quantity),
+          unitPrice: String(item.unit_price),
+          lineTotal: String(item.line_total),
+          image: Array.isArray(images) && typeof images[0] === 'string' ? images[0] : undefined,
+        };
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          id: order.id,
+          orderNumber: order.order_number,
+          status: order.status,
+          paymentStatus: order.payment_status,
+          fulfillmentMethod: order.fulfillment_method,
+          carrierName: order.carrier_name || undefined,
+          trackingNumber: order.tracking_number || undefined,
+          createdAt: order.created_at,
+          items,
+          totals: {
+            subtotal: String(order.subtotal),
+            shippingFee: String(order.shipping_fee),
+            taxAmount: String(order.tax_amount),
+            totalAmount: String(order.total_amount),
+          },
+          customerName: String(order.customer_name || 'Customer'),
+          maskedEmail: maskEmail(order.customer_email),
+        },
+      });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  };
+
+  router.get('/orders/:orderNumber', (req: Request, res: Response) => trackPublicOrder(req, res));
+  router.get('/:tenantSlug/orders/:orderNumber', (req: Request, res: Response) =>
+    trackPublicOrder(req, res, req.params.tenantSlug)
+  );
 
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED ADMIN ORDER LIFECYCLE
