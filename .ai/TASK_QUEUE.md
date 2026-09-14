@@ -802,3 +802,22 @@ The GitHub connector used for this implementation can read and write repository 
 - `npm test`
 
 **Acceptance status:** Implementation complete; runtime verification pending workstation/CI execution.
+
+
+---
+
+## Phase 5.3 Execution Record — TASK-5.3.1
+
+**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Date:** 2026-09-14
+
+### Implemented
+- Added migration `012_tenant_lifecycle.sql` with server-side tenant `slug`, `plan_tier`, uniqueness, reserved-safe URL identifiers, and active/created indexing.
+- Added `POST /api/platform/tenants` with transactional organization + initial admin creation, strict validation, password hashing, duplicate detection, and audit logging.
+- Added `PATCH /api/platform/tenants/:id` for activate/suspend, plan-tier, name, and slug mutations with audit logging.
+- Added tenant lifecycle revalidation to authenticated sessions so suspended tenants fail closed with HTTP 403.
+- Added `TenantManagementView` with loading/error states, create wizard, plan editing, and suspend/activate confirmation workflow.
+- Added lifecycle regression coverage to `tests/platform_authorization.test.ts`.
+
+### Verification boundary
+Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run build`, and `npm test` from the checked-out branch. No CI workflow run is currently associated with the latest implementation commit.
