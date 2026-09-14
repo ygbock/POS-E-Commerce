@@ -885,3 +885,26 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
 - **Security:** Public order tracking is tenant-scoped and requires matching customer contact; inactive/non-ecommerce products are excluded server-side; client cart prices remain non-authoritative.
 - **Verification Required:** `npm run lint`, `npm run test:storefront-api`, `npm run test:storefront-router`, `npm run test:storefront-catalog`, `npm run test:storefront`, `npm run test:storefront-modernization`, `npm test`, `npm run build`.
 - **Supervisor Gate:** `PENDING LOCAL/CI VERIFICATION`
+
+---
+
+### Task 19: TASK-5.6.1 — SaaS Subscription & Billing Foundation
+- **Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`
+- **Date:** 2026-09-14
+- **Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+- **Objective:** Establish the server-authoritative subscription domain required for Phase 5.6 without coupling billing state to client state or payment-provider behavior.
+- **Implementation:**
+  - Added migration `014_subscription_billing_foundation.sql`.
+  - Added canonical Starter, Professional, and Enterprise plan records with authoritative prices, billing intervals, feature flags, and usage limits.
+  - Added tenant-scoped `organization_subscriptions` lifecycle state with a database uniqueness guard allowing only one billable subscription per tenant.
+  - Added `billing_events` with provider event idempotency constraints for the upcoming Monime integration.
+  - Added `subscription_usage_snapshots` for server-authoritative metering.
+  - Added `SubscriptionRepository` and `SubscriptionService` with fail-closed feature/limit accessors.
+  - Backfilled existing organizations into a baseline trial subscription without overwriting an existing subscription.
+- **Verification Required:**
+  - `npm run lint`
+  - `npm run test:subscription-foundation`
+  - `npm run test:operational`
+  - `npm test`
+  - `npm run build`
+- **Supervisor Gate:** `PENDING LOCAL/CI VERIFICATION`
