@@ -297,6 +297,19 @@ export function useStorefrontState() {
       // Preserve the tab selected by goAccount(); direct /account navigation
       // naturally starts from the hook's default profile tab.
       setIsAccountModalOpen(true);
+      return;
+    }
+    if (route.name === 'order') {
+      // Canonical order URLs are deep-linkable. Reuse the tracking surface
+      // rather than leaving an order route visually on the storefront home.
+      setInitialTrackingNumber(route.orderNumber);
+      setInitialTrackingEmail('');
+      setIsOrderTrackingOpen(true);
+      return;
+    }
+    if (route.name === 'not-found') {
+      setActiveSection('home');
+      return;
     }
   }, [route, catalogProducts, tenant?.slug]);
 
