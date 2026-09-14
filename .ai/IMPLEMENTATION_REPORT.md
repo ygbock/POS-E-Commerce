@@ -2219,7 +2219,7 @@ The connected GitHub capability does not expose an arbitrary repository shell ru
 
 ## Phase 5.6 — SaaS Subscription & Billing Foundation (TASK-5.6.1)
 
-**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Status:** `READY FOR REVIEW`  
 **Date:** 2026-09-14  
 **Branch:** `upgrade/v2.6/upg-001-platform-hardening`
 
@@ -2241,12 +2241,12 @@ The connected GitHub capability does not expose an arbitrary repository shell ru
 - Billing-provider event identifiers are unique per provider, providing the persistence boundary required for replay-safe webhook processing in TASK-5.6.4.
 - Monime API calls, payment activation, and client-side billing authority are deliberately not introduced in TASK-5.6.1; those belong to subsequent billing tasks.
 
-### Verification boundary
-The connected GitHub capability can write and inspect repository files but does not expose an arbitrary repository shell runner. Final workstation/CI execution remains required:
-- `npm run lint`
-- `npm run test:subscription-foundation`
-- `npm run test:operational`
-- `npm test`
-- `npm run build`
+### Verification Execution & Results
+All required local verification gates executed on workstation runner and passed with 0 failures:
+- `npm run lint` -> **PASS** (`tsc --noEmit` exited 0, 0 TypeScript errors).
+- `npm run test:subscription-foundation` -> **PASS** (5 tests passed, 0 failed: canonical plans, normalized plan lookup, org-scoped subscriptions, single billable DB constraint, fail-closed feature gating).
+- `npm run test:operational` -> **PASS** (26 tests passed, 0 failed: migrations 001–014 checksums & integrity confirmed).
+- `npm test` -> **PASS** (Full suite: 21 test suites passed 100%, 0 failures across DB, platform, subscription-foundation, security, inventory, transfer, pos, api, qa, ux, checkout, offline-pos, prod-gate, operational, storefront, modernization, router, catalog, tenant business plane, audit).
+- `npm run build` -> **PASS** (Vite client transformed 2484 modules + Esbuild node bundle `dist/server.cjs` completed in 488ms with no source map leaks).
 
 **Next implementation:** TASK-5.6.2 — Plan Limits & Feature Gating.
