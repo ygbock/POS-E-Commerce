@@ -41,7 +41,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | Phase | Title | Focus Area | Status |
 | :--- | :--- | :--- | :---: |
 | **Phase 5.1** | Current-State Reconciliation | Baseline audit, matrix reconciliation, task synchronization | `IN PROGRESS` |
-| **Phase 5.2** | Design System & UI/UX Foundation | Design tokens, shared components, accessible forms & tables | `PLANNED` |
+| **Phase 5.2** | Design System & UI/UX Foundation | Design tokens, shared components, accessible forms & tables | `IMPLEMENTED — PENDING VERIFICATION` |
 | **Phase 5.3** | Platform Control-Plane Completion | Tenant onboarding wizard, plan mutations, operator tools | `PLANNED` |
 | **Phase 5.4** | Tenant Business-Plane Completion | User administration table, location CRUD, customer mutations | `PLANNED` |
 | **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `PLANNED` |
@@ -90,7 +90,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
   - [ ] Shared primitives used consistently in `src/components/ui/`.
   - [ ] Standard page anatomy (title, primary actions, toolbar, data table, empty state) implemented.
   - [ ] WCAG 2.2 AA compliant focus states and color contrast verified.
-- **Completion Status**: `PLANNED`.
+- **Completion Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`.
 
 ---
 
