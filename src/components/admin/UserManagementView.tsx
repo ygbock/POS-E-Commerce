@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pencil, Plus, RefreshCw, Shield } from 'lucide-react';
+import { Plus, RefreshCw, Shield } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -18,7 +18,7 @@ const roleOptions = [
 export const UserManagementView: React.FC = () => {
   const [users,setUsers]=useState<UserRow[]>([]), [locations,setLocations]=useState<LocationRow[]>([]);
   const [loading,setLoading]=useState(true), [error,setError]=useState(''), [query,setQuery]=useState('');
-  const [open,setOpen]=useState(false), [editing,setEditing]=useState<UserRow|null>(null), [saving,setSaving]=useState(false);
+  const [open,setOpen]=useState(false), [saving,setSaving]=useState(false);
   const [form,setForm]=useState({name:'',email:'',password:'',role:'viewer',locationId:''});
 
   const load=async()=>{
@@ -35,15 +35,13 @@ export const UserManagementView: React.FC = () => {
   };
   useEffect(()=>{void load();},[]);
   const filtered=useMemo(()=>users.filter(u=>[u.name,u.email,u.role].join(' ').toLowerCase().includes(query.toLowerCase())),[users,query]);
-  const startCreate=()=>{setEditing(null);setForm({name:'',email:'',password:'',role:'viewer',locationId:''});setOpen(true);};
-  const startEdit=(u:UserRow)=>{setEditing(u);setForm({name:u.name,email:u.email,password:'',role:u.role,locationId:u.locationId||''});setOpen(true);};
+  const startCreate=()=>{setForm({name:'',email:'',password:'',role:'viewer',locationId:''});setOpen(true);};
 
   const save=async(e:React.FormEvent)=>{
     e.preventDefault(); setSaving(true); setError('');
     try {
-      const body:any={name:form.name,email:form.email,role:form.role,locationId:form.locationId||null};
-      if(!editing) body.password=form.password;
-      const res=await fetch(editing?'/api/users/'+editing.id:'/api/users',{method:editing?'PUT':'POST',headers:authClient.getAuthHeaders(),body:JSON.stringify(body)});
+      const body:any={name:form.name,email:form.email,password:form.password,role:form.role,locationId:form.locationId||null};
+      const res=await fetch('/api/users',{method:'POST',headers:authClient.getAuthHeaders(),body:JSON.stringify(body)});
       const data=await res.json();
       if(!res.ok) throw new Error(data.error?.message||'Unable to save user.');
       setOpen(false); await load();
@@ -56,7 +54,7 @@ export const UserManagementView: React.FC = () => {
     {header:'Role',accessor:r=><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold">{r.role.replaceAll('_',' ')}</span>},
     {header:'Status',accessor:r=><span className={r.isActive?'ui-status-success':'ui-status-danger'}>{r.isActive?'Active':'Inactive'}</span>},
     {header:'Location',accessor:r=>locations.find(l=>l.id===r.locationId)?.name||'Unassigned'},
-    {header:'Actions',accessor:r=><Button size="sm" variant="ghost" aria-label={'Edit '+r.name} onClick={()=>startEdit(r)} leftIcon={<Pencil className="h-4 w-4"/>}>Edit</Button>},
+    
   ];
 
   return <section className="ui-page">
@@ -70,7 +68,7 @@ export const UserManagementView: React.FC = () => {
     {error&&<div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
     <div className="ui-surface p-4 mb-4"><Input aria-label="Search users" placeholder="Search name, email or role…" value={query} onChange={e=>setQuery(e.target.value)} /></div>
     <Table data={filtered} columns={columns} caption="Tenant users" isLoading={loading} emptyStateMessage="No tenant users found." getRowKey={u=>u.id}/>
-    <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'Edit User':'Create Tenant User'} footer={<><Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button><Button type="submit" form="user-form" isLoading={saving}>{editing?'Save Changes':'Create User'}</Button></>}>
+    <Modal isOpen={open} onClose={()=>setOpen(false)} title="Create Tenant User" footer={<><Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button><Button type="submit" form="user-form" isLoading={saving}>Create User</Button></>}>
       <form id="user-form" onSubmit={save} className="ui-form-grid ui-form-grid--wide">
         <Input label="Full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required />
         <Input label="Email" type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required disabled={Boolean(editing)} />
