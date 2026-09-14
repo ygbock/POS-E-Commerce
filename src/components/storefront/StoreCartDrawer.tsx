@@ -12,6 +12,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface StoreCartDrawerProps {
@@ -26,14 +27,12 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
   onProceedToCheckout,
 }) => {
   const {
-    storeCart,
-    updateStoreCartQty,
-    removeFromStoreCart,
     appliedCoupon,
     applyCoupon,
     removeCoupon,
     formatCurrency,
   } = useCommerce();
+  const { storeCart, updateStoreCartQty, removeFromStoreCart, formatCurrency: formatStorefrontCurrency } = useStorefrontContext();
 
   const [couponInput, setCouponInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
