@@ -31,4 +31,4 @@ assert.equal(buildStorefrontPath({ name: 'search', query: 'cordless drill' }), '
 assert.equal(buildStorefrontPath({ name: 'product', slug: 'x/y' }), '/product/x%2Fy');
 assert.equal(buildStorefrontPath({ name: 'order', tenantSlug: 'alpha', orderNumber: 'ORD/1' }), '/store/alpha/order/ORD%2F1');
 
-console.log('Storefront router contract: 18 passed, 0 failed');
+const assertionCount = cases.length + 2 + 5;\nconsole.log(`Storefront router contract: ${assertionCount} passed, 0 failed`);
