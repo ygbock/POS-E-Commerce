@@ -30,9 +30,8 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
     appliedCoupon,
     applyCoupon,
     removeCoupon,
-    formatCurrency,
   } = useCommerce();
-  const { storeCart, updateStoreCartQty, removeFromStoreCart, formatCurrency: formatStorefrontCurrency } = useStorefrontContext();
+  const { storeCart, updateStoreCartQty, removeFromStoreCart, formatCurrency } = useStorefrontContext();
 
   const [couponInput, setCouponInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
