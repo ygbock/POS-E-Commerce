@@ -2105,3 +2105,36 @@ Tenant lifecycle mutations remain behind `platform.tenants`. Tenant passwords ar
 No GitHub Actions workflow run is available for the latest implementation commit. Final status therefore remains pending workstation/CI execution of the Phase 5.3 regression and full release gates.
 
 **Next implementation:** Phase 5.4 — Tenant Business-Plane Completion.
+
+
+## Phase 5.4 — Tenant Business-Plane Completion
+
+**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Date:** 2026-09-14  
+**Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+
+### Implemented
+- Added tenant-scoped Location CRUD APIs: `GET /api/locations`, `POST /api/locations`, and `PUT /api/locations/:id`.
+- Added strict location DTO validation, duplicate-code conflict handling, tenant ownership checks, and audit events for location mutations.
+- Added tenant user management view with server-backed user listing and creation; tenant user role input is restricted to business-plane roles and never accepts platform identities.
+- Added server-backed Customer Management view with PostgreSQL-backed create and update flows.
+- Added `POST /api/customers` and `PUT /api/customers/:id` with tenant-scoped authorization, strict mutation allowlists, and audit events.
+- Added dedicated App routes and navigation entries for Users and Locations.
+- Added `tests/tenant_business_plane.test.ts` and registered `test:tenant-business-plane` in the full regression chain.
+- Added location RBAC permissions: `locations.view` and `locations.manage`.
+
+### Security / Architecture
+- Organization identity is derived server-side from the authenticated request context; client organization identifiers are not accepted as mutation authority.
+- Tenant user creation rejects platform roles and prevents non-super-admin assignment of the tenant `admin` role.
+- Location and customer mutations are constrained by `organization_id` at the SQL boundary.
+- UI uses shared Phase 5.2 primitives for tables, forms, modals, loading, and error states.
+
+### Verification boundary
+The connected GitHub capability can write repository files but does not expose an arbitrary repository shell runner. Final workstation/CI execution remains required:
+- `npm run lint`
+- `npm run test:tenant-business-plane`
+- `npm run test:security`
+- `npm run build`
+- `npm test`
+
+**Next implementation:** Phase 5.5 — Customer Storefront Modernization.
