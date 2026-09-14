@@ -821,3 +821,29 @@ The GitHub connector used for this implementation can read and write repository 
 
 ### Verification boundary
 Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run build`, and `npm test` from the checked-out branch. No CI workflow run is currently associated with the latest implementation commit.
+
+
+---
+
+### Task 16: TASK-5.4.1 — Tenant Business-Plane Completion
+- **Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`
+- **Date**: 2026-09-14
+- **Objective**: Replace tenant administration placeholders with server-backed User Management, Location Management, and Customer Management capabilities.
+- **Implementation**:
+  - Added tenant-scoped Location CRUD endpoints and strict location validation.
+  - Added tenant User Management view backed by `/api/users`.
+  - Restricted tenant user creation to business-plane roles; platform identities cannot be created through tenant administration.
+  - Added server-backed Customer Management view with PostgreSQL create/update APIs.
+  - Added dedicated Users and Locations navigation and application routes.
+  - Added `tests/tenant_business_plane.test.ts` and `test:tenant-business-plane`.
+- **Security**:
+  - Tenant mutations use authenticated server-side organization context.
+  - Customer and location mutations enforce organization ownership at SQL boundaries.
+  - Location/customer mutation actions are audit logged.
+- **Verification Required**:
+  - `npm run lint`
+  - `npm run test:tenant-business-plane`
+  - `npm run test:security`
+  - `npm run build`
+  - `npm test`
+- **Supervisor Gate**: `READY FOR VERIFICATION`
