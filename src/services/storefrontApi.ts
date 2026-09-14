@@ -221,7 +221,7 @@ export const storefrontApi = {
     );
   },
 
-  placeOrder(tenantSlug: string, payload: StorefrontOrderRequest) {
+  placeOrder(tenantSlug: string | undefined, payload: StorefrontOrderRequest) {
     return request<any>(`${tenantBase(tenantSlug)}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
