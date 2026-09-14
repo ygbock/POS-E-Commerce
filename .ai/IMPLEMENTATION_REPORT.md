@@ -2085,3 +2085,23 @@ Implementation was written directly to the authorized GitHub branch. The connect
 `npm run lint`, `npm run test:ux`, `npm run build`, and `npm test`.
 
 **Next task:** TASK-5.3.1 — Platform Control-Plane Completion (tenant lifecycle management).
+
+
+---
+
+## Phase 5.3 — Platform Control-Plane Completion
+
+**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Date:** 2026-09-14
+
+Tenant lifecycle management has been implemented end-to-end. The control plane now provisions tenants transactionally with an initial tenant administrator, supports plan-tier and lifecycle state mutations, records privileged mutations in the audit ledger, and denies business-plane access for suspended tenants.
+
+The frontend now provides a dedicated Tenant Management view with create, plan-change, suspend, activate, loading, error, and confirmation states.
+
+### Security posture
+Tenant lifecycle mutations remain behind `platform.tenants`. Tenant passwords are hashed server-side. Suspended organizations are revalidated during authentication middleware processing and fail closed with `TENANT_ACCESS_DENIED`.
+
+### Verification
+No GitHub Actions workflow run is available for the latest implementation commit. Final status therefore remains pending workstation/CI execution of the Phase 5.3 regression and full release gates.
+
+**Next implementation:** Phase 5.4 — Tenant Business-Plane Completion.
