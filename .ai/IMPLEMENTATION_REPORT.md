@@ -2179,3 +2179,38 @@ The connected GitHub capability can write repository files but does not expose a
 - `npm test`
 
 **Next implementation:** Phase 5.5 — Customer Storefront Modernization.
+
+
+## Phase 5.5 — Customer Storefront Modernization (TASK-5.5.1)
+
+**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Date:** 2026-09-14  
+**Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+
+### Implemented
+- Added tenant-scoped storefront cart state and persistence under the storefront tenant namespace.
+- Added typed `storefrontApi.trackOrder()` client contract and public tenant/host order tracking routes.
+- Hardened public catalog queries to require active, ecommerce-enabled products and active brands.
+- Materialized guest checkout contact into tenant-scoped customer records so public tracking has authoritative email/phone verification data.
+- Migrated storefront cart drawer and headers away from the global CommerceContext cart state.
+- Migrated storefront order tracking from client-side in-memory order lookup to the server-authoritative tracking API.
+- Added storefront API and modernization regression coverage and registered the modernization suite in the regression command.
+
+### Security / Architecture
+- Public tracking returns a sanitized DTO and uses HTTP 404 for both unknown and contact-mismatch cases to reduce order enumeration.
+- Order tracking is always scoped to the resolved tenant organization.
+- Client-submitted checkout pricing remains excluded from the storefront order payload; server-side OrderService remains responsible for authoritative pricing, stock locking, and idempotency.
+- Storefront cart state is no longer shared through the back-office global cart namespace.
+
+### Verification boundary
+The connected GitHub capability does not expose an arbitrary repository shell runner. Therefore this implementation is **not being marked fully verified** until workstation/CI execution confirms:
+- `npm run lint`
+- `npm run test:storefront-api`
+- `npm run test:storefront-router`
+- `npm run test:storefront-catalog`
+- `npm run test:storefront`
+- `npm run test:storefront-modernization`
+- `npm test`
+- `npm run build`
+
+**Next implementation after verification:** Phase 5.6 — SaaS Subscriptions & Billing Engine.
