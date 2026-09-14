@@ -916,3 +916,39 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - `npm test` -> PASS (all 21 test suites passed)
   - `npm run build` -> PASS (client and server production bundles built cleanly)
 - **Supervisor Gate:** `PASSED LOCAL GATES (READY FOR REVIEW)`
+
+---
+
+### Task 20: TASK-5.6.2 — Plan Limits & Feature Gating
+- **Status:** `READY FOR REVIEW`
+- **Date:** 2026-09-14
+- **Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+- **Objective:** Connect the SaaS subscription domain foundation to server-authoritative plan limit enforcement and feature gating across all business resource mutation boundaries.
+- **Implementation:**
+  - Added authoritative limit checks for Users/Staff (Starter 5, Pro 25, Enterprise 100), Locations (Starter 1, Pro 5, Enterprise 25), Products (Starter 500, Pro 5000, Enterprise 50000), and Monthly Orders (Starter 1000, Pro 10000, Enterprise 100000).
+  - Enhanced `SubscriptionRepository` with `countUsers`, `countLocations`, `countProducts`, `countMonthlyOrders`, and pessimistic row locking (`forUpdate: SELECT ... FOR UPDATE OF os`).
+  - Enhanced `SubscriptionService` with `hasFeature`, `assertFeatureEnabled`, `assertWithinLimit`, `assertCanCreateUser`, `assertCanCreateLocation`, `assertCanCreateProduct`, and `assertCanCreateOrder`.
+  - Added `SubscriptionLimitError` with error code, HTTP status 403, and detailed metrics (limit, current, metric).
+  - Integrated server mutation boundaries:
+    - `POST /api/users` -> `assertCanCreateUser`
+    - `POST /api/locations` -> `assertCanCreateLocation`
+    - `POST /api/products` -> `assertCanCreateProduct`
+    - `POST /api/orders` & storefront checkout -> `assertFeatureEnabled(orgId, 'storefront')` + `assertCanCreateOrder`
+    - `POST /api/pos/checkout` -> `assertFeatureEnabled(orgId, 'pos')` + `assertCanCreateOrder`
+    - `POST /api/inventory/transfers` -> `assertFeatureEnabled(orgId, 'multi_location')`
+    - `GET /api/reports/advanced` -> `assertFeatureEnabled(orgId, 'reports_advanced')`
+  - Integrated error classification and sanitization in `server/utils/errorSanitizer.ts`:
+    - Maps `SUBSCRIPTION_LIMIT_REACHED` to HTTP 403.
+    - Maps `FEATURE_NOT_AVAILABLE` to HTTP 403.
+    - Maps `SUBSCRIPTION_NOT_FOUND` to HTTP 403.
+    - Maps `SUBSCRIPTION_INACTIVE` to HTTP 403.
+  - Automatically provisions subscription on platform tenant creation (`platformRoutes.ts`) and bootstraps baseline subscriptions on app startup.
+  - Added dedicated test suite `tests/subscription_limits.test.ts` covering 15 exhaustive test scenarios.
+- **Verification Completed:**
+  - `npm run lint` -> PASS (0 TypeScript errors)
+  - `npm run test:subscription-limits` -> PASS (15/15 passed)
+  - `npm run test:subscription-foundation` -> PASS (5/5 passed)
+  - `npm run test:operational` -> PASS (26/26 passed)
+  - `npm test` -> PASS (all 22 test suites passed)
+  - `npm run build` -> PASS (Vite client and esbuild server bundles built cleanly)
+- **Supervisor Gate:** `PASSED LOCAL GATES (READY FOR REVIEW)`

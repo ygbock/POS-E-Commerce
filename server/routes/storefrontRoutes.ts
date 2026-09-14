@@ -4,10 +4,11 @@ import { resolveStorefrontTenant, TenantStorefrontConfig } from '../services/ten
 import { ApiError } from '../utils/errorSanitizer';
 import { StorefrontCartService, StorefrontCartValidationError } from '../services/storefrontCartService';
 import { OrderService } from '../services/orderService';
+import { SubscriptionService } from '../services/subscriptionService';
 import { PERMISSIONS } from '../auth/roles';
 import { requireAuth, requirePermission, requireTenantAccess } from '../middleware/auth';
 
-export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderService): Router {
+export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderService, subscriptionService?: SubscriptionService): Router {
   const orders = orderService || new OrderService(undefined, undefined, undefined, undefined, db);
   const router = Router();
 
@@ -464,6 +465,12 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   const placePublicStorefrontOrder = async (req: Request, res: Response, explicitSlug?: string) => {
     try {
       const config = await resolveStorefrontTenant(req, db, explicitSlug ? { explicitSlug } : undefined);
+
+      if (subscriptionService) {
+        await subscriptionService.assertFeatureEnabled(config.tenant.id, 'storefront');
+        await subscriptionService.assertCanCreateOrder(config.tenant.id, db);
+      }
+
       const customer = req.body?.customer;
       const result = await orders.placeStorefrontOrder({
         organization_id: config.tenant.id,
@@ -494,6 +501,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
       const status = code === 'IDEMPOTENCY_CONFLICT' ? 409
         : code === 'PRODUCT_NOT_FOUND' ? 404
         : code === 'VALIDATION_ERROR' || code === 'INSUFFICIENT_STOCK' ? 400
+        : code === 'SUBSCRIPTION_LIMIT_REACHED' || code === 'FEATURE_NOT_AVAILABLE' || code === 'SUBSCRIPTION_NOT_FOUND' || code === 'SUBSCRIPTION_INACTIVE' ? 403
         : 500;
       if (status === 500) console.error('[Public Storefront Checkout Error]:', { message: err?.message, stack: err?.stack });
       return res.status(status).json({

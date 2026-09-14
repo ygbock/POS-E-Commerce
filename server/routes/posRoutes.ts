@@ -6,6 +6,7 @@ import { PosRepository } from '../repositories/posRepository';
 import { OrderRepository } from '../repositories/orderRepository';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { parseExactMoney, parseExactQuantity, parseQtyToScaled } from '../inventory/inventoryPolicies';
+import { SubscriptionService } from '../services/subscriptionService';
 
 // ============================================================================
 // STRICT INPUT VALIDATION UTILITIES (Rejects non-strings and whitespace)
@@ -141,6 +142,26 @@ export function handlePosRouteError(res: Response, err: any): Response {
     });
   }
 
+  if (msg.includes('SUBSCRIPTION_LIMIT_REACHED')) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'SUBSCRIPTION_LIMIT_REACHED',
+        message: safeMessage,
+      },
+    });
+  }
+
+  if (msg.includes('FEATURE_NOT_AVAILABLE') || msg.includes('FEATURE_NOT_INCLUDED')) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FEATURE_NOT_AVAILABLE',
+        message: safeMessage,
+      },
+    });
+  }
+
   if (msg.includes('SESSION_NOT_FOUND')) {
     return res.status(404).json({
       success: false,
@@ -230,7 +251,7 @@ export function handlePosRouteError(res: Response, err: any): Response {
   });
 }
 
-export function createPosRouter(db: DatabaseClient, posService: PosService): Router {
+export function createPosRouter(db: DatabaseClient, posService: PosService, subscriptionService?: SubscriptionService): Router {
   const router = Router();
   const posRepo = new PosRepository(db);
   const orderRepo = new OrderRepository(db);
@@ -450,6 +471,12 @@ export function createPosRouter(db: DatabaseClient, posService: PosService): Rou
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
+
+        if (subscriptionService) {
+          await subscriptionService.assertFeatureEnabled(orgId, 'pos');
+          await subscriptionService.assertCanCreateOrder(orgId, db);
+        }
+
         const { locationId, sessionId, customerId, cartItems, paymentMethod, amountPaid, notes } = req.body;
 
         if (!locationId || !sessionId || !cartItems || !Array.isArray(cartItems) || !paymentMethod || amountPaid === undefined) {

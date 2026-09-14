@@ -2250,3 +2250,54 @@ All required local verification gates executed on workstation runner and passed 
 - `npm run build` -> **PASS** (Vite client transformed 2484 modules + Esbuild node bundle `dist/server.cjs` completed in 488ms with no source map leaks).
 
 **Next implementation:** TASK-5.6.2 — Plan Limits & Feature Gating.
+
+---
+
+## Phase 5.6 — Plan Limits & Feature Gating (TASK-5.6.2)
+
+**Status:** `READY FOR REVIEW`  
+**Date:** 2026-09-14  
+**Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+
+### Implemented
+- **Authoritative Plan Limit Enforcement**:
+  - Implemented authoritative checks for Users/Staff (Starter 5, Pro 25, Enterprise 100), Locations (Starter 1, Pro 5, Enterprise 25), Products (Starter 500, Pro 5000, Enterprise 50000), and Monthly Orders (Starter 1000, Pro 10000, Enterprise 100000).
+  - Enhanced `SubscriptionRepository` with `countUsers`, `countLocations`, `countProducts`, `countMonthlyOrders`, and pessimistic row locking (`SELECT ... FOR UPDATE OF os`).
+- **Feature Gating Engine**:
+  - Added `hasFeature(orgId, feature)` and `assertFeatureEnabled(orgId, feature)` to `SubscriptionService`.
+  - Feature normalization supporting aliases (`advanced_reports` ↔ `reports_advanced`, `ecommerce` ↔ `storefront`).
+  - Strict fail-closed semantics: organizations with missing (`SUBSCRIPTION_NOT_FOUND`) or inactive (`SUBSCRIPTION_INACTIVE`) subscriptions are denied access.
+- **Server Mutation Boundaries**:
+  - `POST /api/users`: Enforces `assertCanCreateUser`.
+  - `POST /api/locations`: Enforces `assertCanCreateLocation`.
+  - `POST /api/products`: Enforces `assertCanCreateProduct`.
+  - `POST /api/orders` & Storefront checkout: Enforces `assertFeatureEnabled(orgId, 'storefront')` and `assertCanCreateOrder`.
+  - `POST /api/pos/checkout`: Enforces `assertFeatureEnabled(orgId, 'pos')` and `assertCanCreateOrder`.
+  - `POST /api/inventory/transfers`: Enforces `assertFeatureEnabled(orgId, 'multi_location')`.
+  - `GET /api/reports/advanced`: Enforces `assertFeatureEnabled(orgId, 'reports_advanced')`.
+- **Error Standardization & HTTP 403 Envelopes**:
+  - Introduced typed `SubscriptionLimitError` carrying metric, limit, current count, and HTTP status 403.
+  - Updated centralized `server/utils/errorSanitizer.ts` to classify `SUBSCRIPTION_LIMIT_REACHED`, `FEATURE_NOT_AVAILABLE`, `SUBSCRIPTION_NOT_FOUND`, and `SUBSCRIPTION_INACTIVE` into standard HTTP 403 envelopes.
+- **Platform Lifecycle Integration**:
+  - Updated `server/routes/platformRoutes.ts` to provision initial subscriptions on new tenant creation.
+  - Added app startup bootstrap in `server.ts` ensuring existing organizations have active trial subscriptions.
+- **Dedicated Test Suite (`tests/subscription_limits.test.ts`)**:
+  - Implemented 15 exhaustive automated scenarios covering Starter/Pro/Enterprise user limits, product limits, location limits, monthly order limits, allowed/disallowed feature gating, fail-closed handling on missing/inactive subscriptions, concurrency row locking, cross-tenant isolation, platform super-admin role boundary enforcement, and error sanitization HTTP status mapping.
+  - Registered `"test:subscription-limits"` in `package.json` and integrated it into the full `"test"` command.
+
+### Security / Architecture
+- All plan limits and feature checks are strictly server-authoritative; client state, query parameters, and UI visibility toggles are non-authoritative.
+- Cross-tenant isolation: usage counters and limits are strictly partitioned by `organization_id`.
+- Platform roles (such as `super_admin`) performing business mutations on behalf of a tenant are bound by that tenant's plan limits.
+- Concurrency race prevention: `assertWithinLimit` supports pessimistic row-level locking (`FOR UPDATE OF os`) within transactions.
+
+### Verification Execution & Results
+All required local verification gates executed on workstation runner and passed with 0 failures:
+- `npm run lint` -> **PASS** (`tsc --noEmit` exited 0, 0 TypeScript errors).
+- `npm run test:subscription-limits` -> **PASS** (15/15 scenarios passed).
+- `npm run test:subscription-foundation` -> **PASS** (5/5 tests passed).
+- `npm run test:operational` -> **PASS** (26/26 tests passed).
+- `npm test` -> **PASS** (Full suite: 22 test suites passed 100%, 0 failures across DB, platform, subscription-foundation, subscription-limits, security, inventory, transfer, pos, api, qa, ux, checkout, offline-pos, prod-gate, operational, storefront, modernization, router, catalog, tenant business plane, audit).
+- `npm run build` -> **PASS** (Vite client transformed 2484 modules + Esbuild node bundle `dist/server.cjs` completed with no source map leaks).
+
+**Next implementation:** TASK-5.6.3 — Tenant Subscription & Billing Management UI.

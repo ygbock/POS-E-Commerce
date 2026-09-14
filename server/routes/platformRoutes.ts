@@ -204,6 +204,24 @@ export function createPlatformRouter(db: DatabaseClient): Router {
           [userId, tenantId, admin.email, admin.name, hash, salt],
         );
 
+        // Authoritative Subscription Provisioning (TASK-5.6.1 / TASK-5.6.2)
+        const planCode = (planTier || 'starter').toLowerCase();
+        const planRes = await tx.query<any>(
+          'SELECT id, trial_days FROM subscription_plans WHERE code = $1 LIMIT 1',
+          [planCode]
+        );
+        const planId = planRes.rows[0]?.id || 'plan_starter';
+        const trialDays = Number(planRes.rows[0]?.trial_days || 14);
+
+        await tx.query(
+          `INSERT INTO organization_subscriptions (
+            id, organization_id, plan_id, status, current_period_start, current_period_end, trial_ends_at, metadata
+          ) VALUES (
+            $1, $2, $3, 'trialing', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + ($4 || ' days')::interval, CURRENT_TIMESTAMP + ($4 || ' days')::interval, $5
+          )`,
+          ['sub_' + randomUUID(), tenantId, planId, trialDays, JSON.stringify({ source: 'platform_provisioning' })]
+        );
+
         await auditTenantMutation(
           tx,
           req,

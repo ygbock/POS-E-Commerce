@@ -12,6 +12,8 @@ import { OrderRepository, OrderRecord, OrderItemRecord, PaymentRecord } from './
 import { CustomerRepository } from './server/repositories/customerRepository.ts';
 import { InventoryRepository } from './server/repositories/inventoryRepository.ts';
 import { AuditRepository } from './server/repositories/auditRepository.ts';
+import { SubscriptionRepository } from './server/repositories/subscriptionRepository.ts';
+import { SubscriptionService, SubscriptionLimitError } from './server/services/subscriptionService.ts';
 import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
 import { createPosRouter } from './server/routes/posRoutes.ts';
 import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
@@ -130,6 +132,35 @@ export async function createApp(options: CreateAppOptions = {}) {
   const inventoryRepo = new InventoryRepository(db);
   const auditRepo = new AuditRepository(db);
   app.set('auditRepo', auditRepo);
+  const subscriptionRepo = new SubscriptionRepository(db);
+  const subscriptionService = new SubscriptionService(subscriptionRepo);
+  app.set('subscriptionRepo', subscriptionRepo);
+  app.set('subscriptionService', subscriptionService);
+
+  // Ensure any existing organizations have baseline subscription records (TASK-5.6.1 / TASK-5.6.2)
+  try {
+    await db.query(`
+      INSERT INTO organization_subscriptions (
+        id, organization_id, plan_id, status, current_period_start, current_period_end, trial_ends_at, metadata
+      )
+      SELECT
+        'sub_' || md5(o.id || ':initial'),
+        o.id,
+        COALESCE((SELECT sp.id FROM subscription_plans sp WHERE sp.code = lower(COALESCE(o.plan_tier, 'starter')) LIMIT 1), 'plan_starter'),
+        'trialing',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP + INTERVAL '14 days',
+        CURRENT_TIMESTAMP + INTERVAL '14 days',
+        jsonb_build_object('source', 'create_app_bootstrap')
+      FROM organizations o
+      WHERE NOT EXISTS (
+        SELECT 1 FROM organization_subscriptions os WHERE os.organization_id = o.id
+      )
+    `);
+  } catch {
+    // Non-blocking in degraded persistence or unmigrated tests
+  }
+
   const posService = new PosService(undefined, orderRepo, inventoryRepo, auditRepo, db);
   const orderService = new OrderService(orderRepo, customerRepo, inventoryRepo, auditRepo, db);
 
@@ -814,6 +845,10 @@ export async function createApp(options: CreateAppOptions = {}) {
         // Server-authoritative tenant assignment: stamped from authenticated context
         const authoritativeOrg = await resolveAuthorizedTenant(req, auditRepo, 'PRODUCT');
 
+        // Subscription plan product limit enforcement (TASK-5.6.2)
+        const tenantProductsCount = masterProductsStore.filter((p) => (p.organizationId || 'org_default') === authoritativeOrg).length;
+        await subscriptionService.assertCanCreateProduct(authoritativeOrg, tenantProductsCount);
+
         const newProduct: Product = {
           id,
           organizationId: authoritativeOrg,
@@ -1488,6 +1523,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
+        // Subscription plan location limit & multi-location feature gating (TASK-5.6.2)
+        await subscriptionService.assertCanCreateLocation(orgId, db);
         const { code, name, type, address, phone, manager_name, is_pos_enabled, is_active } = req.body;
         const id = `loc-${randomUUID()}`;
         const result = await db.query(
@@ -1568,9 +1605,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
 
   // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
-  app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
-  app.use('/api/pos', createPosRouter(db, posService));
-  app.use('/api/storefront', createStorefrontRouter(db, orderService));
+  app.use('/api/inventory', createInventoryRouter(db, inventoryRepo, subscriptionService));
+  app.use('/api/pos', createPosRouter(db, posService, subscriptionService));
+  app.use('/api/storefront', createStorefrontRouter(db, orderService, subscriptionService));
   if (process.env.NODE_ENV !== 'test') {
     app.locals.reservationExpiryWorker = startReservationExpiryWorker({ db });
   }
@@ -1601,6 +1638,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const orgId = await resolveAuthorizedTenant(req, auditRepo, 'ORDER');
+        // Subscription plan order limit & storefront feature gating (TASK-5.6.2)
+        await subscriptionService.assertFeatureEnabled(orgId, 'storefront');
+        await subscriptionService.assertCanCreateOrder(orgId, db);
         const actorName = (req.auth as any)?.name || req.auth!.userId;
 
         // Secure authentication/role boundary check
@@ -1974,6 +2014,9 @@ export async function createApp(options: CreateAppOptions = {}) {
         // Server-authoritative tenant assignment via Model B
         const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
 
+        // Subscription plan user limit enforcement (TASK-5.6.2)
+        await subscriptionService.assertCanCreateUser(targetOrgId, db);
+
         const { hash, salt } = hashPassword(password);
         const created = await userRepo.createUser({
           organizationId: targetOrgId,
@@ -2301,6 +2344,30 @@ export async function createApp(options: CreateAppOptions = {}) {
     res.json({ success: true, data: ROLE_PERMISSIONS });
   });
 
+  // Advanced Reports API (Gated by 'reports_advanced' / 'advanced_reports' subscription feature - TASK-5.6.2)
+  app.get(
+    '/api/reports/advanced',
+    requireAuth(),
+    requirePermission(PERMISSIONS.REPORTS_VIEW),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'REPORT');
+        await subscriptionService.assertFeatureEnabled(orgId, 'reports_advanced');
+        res.json({
+          success: true,
+          data: {
+            organizationId: orgId,
+            reportType: 'advanced_analytics',
+            generatedAt: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   // Diagnostic Test Error Route (Non-production test harness for error sanitization validation)
   if (process.env.NODE_ENV !== 'production') {
     app.get('/api/test-error-trigger', (req: Request, res: Response, next: NextFunction) => {
@@ -2362,6 +2429,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       customerRepo,
       inventoryRepo,
       auditRepo,
+      subscriptionRepo,
+    },
+    services: {
+      posService,
+      orderService,
+      subscriptionService,
     },
   };
 }

@@ -40,14 +40,16 @@ export class SubscriptionRepository {
     return result.rows[0] || null;
   }
 
-  async getForOrganization(organizationId: string): Promise<(OrganizationSubscription & { plan: SubscriptionPlan }) | null> {
-    const result = await this.db.query<any>(
+  async getForOrganization(organizationId: string, client?: DatabaseClient, forUpdate = false): Promise<(OrganizationSubscription & { plan: SubscriptionPlan }) | null> {
+    const db = client || this.db;
+    const lockClause = forUpdate ? ' FOR UPDATE OF os' : '';
+    const result = await db.query<any>(
       'SELECT os.*, sp.code AS plan_code, sp.name AS plan_name, sp.description AS plan_description, ' +
       'sp.amount::text AS plan_amount, sp.currency AS plan_currency, sp.billing_interval AS plan_billing_interval, ' +
       'sp.trial_days AS plan_trial_days, sp.limits AS plan_limits, sp.features AS plan_features, ' +
       'sp.is_active AS plan_is_active, sp.display_order AS plan_display_order, sp.created_at AS plan_created_at, sp.updated_at AS plan_updated_at ' +
       'FROM organization_subscriptions os JOIN subscription_plans sp ON sp.id = os.plan_id ' +
-      'WHERE os.organization_id = $1 ORDER BY os.created_at DESC LIMIT 1',
+      'WHERE os.organization_id = $1 ORDER BY os.created_at DESC LIMIT 1' + lockClause,
       [organizationId]
     );
     const row = result.rows[0];
@@ -67,6 +69,45 @@ export class SubscriptionRepository {
         created_at: row.plan_created_at, updated_at: row.plan_updated_at
       }
     };
+  }
+
+  async countUsers(organizationId: string, client?: DatabaseClient): Promise<number> {
+    const db = client || this.db;
+    const result = await db.query<{ count: string | number }>(
+      'SELECT COUNT(*)::int AS count FROM users WHERE organization_id = $1',
+      [organizationId]
+    );
+    return Number(result.rows[0]?.count || 0);
+  }
+
+  async countLocations(organizationId: string, client?: DatabaseClient): Promise<number> {
+    const db = client || this.db;
+    const result = await db.query<{ count: string | number }>(
+      'SELECT COUNT(*)::int AS count FROM locations WHERE organization_id = $1',
+      [organizationId]
+    );
+    return Number(result.rows[0]?.count || 0);
+  }
+
+  async countProducts(organizationId: string, client?: DatabaseClient): Promise<number> {
+    const db = client || this.db;
+    const result = await db.query<{ count: string | number }>(
+      'SELECT COUNT(*)::int AS count FROM products WHERE organization_id = $1',
+      [organizationId]
+    );
+    return Number(result.rows[0]?.count || 0);
+  }
+
+  async countMonthlyOrders(organizationId: string, periodStart: Date, periodEnd?: Date, client?: DatabaseClient): Promise<number> {
+    const db = client || this.db;
+    const params: any[] = [organizationId, periodStart.toISOString()];
+    let query = 'SELECT COUNT(*)::int AS count FROM orders WHERE organization_id = $1 AND created_at >= $2::timestamptz';
+    if (periodEnd) {
+      params.push(periodEnd.toISOString());
+      query += ' AND created_at <= $3::timestamptz';
+    }
+    const result = await db.query<{ count: string | number }>(query, params);
+    return Number(result.rows[0]?.count || 0);
   }
 
   async createSubscription(

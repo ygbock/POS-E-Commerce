@@ -706,3 +706,27 @@ Status: READY FOR REVIEW
 - **Security focus:** tenant-scoped subscription records, database-enforced single active billable subscription, provider event idempotency, server-authoritative plan limits/features, and no client/payment-provider authority introduced at this stage.
 - **Verification completed:** `npm run lint` (PASS, 0 TS errors), `npm run test:subscription-foundation` (PASS, 5/5), `npm run test:operational` (PASS, 26/26, migrations 001-014), `npm test` (PASS, 21 suites), `npm run build` (PASS, Vite + Esbuild).
 - **Reviewer focus:** migration compatibility, plan/tenant isolation, lifecycle constraints, idempotency schema, and fail-closed feature access.
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.2
+- **Status:** `READY FOR REVIEW`
+- **Scope:** Plan limits and feature gating enforcement across server-authoritative mutation boundaries.
+- **Security focus:**
+  - Authoritative plan limits for Users/Staff, Locations, Products, and Monthly Orders.
+  - Fail-closed feature checks for POS, Inventory, Storefront/Ecommerce, Multi-Location transfers, and Advanced Reports.
+  - Missing and inactive subscriptions fail closed with HTTP 403 (`SUBSCRIPTION_NOT_FOUND`, `SUBSCRIPTION_INACTIVE`).
+  - Standardized error codes and HTTP 403 envelopes (`SUBSCRIPTION_LIMIT_REACHED`, `FEATURE_NOT_AVAILABLE`).
+  - Platform/super admin roles respect tenant plan limits for all business resource creations.
+  - Concurrency safety with pessimistic row locking (`FOR UPDATE OF os`).
+- **Verification completed:**
+  - `npm run lint` -> PASS (0 TypeScript errors)
+  - `npm run test:subscription-limits` -> PASS (15/15 passed)
+  - `npm run test:subscription-foundation` -> PASS (5/5 passed)
+  - `npm run test:operational` -> PASS (26/26 passed)
+  - `npm test` -> PASS (all 22 test suites passed)
+  - `npm run build` -> PASS (Vite client + esbuild server production bundles)
+- **Reviewer focus:**
+  - Strict server-side limit checks on POST /api/users, POST /api/locations, POST /api/products, POST /api/orders, /api/pos/checkout, and /api/inventory/transfers.
+  - No client-side bypass of limits or features.
+  - Complete isolation across tenants.
