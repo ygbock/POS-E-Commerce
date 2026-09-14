@@ -44,7 +44,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   onOrderSuccess,
 }) => {
   const {
-    storeCart,
     appliedCoupon,
     placeEcommerceOrder,
     formatCurrency,
@@ -54,6 +53,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     applyCoupon,
     removeCoupon,
   } = useCommerce();
+  const { storeCart, clearStoreCart, tenant, formatCurrency: formatTenantCurrency } = useStorefrontContext();
 
   // Mode: Guest checkout vs Customer Account
   const [isGuestMode, setIsGuestMode] = useState<boolean>(!activeCustomerUser);
@@ -250,6 +250,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       }
 
       onOrderSuccess(order);
+      clearStoreCart();
       onClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'An error occurred while placing the order.');
@@ -295,6 +296,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       }
 
       onOrderSuccess(order);
+      clearStoreCart();
       onClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'An error occurred while placing the order.');
