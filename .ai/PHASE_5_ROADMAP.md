@@ -109,7 +109,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
   - [ ] `POST /api/platform/tenants` validates payload and creates organization transactionally.
   - [ ] Inactive tenants fail closed with HTTP 404 in storefront and HTTP 403 in tenant workspace.
   - [ ] UI provides loading, error, and confirmation states for tenant mutations.
-- **Completion Status**: `PLANNED`.
+- **Completion Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`.
 
 ---
 
@@ -125,9 +125,9 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 - **Tests**: `tests/api_hardening.test.ts`, `tests/auth_security.test.ts`.
 - **Dependencies**: `TASK-5.2.1`.
 - **Acceptance Criteria**:
-  - [ ] Real user list and user creation form operational with validation.
-  - [ ] Location management allows adding store branches and warehouses.
-  - [ ] Customer creation persists directly to PostgreSQL database.
+  - [x] Real user list and user creation form operational with validation.
+  - [x] Location management allows adding store branches and warehouses.
+  - [x] Customer creation persists directly to PostgreSQL database.
 - **Completion Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`.
 
 ---
