@@ -50,6 +50,10 @@ export class AuthService {
     const orgId = credentials.organizationId.trim();
     const email = credentials.email.toLowerCase().trim();
 
+    if (!(await this.isOrganizationActive(orgId))) {
+      throw new Error('Organization is inactive');
+    }
+
     const user = await this.userRepo.findByEmail(orgId, email);
     if (!user) {
       throw new Error('Invalid email or password');
