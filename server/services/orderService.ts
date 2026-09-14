@@ -232,7 +232,7 @@ export class OrderService {
           fulfillmentLocId = locRes.rows[0].id;
         }
 
-        // B. Customer Validation
+        // B. Customer Validation / Guest Customer Materialization
         let authorCustomerRecord = null;
         if (params.customer_id) {
           const custRes = await tx.query<any>(
@@ -243,6 +243,43 @@ export class OrderService {
             throw new DomainError('VALIDATION_ERROR', `Customer with ID '${params.customer_id}' not found under this tenant.`);
           }
           authorCustomerRecord = custRes.rows[0];
+        } else if (params.customer_details) {
+          const email = String(params.customer_details.email || '').trim().toLowerCase();
+          const phone = String(params.customer_details.phone || '').trim();
+          if (!String(params.customer_details.name || '').trim() || (!email && !phone)) {
+            throw new DomainError('VALIDATION_ERROR', 'Customer name and email or phone are required for storefront checkout.');
+          }
+
+          // Reuse an existing tenant customer when contact matches; otherwise
+          // materialize a guest customer so public order tracking has an
+          // authoritative contact record without trusting client order IDs.
+          const existing = await tx.query<any>(
+            `SELECT id, organization_id, name, email, phone
+             FROM customers
+             WHERE organization_id = $1
+               AND (
+                 ($2 <> '' AND LOWER(COALESCE(email, '')) = $2)
+                 OR ($3 <> '' AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = regexp_replace($3, '[^0-9]', '', 'g'))
+               )
+             ORDER BY created_at ASC
+             LIMIT 1`,
+            [organization_id, email, phone]
+          );
+          if (existing.rows[0]) {
+            authorCustomerRecord = existing.rows[0];
+          } else {
+            authorCustomerRecord = await this.customerRepo.createCustomer({
+              id: `cust_${crypto.randomUUID()}`,
+              organization_id,
+              name: String(params.customer_details.name).trim(),
+              email: email || null,
+              phone: phone || null,
+              customer_group: 'Retail',
+              tier: 'Bronze',
+              loyalty_points: 0,
+              notes: 'Created by public storefront checkout',
+            }, tx);
+          }
         }
 
         // C. Calculate Totals & Lock Stock
