@@ -65,6 +65,15 @@ try {
   assert.equal(url.searchParams.get('limit'), '24');
 
   calls.length = 0;
+  globalThis.fetch = (async (input, init) => {
+    calls.push({ url: String(input), init });
+    return new Response(JSON.stringify({ data: { id: 'p-1', organization_id: 'org_alpha', name: 'Drill', slug: 'drill', category: 'Power Tools', categorySlug: 'power-tools', brand: 'Acme', brandSlug: 'acme', rating: 4.8, reviewCount: 3, tags: [], images: [], featured: false, compareAtPrice: null, salesCount: 1, variants: [], availableStock: 5, isOutOfStock: false } }), { status: 200 });
+  }) as typeof fetch;
+  const product = await storefrontApi.getProduct('alpha', 'drill');
+  assert.equal(product.slug, 'drill');
+  assert.equal(calls[0].url, '/api/storefront/alpha/products/drill');
+
+  calls.length = 0;
   await storefrontApi.validateCart('alpha', [{ variantId: 'v1', quantity: 2 }], 'loc-1');
   assert.equal(calls[0].url, '/api/storefront/alpha/cart/validate');
   assert.equal(calls[0].init?.method, 'POST');
@@ -82,7 +91,7 @@ try {
       && error.code === 'TENANT_NOT_FOUND',
   );
 
-  console.log('Storefront API client contract: 10 passed, 0 failed');
+  console.log('Storefront API client contract: 11 passed, 0 failed');
 } finally {
   globalThis.fetch = originalFetch;
 }
