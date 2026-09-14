@@ -256,8 +256,9 @@ export function validateUserPayload(body: any): {
     errors.push({ field: 'password', message: 'Password is required and must be at least 8 characters' });
   }
 
-  if (!body.role || !VALID_ROLES.includes(body.role)) {
-    errors.push({ field: 'role', message: `Role must be one of: ${VALID_ROLES.join(', ')}` });
+  const tenantRoles = ['admin', 'manager', 'cashier', 'inventory_manager', 'purchasing_manager', 'sales_user', 'viewer'];
+  if (!body.role || !tenantRoles.includes(body.role)) {
+    errors.push({ field: 'role', message: `Role must be one of: ${tenantRoles.join(', ')}` });
   }
 
   if (body.locationId !== undefined && body.locationId !== null && typeof body.locationId !== 'string') {
