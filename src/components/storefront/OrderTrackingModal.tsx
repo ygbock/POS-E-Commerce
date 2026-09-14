@@ -99,12 +99,11 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   };
 
   const [orderQuery, setOrderQuery] = useState(initialOrderNumber);
-  const [emailQuery, setEmailQuery] = useState(initialEmail || activeCustomerUser?.email || '');
+  const [emailQuery, setEmailQuery] = useState(initialEmail || '');
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isSimulating, setIsSimulating] = useState(false);
 
   // Auto-search when the route supplies an order number. Contact is required
   // for public verification; no client-side order array is consulted.
