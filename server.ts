@@ -38,6 +38,7 @@ import {
   validateProductPayload,
   validateVariantPayload,
   validateUserPayload,
+  validateLocationPayload,
   validateCustomerPayload,
   validateCategoryPayload,
   validateBrandPayload,
@@ -1384,6 +1385,95 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
+
+  app.post(
+    '/api/locations',
+    requireAuth(),
+    requirePermission(PERMISSIONS.LOCATIONS_MANAGE),
+    requireTenantAccess(),
+    validateBody(validateLocationPayload),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
+        const { code, name, type, address, phone, manager_name, is_pos_enabled, is_active } = req.body;
+        const id = `loc-${randomUUID()}`;
+        const result = await db.query(
+          `INSERT INTO locations
+            (id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, created_at, updated_at`,
+          [id, orgId, code, name, type, address ?? null, phone ?? null, manager_name ?? null, is_pos_enabled ?? false, is_active ?? true]
+        );
+        const created = result.rows[0];
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'CREATE_LOCATION',
+          entity_type: 'LOCATION', entity_id: id,
+          metadata: { code, name, type }
+        });
+        return res.status(201).json({ success: true, data: created });
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          return res.status(409).json({ success: false, error: { code: 'DUPLICATE_LOCATION_CODE', message: 'A location with this code already exists in this tenant.' } });
+        }
+        next(err);
+      }
+    }
+  );
+
+  app.put(
+    '/api/locations/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.LOCATIONS_MANAGE),
+    requireTenantAccess(),
+    validateBody((body: any) => validateLocationPayload(body, true)),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
+        const existing = await db.query('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [req.params.id, orgId]);
+        if (existing.rows.length === 0) {
+          const other = await db.query('SELECT 1 FROM locations WHERE id = $1 AND organization_id <> $2', [req.params.id, orgId]);
+          if (other.rows.length > 0) {
+            return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant location modification forbidden.' } });
+          }
+          return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Location not found.' } });
+        }
+        const allowed = ['code','name','type','address','phone','manager_name','is_pos_enabled','is_active'];
+        const sets: string[] = [];
+        const values: any[] = [];
+        for (const key of allowed) {
+          if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+            values.push(req.body[key] ?? null);
+            sets.push(`${key} = ${values.length}`);
+          }
+        }
+        if (sets.length === 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least one mutable location field is required.' } });
+        values.push(req.params.id, orgId);
+        const result = await db.query(
+          `UPDATE locations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ${values.length - 1} AND organization_id = ${values.length}
+           RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, created_at, updated_at`,
+          values
+        );
+        const updated = result.rows[0];
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'UPDATE_LOCATION',
+          entity_type: 'LOCATION', entity_id: req.params.id,
+          metadata: { changedFields: Object.keys(req.body) }
+        });
+        return res.json({ success: true, data: updated });
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          return res.status(409).json({ success: false, error: { code: 'DUPLICATE_LOCATION_CODE', message: 'A location with this code already exists in this tenant.' } });
+        }
+        next(err);
+      }
+    }
+  );
+
   // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
   app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
   app.use('/api/pos', createPosRouter(db, posService));
@@ -1702,15 +1792,13 @@ export async function createApp(options: CreateAppOptions = {}) {
         const { email, name, password, role, locationId } = req.body;
         const isSuperAdmin = req.auth!.role === 'super_admin';
 
-        // Privilege escalation guard: ordinary admins/managers cannot assign super_admin role
-        if (role === 'super_admin' && !isSuperAdmin) {
-          return res.status(403).json({
-            success: false,
-            error: {
-              code: 'PERMISSION_DENIED',
-              message: 'Only super_admin can assign the super_admin role.',
-            },
-          });
+        // Tenant user creation can never create platform identities or privilege-escalate into super_admin.
+        const tenantAssignableRoles = ['admin', 'manager', 'cashier', 'inventory_manager', 'purchasing_manager', 'sales_user', 'viewer'];
+        if (!tenantAssignableRoles.includes(role) && !(isSuperAdmin && role === 'admin')) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'The requested role is not assignable as a tenant user.' } });
+        }
+        if (role === 'admin' && !isSuperAdmin) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Only super_admin can assign the admin role.' } });
         }
 
         // Server-authoritative tenant assignment via Model B
