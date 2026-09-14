@@ -26,6 +26,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface StoreHeaderProps {
   searchQuery: string;
