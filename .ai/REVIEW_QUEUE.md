@@ -642,3 +642,24 @@ Status: READY FOR REVIEW
 - **Scope:** Tenant creation, lifecycle mutations, suspended-tenant fail-closed behavior, audit logging, and tenant management UI.
 - **Security focus:** server-authoritative RBAC, transactional provisioning, password hashing, slug/code uniqueness, suspended-session denial, and audit attribution.
 - **Required verification:** `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run build`, `npm test`.
+
+
+---
+
+### Queue Item: TASK-5.4.1 — Tenant Business-Plane Completion
+- **Submitted By**: Senior Software Engineer / Implementation Lead / Security & QA Lead
+- **Submission Date**: 2026-09-14
+- **Current Status**: `READY FOR VERIFICATION`
+- **Scope**:
+  - Server-backed tenant User Management.
+  - Tenant-scoped Location CRUD.
+  - Server-backed Customer creation/update.
+  - RBAC and tenant isolation protections.
+  - Shared UI primitives and responsive administrative views.
+- **Required Verification**:
+  - `npm run lint`
+  - `npm run test:tenant-business-plane`
+  - `npm run test:security`
+  - `npm run build`
+  - `npm test`
+- **Supervisor Action Required**: Execute workstation/CI verification and approve or return TASK-5.4.1 for correction.
