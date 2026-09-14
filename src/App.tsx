@@ -16,6 +16,7 @@ import { OrderFulfillment } from './components/orders/OrderFulfillment';
 import { PurchasingManagement } from './components/purchasing/PurchasingManagement';
 import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
 import { CustomerManagement } from './components/crm/CustomerManagement';
+import { CustomerManagementView } from './components/crm/CustomerManagementView';
 import { AuditLogsView } from './components/admin/AuditLogsView';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
 import { TenantManagementView } from './components/platform/TenantManagementView';
@@ -118,7 +119,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'orders' && <OrderFulfillment />}
             {activeTab === 'purchasing' && <PurchasingManagement />}
             {(activeTab === 'fintech' || activeTab === 'finance') && <LedgerAndFinance />}
-            {activeTab === 'crm' && <CustomerManagement />}
+            {activeTab === 'crm' && <CustomerManagementView />}
             {activeTab === 'pricing' && <ProductManagement />}
             {activeTab === 'warehouse' && <StockManagement initialSubTab="matrix" />}
             {activeTab === 'reports' && <LedgerAndFinance />}
