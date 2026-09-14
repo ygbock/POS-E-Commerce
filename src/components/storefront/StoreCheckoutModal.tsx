@@ -59,15 +59,15 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [isGuestMode, setIsGuestMode] = useState<boolean>(!activeCustomerUser);
 
   // Form Fields
-  const [customerName, setCustomerName] = useState(activeCustomerUser?.name || 'Taylor Reed');
-  const [customerEmail, setCustomerEmail] = useState(activeCustomerUser?.email || 'taylor.reed@example.com');
-  const [customerPhone, setCustomerPhone] = useState(activeCustomerUser?.phone || '+1 (555) 349-8812');
-  const [street, setStreet] = useState(activeCustomerUser?.addresses[0]?.street || '742 Evergreen Terrace');
+  const [customerName, setCustomerName] = useState(activeCustomerUser?.name || '');
+  const [customerEmail, setCustomerEmail] = useState(activeCustomerUser?.email || '');
+  const [customerPhone, setCustomerPhone] = useState(activeCustomerUser?.phone || '');
+  const [street, setStreet] = useState(activeCustomerUser?.addresses[0]?.street || '');
   const [apartment, setApartment] = useState('');
-  const [city, setCity] = useState(activeCustomerUser?.addresses[0]?.city || 'Springfield');
-  const [state, setState] = useState(activeCustomerUser?.addresses[0]?.state || 'OR');
-  const [zip, setZip] = useState(activeCustomerUser?.addresses[0]?.zip || '97477');
-  const [country, setCountry] = useState(activeCustomerUser?.addresses[0]?.country || 'USA');
+  const [city, setCity] = useState(activeCustomerUser?.addresses[0]?.city || '');
+  const [state, setState] = useState(activeCustomerUser?.addresses[0]?.state || '');
+  const [zip, setZip] = useState(activeCustomerUser?.addresses[0]?.zip || '');
+  const [country, setCountry] = useState(activeCustomerUser?.addresses[0]?.country || '');
 
   // Selected Saved Address Index
   const [selectedAddressIndex, setSelectedAddressIndex] = useState<number>(0);
@@ -81,10 +81,10 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   >('Credit Card');
 
   // Card details
-  const [cardNumber, setCardNumber] = useState('4242 •••• •••• 4242');
-  const [cardHolder, setCardHolder] = useState(activeCustomerUser?.name || 'Taylor Reed');
-  const [cardExpiry, setCardExpiry] = useState('08/28');
-  const [cardCvc, setCardCvc] = useState('982');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardHolder, setCardHolder] = useState(activeCustomerUser?.name || '');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
   const [saveCard, setSaveCard] = useState(true);
 
   // Coupon & Extras
@@ -331,15 +331,15 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 id="store-checkout-modal-title" className="font-black text-sm sm:text-base text-slate-900 dark:text-white tracking-tight">
-                  Professional Encrypted Checkout
+                  Secure Checkout
                 </h3>
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                   <ShieldCheck className="w-3 h-3" />
-                  <span>256-Bit SSL</span>
+                  <span>Secure connection</span>
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Direct live inventory allocation & verified instant dispatch
+                Inventory is verified again before order placement
               </p>
             </div>
           </div>
