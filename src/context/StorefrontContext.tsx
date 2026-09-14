@@ -12,12 +12,14 @@ export interface StoreCartItem {
   variantId: string;
   productId: string;
   name: string;
+  productName?: string;
   variantName?: string;
   sku?: string;
   price: number;
   quantity: number;
   image?: string;
   maxStock?: number;
+  taxRate?: number;
 }
 
 interface StorefrontContextValue {
@@ -73,8 +75,11 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
   }, [slug]);
   useEffect(() => {
     void reloadTenant();
-    const cartKey = key(slug, 'cart-token'), wishKey = key(slug, 'wishlist');
-    setCartTokenState(cartKey ? window.localStorage.getItem(cartKey) : null);
+    const cartKey = slug ? `storefront:${encodeURIComponent(slug)}:cart` : null;
+    const tokenKey = slug ? `storefront:${encodeURIComponent(slug)}:cart-token` : null;
+    const wishKey = slug ? `storefront:${encodeURIComponent(slug)}:wishlist` : null;
+
+    setCartTokenState(tokenKey ? window.localStorage.getItem(tokenKey) : null);
     if (cartKey) {
       try {
         const parsed: unknown = JSON.parse(window.localStorage.getItem(cartKey) || '[]');
@@ -94,12 +99,16 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
     try { const parsed: unknown = JSON.parse(window.localStorage.getItem(wishKey) || '[]'); setWishlistIds(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []); }
     catch { setWishlistIds([]); }
   }, [reloadTenant, slug]);
+
   const setCartToken = useCallback((token: string | null) => {
-    setCartTokenState(token); const k = key(slug, 'cart-token'); if (!k) return;
+    setCartTokenState(token);
+    const k = slug ? `storefront:${encodeURIComponent(slug)}:cart-token` : null;
+    if (!k) return;
     if (token) window.localStorage.setItem(k, token); else window.localStorage.removeItem(k);
   }, [slug]);
+
   useEffect(() => {
-    const k = key(slug, 'cart');
+    const k = slug ? `storefront:${encodeURIComponent(slug)}:cart` : null;
     if (k) window.localStorage.setItem(k, JSON.stringify(storeCart));
   }, [slug, storeCart]);
 
@@ -110,7 +119,7 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
       const existing = current.find(item => item.variantId === variant.id);
       if (existing) return current.map(item => item.variantId === variant.id ? { ...item, quantity: item.quantity + safeQuantity, price } : item);
       return [...current, {
-        variantId: variant.id, productId: product.id, name: product.name,
+        variantId: variant.id, productId: product.id, name: product.name, productName: product.name,
         variantName: variant.name, sku: variant.sku, price, quantity: safeQuantity,
         image: variant.imageUrl || product.images?.[0],
       }];
@@ -129,7 +138,7 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
 
   const cartCount = useMemo(() => storeCart.reduce((sum, item) => sum + item.quantity, 0), [storeCart]);
 
-  const setCartToken = useCallback  const formatCurrency = useCallback((amount: number) => new Intl.NumberFormat(tenant?.locale || 'en-US', { style: 'currency', currency: tenant?.currency?.code || 'USD' }).format(amount), [tenant]);
+  const formatCurrency = useCallback((amount: number) => new Intl.NumberFormat(tenant?.locale || 'en-US', { style: 'currency', currency: tenant?.currency?.code || 'USD' }).format(amount), [tenant]);
   const value = useMemo(() => ({
     tenant, loading, error, cartToken, setCartToken, storeCart,
     addToStoreCart, updateStoreCartQty, removeFromStoreCart, clearStoreCart, cartCount,

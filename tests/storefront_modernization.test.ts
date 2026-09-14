@@ -4,7 +4,7 @@ import fs from 'node:fs';
 const read = (path: string) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const context = read('src/context/StorefrontContext.tsx');
-assert.match(context, /storefront:\\${encodeURIComponent\(slug\)}:cart/);
+assert.match(context, /storefront:\$\{encodeURIComponent\(slug\)\}:cart/);
 assert.match(context, /export interface StoreCartItem/);
 assert.match(context, /clearStoreCart/);
 

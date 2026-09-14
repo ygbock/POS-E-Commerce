@@ -154,8 +154,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
   const currentBrand = getCardBrand(cardNumber);
 
-  const { tenant } = useStorefrontContext();
-
   const validateServerCart = async () => {
     if (!tenant?.slug) {
       throw new Error('Storefront tenant context is unavailable. Please refresh and try again.');
@@ -189,7 +187,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   storeCart.forEach((item) => {
     const line = item.price * item.quantity;
     subtotal += line;
-    tax += line * (item.taxRate / 100);
+    tax += line * ((item.taxRate || 0) / 100);
   });
 
   let discount = 0;
@@ -1051,7 +1049,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       <div className="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-950 overflow-hidden flex-shrink-0 relative border border-slate-200 dark:border-slate-800">
                         <img
                           src={item.image}
-                          alt={item.productName}
+                          alt={item.productName || item.name}
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover"
                         />
@@ -1062,7 +1060,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
                       {/* Product details */}
                       <div className="flex-1 min-w-0 text-xs">
-                        <p className="font-bold text-slate-900 dark:text-white truncate">{item.productName}</p>
+                        <p className="font-bold text-slate-900 dark:text-white truncate">{item.productName || item.name}</p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                           {item.variantName} • SKU: {item.sku}
                         </p>
