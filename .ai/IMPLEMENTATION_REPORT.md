@@ -2214,3 +2214,39 @@ The connected GitHub capability does not expose an arbitrary repository shell ru
 - `npm run build`
 
 **Next implementation after verification:** Phase 5.6 — SaaS Subscriptions & Billing Engine.
+
+---
+
+## Phase 5.6 — SaaS Subscription & Billing Foundation (TASK-5.6.1)
+
+**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Date:** 2026-09-14  
+**Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+
+### Implemented
+- Added migration `014_subscription_billing_foundation.sql` establishing `subscription_plans`, `organization_subscriptions`, `billing_events`, and `subscription_usage_snapshots`.
+- Added canonical Starter, Professional, and Enterprise plans with server-side limits/features and SLE billing configuration.
+- Added a partial unique database index preventing more than one billable subscription per tenant.
+- Added provider event uniqueness for webhook idempotency preparation.
+- Backfilled existing organizations into a baseline trial subscription using the existing `plan_tier` only as the initial plan selector.
+- Added `SubscriptionRepository` for tenant-scoped plan/subscription reads and controlled subscription creation.
+- Added `SubscriptionService` with fail-closed feature checks and plan-limit accessors.
+- Added deterministic `tests/subscription_foundation.test.ts` and registered it in the full `npm test` chain.
+- Extended the operational migration gate from 001–013 to 001–014.
+
+### Security / Architecture
+- Subscription records are always keyed by `organization_id`; the service requires an explicit tenant identifier.
+- Plan limits and feature flags are server-side configuration and are not accepted from clients.
+- Database uniqueness enforces a single billable subscription state per tenant.
+- Billing-provider event identifiers are unique per provider, providing the persistence boundary required for replay-safe webhook processing in TASK-5.6.4.
+- Monime API calls, payment activation, and client-side billing authority are deliberately not introduced in TASK-5.6.1; those belong to subsequent billing tasks.
+
+### Verification boundary
+The connected GitHub capability can write and inspect repository files but does not expose an arbitrary repository shell runner. Final workstation/CI execution remains required:
+- `npm run lint`
+- `npm run test:subscription-foundation`
+- `npm run test:operational`
+- `npm test`
+- `npm run build`
+
+**Next implementation:** TASK-5.6.2 — Plan Limits & Feature Gating.
