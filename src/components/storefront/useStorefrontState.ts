@@ -264,10 +264,25 @@ export function useStorefrontState() {
       return;
     }
     if (route.name === 'product') {
-      const product = products.find((item) =>
+      const product = catalogProducts.find((item) =>
         item.id === route.slug || item.slug === route.slug
       );
-      if (product) setSelectedDetailProduct(product);
+      if (product) {
+        setSelectedDetailProduct(product);
+        return;
+      }
+
+      if (tenant?.slug && route.slug) {
+        let cancelled = false;
+        void storefrontApi.getProduct(tenant.slug, route.slug)
+          .then((remoteProduct) => {
+            if (!cancelled) setSelectedDetailProduct(toProduct(remoteProduct));
+          })
+          .catch(() => {
+            if (!cancelled) setSelectedDetailProduct(null);
+          });
+        return () => { cancelled = true; };
+      }
       return;
     }
     if (route.name === 'cart') {
@@ -283,7 +298,7 @@ export function useStorefrontState() {
       // naturally starts from the hook's default profile tab.
       setIsAccountModalOpen(true);
     }
-  }, [route, products]);
+  }, [route, catalogProducts, tenant?.slug]);
 
 
 
