@@ -876,3 +876,12 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - [x] Zero TypeScript errors (`npm run lint`), successful production build (`npm run build`).
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
 
+
+
+### Task 18: TASK-5.5.1 — Customer Storefront Modernization
+- **Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`
+- **Working Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+- **Implemented:** Tenant-scoped storefront cart state, authoritative order-tracking API/client contract, ecommerce catalog visibility hardening, guest-contact materialization for secure tracking, storefront tracking UI migration, and modernization regression contracts.
+- **Security:** Public order tracking is tenant-scoped and requires matching customer contact; inactive/non-ecommerce products are excluded server-side; client cart prices remain non-authoritative.
+- **Verification Required:** `npm run lint`, `npm run test:storefront-api`, `npm run test:storefront-router`, `npm run test:storefront-catalog`, `npm run test:storefront`, `npm run test:storefront-modernization`, `npm test`, `npm run build`.
+- **Supervisor Gate:** `PENDING LOCAL/CI VERIFICATION`
