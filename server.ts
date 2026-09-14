@@ -1752,6 +1752,83 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
+
+  app.post(
+    '/api/customers',
+    requireAuth(),
+    requirePermission(PERMISSIONS.CUSTOMERS_CREATE),
+    requireTenantAccess(),
+    validateBody(validateCustomerPayload),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'CUSTOMER');
+        const id = `cust-${randomUUID()}`;
+        const body = req.body;
+        const created = await customerRepo.createCustomer({
+          id,
+          organization_id: orgId,
+          name: body.name.trim(),
+          email: body.email || null,
+          phone: body.phone || null,
+          tier: body.tier || 'Bronze',
+          store_credit_balance: body.store_credit_balance || '0.00',
+          credit_limit: body.credit_limit || '0.00',
+          notes: body.notes || null,
+        });
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'CREATE_CUSTOMER',
+          entity_type: 'CUSTOMER', entity_id: id, metadata: { name: body.name }
+        });
+        return res.status(201).json({ success: true, data: created });
+      } catch (err) { next(err); }
+    }
+  );
+
+  app.put(
+    '/api/customers/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.CUSTOMERS_UPDATE),
+    requireTenantAccess(),
+    validateBody((body: any) => validateCustomerPayload(body, true)),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'CUSTOMER');
+        const existing = await customerRepo.findCustomerById(req.params.id, orgId);
+        if (!existing) {
+          const other = await db.query('SELECT 1 FROM customers WHERE id = $1 AND organization_id <> $2', [req.params.id, orgId]);
+          if (other.rows.length > 0) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant customer modification forbidden.' } });
+          return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Customer not found.' } });
+        }
+        const b = req.body;
+        const sets: string[] = [];
+        const values: any[] = [];
+        for (const key of ['name','email','phone','tier','store_credit_balance','credit_limit','notes']) {
+          if (Object.prototype.hasOwnProperty.call(b, key)) {
+            values.push(b[key] === '' ? null : b[key]);
+            sets.push(`${key} = ${values.length}`);
+          }
+        }
+        if (sets.length === 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least one mutable customer field is required.' } });
+        values.push(req.params.id, orgId);
+        const result = await db.query(
+          `UPDATE customers SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ${values.length - 1} AND organization_id = ${values.length} RETURNING id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at, created_at, updated_at`,
+          values
+        );
+        const updated = result.rows[0];
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'UPDATE_CUSTOMER',
+          entity_type: 'CUSTOMER', entity_id: req.params.id,
+          metadata: { changedFields: Object.keys(b) }
+        });
+        return res.json({ success: true, data: updated });
+      } catch (err) { next(err); }
+    }
+  );
+
   // User Management
   app.get(
     '/api/users',
