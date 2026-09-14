@@ -45,7 +45,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 }) => {
   const {
     appliedCoupon,
-    placeEcommerceOrder,
     formatCurrency,
     customers,
     activeCustomerUser,
@@ -53,7 +52,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     applyCoupon,
     removeCoupon,
   } = useCommerce();
-  const { storeCart, clearStoreCart } = useStorefrontContext();
+  const { tenant, storeCart, clearStoreCart, formatCurrency: formatTenantCurrency } = useStorefrontContext();
 
   // Mode: Guest checkout vs Customer Account
   const [isGuestMode, setIsGuestMode] = useState<boolean>(!activeCustomerUser);
@@ -211,6 +210,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       : 0;
 
   const total = Math.max(0, subtotal - discount + tax + shippingFee);
+  const displayCurrency = formatTenantCurrency;
 
   const handleApplyCoupon = (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,18 +226,31 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     try {
       await validateServerCart();
 
-      const order = await placeEcommerceOrder({
+      const response = await storefrontApi.placeOrder(tenant?.slug, {
         customer: {
-          name: customerName,
-          email: customerEmail,
-          phone: customerPhone,
+          name: customerName.trim(),
+          email: customerEmail.trim(),
+          phone: customerPhone.trim(),
           address: { street, city, state, zip, country },
         },
         fulfillmentMethod,
         paymentMethod: 'Fintech Wallet',
         smsOptIn,
         whatsappOptIn,
+        cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
+        idempotency_key: crypto.randomUUID(),
       });
+      const rawOrder = response?.order || response;
+      const order = {
+        ...rawOrder,
+        orderNumber: rawOrder.orderNumber || rawOrder.order_number,
+        paymentStatus: rawOrder.paymentStatus || rawOrder.payment_status,
+        fulfillmentMethod: rawOrder.fulfillmentMethod || rawOrder.fulfillment_method,
+        createdAt: rawOrder.createdAt || rawOrder.created_at,
+        customerName: rawOrder.customerName || rawOrder.customer_name || customerName,
+        customerEmail: rawOrder.customerEmail || rawOrder.customer_email || customerEmail,
+        totalAmount: Number(rawOrder.totalAmount ?? rawOrder.total_amount ?? 0),
+      } as Order;
 
       try {
         confetti({
@@ -272,18 +285,31 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       const selectedPayment: 'Credit Card' | 'Mobile Money' | 'Fintech Wallet' =
         paymentMethod === 'Store Credit' || paymentMethod === 'BNPL' ? 'Fintech Wallet' : paymentMethod;
 
-      const order = await placeEcommerceOrder({
+      const response = await storefrontApi.placeOrder(tenant?.slug, {
         customer: {
-          name: customerName,
-          email: customerEmail,
-          phone: customerPhone,
+          name: customerName.trim(),
+          email: customerEmail.trim(),
+          phone: customerPhone.trim(),
           address: { street, city, state, zip, country },
         },
         fulfillmentMethod,
         paymentMethod: selectedPayment,
         smsOptIn,
         whatsappOptIn,
+        cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
+        idempotency_key: crypto.randomUUID(),
       });
+      const rawOrder = response?.order || response;
+      const order = {
+        ...rawOrder,
+        orderNumber: rawOrder.orderNumber || rawOrder.order_number,
+        paymentStatus: rawOrder.paymentStatus || rawOrder.payment_status,
+        fulfillmentMethod: rawOrder.fulfillmentMethod || rawOrder.fulfillment_method,
+        createdAt: rawOrder.createdAt || rawOrder.created_at,
+        customerName: rawOrder.customerName || rawOrder.customer_name || customerName,
+        customerEmail: rawOrder.customerEmail || rawOrder.customer_email || customerEmail,
+        totalAmount: Number(rawOrder.totalAmount ?? rawOrder.total_amount ?? 0),
+      } as Order;
 
       try {
         confetti({
@@ -904,7 +930,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       <span>Klarna & Afterpay 4 Interest-Free Installments</span>
                     </p>
                     <p className="text-slate-600 dark:text-slate-300">
-                      Pay 4 equal bi-weekly payments of <strong>{formatCurrency(total / 4)}</strong> with zero fees when paid on time. First payment due today.
+                      Pay 4 equal bi-weekly payments of <strong>{displayCurrency(total / 4)}</strong> with zero fees when paid on time. First payment due today.
                     </p>
                   </div>
                 )}
@@ -913,10 +939,10 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 {paymentMethod === 'Store Credit' && activeCustomerUser && (
                   <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs space-y-1">
                     <p className="font-bold text-amber-700 dark:text-amber-300">
-                      Store Credit Balance: {formatCurrency(activeCustomerUser.storeCredit || 0)}
+                      Store Credit Balance: {displayCurrency(activeCustomerUser.storeCredit || 0)}
                     </p>
                     <p className="text-slate-600 dark:text-slate-300 text-[11px]">
-                      Your order total of {formatCurrency(total)} will be deducted directly from your store credit balance upon confirmation.
+                      Your order total of {displayCurrency(total)} will be deducted directly from your store credit balance upon confirmation.
                     </p>
                   </div>
                 )}
@@ -992,7 +1018,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                   className="w-full py-4 bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-600 hover:opacity-95 text-white rounded-2xl text-sm font-black shadow-xl shadow-sky-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Lock className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Processing Secure Checkout...' : `Confirm & Pay ${formatCurrency(total)}`}</span>
+                  <span>{isSubmitting ? 'Processing Secure Checkout...' : `Confirm & Pay ${displayCurrency(total)}`}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -1046,11 +1072,11 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       {/* Line Price */}
                       <div className="text-right flex-shrink-0 text-xs">
                         <p className="font-bold text-slate-900 dark:text-white">
-                          {formatCurrency(item.price * item.quantity)}
+                          {displayCurrency(item.price * item.quantity)}
                         </p>
                         {item.quantity > 1 && (
                           <p className="text-[10px] text-slate-400">
-                            {formatCurrency(item.price)} ea
+                            {displayCurrency(item.price)} ea
                           </p>
                         )}
                       </div>
@@ -1111,7 +1137,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                   {appliedCoupon && (
                     <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 font-semibold">
                       <span>
-                        Coupon <strong>{appliedCoupon.code}</strong> applied (-{formatCurrency(discount)})
+                        Coupon <strong>{appliedCoupon.code}</strong> applied (-{displayCurrency(discount)})
                       </span>
                       <button
                         type="button"
@@ -1135,13 +1161,13 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
                     <span>Items Subtotal</span>
-                    <span>{formatCurrency(subtotal)}</span>
+                    <span>{displayCurrency(subtotal)}</span>
                   </div>
 
                   {discount > 0 && (
                     <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
                       <span>Promotional Discount</span>
-                      <span>-{formatCurrency(discount)}</span>
+                      <span>-{displayCurrency(discount)}</span>
                     </div>
                   )}
 
@@ -1150,7 +1176,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       <span>Estimated Sales Tax</span>
                       <Info className="w-3.5 h-3.5 text-slate-400" />
                     </span>
-                    <span>{formatCurrency(tax)}</span>
+                    <span>{displayCurrency(tax)}</span>
                   </div>
 
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
@@ -1159,7 +1185,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       {shippingFee === 0 ? (
                         <strong className="text-emerald-600 dark:text-emerald-400">FREE</strong>
                       ) : (
-                        formatCurrency(shippingFee)
+                        displayCurrency(shippingFee)
                       )}
                     </span>
                   </div>
@@ -1170,7 +1196,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       <p className="text-[10px] text-slate-400">Includes all taxes & delivery fees</p>
                     </div>
                     <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-                      {formatCurrency(total)}
+                      {displayCurrency(total)}
                     </span>
                   </div>
                 </div>
