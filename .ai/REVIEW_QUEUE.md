@@ -697,3 +697,12 @@ Status: READY FOR REVIEW
 - **Security focus:** Tenant-bound cart namespaces, inactive/ecommerce catalog filtering, contact-verified order tracking, no client-authoritative order data.
 - **Required verification:** `npm run lint`, storefront test suites, `npm run test:storefront-modernization`, `npm test`, `npm run build`.
 - **Reviewer focus:** cross-tenant cart isolation, deep-link/popstate behavior, order contact verification, checkout authority, mobile accessibility, and regression compatibility.
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.1
+- **Status:** `PENDING LOCAL/CI VERIFICATION`
+- **Scope:** SaaS subscription and billing domain foundation.
+- **Security focus:** tenant-scoped subscription records, database-enforced single active billable subscription, provider event idempotency, server-authoritative plan limits/features, and no client/payment-provider authority introduced at this stage.
+- **Required verification:** `npm run lint`, `npm run test:subscription-foundation`, `npm run test:operational`, `npm test`, `npm run build`.
+- **Reviewer focus:** migration compatibility, plan/tenant isolation, lifecycle constraints, idempotency schema, and fail-closed feature access.
