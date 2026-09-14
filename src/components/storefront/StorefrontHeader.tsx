@@ -9,8 +9,7 @@ interface StorefrontHeaderProps {
   activeSection:string; setActiveSection:(sec:string)=>void; onOpenAdmin?:()=>void; onOpenPos?:()=>void; isDarkMode:boolean; onToggleTheme:()=>void;
 }
 export const StorefrontHeader: React.FC<StorefrontHeaderProps> = (p) => {
-  const { storeCart, wishlist } = useCommerce();
-  const { tenant } = useStorefrontContext();
+  const { tenant, storeCart, wishlistIds: wishlist } = useStorefrontContext();
   const [menuOpen,setMenuOpen]=useState(false);
   const cartCount=storeCart.reduce((s,i)=>s+i.quantity,0);
   const brand=tenant?.branding || {};
