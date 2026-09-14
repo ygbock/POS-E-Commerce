@@ -10,7 +10,7 @@ import { authClient } from '../../services/authClient';
 type UserRow = { id:string; email:string; name:string; role:string; locationId?:string|null; isActive:boolean; createdAt:string };
 type LocationRow = { id:string; name:string; code:string; isActive:boolean };
 const roleOptions = [
-  { value:'manager', label:'Store Manager' }, { value:'cashier', label:'Cashier' },
+  { value:'admin', label:'Administrator' }, { value:'manager', label:'Store Manager' }, { value:'cashier', label:'Cashier' },
   { value:'inventory_manager', label:'Inventory Manager' }, { value:'purchasing_manager', label:'Purchasing Manager' },
   { value:'sales_user', label:'Sales User' }, { value:'viewer', label:'Viewer' },
 ];
