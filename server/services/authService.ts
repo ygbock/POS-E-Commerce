@@ -108,6 +108,19 @@ export class AuthService {
   }
 
   /**
+   * Revalidate tenant lifecycle state for an authenticated session.
+   * Platform identities are intentionally handled separately from tenant users.
+   */
+  async isOrganizationActive(organizationId: string): Promise<boolean> {
+    if (!organizationId || typeof organizationId !== 'string') return false;
+    const result = await this.db.query<{ is_active: boolean }>(
+      'SELECT is_active FROM organizations WHERE id = $1 LIMIT 1',
+      [organizationId],
+    );
+    return result.rows[0]?.is_active === true;
+  }
+
+  /**
    * Invalidate/logout a token session.
    */
   async logout(token: string): Promise<void> {
