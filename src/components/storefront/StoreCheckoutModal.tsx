@@ -53,7 +53,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     applyCoupon,
     removeCoupon,
   } = useCommerce();
-  const { storeCart, clearStoreCart, tenant, formatCurrency: formatTenantCurrency } = useStorefrontContext();
+  const { storeCart, clearStoreCart } = useStorefrontContext();
 
   // Mode: Guest checkout vs Customer Account
   const [isGuestMode, setIsGuestMode] = useState<boolean>(!activeCustomerUser);
