@@ -2049,3 +2049,39 @@ No production deployment or merge to `main` was performed.
 This is intentionally an **incremental decomposition**, not a big-bang rewrite. Existing Storefront modals, checkout, POS/Admin handoffs, tenant routing, and server-authoritative APIs remain intact while presentation and domain responsibilities are progressively separated.
 
 **Next implementation increment:** extract the storefront modal/drawer orchestration from `Storefront.tsx` into a dedicated orchestration component, then proceed to route-specific Home/Catalog/Product views.
+
+
+---
+
+## Phase 5.2 — Design System & UI/UX Foundation
+
+**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Date:** 2026-09-14
+
+### Engineering Changes
+The shared UI foundation was hardened before proceeding to administrative/product-completion views.
+
+1. **Button**
+   - Added forwarded refs and accessible busy state.
+   - Loading state now exposes meaningful text while the spinner remains decorative.
+   - Standardized minimum touch dimensions and icon semantics.
+
+2. **Table**
+   - Added semantic `scope="col"` headers and optional screen-reader caption.
+   - Added accessible loading and empty feedback.
+   - Added optional stable row-key callback and safer pagination boundaries.
+
+3. **Input / Select**
+   - Exported component contracts for reuse.
+   - Standardized accessible label, helper, and error relationships.
+   - Added decorative icon semantics and disabled select options.
+
+4. **Page Anatomy**
+   - Added responsive shared layout primitives for page headers, actions, sections, and form grids.
+   - Existing design tokens and reduced-motion policy remain intact.
+
+### Verification Boundary
+Implementation was written directly to the authorized GitHub branch. The connected GitHub capability does not expose an arbitrary shell runner, so local/CI execution remains required for final verification:
+`npm run lint`, `npm run test:ux`, `npm run build`, and `npm test`.
+
+**Next task:** TASK-5.3.1 — Platform Control-Plane Completion (tenant lifecycle management).
