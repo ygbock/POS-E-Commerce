@@ -36,7 +36,8 @@
     "test:storefront-router": "tsx tests/storefront_router.test.ts",
     "test:storefront-catalog": "tsx tests/storefront_catalog.test.ts",
     "test:storefront-api": "tsx tests/storefront_api_client.test.ts",
-    "test:tenant-business-plane": "tsx tests/tenant_business_plane.test.ts"
+    "test:tenant-business-plane": "tsx tests/tenant_business_plane.test.ts",
+    "test:subscription-foundation": "tsx tests/subscription_foundation.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
