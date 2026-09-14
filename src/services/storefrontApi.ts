@@ -57,6 +57,21 @@ export interface StorefrontProduct {
   isOutOfStock: boolean;
 }
 
+export interface StorefrontTrackedOrder {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  fulfillmentMethod: string;
+  carrierName?: string;
+  trackingNumber?: string;
+  createdAt: string;
+  items: Array<{ name: string; sku?: string; quantity: string; unitPrice: string; lineTotal: string; image?: string }>;
+  totals: { subtotal: string; shippingFee: string; taxAmount: string; totalAmount: string };
+  customerName: string;
+  maskedEmail: string;
+}
+
 export interface StorefrontContextResponse {
   tenant: { id: string; name: string; code: string; slug: string; customDomain?: string | null };
   localization: { currencyCode: string; currencySymbol: string; locale: string; timezone: string };
@@ -227,5 +242,12 @@ export const storefrontApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+  },
+  
+  trackOrder(tenantSlug: string | undefined, orderNumber: string, contact?: string) {
+    const query = contact ? `?contact=${encodeURIComponent(contact)}` : '';
+    return request<StorefrontTrackedOrder>(
+      `${tenantBase(tenantSlug)}/orders/${encodeURIComponent(orderNumber)}${query}`,
+    );
   }
 };
