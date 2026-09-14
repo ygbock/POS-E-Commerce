@@ -57,11 +57,7 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
       const claims: TokenClaims = await service.verifySession(token);
       let organizationActive = true;
       if (!isPlatformRole(claims.role)) {
-        const org = await service['db'].query<{ is_active: boolean }>(
-          'SELECT is_active FROM organizations WHERE id = $1 LIMIT 1',
-          [claims.orgId],
-        );
-        organizationActive = org.rows[0]?.is_active === true;
+        organizationActive = await service.isOrganizationActive(claims.orgId);
       }
 
       req.auth = {
