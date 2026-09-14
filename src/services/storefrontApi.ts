@@ -85,6 +85,13 @@ export interface StorefrontProductList {
   pagination: StorefrontPagination;
 }
 
+export interface StorefrontOrderRequest {
+  customer?: { id?: string; name: string; email: string; phone: string; address?: { street: string; city: string; state: string; zip: string; country: string } };
+  fulfillmentMethod: 'Standard Delivery' | 'Express Delivery' | 'In-Store Pickup';
+  paymentMethod: 'Credit Card' | 'Mobile Money' | 'Fintech Wallet';
+  smsOptIn?: boolean; whatsappOptIn?: boolean;
+  cart_items: StorefrontCartItem[]; idempotency_key: string; discount_code?: string; location_id?: string;
+}
 export interface StorefrontCartValidation {
   items: Array<{
     variantId: string;
@@ -213,4 +220,12 @@ export const storefrontApi = {
       },
     );
   },
+
+  placeOrder(tenantSlug: string, payload: StorefrontOrderRequest) {
+    return request<any>(`${tenantBase(tenantSlug)}/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
 };
