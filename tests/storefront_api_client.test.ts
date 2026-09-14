@@ -80,6 +80,25 @@ try {
   assert.match(String(calls[0].init?.body), /"variantId":"v1"/);
   assert.match(String(calls[0].init?.body), /"fulfillmentLocationId":"loc-1"/);
 
+  calls.length = 0;
+  globalThis.fetch = (async (input, init) => {
+    calls.push({ url: String(input), init });
+    return new Response(JSON.stringify({ data: { id: 'ord-1', order_number: 'ORD-1001', status: 'Stock Reserved' } }), { status: 201 });
+  }) as typeof fetch;
+  await storefrontApi.placeOrder('alpha', {
+    customer: { name: 'Guest Buyer', email: 'guest@example.com', phone: '123' },
+    fulfillmentMethod: 'Standard Delivery',
+    paymentMethod: 'Credit Card',
+    cart_items: [{ variantId: 'v1', quantity: '2' }],
+    idempotency_key: '123e4567-e89b-12d3-a456-426614174000',
+  });
+  assert.equal(calls[0].url, '/api/storefront/alpha/orders');
+  assert.equal(calls[0].init?.method, 'POST');
+  const orderBody = JSON.parse(String(calls[0].init?.body));
+  assert.equal(orderBody.cart_items[0].variantId, 'v1');
+  assert.equal(orderBody.cart_items[0].quantity, '2');
+  assert.equal(Object.prototype.hasOwnProperty.call(orderBody.cart_items[0], 'price'), false);
+
   globalThis.fetch = (async () => new Response(JSON.stringify({
     error: { code: 'TENANT_NOT_FOUND', message: 'Store Not Found' },
   }), { status: 404, headers: { 'content-type': 'application/json' } })) as typeof fetch;
@@ -91,7 +110,7 @@ try {
       && error.code === 'TENANT_NOT_FOUND',
   );
 
-  console.log('Storefront API client contract: 11 passed, 0 failed');
+  console.log('Storefront API client contract: PASS (authoritative checkout payload verified)');
 } finally {
   globalThis.fetch = originalFetch;
 }
