@@ -70,6 +70,19 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950" role="status" aria-live="polite">Loading storefront…</div>;
   }
 
+  if (route.name === 'not-found') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-6" role="main">
+        <div className="max-w-md text-center">
+          <p className="text-sm font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Storefront</p>
+          <h1 className="mt-2 text-3xl font-black text-slate-900 dark:text-white">Page not found</h1>
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">The storefront page you requested does not exist.</p>
+          <button type="button" onClick={goHome} className="mt-6 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700">Return to store</button>
+        </div>
+      </div>
+    );
+  }
+
   if (tenantError || !tenant) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-6"><div role="alert" className="max-w-md text-center"><h1 className="text-xl font-semibold">Storefront unavailable</h1><p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{tenantError || 'This store could not be resolved.'}</p></div></div>;
   }
