@@ -124,6 +124,16 @@ export function requirePermission(...requiredPermissions: string[]) {
       });
     }
 
+    if (req.auth.organizationActive === false && !isPlatformRole(req.auth.role)) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'TENANT_ACCESS_DENIED',
+          message: 'This organization is currently inactive.',
+        },
+      });
+    }
+
     const hasAny = requiredPermissions.some(perm =>
       hasPermission(req.auth!.permissions, perm)
     );
