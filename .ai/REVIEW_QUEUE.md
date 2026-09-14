@@ -621,3 +621,14 @@ Status: READY FOR REVIEW
   - `npm test`
   - `npm run build`
 - **Supervisor Action Required**: Review the incremental decomposition and local/CI verification evidence before approving the Phase 3 increment.
+
+
+---
+
+## Phase 5.2 Review Item — TASK-5.2.1
+
+- **Status:** `READY FOR VERIFICATION`
+- **Scope:** Shared UI primitives and responsive page anatomy.
+- **Implementation:** Button, Table, Input, Select, and global UI layout primitives hardened on 2026-09-14.
+- **Required verification:** `npm run lint`, `npm run test:ux`, `npm run build`, and `npm test`.
+- **Reviewer focus:** keyboard navigation, focus visibility, screen-reader semantics, loading/empty states, responsive behavior, and regression compatibility.
