@@ -777,3 +777,28 @@ PROD-001 (NOT STARTED)
   - [ ] Phase 5.2 through 5.10 sequential task implementation.
 - **Next Immediate Action**: Execute `TASK-5.2.1` (Design System and UI/UX Foundation).
 
+
+
+---
+
+## Phase 5.2 Execution Record — TASK-5.2.1
+
+**Status:** `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`  
+**Date:** 2026-09-14  
+**Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+
+### Implemented
+- Hardened `Button` with forwarded refs, `aria-busy`, accessible loading text, stable 40/44/52px minimum sizing, and decorative icon semantics.
+- Hardened `Table` with semantic column scopes, optional accessible caption, loading/empty live-region feedback, stable row-key support, and guarded pagination controls.
+- Hardened `Input` with exported props, deterministic labelled/error/helper relationships, decorative icon semantics, and consistent focus/error states.
+- Hardened `Select` with exported option/props contracts, disabled options, deterministic labelled/error/helper relationships, and consistent focus/error states.
+- Extended `index.css` with shared responsive page anatomy primitives: `.ui-page`, `.ui-page-header`, `.ui-page-actions`, `.ui-section`, and `.ui-form-grid`.
+
+### Verification boundary
+The GitHub connector used for this implementation can read and write repository files but does not provide an arbitrary repository shell runner. Before marking the task fully verified, run:
+- `npm run lint`
+- `npm run test:ux`
+- `npm run build`
+- `npm test`
+
+**Acceptance status:** Implementation complete; runtime verification pending workstation/CI execution.
