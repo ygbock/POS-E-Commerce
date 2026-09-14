@@ -632,3 +632,13 @@ Status: READY FOR REVIEW
 - **Implementation:** Button, Table, Input, Select, and global UI layout primitives hardened on 2026-09-14.
 - **Required verification:** `npm run lint`, `npm run test:ux`, `npm run build`, and `npm test`.
 - **Reviewer focus:** keyboard navigation, focus visibility, screen-reader semantics, loading/empty states, responsive behavior, and regression compatibility.
+
+
+---
+
+## Phase 5.3 Review Item — TASK-5.3.1
+
+- **Status:** `READY FOR VERIFICATION`
+- **Scope:** Tenant creation, lifecycle mutations, suspended-tenant fail-closed behavior, audit logging, and tenant management UI.
+- **Security focus:** server-authoritative RBAC, transactional provisioning, password hashing, slug/code uniqueness, suspended-session denial, and audit attribution.
+- **Required verification:** `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run build`, `npm test`.
