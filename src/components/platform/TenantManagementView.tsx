@@ -61,6 +61,8 @@ export const TenantManagementView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [confirmTenant, setConfirmTenant] = useState<Tenant | null>(null);
+  const [editPlanTenant, setEditPlanTenant] = useState<Tenant | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PlanTier>('starter');
   const [form, setForm] = useState<CreateForm>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -94,6 +96,24 @@ export const TenantManagementView: React.FC = () => {
       await loadTenants();
     } catch (err: any) {
       setError(err.message || 'Unable to create tenant.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const updatePlan = async () => {
+    if (!editPlanTenant) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await platformRequest(`/api/platform/tenants/${encodeURIComponent(editPlanTenant.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ planTier: selectedPlan }),
+      });
+      setEditPlanTenant(null);
+      await loadTenants();
+    } catch (err: any) {
+      setError(err.message || 'Unable to update tenant plan.');
     } finally {
       setIsSubmitting(false);
     }
@@ -240,6 +260,35 @@ export const TenantManagementView: React.FC = () => {
             <Input label="Email" type="email" value={form.adminEmail} onChange={(e) => setField('adminEmail', e.target.value)} required />
             <Input label="Temporary password" type="password" value={form.adminPassword} onChange={(e) => setField('adminPassword', e.target.value)} helperText="Minimum 12 characters with upper, lower, and numeric characters." required />
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(editPlanTenant)}
+        onClose={() => !isSubmitting && setEditPlanTenant(null)}
+        title="Change tenant plan"
+        size="sm"
+        closeOnEscape={!isSubmitting}
+        closeOnBackdropClick={!isSubmitting}
+        footer={
+          <>
+            <Button variant="ghost" disabled={isSubmitting} onClick={() => setEditPlanTenant(null)}>Cancel</Button>
+            <Button isLoading={isSubmitting} onClick={updatePlan}>Save Plan</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p>Change the subscription tier for <strong>{editPlanTenant?.name}</strong>. Billing automation will consume this server-side plan state.</p>
+          <Select
+            label="Plan tier"
+            value={selectedPlan}
+            onChange={(e) => setSelectedPlan(e.target.value as PlanTier)}
+            options={[
+              { value: 'starter', label: 'Starter' },
+              { value: 'professional', label: 'Professional' },
+              { value: 'enterprise', label: 'Enterprise' },
+            ]}
+          />
         </div>
       </Modal>
 
