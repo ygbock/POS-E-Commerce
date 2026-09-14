@@ -10,8 +10,9 @@ import { AccountPortalTab } from './CustomerAccountModal';
 export interface StorefrontStateProps { onOpenAdmin?: () => void; onOpenPos?: () => void; }
 export function useStorefrontState() {
   const { route, navigate } = useStorefrontRoute();
-  const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency } = useStorefrontContext();
-  const { products, storeCart, addToStoreCart, wishlist, getTotalStockForVariant, orders, isDarkMode, toggleTheme } = useCommerce();
+  const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency, storeCart, addToStoreCart, wishlistIds } = useStorefrontContext();
+  const { products, getTotalStockForVariant, orders, isDarkMode, toggleTheme } = useCommerce();
+  const wishlist = wishlistIds;
   // Navigation & View state
   const [activeSection, setActiveSection] = useState<'home' | 'catalog'>('home');
   const [searchQuery, setSearchQuery] = useState('');
@@ -236,6 +237,10 @@ export function useStorefrontState() {
     setIsCartDrawerOpen(false);
     setIsCheckoutOpen(false);
     setIsAccountModalOpen(false);
+    setIsOrderTrackingOpen(false);
+    setIsNotificationHubOpen(false);
+    setIsClaimModalOpen(false);
+    setIsSuccessModalOpen(false);
 
     if (route.name === 'home') {
       setActiveSection('home');
