@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authClient } from '../services/authClient';
+import { storefrontApi } from '../services/storefrontApi';
+import { parseStorefrontRoute } from '../router/StorefrontRouter';
 import { OfflineQueue, generateSecureUUID } from '../services/offlineQueue';
 import { syncService } from '../services/syncService';
 import {
@@ -2186,35 +2188,24 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const idempotencyKey = crypto.randomUUID();
 
-    const response = await fetch('/api/orders', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authClient.getAuthHeaders(),
+    const storefrontRoute = parseStorefrontRoute();
+    const backendOrder = await storefrontApi.placeOrder(storefrontRoute.tenantSlug, {
+      customer: {
+        // Authenticated customer identity is not trusted by the public checkout
+        // endpoint; it is supplied only as optional metadata for future account linking.
+        id: activeCustomerUser?.id?.startsWith('cust_') ? activeCustomerUser.id : undefined,
+        name: orderData.customer.name,
+        email: orderData.customer.email,
+        phone: orderData.customer.phone,
+        address: orderData.customer.address,
       },
-      body: JSON.stringify({
-        customer: {
-          id: activeCustomerUser?.id?.startsWith('cust_') ? activeCustomerUser.id : undefined,
-          name: orderData.customer.name,
-          email: orderData.customer.email,
-          phone: orderData.customer.phone,
-          address: orderData.customer.address,
-        },
-        fulfillmentMethod: orderData.fulfillmentMethod,
-        paymentMethod: orderData.paymentMethod,
-        smsOptIn: orderData.smsOptIn,
-        whatsappOptIn: orderData.whatsappOptIn,
-        cart_items: cartItemsPayload,
-        idempotency_key: idempotencyKey,
-      }),
+      fulfillmentMethod: orderData.fulfillmentMethod,
+      paymentMethod: orderData.paymentMethod,
+      smsOptIn: orderData.smsOptIn,
+      whatsappOptIn: orderData.whatsappOptIn,
+      cart_items: cartItemsPayload,
+      idempotency_key: idempotencyKey,
     });
-
-    const resData = await response.json().catch(() => null);
-    if (!response.ok || !resData?.success) {
-      throw new Error(resData?.error?.message || 'Failed to place e-commerce order.');
-    }
-
-    const backendOrder = resData.data;
     const backendPaymentStatus =
       backendOrder.payment_status === 'Paid' ||
       backendOrder.payment_status === 'Partially Refunded' ||
