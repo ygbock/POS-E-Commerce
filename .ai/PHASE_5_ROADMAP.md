@@ -43,8 +43,8 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | **Phase 5.1** | Current-State Reconciliation | Baseline audit, matrix reconciliation, task synchronization | `IN PROGRESS` |
 | **Phase 5.2** | Design System & UI/UX Foundation | Design tokens, shared components, accessible forms & tables | `IMPLEMENTED — PENDING VERIFICATION` |
 | **Phase 5.3** | Platform Control-Plane Completion | Tenant onboarding wizard, plan mutations, operator tools | `IMPLEMENTED — PENDING VERIFICATION` |
-| **Phase 5.4** | Tenant Business-Plane Completion | User administration table, location CRUD, customer mutations | `PLANNED` |
-| **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `PLANNED` |
+| **Phase 5.4** | Tenant Business-Plane Completion | User administration table, location CRUD, customer mutations | `IMPLEMENTED — PENDING VERIFICATION` |
+| **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `NEXT` |
 | **Phase 5.6** | SaaS Subscriptions & Billing Engine | Subscription tiers, invoices, MRR calculation, payment status | `PLANNED` |
 | **Phase 5.7** | Reports & Analytics Engine | Server-aggregated sales, margin, inventory valuation reports | `PLANNED` |
 | **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, webhook/email notifications, activity log | `PLANNED` |
