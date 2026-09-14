@@ -455,6 +455,69 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
 
 
   // --------------------------------------------------------------------------
+  // 5. PUBLIC STOREFRONT ORDER CREATION
+  // --------------------------------------------------------------------------
+
+  // Public shoppers may create orders without a tenant workspace session.
+  // Tenant identity is resolved exclusively from the canonical storefront slug;
+  // customer IDs are deliberately ignored so a guest cannot impersonate another
+  // tenant's customer record. Pricing, tax, stock and order state are recalculated
+  // by OrderService inside the database transaction.
+  router.post('/:tenantSlug/orders', async (req: Request, res: Response) => {
+    try {
+      const config = await resolveStorefrontTenant(req, db, {
+        explicitSlug: req.params.tenantSlug,
+      });
+      const customer = req.body?.customer;
+      const result = await orders.placeStorefrontOrder({
+        organization_id: config.tenant.id,
+        actor_name: 'Guest Storefront Customer',
+        actor_role: 'storefront_customer',
+        idempotency_key: req.body?.idempotency_key,
+        customer_id: null,
+        customer_details: customer ? {
+          name: String(customer.name || '').trim(),
+          email: String(customer.email || '').trim(),
+          phone: String(customer.phone || '').trim(),
+          address: customer.address,
+        } : null,
+        fulfillment_method: req.body?.fulfillmentMethod,
+        payment_method: req.body?.paymentMethod,
+        cart_items: req.body?.cart_items,
+        discount_code: req.body?.discount_code,
+        location_id: req.body?.location_id,
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: { ...result.order, items: result.items, payments: result.payments },
+      });
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof StorefrontCartValidationError) {
+        return handleStorefrontError(res, err);
+      }
+      const code = err?.code;
+      const status = code === 'IDEMPOTENCY_CONFLICT' ? 409
+        : code === 'PRODUCT_NOT_FOUND' ? 404
+        : code === 'VALIDATION_ERROR' || code === 'INSUFFICIENT_STOCK' ? 400
+        : 500;
+      if (status === 500) {
+        console.error('[Public Storefront Checkout Error]:', {
+          message: err?.message,
+          stack: err?.stack,
+        });
+      }
+      return res.status(status).json({
+        success: false,
+        error: {
+          code: code || 'INTERNAL_SERVER_ERROR',
+          message: status === 500 ? 'Unable to place storefront order. Please try again later.' : (err?.message || 'Unable to place storefront order.'),
+        },
+      });
+    }
+  });
+
+  // --------------------------------------------------------------------------
   // 5. AUTHENTICATED ADMIN ORDER LIFECYCLE
   // --------------------------------------------------------------------------
 
