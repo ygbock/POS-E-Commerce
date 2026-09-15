@@ -841,7 +841,7 @@ export class TenantProvisioningService {
    */
   async listTenants(
     filters: {
-      status?: 'active' | 'suspended' | 'all';
+      status?: 'active' | 'suspended' | 'archived' | 'all';
       planTier?: string;
       search?: string;
       limit?: number;
@@ -853,8 +853,8 @@ export class TenantProvisioningService {
     let idx = 1;
 
     if (filters.status && filters.status !== 'all') {
-      conditions.push(`o.is_active = $${idx++}`);
-      params.push(filters.status === 'active');
+      conditions.push(`o.lifecycle_status = ${idx++}`);
+      params.push(filters.status);
     }
 
     if (filters.planTier && filters.planTier !== 'all') {
