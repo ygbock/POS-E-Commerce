@@ -427,8 +427,8 @@ export class TenantProvisioningService {
         await tx.query(
           `UPDATE platform_idempotency_keys
            SET organization_id = $1, response = $2::jsonb
-           WHERE operation = 'TENANT_PROVISION' AND idempotency_key = $3`,
-          [tenantId, JSON.stringify(response), idempotencyKey.trim()],
+           WHERE operation = 'TENANT_PROVISION' AND idempotency_key = $3 AND actor_id = $4`,
+          [tenantId, JSON.stringify(response), idempotencyKey.trim(), actor.id],
         );
       }
 
@@ -495,8 +495,8 @@ export class TenantProvisioningService {
         if (idempotencyKey?.trim()) {
           await tx.query(
             `UPDATE platform_idempotency_keys SET response = $1::jsonb
-             WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $2`,
-            [JSON.stringify(response), idempotencyKey.trim()],
+             WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $2 AND actor_id = $3`,
+            [JSON.stringify(response), idempotencyKey.trim(), actor.id],
           );
         }
         return response;
@@ -610,7 +610,7 @@ export class TenantProvisioningService {
         if (idempotencyKey?.trim()) {
           await tx.query(
             `UPDATE platform_idempotency_keys SET response = $1::jsonb
-             WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $2`,
+             WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $2 AND actor_id = $3`,
             [JSON.stringify(response), idempotencyKey.trim()],
           );
         }
@@ -770,7 +770,7 @@ export class TenantProvisioningService {
       if (idempotencyKey?.trim()) {
         await tx.query(
           `UPDATE platform_idempotency_keys SET response = $1::jsonb
-           WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $2`,
+           WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $2 AND actor_id = $3`,
           [JSON.stringify(response), idempotencyKey.trim()],
         );
       }
