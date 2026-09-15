@@ -1027,7 +1027,7 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
 ---
 
 ### Task 22: TASK-5.6.4 — Tenant Provisioning, Onboarding & Lifecycle Management
-- **Status:** `READY FOR REVIEW`
+- **Status:** `HARDENED — PENDING POST-FIX VERIFICATION`
 - **Date:** 2026-09-15
 - **Branch:** `upgrade/v2.6/upg-001-platform-hardening`
 - **Objective:** Deliver a production-grade tenant provisioning and lifecycle management control plane that atomically creates organizations, initial admin accounts, and baseline subscriptions, and provides server-authoritative suspend/reactivate/archive lifecycle operations with full audit trails.
@@ -1049,7 +1049,7 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
     - `POST /api/platform/tenants/:id/archive` *(new)*: Irreversible archive with optional `reason`.
     - All lifecycle endpoints guarded by `requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS)`.
   - **Test Suite (`tests/tenant_provisioning.test.ts`):**
-    - 12 integration scenarios using isolated PGlite in-process database.
+    - 16 integration scenarios using isolated PGlite in-process database.
     - Scenario 1: Authorization boundaries (401 unauth, 403 tenant role, 200 platform_admin).
     - Scenario 2: Input validation with 9 sub-cases (slug required/invalid/reserved, name, plan tier, email, admin name, password policy).
     - Scenario 3: Full atomic provisioning verification — response shape, DB state, subscription, audit event, and password redaction.
@@ -1068,10 +1068,10 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - Actor identity derived exclusively from `req.auth`.
   - All mutations are transactional; any failure triggers full rollback.
   - Client cannot supply `organization_id`, `plan_tier`, or subscription status.
-- **Verification Completed:**
-  - `npm run lint` → PASS (0 TypeScript errors)
-  - `npm run test:tenant-provisioning` → PASS (12/12 scenarios)
-  - `npm run build` → (compilation clean; verified by `tsc --noEmit` exit code 0)
+- **Pre-review Verification:**
+  - Original implementation reported lint and 12/12 tenant tests passing.
+  - Review identified lifecycle-state, idempotency, billing-plan fallback, PATCH drift, and expired-period issues.
+  - Post-review hardening is committed on this branch; workstation/CI execution is still required.
 - **Acceptance Gate Checklist:**
   - [x] Atomic provisioning: org + admin + subscription created or none (full rollback on any failure)
   - [x] Input validation rejects all invalid/missing fields with typed error codes
@@ -1088,4 +1088,4 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - [x] 12/12 test scenarios pass
   - [x] TypeScript compiles with 0 errors
   - [x] main branch untouched
-- **Supervisor Gate:** `PASSED LOCAL GATES (READY FOR REVIEW)`
+- **Supervisor Gate:** `HARDENED — AWAITING POST-FIX REGRESSION/BUILD GATE`
