@@ -1063,6 +1063,14 @@ export class TenantProvisioningService {
       );
     }
 
+    if (updates?.isActive !== undefined) {
+      throw new TenantProvisioningError(
+        'LIFECYCLE_CHANGE_REQUIRES_LIFECYCLE_PERMISSION',
+        'Lifecycle changes require platform lifecycle endpoints and must use /suspend or /reactivate.',
+        403,
+      );
+    }
+
     const before = await this.db.query<any>(
       'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
       [tenantId],
@@ -1070,24 +1078,10 @@ export class TenantProvisioningService {
     if (before.rows.length === 0) {
       throw new TenantProvisioningError('TENANT_NOT_FOUND', 'Tenant not found.', 404);
     }
-    const current = before.rows[0];
 
     const sqlUpdates: string[] = [];
     const params: any[] = [];
     let index = 1;
-
-    if (updates?.isActive !== undefined) {
-      if (typeof updates.isActive !== 'boolean') {
-        throw new TenantProvisioningError('INVALID_ACTIVE_STATE', 'isActive must be boolean.');
-      }
-      if (current.lifecycle_status === 'archived') {
-        throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot have their active state changed.', 409);
-      }
-      sqlUpdates.push(`is_active = $${index++}`);
-      params.push(updates.isActive);
-      sqlUpdates.push(`lifecycle_status = $${index++}`);
-      params.push(updates.isActive ? 'active' : 'suspended');
-    }
 
     if (updates?.name !== undefined) {
       const validatedName = validateName(updates.name);
@@ -1124,9 +1118,6 @@ export class TenantProvisioningService {
         throw new TenantProvisioningError('TENANT_NOT_FOUND', 'Tenant not found.', 404);
       }
       const lockedCurrent = locked.rows[0];
-      if (updates?.isActive !== undefined && lockedCurrent.lifecycle_status === 'archived') {
-        throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot have their active state changed.', 409);
-      }
 
       const updated = await tx.query<any>(
         `UPDATE organizations SET ${sqlUpdates.join(', ')}
