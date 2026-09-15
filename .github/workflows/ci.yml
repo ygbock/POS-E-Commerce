@@ -117,6 +117,29 @@ jobs:
 
       - name: 16. Storefront Catalog Contract (test:storefront-catalog)
         run: npm run test:storefront-catalog
+      - name: 17. Platform Authorization (test:platform)
+        run: npm run test:platform
+
+      - name: 18. Subscription Foundation (test:subscription-foundation)
+        run: npm run test:subscription-foundation
+
+      - name: 19. Subscription Limits (test:subscription-limits)
+        run: npm run test:subscription-limits
+
+      - name: 20. Platform Subscription Management (test:platform-subscriptions)
+        run: npm run test:platform-subscriptions
+
+      - name: 21. Tenant Provisioning & Lifecycle (test:tenant-provisioning)
+        run: npm run test:tenant-provisioning
+
+      - name: 22. Audit & Security Administration (test:audit)
+        run: npm run test:audit
+
+      - name: 23. Tenant Business Plane (test:tenant-business-plane)
+        run: npm run test:tenant-business-plane
+
+      - name: 24. Full Regression Suite (npm test)
+        run: npm test
 
   secret-scanning:
     name: Multi-Layer Secret Leakage Scan
