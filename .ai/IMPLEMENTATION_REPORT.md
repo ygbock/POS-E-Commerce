@@ -1,5 +1,62 @@
 # Implementation Report
 
+## TASK-5.6.3 — Super Admin Plans & Subscription Management
+
+- **Status**: `IMPLEMENTED — READY FOR REVIEW`
+- **Program**: `VERSION-2.6-UPGRADE` / `Phase 5.6 SaaS Subscription & Billing Completion`
+- **Operating Directive**: `INSPECT → REPOSITORY → SERVICE → ROUTES → AUDIT/TX → TESTS → UI → VERIFY → REPORT`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Scope & Changes**:
+  - **Server Authorization Boundaries**:
+    - Guarded all plan and subscription endpoints in `server/routes/platformRoutes.ts` with `requireAuth()` and canonical `requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING)`.
+    - Enforced that only `system_owner` and `platform_finance` have billing access; `platform_admin` (which has tenants/support/view permissions) and tenant personas (`super_admin`, `admin`, `cashier`, `manager`) receive 403 Forbidden.
+  - **Plan Catalog & Mutability Integrity**:
+    - Added `getPlanByIdOrCode` and `updatePlan` to `SubscriptionRepository`.
+    - Added `getPlans`, `getPlan`, and `updatePlan` to `SubscriptionService`.
+    - Rejects invalid pricing (negative amounts), malformed limits, invalid features, and invalid currency codes with 422.
+    - Plan mutations are executed within a database transaction and produce immutable `PLATFORM_PLAN_UPDATED` audit evidence.
+  - **Tenant Subscriptions Management & Authoritative Usage**:
+    - Added `listAllSubscriptions` with status/plan filtering, tenant search, and pagination.
+    - Added `getSubscriptionDetails` joining plan specs with live server-authoritative usage counters (`countUsers`, `countLocations`, `countProducts`, `countMonthlyOrders`).
+    - Added `getSubscriptionAuditHistory` retrieving audit trail records.
+  - **Transactional Lifecycle Mutations (Pessimistic Locking & In-Transaction Auditing)**:
+    - `changePlan`: Acquires row locks on `organizations` and `organization_subscriptions` (`FOR UPDATE`), validates target plan active status, updates subscription `plan_id` and organization `plan_tier`, and audits `PLATFORM_SUBSCRIPTION_PLAN_CHANGED`.
+    - `extendTrial`: Locks rows, validates state, calculates new trial end and period end, sets status to `trialing`, and audits `PLATFORM_SUBSCRIPTION_TRIAL_EXTENDED`.
+    - `suspendSubscription`: Transitions active/trialing subscription to `paused`, audits `PLATFORM_SUBSCRIPTION_SUSPENDED`.
+    - `reactivateSubscription`: Transitions `paused` subscription back to `active` (or `trialing` if trial window is unexpired), audits `PLATFORM_SUBSCRIPTION_REACTIVATED`.
+    - `cancelSubscription`: Distinguishes immediate vs scheduled period-end cancellation (`cancel_at_period_end = true` vs `status = 'cancelled'`), audits `PLATFORM_SUBSCRIPTION_CANCELLED`.
+    - `restoreSubscription`: Validates restore semantics (verifies plan is active, verifies no active subscription conflict exists for the tenant, recalculates period if expired), audits `PLATFORM_SUBSCRIPTION_RESTORED`.
+  - **Deterministic MRR Calculation**:
+    - `GET /api/platform/billing`: Calculates database-authoritative Monthly Recurring Revenue (MRR) strictly from active paid subscriptions normalized to monthly equivalents (`yearly / 12.0`), strictly excluding trials, paused, and cancelled subscriptions.
+  - **Frontend UI Super Admin Experience**:
+    - Added `src/services/subscriptionApi.ts` providing typed client requests with auth headers.
+    - Added `src/components/platform/SubscriptionsManagementView.tsx` with 5 KPI summary cards, filterable subscription table, quota meters, plan tiers matrix, and accessible dialogs for plan changes, trial extensions, suspensions, reactivations, cancellations, restorations, and audit history.
+    - Wired `SubscriptionsManagementView` into `activeTab === 'subscriptions'` in `src/App.tsx`.
+  - **Dedicated Test Suite**:
+    - Added `tests/platform_subscription_management.test.ts` covering 13 core scenarios:
+      1. Platform Authorization Boundary Enforcement (`system_owner`/`platform_finance` 200; `platform_admin` 403; tenant personas 403; unauth 401).
+      2. Plan Catalog Retrieval & Plan Details.
+      3. Plan Mutation Validation & In-Transaction Audit.
+      4. Tenant Subscription Listing & Filtering.
+      5. Plan Change Transactional Transition & Audit Evidence.
+      6. Trial Extension Transactional Transition.
+      7. Subscription Suspension Transactional Transition.
+      8. Subscription Reactivation Transactional Transition.
+      9. Immediate Cancellation vs. Period-End Cancellation.
+      10. Restoration Semantics & Coherence Validation.
+      11. Invalid State Transitions Rejected.
+      12. Multi-Tenant Isolation & Idempotency.
+      13. Transaction Rollback Integrity & Deterministic MRR Calculation.
+- **Verification Gates**:
+  - `npm run lint`: **PASS** (0 TypeScript errors)
+  - `npm run test:platform-subscriptions`: **PASS** (13/13 scenarios)
+  - `npm run test:subscription-limits`: **PASS** (15/15 scenarios)
+  - `npm run test:subscription-foundation`: **PASS** (5/5 scenarios)
+  - `npm run test:platform`: **PASS** (12/12 scenarios)
+  - `npm run test:operational`: **PASS** (26/26 scenarios)
+  - `npm test`: **PASS** (all 23 test suites passed)
+  - `npm run build`: **PASS** (Vite client and esbuild server bundles built cleanly)
+
 ## AUD-001 — Audit & Security Administration Modernization
 
 - **Status**: `IMPLEMENTED — READY FOR REVIEW`

@@ -20,6 +20,7 @@ import { CustomerManagementView } from './components/crm/CustomerManagementView'
 import { AuditLogsView } from './components/admin/AuditLogsView';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
 import { TenantManagementView } from './components/platform/TenantManagementView';
+import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
 import { UserManagementView } from './components/admin/UserManagementView';
 import { LocationManagementView } from './components/admin/LocationManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
@@ -105,7 +106,7 @@ const MainLayout: React.FC = () => {
           <div className="max-w-7xl mx-auto space-y-6">
             {activeTab === 'platform-dashboard' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'tenants' && <TenantManagementView />}
-            {activeTab === 'subscriptions' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'subscriptions' && <SubscriptionsManagementView />}
             {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}

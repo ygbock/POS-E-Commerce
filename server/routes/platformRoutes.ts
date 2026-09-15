@@ -4,6 +4,8 @@ import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
 import { PERMISSIONS } from '../auth/roles.ts';
 import { hashPassword } from '../auth/password.ts';
+import { SubscriptionService, SubscriptionLimitError } from '../services/subscriptionService.ts';
+import { SubscriptionRepository } from '../repositories/subscriptionRepository.ts';
 
 const RESERVED_TENANT_SLUGS = new Set([
   'api',
@@ -104,8 +106,16 @@ function auditTenantMutation(
   );
 }
 
-export function createPlatformRouter(db: DatabaseClient): Router {
+export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionService?: SubscriptionService): Router {
   const router = Router();
+
+  function getSubscriptionService(req?: Request): SubscriptionService {
+    if (injectedSubscriptionService) return injectedSubscriptionService;
+    if (req?.app?.get('subscriptionService')) {
+      return req.app.get('subscriptionService') as SubscriptionService;
+    }
+    return new SubscriptionService(new SubscriptionRepository(db), db);
+  }
 
   router.get('/overview', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_VIEW), async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -380,20 +390,431 @@ export function createPlatformRouter(db: DatabaseClient): Router {
     }
   });
 
-  router.get('/billing', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (_req: Request, res: Response, next: NextFunction) => {
+  // ------------------------------------------------------------------
+  // SAAS BILLING & SUBSCRIPTION MANAGEMENT (TASK-5.6.3)
+  // Guarded strictly by PERMISSIONS.PLATFORM_BILLING
+  // ------------------------------------------------------------------
+
+  router.get('/billing', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const subSvc = getSubscriptionService(req);
+      const overview = await subSvc.getBillingOverview();
       res.json({
         success: true,
-        data: {
-          status: 'operational',
-          mrr: null,
-          billingLedgerStatus: 'connected',
-          subscriptions: [],
-          currency: 'USD',
-          lastUpdated: new Date().toISOString(),
+        data: overview,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Plans Management
+  router.get('/plans', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const subSvc = getSubscriptionService(req);
+      const includeInactive = req.query.includeInactive === 'false' ? false : true;
+      const plans = await subSvc.getPlans(includeInactive);
+      res.json({
+        success: true,
+        data: plans,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/plans/:codeOrId', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const subSvc = getSubscriptionService(req);
+      const plan = await subSvc.getPlan(req.params.codeOrId);
+      if (!plan) {
+        return res.status(404).json({ success: false, error: { code: 'PLAN_NOT_FOUND', message: `Plan '${req.params.codeOrId}' not found.` } });
+      }
+      res.json({
+        success: true,
+        data: plan,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/plans/:codeOrId', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const codeOrId = typeof req.params.codeOrId === 'string' ? req.params.codeOrId.trim() : '';
+      if (!codeOrId) return badRequest(res, 'PLAN_IDENTIFIER_REQUIRED', 'Plan code or ID is required.');
+
+      const subSvc = getSubscriptionService(req);
+      const updates: any = {};
+
+      if (req.body?.name !== undefined) {
+        if (typeof req.body.name !== 'string' || req.body.name.trim().length === 0 || req.body.name.trim().length > 255) {
+          return badRequest(res, 'INVALID_PLAN_NAME', 'Plan name must be between 1 and 255 characters.');
+        }
+        updates.name = req.body.name.trim();
+      }
+
+      if (req.body?.description !== undefined) {
+        if (req.body.description !== null && typeof req.body.description !== 'string') {
+          return badRequest(res, 'INVALID_PLAN_DESCRIPTION', 'Plan description must be a string or null.');
+        }
+        updates.description = req.body.description ? req.body.description.trim() : null;
+      }
+
+      if (req.body?.amount !== undefined) {
+        const amt = Number(req.body.amount);
+        if (!Number.isFinite(amt) || amt < 0) {
+          return badRequest(res, 'INVALID_PLAN_AMOUNT', 'Plan amount must be a non-negative number.');
+        }
+        updates.amount = amt;
+      }
+
+      if (req.body?.currency !== undefined) {
+        if (typeof req.body.currency !== 'string' || req.body.currency.trim().length < 2 || req.body.currency.trim().length > 10) {
+          return badRequest(res, 'INVALID_PLAN_CURRENCY', 'Plan currency must be a valid currency code.');
+        }
+        updates.currency = req.body.currency.trim().toUpperCase();
+      }
+
+      if (req.body?.billing_interval !== undefined || req.body?.billingInterval !== undefined) {
+        const interval = req.body.billing_interval || req.body.billingInterval;
+        if (interval !== 'monthly' && interval !== 'yearly') {
+          return badRequest(res, 'INVALID_BILLING_INTERVAL', "Billing interval must be 'monthly' or 'yearly'.");
+        }
+        updates.billing_interval = interval;
+      }
+
+      if (req.body?.trial_days !== undefined || req.body?.trialDays !== undefined) {
+        const td = Number(req.body.trial_days ?? req.body.trialDays);
+        if (!Number.isInteger(td) || td < 0 || td > 365) {
+          return badRequest(res, 'INVALID_TRIAL_DAYS', 'Trial days must be an integer between 0 and 365.');
+        }
+        updates.trial_days = td;
+      }
+
+      if (req.body?.limits !== undefined) {
+        if (typeof req.body.limits !== 'object' || req.body.limits === null || Array.isArray(req.body.limits)) {
+          return badRequest(res, 'INVALID_PLAN_LIMITS', 'Plan limits must be a valid JSON object.');
+        }
+        for (const [key, val] of Object.entries(req.body.limits)) {
+          if (typeof val !== 'number' || !Number.isFinite(val) || (val as number) < 0) {
+            return badRequest(res, 'INVALID_PLAN_LIMITS', `Limit '${key}' must be a non-negative number.`);
+          }
+        }
+        updates.limits = req.body.limits;
+      }
+
+      if (req.body?.features !== undefined) {
+        if (typeof req.body.features !== 'object' || req.body.features === null || Array.isArray(req.body.features)) {
+          return badRequest(res, 'INVALID_PLAN_FEATURES', 'Plan features must be a valid JSON object.');
+        }
+        for (const [key, val] of Object.entries(req.body.features)) {
+          if (typeof val !== 'boolean') {
+            return badRequest(res, 'INVALID_PLAN_FEATURES', `Feature '${key}' must be a boolean.`);
+          }
+        }
+        updates.features = req.body.features;
+      }
+
+      if (req.body?.isActive !== undefined || req.body?.is_active !== undefined) {
+        const active = req.body.isActive ?? req.body.is_active;
+        if (typeof active !== 'boolean') {
+          return badRequest(res, 'INVALID_ACTIVE_STATE', 'isActive must be a boolean.');
+        }
+        updates.is_active = active;
+      }
+
+      if (req.body?.displayOrder !== undefined || req.body?.display_order !== undefined) {
+        const ord = Number(req.body.displayOrder ?? req.body.display_order);
+        if (!Number.isInteger(ord)) {
+          return badRequest(res, 'INVALID_DISPLAY_ORDER', 'Display order must be an integer.');
+        }
+        updates.display_order = ord;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return badRequest(res, 'NO_MUTATIONS', 'No supported plan changes were supplied.');
+      }
+
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const updatedPlan = await subSvc.updatePlan(codeOrId, updates, actor);
+      res.json({
+        success: true,
+        data: updatedPlan,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      next(err);
+    }
+  });
+
+  // Tenant Subscriptions Management
+  router.get('/subscriptions', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const subSvc = getSubscriptionService(req);
+      const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const plan = typeof req.query.plan === 'string' ? req.query.plan : undefined;
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+      const offset = req.query.offset ? parseInt(String(req.query.offset), 10) : 0;
+
+      const result = await subSvc.listSubscriptions({ status, plan, search, limit, offset });
+      res.json({
+        success: true,
+        data: result.subscriptions,
+        pagination: {
+          total: result.total,
+          limit,
+          offset,
         },
       });
     } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/subscriptions/:organizationId', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const subSvc = getSubscriptionService(req);
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const details = await subSvc.getSubscriptionDetails(orgId);
+      res.json({
+        success: true,
+        data: details,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      next(err);
+    }
+  });
+
+  router.get('/subscriptions/:organizationId/history', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const subSvc = getSubscriptionService(req);
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const history = await subSvc.getSubscriptionAuditHistory(orgId);
+      res.json({
+        success: true,
+        data: history,
+      });
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
+  // Lifecycle Mutations
+  router.post('/subscriptions/:organizationId/change-plan', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const targetPlan = typeof (req.body?.planCodeOrId || req.body?.newPlanCodeOrId) === 'string'
+        ? (req.body.planCodeOrId || req.body.newPlanCodeOrId).trim()
+        : '';
+      if (!targetPlan) return badRequest(res, 'PLAN_REQUIRED', 'Target plan code or ID is required.');
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const subSvc = getSubscriptionService(req);
+      const updated = await subSvc.changePlan(orgId, targetPlan, actor, reason, idempotencyKey);
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/subscriptions/:organizationId/extend-trial', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const days = Number(req.body?.days ?? req.body?.additionalDays);
+      if (!Number.isInteger(days) || days <= 0 || days > 365) {
+        return badRequest(res, 'INVALID_TRIAL_DAYS', 'Trial days must be a positive integer between 1 and 365.');
+      }
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const subSvc = getSubscriptionService(req);
+      const updated = await subSvc.extendTrial(orgId, days, actor, reason, idempotencyKey);
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/subscriptions/:organizationId/suspend', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const subSvc = getSubscriptionService(req);
+      const updated = await subSvc.suspendSubscription(orgId, actor, reason, idempotencyKey);
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/subscriptions/:organizationId/reactivate', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const subSvc = getSubscriptionService(req);
+      const updated = await subSvc.reactivateSubscription(orgId, actor, reason, idempotencyKey);
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/subscriptions/:organizationId/cancel', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const immediate = Boolean(req.body?.immediate);
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const subSvc = getSubscriptionService(req);
+      const updated = await subSvc.cancelSubscription(orgId, immediate, actor, reason, idempotencyKey);
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/subscriptions/:organizationId/restore', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = typeof req.params.organizationId === 'string' ? req.params.organizationId.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Organization ID is required.');
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const subSvc = getSubscriptionService(req);
+      const updated = await subSvc.restoreSubscription(orgId, actor, reason, idempotencyKey);
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (err: any) {
+      if (err instanceof SubscriptionLimitError || err?.statusCode) {
+        return res.status(err.statusCode || err.status || 400).json({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
       next(err);
     }
   });

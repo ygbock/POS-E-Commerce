@@ -952,3 +952,74 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - `npm test` -> PASS (all 22 test suites passed)
   - `npm run build` -> PASS (Vite client and esbuild server bundles built cleanly)
 - **Supervisor Gate:** `PASSED LOCAL GATES (READY FOR REVIEW)`
+
+---
+
+### Task 21: TASK-5.6.3 — Super Admin Plans & Subscription Management
+- **Status:** `READY FOR REVIEW`
+- **Date:** 2026-09-15
+- **Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+- **Objective:** Deliver server-authoritative Super Admin control plane for canonical SaaS subscription plans, tenant subscription lifecycle management, in-transaction auditing, and deterministic MRR calculations.
+- **Implementation:**
+  - Platform authorization: Enforced canonical `requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING)` on all plan and subscription endpoints (`system_owner` and `platform_finance` authorized; `platform_admin` and tenant personas strictly forbidden with 403).
+  - Plan Catalog & Editing:
+    - `GET /api/platform/plans`: List active or all canonical plans (Starter, Professional, Enterprise).
+    - `GET /api/platform/plans/:codeOrId`: Retrieve individual plan definition.
+    - `PATCH /api/platform/plans/:codeOrId`: Safely update plan pricing, limits, features, and active state with strict input validation and in-transaction audit logging (`PLATFORM_PLAN_UPDATED`).
+  - Tenant Subscriptions Management:
+    - `GET /api/platform/subscriptions`: Filter by status, plan, search terms with pagination.
+    - `GET /api/platform/subscriptions/:organizationId`: Authoritative detail view joining plan specifications and live usage counters (Users, Locations, Products, Monthly Orders).
+    - `GET /api/platform/subscriptions/:organizationId/history`: Paginated audit history of subscription mutations.
+  - Lifecycle Mutations (Transactional with pessimistic locking & in-transaction audit):
+    - `POST /api/platform/subscriptions/:orgId/change-plan`: Atomically updates subscription `plan_id` and organization `plan_tier`, records `PLATFORM_SUBSCRIPTION_PLAN_CHANGED`.
+    - `POST /api/platform/subscriptions/:orgId/extend-trial`: Extends evaluation window and period end, sets status to `trialing`, records `PLATFORM_SUBSCRIPTION_TRIAL_EXTENDED`.
+    - `POST /api/platform/subscriptions/:orgId/suspend`: Suspends active/trialing subscription to `paused`, records `PLATFORM_SUBSCRIPTION_SUSPENDED`.
+    - `POST /api/platform/subscriptions/:orgId/reactivate`: Restores paused subscription to active/trialing, records `PLATFORM_SUBSCRIPTION_REACTIVATED`.
+    - `POST /api/platform/subscriptions/:orgId/cancel`: Immediate cancellation sets `cancelled_at` and `cancelled`; scheduled cancellation sets `cancel_at_period_end = true` while retaining current period, records `PLATFORM_SUBSCRIPTION_CANCELLED`.
+    - `POST /api/platform/subscriptions/:orgId/restore`: Validates state coherence (plan active, no conflicting active subscription, resets period end if expired), records `PLATFORM_SUBSCRIPTION_RESTORED`.
+  - Authoritative Financial Overview:
+    - `GET /api/platform/billing`: Live database-authoritative MRR (active paid subscriptions only, normalized monthly equivalent, excludes trials/paused/cancelled) and plan distribution counts.
+  - Frontend Super Admin Interface:
+    - Created `src/services/subscriptionApi.ts` for typed client operations.
+    - Created `src/components/platform/SubscriptionsManagementView.tsx` with KPI overview cards, filterable subscription table, quota meters, lifecycle action dialogs, and plan configuration modal.
+    - Wired `SubscriptionsManagementView` to `activeTab === 'subscriptions'` in `src/App.tsx`.
+  - Automated Integration Tests:
+    - Added dedicated test suite `tests/platform_subscription_management.test.ts` with all 13 core scenarios passing.
+- **Acceptance Gate Checklist:**
+  - [x] Platform billing permission enforced server-side
+  - [x] Tenant users cannot access platform subscription APIs
+  - [x] platform_admin cannot access billing APIs unless explicitly granted
+  - [x] system_owner authorized
+  - [x] platform_finance authorized
+  - [x] Plans can be listed
+  - [x] Plans can be safely modified
+  - [x] Invalid pricing/limits/features rejected
+  - [x] Plan changes preserve billing integrity
+  - [x] Tenant subscriptions can be listed
+  - [x] Subscription detail includes authoritative usage
+  - [x] Plan change works transactionally
+  - [x] Trial extension works transactionally
+  - [x] Suspension works transactionally
+  - [x] Reactivation works transactionally
+  - [x] Immediate cancellation works
+  - [x] Period-end cancellation works
+  - [x] Restoration validates state correctly
+  - [x] Invalid transitions rejected
+  - [x] Cross-tenant manipulation impossible
+  - [x] DB failures roll back completely
+  - [x] Every privileged mutation produces immutable audit evidence
+  - [x] Billing metrics are database-authoritative
+  - [x] MRR calculation is deterministic
+  - [x] Frontend subscription management view implemented
+  - [x] App.tsx routes subscriptions tab correctly
+  - [x] Loading/error/empty states implemented
+  - [x] Accessible confirmation/action dialogs implemented
+  - [x] Dedicated test suite passes (13/13 scenarios)
+  - [x] Existing tests remain green
+  - [x] TypeScript passes (0 errors)
+  - [x] Production build passes
+  - [x] Governance documents updated
+  - [x] Feature branch committed and pushed
+  - [x] main remains untouched
+- **Supervisor Gate:** `PASSED LOCAL GATES (READY FOR REVIEW)`
+

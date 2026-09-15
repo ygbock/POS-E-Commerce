@@ -384,7 +384,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use('/api', createAuthenticateMiddleware(authService));
 
   // SaaS control-plane routes. Authorization is enforced inside the router.
-  app.use('/api/platform', createPlatformRouter(db));
+  app.use('/api/platform', createPlatformRouter(db, subscriptionService));
 
   // Request Header Metadata
   app.use('/api', (req, res, next) => {

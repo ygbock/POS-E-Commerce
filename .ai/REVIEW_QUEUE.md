@@ -730,3 +730,35 @@ Status: READY FOR REVIEW
   - Strict server-side limit checks on POST /api/users, POST /api/locations, POST /api/products, POST /api/orders, /api/pos/checkout, and /api/inventory/transfers.
   - No client-side bypass of limits or features.
   - Complete isolation across tenants.
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.3
+- **Status:** `READY FOR REVIEW`
+- **Scope:** Super Admin Plans & Subscription Management (SaaS Control Plane).
+- **Security focus:**
+  - Platform billing permission boundary strictly enforced via `requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING)`.
+  - Accessible only to `system_owner` and `platform_finance`. Forbidden to `platform_admin` and tenant personas.
+  - Server-authoritative plan catalog and validation (pricing, limits, intervals, features, active state).
+  - Transactional state transitions with pessimistic row locking (`FOR UPDATE OF os` and `organizations`).
+  - Strict in-transaction append-only audit evidence for all privileged mutations.
+  - Full transactional rollback on failure.
+  - Deterministic MRR calculation based purely on active paid subscriptions and database plan pricing.
+  - Immediate vs scheduled (`cancel_at_period_end`) cancellation distinction.
+  - State coherence validation on subscription restoration (valid active plan, no conflicting active subscription).
+- **Verification completed:**
+  - `npm run lint` -> PASS (0 TypeScript errors)
+  - `npm run test:platform-subscriptions` -> PASS (13/13 scenarios)
+  - `npm run test:subscription-limits` -> PASS (15/15 scenarios)
+  - `npm run test:subscription-foundation` -> PASS (5/5 scenarios)
+  - `npm run test:platform` -> PASS (12/12 scenarios)
+  - `npm run test:operational` -> PASS (26/26 scenarios)
+  - `npm test` -> PASS (all 23 test suites passed)
+  - `npm run build` -> PASS (Vite client + esbuild server production bundles)
+- **Reviewer focus:**
+  - Route authorization boundaries.
+  - In-transaction audit event generation.
+  - Coherence of restore and cancellation semantics.
+  - Determinism of MRR calculation.
+  - Responsive Super Admin Subscriptions view and accessible action modals.
+
