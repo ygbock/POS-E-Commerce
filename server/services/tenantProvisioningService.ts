@@ -491,7 +491,15 @@ export class TenantProvisioningService {
         throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot be suspended.', 409);
       }
       if (org.lifecycle_status === 'suspended') {
-        return { id: org.id, status: 'suspended', timestamp: new Date().toISOString() };
+        const response: TenantLifecycleResult = { id: org.id, status: 'suspended', timestamp: new Date().toISOString() };
+        if (idempotencyKey?.trim()) {
+          await tx.query(
+            `UPDATE platform_idempotency_keys SET response = $1::jsonb
+             WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $2`,
+            [JSON.stringify(response), idempotencyKey.trim()],
+          );
+        }
+        return response;
       }
 
       // Suspend organization
@@ -598,7 +606,15 @@ export class TenantProvisioningService {
       }
       // Idempotent: already active
       if (org.lifecycle_status === 'active') {
-        return { id: org.id, status: 'active', timestamp: new Date().toISOString() };
+        const response: TenantLifecycleResult = { id: org.id, status: 'active', timestamp: new Date().toISOString() };
+        if (idempotencyKey?.trim()) {
+          await tx.query(
+            `UPDATE platform_idempotency_keys SET response = $1::jsonb
+             WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $2`,
+            [JSON.stringify(response), idempotencyKey.trim()],
+          );
+        }
+        return response;
       }
 
       // Reactivate organization
