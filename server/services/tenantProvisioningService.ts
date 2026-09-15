@@ -661,13 +661,9 @@ export class TenantProvisioningService {
         );
       }
 
-      // Reactivate organization
-      await tx.query(
-        `UPDATE organizations SET is_active = TRUE, lifecycle_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        [orgId.trim()],
-      );
-
-      // Restore the most recently paused subscription
+      // A suspended tenant must have a paused subscription to reactivate.
+      // Failing closed prevents an active tenant from being restored without
+      // authoritative billing state.
       const subRes = await tx.query<any>(
         `SELECT os.id, os.status, os.trial_ends_at, os.current_period_end,
                 os.cancel_at_period_end, os.cancelled_at,
@@ -679,7 +675,21 @@ export class TenantProvisioningService {
          FOR UPDATE OF os`,
         [orgId.trim()],
       );
-      if (subRes.rows.length > 0) {
+      if (subRes.rows.length === 0) {
+        throw new TenantProvisioningError(
+          'SUBSCRIPTION_NOT_REACTIVATABLE',
+          'Tenant has no paused subscription available for reactivation.',
+          409,
+        );
+      }
+
+      // Reactivate organization only after the billing invariant is satisfied.
+      await tx.query(
+        `UPDATE organizations SET is_active = TRUE, lifecycle_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        [orgId.trim()],
+      );
+
+      {
         const sub = subRes.rows[0];
         const now = new Date();
         const isTrialActive = sub.trial_ends_at && new Date(sub.trial_ends_at).getTime() > now.getTime();
@@ -1019,7 +1029,8 @@ export class TenantProvisioningService {
       throw new TenantProvisioningError('TENANT_ID_REQUIRED', 'Tenant ID is required.');
     }
 
-    // Plan changes are billing mutations and must use the billing-scoped change-plan endpoint
+    // Plan and lifecycle changes are control-plane mutations and must use their
+    // canonical endpoints. PATCH is intentionally limited to descriptive fields.
     if (updates?.planTier !== undefined) {
       throw new TenantProvisioningError(
         'PLAN_CHANGE_REQUIRES_BILLING_PERMISSION',
