@@ -456,6 +456,26 @@ export class TenantProvisioningService {
     }
 
     return this.db.withTransaction(async (tx) => {
+      if (idempotencyKey?.trim()) {
+        const claim = await tx.query<{ id: string }>(
+          `INSERT INTO platform_idempotency_keys
+             (id, operation, idempotency_key, organization_id, actor_id, response)
+           VALUES ($1, 'TENANT_SUSPEND', $2, $3, $4, '{"pending":true}'::jsonb)
+           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           RETURNING id`,
+          [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
+        );
+        if (claim.rows.length === 0) {
+          const existing = await tx.query<{ response: any }>(
+            `SELECT response FROM platform_idempotency_keys
+             WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $1`,
+            [idempotencyKey.trim()],
+          );
+          const response = existing.rows[0]?.response;
+          if (response && !response.pending) return response as TenantLifecycleResult;
+          throw new TenantProvisioningError('IDEMPOTENCY_IN_PROGRESS', 'An identical tenant suspension request is already in progress.', 409);
+        }
+      }
       const orgRes = await tx.query<any>(
         'SELECT id, name, is_active, lifecycle_status FROM organizations WHERE id = $1 FOR UPDATE',
         [orgId.trim()],
@@ -512,7 +532,15 @@ export class TenantProvisioningService {
         ],
       );
 
-      return { id: orgId.trim(), status: 'suspended', timestamp: new Date().toISOString() };
+      const response: TenantLifecycleResult = { id: orgId.trim(), status: 'suspended', timestamp: new Date().toISOString() };
+      if (idempotencyKey?.trim()) {
+        await tx.query(
+          `UPDATE platform_idempotency_keys SET response = $1::jsonb
+           WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $2`,
+          [JSON.stringify(response), idempotencyKey.trim()],
+        );
+      }
+      return response;
     });
   }
 
@@ -536,6 +564,26 @@ export class TenantProvisioningService {
     }
 
     return this.db.withTransaction(async (tx) => {
+      if (idempotencyKey?.trim()) {
+        const claim = await tx.query<{ id: string }>(
+          `INSERT INTO platform_idempotency_keys
+             (id, operation, idempotency_key, organization_id, actor_id, response)
+           VALUES ($1, 'TENANT_REACTIVATE', $2, $3, $4, '{"pending":true}'::jsonb)
+           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           RETURNING id`,
+          [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
+        );
+        if (claim.rows.length === 0) {
+          const existing = await tx.query<{ response: any }>(
+            `SELECT response FROM platform_idempotency_keys
+             WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $1`,
+            [idempotencyKey.trim()],
+          );
+          const response = existing.rows[0]?.response;
+          if (response && !response.pending) return response as TenantLifecycleResult;
+          throw new TenantProvisioningError('IDEMPOTENCY_IN_PROGRESS', 'An identical tenant reactivation request is already in progress.', 409);
+        }
+      }
       const orgRes = await tx.query<any>(
         'SELECT id, name, is_active, lifecycle_status FROM organizations WHERE id = $1 FOR UPDATE',
         [orgId.trim()],
@@ -601,7 +649,15 @@ export class TenantProvisioningService {
         ],
       );
 
-      return { id: orgId.trim(), status: 'active', timestamp: new Date().toISOString() };
+      const response: TenantLifecycleResult = { id: orgId.trim(), status: 'active', timestamp: new Date().toISOString() };
+      if (idempotencyKey?.trim()) {
+        await tx.query(
+          `UPDATE platform_idempotency_keys SET response = $1::jsonb
+           WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $2`,
+          [JSON.stringify(response), idempotencyKey.trim()],
+        );
+      }
+      return response;
     });
   }
 
@@ -617,12 +673,33 @@ export class TenantProvisioningService {
     orgId: string,
     actor: { id: string; name?: string; role?: string },
     reason?: string,
+    idempotencyKey?: string,
   ): Promise<TenantLifecycleResult> {
     if (!orgId?.trim()) {
       throw new TenantProvisioningError('TENANT_ID_REQUIRED', 'Organization ID is required.');
     }
 
     return this.db.withTransaction(async (tx) => {
+      if (idempotencyKey?.trim()) {
+        const claim = await tx.query<{ id: string }>(
+          `INSERT INTO platform_idempotency_keys
+             (id, operation, idempotency_key, organization_id, actor_id, response)
+           VALUES ($1, 'TENANT_ARCHIVE', $2, $3, $4, '{"pending":true}'::jsonb)
+           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           RETURNING id`,
+          [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
+        );
+        if (claim.rows.length === 0) {
+          const existing = await tx.query<{ response: any }>(
+            `SELECT response FROM platform_idempotency_keys
+             WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $1`,
+            [idempotencyKey.trim()],
+          );
+          const response = existing.rows[0]?.response;
+          if (response && !response.pending) return response as TenantLifecycleResult;
+          throw new TenantProvisioningError('IDEMPOTENCY_IN_PROGRESS', 'An identical tenant archive request is already in progress.', 409);
+        }
+      }
       const orgRes = await tx.query<any>(
         'SELECT id, name, is_active, lifecycle_status FROM organizations WHERE id = $1 FOR UPDATE',
         [orgId.trim()],
@@ -669,7 +746,15 @@ export class TenantProvisioningService {
         ],
       );
 
-      return { id: orgId.trim(), status: 'archived', timestamp: new Date().toISOString() };
+      const response: TenantLifecycleResult = { id: orgId.trim(), status: 'archived', timestamp: new Date().toISOString() };
+      if (idempotencyKey?.trim()) {
+        await tx.query(
+          `UPDATE platform_idempotency_keys SET response = $1::jsonb
+           WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $2`,
+          [JSON.stringify(response), idempotencyKey.trim()],
+        );
+      }
+      return response;
     });
   }
 
