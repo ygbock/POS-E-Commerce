@@ -37,11 +37,11 @@ CREATE TABLE IF NOT EXISTS platform_idempotency_keys (
   operation VARCHAR(64) NOT NULL,
   idempotency_key VARCHAR(255) NOT NULL,
   organization_id VARCHAR(64) REFERENCES organizations(id) ON DELETE SET NULL,
-  actor_id VARCHAR(64),
+  actor_id VARCHAR(64) NOT NULL,
   response JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT uq_platform_idempotency_operation_key
-    UNIQUE (operation, idempotency_key)
+  CONSTRAINT uq_platform_idempotency_operation_key_actor
+    UNIQUE (operation, idempotency_key, actor_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_platform_idempotency_org_created
