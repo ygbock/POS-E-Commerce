@@ -493,12 +493,20 @@ export class TenantProvisioningService {
           [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
         );
         if (claim.rows.length === 0) {
-          const existing = await tx.query<{ response: any }>(
-            `SELECT response FROM platform_idempotency_keys
+          const existing = await tx.query<{ response: any; organization_id: string | null }>(
+            `SELECT response, organization_id FROM platform_idempotency_keys
              WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $1 AND actor_id = $2`,
             [idempotencyKey.trim(), actor.id],
           );
-          const response = existing.rows[0]?.response;
+          const existingRow = existing.rows[0];
+          if (existingRow?.organization_id && existingRow.organization_id !== orgId.trim()) {
+            throw new TenantProvisioningError(
+              'IDEMPOTENCY_KEY_REUSE',
+              'The idempotency key was already used for a different tenant.',
+              409,
+            );
+          }
+          const response = existingRow?.response;
           if (response && !response.pending) return response as TenantLifecycleResult;
           throw new TenantProvisioningError('IDEMPOTENCY_IN_PROGRESS', 'An identical tenant suspension request is already in progress.', 409);
         }
@@ -609,12 +617,20 @@ export class TenantProvisioningService {
           [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
         );
         if (claim.rows.length === 0) {
-          const existing = await tx.query<{ response: any }>(
-            `SELECT response FROM platform_idempotency_keys
+          const existing = await tx.query<{ response: any; organization_id: string | null }>(
+            `SELECT response, organization_id FROM platform_idempotency_keys
              WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $1 AND actor_id = $2`,
             [idempotencyKey.trim(), actor.id],
           );
-          const response = existing.rows[0]?.response;
+          const existingRow = existing.rows[0];
+          if (existingRow?.organization_id && existingRow.organization_id !== orgId.trim()) {
+            throw new TenantProvisioningError(
+              'IDEMPOTENCY_KEY_REUSE',
+              'The idempotency key was already used for a different tenant.',
+              409,
+            );
+          }
+          const response = existingRow?.response;
           if (response && !response.pending) return response as TenantLifecycleResult;
           throw new TenantProvisioningError('IDEMPOTENCY_IN_PROGRESS', 'An identical tenant reactivation request is already in progress.', 409);
         }
@@ -787,12 +803,20 @@ export class TenantProvisioningService {
           [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
         );
         if (claim.rows.length === 0) {
-          const existing = await tx.query<{ response: any }>(
-            `SELECT response FROM platform_idempotency_keys
+          const existing = await tx.query<{ response: any; organization_id: string | null }>(
+            `SELECT response, organization_id FROM platform_idempotency_keys
              WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $1 AND actor_id = $2`,
             [idempotencyKey.trim(), actor.id],
           );
-          const response = existing.rows[0]?.response;
+          const existingRow = existing.rows[0];
+          if (existingRow?.organization_id && existingRow.organization_id !== orgId.trim()) {
+            throw new TenantProvisioningError(
+              'IDEMPOTENCY_KEY_REUSE',
+              'The idempotency key was already used for a different tenant.',
+              409,
+            );
+          }
+          const response = existingRow?.response;
           if (response && !response.pending) return response as TenantLifecycleResult;
           throw new TenantProvisioningError('IDEMPOTENCY_IN_PROGRESS', 'An identical tenant archive request is already in progress.', 409);
         }
