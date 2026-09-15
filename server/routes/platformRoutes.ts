@@ -66,10 +66,12 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
     try {
       const svc = getTenantProvisioningService(req);
       const validStatuses: TenantListStatusFilter[] = ['active', 'suspended', 'archived', 'all'];
-      const status = typeof req.query.status === 'string' && validStatuses.includes(req.query.status as any)
-        ? (req.query.status as TenantListStatusFilter)
-        : undefined;
-      const planTier = typeof req.query.planTier === 'string' ? req.query.planTier : undefined;
+      const statusQuery = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+      if (statusQuery && !validStatuses.includes(statusQuery as TenantListStatusFilter)) {
+        return badRequest(res, 'INVALID_TENANT_STATUS', "Status must be 'active', 'suspended', 'archived', or 'all'.");
+      }
+      const status = statusQuery ? (statusQuery as TenantListStatusFilter) : undefined;
+      const planTier = typeof req.query.planTier === 'string' ? req.query.planTier.trim().toLowerCase() : undefined;
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
 
       const rawLimit = Number(req.query.limit);
