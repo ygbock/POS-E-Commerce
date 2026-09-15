@@ -97,7 +97,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
   router.get('/overview', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_VIEW), async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const tenants = await db.query<any>(
-        'SELECT id, name, slug, code, is_active, plan_tier, created_at FROM organizations ORDER BY created_at DESC'
+        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at FROM organizations ORDER BY created_at DESC'
       );
       const activeUsers = await db.query<any>(
         'SELECT COUNT(*)::int AS count FROM users WHERE is_active = true'
@@ -110,7 +110,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
             name: t.name,
             slug: t.slug,
             code: t.code,
-            status: t.is_active ? 'active' : 'suspended',
+            status: t.lifecycle_status || (t.is_active ? 'active' : 'suspended'),
             plan: t.plan_tier,
             createdAt: t.created_at,
           })),
