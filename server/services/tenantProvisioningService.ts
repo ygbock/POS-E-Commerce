@@ -727,7 +727,7 @@ export class TenantProvisioningService {
 
       // Deactivate organization
       await tx.query(
-        'UPDATE organizations SET is_active = FALSE, lifecycle_status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        `UPDATE organizations SET is_active = FALSE, lifecycle_status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
         [orgId.trim()],
       );
 
