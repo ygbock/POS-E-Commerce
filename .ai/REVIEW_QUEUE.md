@@ -762,3 +762,15 @@ Status: READY FOR REVIEW
   - Determinism of MRR calculation.
   - Responsive Super Admin Subscriptions view and accessible action modals.
 
+
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.4
+- **Status:** `HARDENED — PENDING POST-FIX VERIFICATION`
+- **Scope:** Tenant provisioning, onboarding, suspension, reactivation, and archival lifecycle control.
+- **Review findings fixed:** durable archived state, transactional actor-scoped idempotency, canonical plan fail-closed provisioning, terminal archive semantics, legacy PATCH lifecycle/billing drift, expired-period reactivation, and swallowed billing lookup errors.
+- **Regression coverage:** 16 tenant provisioning/lifecycle scenarios.
+- **Required verification:** `npm run lint`, `npm run test:subscription-foundation`, `npm run test:subscription-limits`, `npm run test:platform`, `npm run test:platform-subscriptions`, `npm run test:tenant-provisioning`, `npm run test:operational`, `npm test`, `npm run build`, `git status`.
+- **Reviewer focus:** lifecycle-state integrity, archived tenant terminality, idempotency replay isolation, plan/subscription consistency, transaction rollback, and cross-tenant safety.
+- **Gate:** TASK-5.6.5 is blocked until post-fix workstation/CI execution passes.
