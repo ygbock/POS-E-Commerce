@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
 import { PERMISSIONS } from '../auth/roles.ts';
-import { hashPassword } from '../auth/password.ts';
 import { SubscriptionService, SubscriptionLimitError } from '../services/subscriptionService.ts';
 import { SubscriptionRepository } from '../repositories/subscriptionRepository.ts';
 import { TenantProvisioningService, TenantProvisioningError } from '../services/tenantProvisioningService.ts';
@@ -45,36 +44,6 @@ function normalizeName(value: unknown): string {
   return name;
 }
 
-function normalizeCode(value: unknown, slug: string): string {
-  const code = typeof value === 'string' && value.trim()
-    ? value.trim().toUpperCase()
-    : slug.replace(/-/g, '_').toUpperCase();
-  if (!/^[A-Z0-9_]{3,64}$/.test(code)) throw new Error('INVALID_TENANT_CODE');
-  return code;
-}
-
-function normalizePlanTier(value: unknown): PlanTier {
-  if (value === undefined || value === null || value === '') return 'starter';
-  if (value !== 'starter' && value !== 'professional' && value !== 'enterprise') {
-    throw new Error('INVALID_PLAN_TIER');
-  }
-  return value;
-}
-
-function normalizeAdminPayload(body: any) {
-  const email = typeof body?.adminEmail === 'string' ? body.adminEmail.trim().toLowerCase() : '';
-  const name = typeof body?.adminName === 'string' ? body.adminName.trim() : '';
-  const password = typeof body?.adminPassword === 'string' ? body.adminPassword : '';
-
-  if (!EMAIL_PATTERN.test(email) || email.length > 255) throw new Error('INVALID_ADMIN_EMAIL');
-  if (name.length < 2 || name.length > 255) throw new Error('INVALID_ADMIN_NAME');
-  if (password.length < 12 || password.length > 128) throw new Error('ADMIN_PASSWORD_POLICY');
-  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
-    throw new Error('ADMIN_PASSWORD_POLICY');
-  }
-
-  return { email, name, password };
-}
 
 function badRequest(res: Response, code: string, message: string) {
   return res.status(422).json({ success: false, error: { code, message } });
