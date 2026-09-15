@@ -2453,3 +2453,22 @@ All required local verification gates executed on workstation runner and passed 
 - `npm run build` -> **PASS** (Vite client transformed 2484 modules + Esbuild node bundle `dist/server.cjs` completed with no source map leaks).
 
 **Next implementation:** TASK-5.6.3 — Tenant Subscription & Billing Management UI.
+
+
+## TASK-5.6.4 Post-Implementation Review — 2026-09-15
+
+**Status:** `HARDENED — PENDING POST-FIX VERIFICATION`
+
+The review identified and corrected seven issues in the initial Tenant Provisioning & Lifecycle implementation:
+
+- Added durable `organizations.lifecycle_status` so archived tenants are distinct from suspended tenants.
+- Added transactional, actor-scoped `platform_idempotency_keys` for provisioning and lifecycle mutations.
+- Removed silent fallback to Starter when a requested canonical plan is inactive/missing.
+- Made archived tenants terminal for lifecycle APIs and protected legacy PATCH active-state changes.
+- Prevented tenant PATCH from changing `plan_tier` outside the billing-scoped plan-change operation.
+- Refreshed expired billing periods during reactivation.
+- Stopped swallowing authoritative subscription lookup/database errors in tenant detail.
+
+Regression coverage was expanded from 12 to 16 tenant provisioning scenarios. Migration verification now includes migration 016, and CI was expanded to run the platform/subscription/tenant suites plus the complete `npm test` regression command.
+
+**Verification boundary:** post-fix workstation/CI execution remains mandatory. TASK-5.6.5 is blocked until lint, all required regression suites, `npm test`, and `npm run build` pass after these changes.
