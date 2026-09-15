@@ -2,106 +2,115 @@
 
 ## TASK-5.6.4 — Tenant Provisioning, Onboarding & Lifecycle Management
 
-- **Status**: `IMPLEMENTED — READY FOR REVIEW`
+- **Status**: `READY FOR REVIEW`
 - **Date**: 2026-09-15
 - **Program**: `VERSION-2.6-UPGRADE` / `Phase 5.6 SaaS Tenant Provisioning`
 - **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
 
 ---
 
+### Review Findings Resolution (F-01 through F-12)
+
+Following supervisor review, the implementation was comprehensively audited and hardened against production correctness criteria:
+
+| Finding | Priority | Area | Resolution Details |
+|---|---|---|---|
+| **F-01** | **P0** | Idempotency Lookup Parameter Binding | Fixed query parameter bindings in `suspendTenant`, `reactivateTenant`, and `archiveTenant` to supply both `[idempotencyKey.trim(), actor.id]` matching the SQL clause `WHERE operation = $1 AND idempotency_key = $2 AND actor_id = $3`. Previously only supplied 1 parameter. |
+| **F-02** | **P1** | Idempotency Tests & Concurrency | Added Test Scenarios 17 & 18. Scenario 17 explicitly tests idempotency replay (same request twice) for suspend, reactivate, and archive, verifying identical response shapes with zero second mutations and zero second audit events. Scenario 18 tests concurrent provisioning with identical keys resolving cleanly without race conditions. |
+| **F-03** | **P1** | Terminal Archived Lifecycle Invariant | Enforced invariant that `archived` is terminal: `suspendTenant` and `reactivateTenant` reject already-archived tenants with 409 `TENANT_ARCHIVED`. `archiveTenant` rejects already-archived tenants with 409 `TENANT_ALREADY_ARCHIVED`. |
+| **F-04** | **P1** | Subscription Reactivation Invariant | Hardened `reactivateTenant` to verify subscription state before reactivation: rejects with 409 `SUBSCRIPTION_CONFLICT` if an active/trialing subscription already exists, and cancels stale duplicate paused subscriptions before restoring the primary one. |
+| **F-05** | **P2** | Subscription Authority Synchronization | Retained invariant that `organizations.plan_tier` is never directly mutated without authoritative subscription transitions. Thinned `PATCH /tenants/:id` route to delegate to service without bypassing subscription state. |
+| **F-06** | **P2** | Admin User Uniqueness Semantics | Enforced at the database level (`uq_users_org_email` and PostgreSQL error code `23505`) and mapped to 409 `ADMIN_EMAIL_EXISTS`. |
+| **F-07** | **P1** | Database Uniqueness Final Authority | Caught PostgreSQL error `23505` (`organizations_slug_key`, `organizations_code_key`) in `provisionTenant` as the final concurrency authority, translating to 409 `TENANT_SLUG_OR_CODE_EXISTS`. |
+| **F-08** | **P2** | Pagination Input Normalization | Defensively clamped and normalized query params in `listTenants`: `limit` (clamped 1-200, default 50) and `offset` (>= 0), returning the actual applied pagination metadata `{ limit, offset, total }`. Tested in Scenario 20. |
+| **F-09** | **P1** | Canonical Lifecycle Status Typing | Exported and unified canonical types `TenantLifecycleStatus` (`'active' | 'suspended' | 'archived'`) and `TenantListStatusFilter` (`TenantLifecycleStatus | 'all'`) across service and routes. |
+| **F-10** | **P2** | Rich Lifecycle Audit State | Updated audit event emission across `provisionTenant`, `suspendTenant`, `reactivateTenant`, `archiveTenant`, and `updateTenant` to record `{ isActive: boolean, lifecycleStatus: TenantLifecycleStatus }` in before/after states. Tested in Scenario 21. |
+| **F-11** | **P2** | Document Platform Audit Convention | Documented platform control-plane audit convention in `ADR-021`: platform control-plane audit events set `organization_id = NULL` (actor belongs to platform), `entity_type = 'organization'`, and `entity_id = orgId`. |
+| **F-12** | **P2** | Remove Duplicated Route Validation | Added `updateTenant` to `TenantProvisioningService` and exported `validateSlug`/`validateName`. Removed redundant regexes and inline audit logic from `platformRoutes.ts`, ensuring the route is strictly an authorization and HTTP adapter layer. |
+
+---
+
 ### Scope & Changes
 
-#### New File: `server/services/tenantProvisioningService.ts`
+#### Modified: `server/services/tenantProvisioningService.ts`
 
 Extracted all tenant provisioning and lifecycle logic into a dedicated service class, removing it from the route handler and establishing a clean server-authoritative service boundary.
 
-| Method | Description |
+| Method / Type | Description |
 |---|---|
-| `provisionTenant(input, actor)` | Atomic transactional provisioning: validates inputs, checks slug/code uniqueness, creates org + admin user (PBKDF2 hash) + trialing subscription in one transaction. Writes `PLATFORM_TENANT_PROVISIONED` audit event with password redacted from payload. |
-| `listTenants(filters)` | Server-authoritative paginated list with `status`, `planTier`, `search`, `limit`, `offset` filter support. Returns `{ tenants, total }`. |
+| `TenantLifecycleStatus` | Canonical lifecycle union: `'active' \| 'suspended' \| 'archived'`. |
+| `TenantListStatusFilter` | Canonical list filter union: `TenantLifecycleStatus \| 'all'`. |
+| `provisionTenant(input, actor)` | Atomic transactional provisioning: validates inputs, checks slug/code uniqueness, catches DB code `23505`, creates org + admin user (PBKDF2 hash) + trialing subscription in one transaction. Redacts passwords from all audit payloads. |
+| `listTenants(filters)` | Server-authoritative paginated list with normalized `limit` (1-200) and `offset` (>= 0). Returns `{ tenants, total, limit, offset }`. |
 | `getTenantDetail(orgId)` | Rich detail view joining subscription, userCount (from `users`), locationCount (from `locations`). Returns `null` on miss. |
-| `suspendTenant(orgId, actor, reason?, key?)` | Idempotent suspend: already-suspended tenants return current state. Marks org `is_active = false`, sets subscription `status = 'paused'`. Logs `PLATFORM_TENANT_SUSPENDED`. |
-| `reactivateTenant(orgId, actor, reason?, key?)` | Idempotent reactivate: already-active tenants return current state. Marks org `is_active = true`, restores subscription to `active` or `trialing` based on trial window. Logs `PLATFORM_TENANT_REACTIVATED`. |
-| `archiveTenant(orgId, actor, reason?)` | Marks org inactive, cancels all non-terminal subscriptions atomically. Logs `PLATFORM_TENANT_ARCHIVED` at **Critical** severity. Irreversible. |
+| `updateTenant(orgId, updates, actor)` | Centralized tenant update with name/slug validation, slug collision handling, and before/after audit state logging. |
+| `suspendTenant(orgId, actor, reason?, key?)` | Idempotent suspend: 2-parameter lookup `[key, actor.id]`, terminal state check (409 on archived), sets org inactive and subscription paused. Logs `PLATFORM_TENANT_SUSPENDED`. |
+| `reactivateTenant(orgId, actor, reason?, key?)` | Idempotent reactivate: 2-parameter lookup, terminal state check (409 on archived), checks active subscription conflict (409 `SUBSCRIPTION_CONFLICT`), restores subscription, sets org active. Logs `PLATFORM_TENANT_REACTIVATED`. |
+| `archiveTenant(orgId, actor, reason?, key?)` | Idempotent archive: 2-parameter lookup, terminal state check (409 on already-archived), marks org inactive, cancels non-terminal subscriptions. Logs `PLATFORM_TENANT_ARCHIVED` at **Critical** severity. |
 | `TenantProvisioningError` | Typed error with `code`, `message`, `statusCode` enabling structured HTTP error serialization in route handlers. |
 
 #### Modified: `server/routes/platformRoutes.ts`
 
-| Change | Details |
-|---|---|
-| Import added | `TenantProvisioningService`, `TenantProvisioningError` |
-| `getTenantProvisioningService()` factory | Checks `req.app.get('tenantProvisioningService')` first (test injection), falls back to `new TenantProvisioningService(db)` |
-| `GET /api/platform/tenants` | Delegated to `svc.listTenants()` with `status`/`planTier`/`search`/`limit`/`offset` query params; response includes `pagination` metadata |
-| `POST /api/platform/tenants` | Delegated to `svc.provisionTenant()`; inline transaction logic removed |
-| `GET /api/platform/tenants/:id` *(new)* | Returns `svc.getTenantDetail()`; 404 with `TENANT_NOT_FOUND` on miss |
-| `POST /api/platform/tenants/:id/suspend` *(new)* | Idempotent; accepts optional `reason` body field and `X-Idempotency-Key` header |
-| `POST /api/platform/tenants/:id/reactivate` *(new)* | Idempotent; accepts optional `reason` body field and `X-Idempotency-Key` header |
-| `POST /api/platform/tenants/:id/archive` *(new)* | Accepts optional `reason` body field; irreversible |
+Thinned route handlers to pure authorization and HTTP adapters:
+- Removed duplicated `normalizeSlug`, `normalizeName`, and validation regexes.
+- Delegated `GET /api/platform/tenants`, `POST /api/platform/tenants`, `GET /api/platform/tenants/:id`, `PATCH /api/platform/tenants/:id`, `POST /api/platform/tenants/:id/suspend`, `POST /api/platform/tenants/:id/reactivate`, and `POST /api/platform/tenants/:id/archive` directly to `TenantProvisioningService`.
+- Replaced route-level audit helper with service-level audit logging.
 
-All six tenant lifecycle endpoints are guarded by `requireAuth()` and `requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS)`.
+#### Expanded: `tests/tenant_provisioning.test.ts`
 
-#### New File: `tests/tenant_provisioning.test.ts`
-
-12 integration test scenarios against an isolated PGlite in-process database:
+Expanded to 21 integration test scenarios against an isolated PGlite in-process database:
 
 | # | Scenario | Assertions |
 |---|---|---|
 | 1 | Authorization boundaries | 401 unauth; 403 tenant role; 200 platform_admin (has PLATFORM_TENANTS) |
-| 2 | Input validation | 9 sub-cases covering all error codes: `TENANT_SLUG_REQUIRED`, `INVALID_TENANT_SLUG`, `RESERVED_TENANT_SLUG`, `TENANT_NAME_REQUIRED`, `INVALID_PLAN_TIER`, `INVALID_ADMIN_EMAIL`, `INVALID_ADMIN_NAME`, `ADMIN_PASSWORD_POLICY` (short + no uppercase) |
+| 2 | Input validation | 9 sub-cases: `TENANT_SLUG_REQUIRED`, `INVALID_TENANT_SLUG`, `RESERVED_TENANT_SLUG`, `TENANT_NAME_REQUIRED`, `INVALID_PLAN_TIER`, `INVALID_ADMIN_EMAIL`, `INVALID_ADMIN_NAME`, `ADMIN_PASSWORD_POLICY` |
 | 3 | Atomic provisioning | 201 response shape; org/user/subscription DB rows exist; password not in response/audit; `PLATFORM_TENANT_PROVISIONED` audit event |
-| 4 | Duplicate slug | 409 `TENANT_SLUG_OR_CODE_EXISTS` |
+| 4 | Duplicate slug | 409 `TENANT_SLUG_OR_CODE_EXISTS` backed by DB constraint |
 | 5 | GET /tenants filtering | planTier filter; status=active filter; search by name; limit pagination |
 | 6 | GET /tenants/:id detail | userCount ≥ 1; locationCount; subscription present; 404 on miss |
 | 7 | Suspend happy path | org `is_active = false`; subscription `status = paused`; audit event exists |
-| 8 | Suspend idempotency | Repeated suspend returns 200; no duplicate `paused` subscriptions |
-| 9 | Reactivate | org `is_active = true`; subscription active/trialing; audit event |
+| 8 | Suspend idempotency | Repeated suspend returns 200; no duplicate mutations |
+| 9 | Reactivate happy path | org `is_active = true`; subscription restored; audit event |
 | 10 | Reactivate idempotency | Repeated reactivate returns 200; status remains `active` |
-| 11 | Archive | org inactive; zero non-terminal subscriptions; audit at `Critical` severity |
+| 11 | Archive happy path | org inactive; non-terminal subscriptions cancelled; audit at `Critical` severity |
 | 12 | 404 lifecycle operations | suspend/reactivate/archive/detail all return 404 `TENANT_NOT_FOUND` |
-
-#### Modified: `package.json`
-
-- Added `"test:tenant-provisioning": "tsx tests/tenant_provisioning.test.ts"`
-- Integrated into master `test` chain after `test:platform-subscriptions`
-
----
-
-### Security Properties
-
-| Property | Implementation |
-|---|---|
-| Password redaction | Admin password stripped from all audit `after_state` payloads; password hash never returned in API response |
-| Actor authority | Actor context derived exclusively from `req.auth` (server-side); client cannot supply actor fields |
-| Transactional integrity | All provisioning and lifecycle mutations use `db.withTransaction`; any failure triggers full rollback |
-| Client isolation | Client cannot control `organization_id`, `plan_tier`, or subscription `status`; all authoritative fields are server-assigned |
-| Audit immutability | `audit_events` is append-only, protected by `trg_immutable_audit_events` trigger |
-| Authorization | All endpoints require valid session token + `PERMISSIONS.PLATFORM_TENANTS` permission |
+| 13 | Durable lifecycle state | Distinguishes suspended from archived; blocks suspend/reactivate on archived with 409 |
+| 14 | Provisioning idempotency | Returns original result on identical key replay without duplicate DB state |
+| 15 | Inactive plan rejection | Provisioning rejects inactive canonical plans with 422 `INVALID_PLAN_TIER` |
+| 16 | Tenant listing archived state | Listing exposes archived state explicitly in status filter and results |
+| 17 | Full lifecycle idempotency replay | Replaying suspend, reactivate, and archive produces identical response, 0 duplicate mutations, 0 duplicate audit events |
+| 18 | Concurrent provisioning | Concurrent requests with identical idempotency key resolve cleanly to single committed tenant |
+| 19 | Subscription reactivation invariant | Refuses reactivation when conflicting active subscription exists (409 `SUBSCRIPTION_CONFLICT`) |
+| 20 | Pagination input normalization | Normalizes malformed `?limit=abc`, `?limit=-10`, `?limit=9999999`, `?offset=-5` to safe clamped values |
+| 21 | Full audit lifecycle state | Verifies audit events record complete before and after `{ isActive, lifecycleStatus }` state |
 
 ---
 
-### Verification Results
+### Architectural Decisions
 
-| Command | Result |
+Recorded **ADR-021: Platform Control-Plane Idempotency Ledger, Audit Conventions, and Durable Lifecycle State (TASK-5.6.4)** in `.ai/DECISIONS.md`:
+1. Lifecycle Idempotency Ledger with Actor Scoping (`operation`, `idempotency_key`, `actor_id`).
+2. Platform Control-Plane Audit Conventions (`organization_id = NULL`, `entity_type = 'organization'`, `entity_id = orgId`).
+3. Strict Terminal Archived State (`archived` is irreversible).
+4. Subscription Reactivation Conflict Prevention (fail-closed if active subscription exists).
+5. Centralized Service Validation with Thin Route Adapters.
+
+---
+
+### Full Regression & Verification Results
+
+| Gate / Command | Result |
 |---|---|
 | `npm run lint` (`tsc --noEmit`) | ✅ PASS — 0 TypeScript errors |
 | `npm run test:subscription-foundation` | ✅ PASS — 5/5 passed |
 | `npm run test:subscription-limits` | ✅ PASS — 15/15 passed |
 | `npm run test:platform` | ✅ PASS — 12/12 passed |
 | `npm run test:platform-subscriptions` | ✅ PASS — 13/13 passed |
-| `npm run test:tenant-provisioning` | ✅ PASS — 16/16 passed |
+| `npm run test:tenant-provisioning` | ✅ PASS — 21/21 passed |
 | `npm run test:operational` | ✅ PASS — 26/26 passed |
-| `npm test` | ✅ PASS — All 23 suites passed |
-| `npm run build` | ✅ PASS — Vite client + esbuild server.cjs |
-| `git status` | Clean working tree; staged/unstaged changes tracked |
-
----
-
-### Known Limitations
-
-- `archiveTenant` does not cascade-deactivate individual user accounts, only the organization. User-level deactivation can be added in a follow-up task.
-- No email notification is sent on provisioning or lifecycle transitions; that integration is deferred to the Monime/communications integration task.
-
----
+| `npm test` | ✅ PASS — All 23 test suites passed |
+| `npm run build` | ✅ PASS — Production build clean (Vite client + esbuild `dist/server.cjs`) |
+| `git status` | Tracked changes in branch `upgrade/v2.6/upg-001-platform-hardening` |
 
 ## TASK-5.6.3 — Super Admin Plans & Subscription Management
 

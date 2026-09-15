@@ -5,75 +5,15 @@ import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
 import { PERMISSIONS } from '../auth/roles.ts';
 import { SubscriptionService, SubscriptionLimitError } from '../services/subscriptionService.ts';
 import { SubscriptionRepository } from '../repositories/subscriptionRepository.ts';
-import { TenantProvisioningService, TenantProvisioningError } from '../services/tenantProvisioningService.ts';
-
-const RESERVED_TENANT_SLUGS = new Set([
-  'api',
-  'admin',
-  'app',
-  'platform',
-  'www',
-  'support',
-  'billing',
-  'security',
-  'login',
-  'logout',
-]);
-
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-type PlanTier = 'starter' | 'professional' | 'enterprise';
-
-function normalizeSlug(value: unknown): string {
-  if (typeof value !== 'string') throw new Error('TENANT_SLUG_REQUIRED');
-  const slug = value.trim().toLowerCase();
-  if (slug.length < 3 || slug.length > 63 || !SLUG_PATTERN.test(slug)) {
-    throw new Error('INVALID_TENANT_SLUG');
-  }
-  if (RESERVED_TENANT_SLUGS.has(slug)) {
-    throw new Error('RESERVED_TENANT_SLUG');
-  }
-  return slug;
-}
-
-function normalizeName(value: unknown): string {
-  if (typeof value !== 'string') throw new Error('TENANT_NAME_REQUIRED');
-  const name = value.trim();
-  if (name.length < 2 || name.length > 255) throw new Error('INVALID_TENANT_NAME');
-  return name;
-}
+import {
+  TenantProvisioningService,
+  TenantProvisioningError,
+  TenantListStatusFilter,
+} from '../services/tenantProvisioningService.ts';
 
 
 function badRequest(res: Response, code: string, message: string) {
   return res.status(422).json({ success: false, error: { code, message } });
-}
-
-function auditTenantMutation(
-  client: DatabaseClient,
-  req: Request,
-  action: string,
-  tenantId: string,
-  beforeState: unknown,
-  afterState: unknown,
-) {
-  return client.query(
-    `INSERT INTO audit_events (
-      id, organization_id, actor_id, actor_name, actor_role,
-      action, entity_type, entity_id, before_state, after_state, metadata, severity
-    ) VALUES ($1, NULL, $2, $3, $4, $5, 'organization', $6, $7::jsonb, $8::jsonb, $9::jsonb, 'High')`,
-    [
-      `audit_${randomUUID()}`,
-      req.auth?.userId || null,
-      req.auth?.email || 'platform-operator',
-      req.auth?.role || 'system_owner',
-      action,
-      tenantId,
-      JSON.stringify(beforeState ?? null),
-      JSON.stringify(afterState ?? null),
-      JSON.stringify({ source: 'platform-control-plane', ip: req.ip }),
-    ],
-  );
 }
 
 export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionService?: SubscriptionService): Router {
@@ -125,13 +65,17 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
   router.get('/tenants', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const svc = getTenantProvisioningService(req);
-      const status = typeof req.query.status === 'string' && ['active', 'suspended', 'archived', 'all'].includes(req.query.status)
-        ? req.query.status as 'active' | 'suspended' | 'all'
+      const validStatuses: TenantListStatusFilter[] = ['active', 'suspended', 'archived', 'all'];
+      const status = typeof req.query.status === 'string' && validStatuses.includes(req.query.status as any)
+        ? (req.query.status as TenantListStatusFilter)
         : undefined;
       const planTier = typeof req.query.planTier === 'string' ? req.query.planTier : undefined;
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
-      const offset = req.query.offset ? parseInt(String(req.query.offset), 10) : 0;
+
+      const rawLimit = Number(req.query.limit);
+      const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+      const rawOffset = Number(req.query.offset);
+      const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
       const result = await svc.listTenants({ status, planTier, search, limit, offset });
       res.json({
@@ -139,7 +83,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         count: result.tenants.length,
         total: result.total,
         data: result.tenants,
-        pagination: { limit, offset, total: result.total },
+        pagination: { limit: result.limit, offset: result.offset, total: result.total },
       });
     } catch (err) {
       next(err);
@@ -183,115 +127,22 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
 
   router.patch('/tenants/:id', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const tenantId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
-      if (!tenantId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
+      const svc = getTenantProvisioningService(req);
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
 
-      const before = await db.query<any>(
-        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
-        [tenantId],
-      );
-      if (before.rows.length === 0) {
-        return res.status(404).json({ success: false, error: { code: 'TENANT_NOT_FOUND', message: 'Tenant not found.' } });
-      }
-
-      const current = before.rows[0];
-      const updates: string[] = [];
-      const params: any[] = [];
-      let index = 1;
-
-      if (req.body?.isActive !== undefined) {
-        if (typeof req.body.isActive !== 'boolean') return badRequest(res, 'INVALID_ACTIVE_STATE', 'isActive must be boolean.');
-        if (current.lifecycle_status === 'archived') {
-          return res.status(409).json({
-            success: false,
-            error: { code: 'TENANT_ARCHIVED', message: 'Archived tenants cannot have their active state changed.' },
-          });
-        }
-        updates.push(`is_active = $${index++}`);
-        params.push(req.body.isActive);
-        updates.push(`lifecycle_status = $${index++}`);
-        params.push(req.body.isActive ? 'active' : 'suspended');
-      }
-
-      // Plan changes are billing mutations and must use the billing-scoped
-      // change-plan endpoint.
-      if (req.body?.planTier !== undefined) {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: 'PLAN_CHANGE_REQUIRES_BILLING_PERMISSION',
-            message: 'Plan changes require platform.billing permission and must use the subscription change-plan operation.',
-          },
-        });
-      }
-
-      if (req.body?.name !== undefined) {
-        updates.push(`name = $${index++}`);
-        params.push(normalizeName(req.body.name));
-      }
-
-      if (req.body?.slug !== undefined) {
-        const slug = normalizeSlug(req.body.slug);
-        const conflict = await db.query<{ id: string }>(
-          'SELECT id FROM organizations WHERE slug = $1 AND id <> $2 LIMIT 1',
-          [slug, tenantId],
-        );
-        if (conflict.rows.length > 0) return res.status(409).json({ success: false, error: { code: 'TENANT_SLUG_EXISTS', message: 'Tenant slug is already in use.' } });
-        updates.push(`slug = $${index++}`);
-        params.push(slug);
-      }
-
-      if (updates.length === 0) {
-        return res.status(422).json({ success: false, error: { code: 'NO_MUTATIONS', message: 'No supported tenant changes were supplied.' } });
-      }
-
-      updates.push('updated_at = CURRENT_TIMESTAMP');
-      params.push(tenantId);
-
-      const after = await db.withTransaction(async (tx) => {
-        const locked = await tx.query<any>(
-          'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 FOR UPDATE',
-          [tenantId],
-        );
-        if (locked.rows.length === 0) return null;
-        const lockedCurrent = locked.rows[0];
-        if (req.body?.isActive !== undefined && lockedCurrent.lifecycle_status === 'archived') {
-          const error: any = new Error('TENANT_ARCHIVED');
-          error.statusCode = 409;
-          throw error;
-        }
-
-        const updated = await tx.query<any>(
-          `UPDATE organizations SET ${updates.join(', ')}
-           WHERE id = $${index}
-           RETURNING id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at, updated_at`,
-          params,
-        );
-        if (!updated.rows[0]) return null;
-
-        await auditTenantMutation(tx, req, 'PLATFORM_TENANT_UPDATED', tenantId, lockedCurrent, updated.rows[0]);
-        return updated.rows[0];
-      });
-
+      const updated = await svc.updateTenant(req.params.id, req.body, actor);
       return res.json({
         success: true,
-        data: {
-          id: after.id,
-          name: after.name,
-          slug: after.slug,
-          code: after.code,
-          plan: after.plan_tier,
-          status: after.lifecycle_status || (after.is_active ? 'active' : 'suspended'),
-          createdAt: after.created_at,
-          updatedAt: after.updated_at,
-        },
+        data: updated,
       });
     } catch (err: any) {
-      if (err?.message === 'INVALID_TENANT_SLUG') return badRequest(res, 'INVALID_TENANT_SLUG', 'Tenant slug must be 3–63 lowercase URL-safe characters.');
-      if (err?.message === 'RESERVED_TENANT_SLUG') return badRequest(res, 'RESERVED_TENANT_SLUG', 'That tenant slug is reserved by the platform.');
-      if (err?.message === 'INVALID_TENANT_NAME') return badRequest(res, 'INVALID_TENANT_NAME', 'Tenant name must be 2–255 characters.');
-      if (err?.message === 'INVALID_PLAN_TIER') return badRequest(res, 'INVALID_PLAN_TIER', 'Plan tier must be starter, professional, or enterprise.');
-      if (err?.message === 'TENANT_ARCHIVED') return res.status(409).json({ success: false, error: { code: 'TENANT_ARCHIVED', message: 'Archived tenants cannot have their active state changed.' } });
+      if (err instanceof TenantProvisioningError) {
+        return res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } });
+      }
       next(err);
     }
   });

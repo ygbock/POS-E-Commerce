@@ -37,6 +37,15 @@ export class TenantProvisioningError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Canonical Types & Enums
+// ---------------------------------------------------------------------------
+
+export type TenantLifecycleStatus = 'active' | 'suspended' | 'archived';
+export type TenantListStatusFilter = TenantLifecycleStatus | 'all';
+
+
+
+// ---------------------------------------------------------------------------
 // Input / output types
 // ---------------------------------------------------------------------------
 
@@ -86,7 +95,7 @@ export interface TenantListItem {
   slug: string;
   code: string;
   planTier: string;
-  status: 'active' | 'suspended' | 'archived';
+  status: TenantLifecycleStatus;
   subscriptionStatus: string | null;
   createdAt: string;
   updatedAt: string;
@@ -99,7 +108,7 @@ export interface TenantDetail {
   code: string;
   planTier: string;
   isActive: boolean;
-  lifecycleStatus: 'active' | 'suspended' | 'archived';
+  lifecycleStatus: TenantLifecycleStatus;
   createdAt: string;
   updatedAt: string;
   subscription: any | null;
@@ -110,19 +119,21 @@ export interface TenantDetail {
 export interface TenantListResult {
   tenants: TenantListItem[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface TenantLifecycleResult {
   id: string;
-  status: string;
+  status: TenantLifecycleStatus;
   timestamp: string;
 }
 
 // ---------------------------------------------------------------------------
-// Validation helpers (server-authoritative, private)
+// Validation helpers (server-authoritative, exported for reuse across layers)
 // ---------------------------------------------------------------------------
 
-function validateSlug(value: unknown): string {
+export function validateSlug(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new TenantProvisioningError('TENANT_SLUG_REQUIRED', 'A tenant slug is required.');
   }
@@ -139,7 +150,7 @@ function validateSlug(value: unknown): string {
   return slug;
 }
 
-function validateName(value: unknown): string {
+export function validateName(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new TenantProvisioningError('TENANT_NAME_REQUIRED', 'A tenant name is required.');
   }
@@ -296,37 +307,51 @@ export class TenantProvisioningService {
         throw err;
       }
 
-      // 5. Create organization
-      const orgResult = await tx.query<any>(
-        `INSERT INTO organizations (id, name, slug, code, plan_tier, is_active, lifecycle_status)
-         VALUES ($1, $2, $3, $4, $5, TRUE, 'active')
-         RETURNING id, name, slug, code, plan_tier, is_active, created_at`,
-        [tenantId, name, slug, code, planTier],
-      );
-      const created = orgResult.rows[0];
-
-      // 6. Admin email uniqueness within this tenant
-      const dupAdmin = await tx.query<{ id: string }>(
-        'SELECT id FROM users WHERE organization_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1',
-        [tenantId, admin.email],
-      );
-      if (dupAdmin.rows.length > 0) {
-        const err: any = new TenantProvisioningError(
-          'ADMIN_EMAIL_EXISTS',
-          'An administrator with this email already exists for this tenant.',
-          409,
+      // 5. Create organization (DB uniqueness is the final authority for race conditions)
+      let created: any;
+      try {
+        const orgResult = await tx.query<any>(
+          `INSERT INTO organizations (id, name, slug, code, plan_tier, is_active, lifecycle_status)
+           VALUES ($1, $2, $3, $4, $5, TRUE, 'active')
+           RETURNING id, name, slug, code, plan_tier, is_active, created_at`,
+          [tenantId, name, slug, code, planTier],
         );
+        created = orgResult.rows[0];
+      } catch (err: any) {
+        if (
+          err?.code === '23505' ||
+          err?.message?.includes('duplicate key') ||
+          err?.constraint === 'uq_organizations_slug' ||
+          err?.constraint?.includes('code')
+        ) {
+          throw new TenantProvisioningError(
+            'TENANT_SLUG_OR_CODE_EXISTS',
+            'A tenant with this slug or code already exists.',
+            409,
+          );
+        }
         throw err;
       }
 
-      // 7. Create initial admin user (password hash only — no plain-text)
-      await tx.query(
-        `INSERT INTO users (id, organization_id, email, name, password_hash, password_salt, role, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6, 'admin', TRUE)`,
-        [userId, tenantId, admin.email, admin.name, hash, salt],
-      );
+      // 6. Admin email uniqueness within this tenant (DB constraint uq_users_org_email is final authority)
+      try {
+        await tx.query(
+          `INSERT INTO users (id, organization_id, email, name, password_hash, password_salt, role, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, 'admin', TRUE)`,
+          [userId, tenantId, admin.email, admin.name, hash, salt],
+        );
+      } catch (err: any) {
+        if (err?.code === '23505' || err?.constraint === 'uq_users_org_email' || err?.message?.includes('uq_users_org_email')) {
+          throw new TenantProvisioningError(
+            'ADMIN_EMAIL_EXISTS',
+            'An administrator with this email already exists for this tenant.',
+            409,
+          );
+        }
+        throw err;
+      }
 
-      // 8. Resolve the canonical active plan. Never silently fall back to a
+      // 7. Resolve the canonical active plan. Never silently fall back to a
       // different plan: that would create a billing/entitlement mismatch.
       const planRes = await tx.query<any>(
         'SELECT id, code, trial_days FROM subscription_plans WHERE code = $1 AND is_active = TRUE LIMIT 1',
@@ -346,7 +371,7 @@ export class TenantProvisioningService {
       const now = new Date();
       const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
 
-      // 9. Create authoritative subscription record
+      // 8. Create authoritative subscription record
       await tx.query(
         `INSERT INTO organization_subscriptions (
            id, organization_id, plan_id, status,
@@ -367,7 +392,8 @@ export class TenantProvisioningService {
         ],
       );
 
-      // 10. Append-only audit event — NO credentials, NO password data
+      // 9. Append-only audit event — NO credentials, NO password data
+      // Convention: organization_id = NULL for platform control-plane actor context; target is entity_id
       await tx.query(
         `INSERT INTO audit_events (
            id, organization_id, actor_id, actor_name, actor_role,
@@ -389,6 +415,7 @@ export class TenantProvisioningService {
             code,
             planTier,
             isActive: true,
+            lifecycleStatus: 'active',
             initialAdminUserId: userId,
             subscriptionId,
             planCode: resolvedPlanCode,
@@ -469,7 +496,7 @@ export class TenantProvisioningService {
           const existing = await tx.query<{ response: any }>(
             `SELECT response FROM platform_idempotency_keys
              WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $1 AND actor_id = $2`,
-            [idempotencyKey.trim()],
+            [idempotencyKey.trim(), actor.id],
           );
           const response = existing.rows[0]?.response;
           if (response && !response.pending) return response as TenantLifecycleResult;
@@ -486,7 +513,7 @@ export class TenantProvisioningService {
       const org = orgRes.rows[0];
 
       // Only active tenants can transition to suspended. Archived is a
-      // terminal state and must never be reactivated through this API.
+      // terminal state and must never be reactivated or suspended.
       if (org.lifecycle_status === 'archived') {
         throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot be suspended.', 409);
       }
@@ -530,8 +557,8 @@ export class TenantProvisioningService {
           actor.name || actor.id,
           actor.role || 'system_owner',
           orgId.trim(),
-          JSON.stringify({ isActive: true }),
-          JSON.stringify({ isActive: false }),
+          JSON.stringify({ isActive: org.is_active, lifecycleStatus: org.lifecycle_status }),
+          JSON.stringify({ isActive: false, lifecycleStatus: 'suspended' }),
           JSON.stringify({
             reason: reason || null,
             idempotencyKey: idempotencyKey || null,
@@ -585,7 +612,7 @@ export class TenantProvisioningService {
           const existing = await tx.query<{ response: any }>(
             `SELECT response FROM platform_idempotency_keys
              WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $1 AND actor_id = $2`,
-            [idempotencyKey.trim()],
+            [idempotencyKey.trim(), actor.id],
           );
           const response = existing.rows[0]?.response;
           if (response && !response.pending) return response as TenantLifecycleResult;
@@ -615,6 +642,23 @@ export class TenantProvisioningService {
           );
         }
         return response;
+      }
+
+      // F-04: Stronger subscription invariant. A tenant may have historical
+      // cancelled/expired subscriptions, but at most ONE subscription may be
+      // active or trialing. Verify no conflicting active subscription exists.
+      const conflictingSub = await tx.query<any>(
+        `SELECT id, status FROM organization_subscriptions
+         WHERE organization_id = $1 AND status IN ('trialing', 'active')
+         LIMIT 1`,
+        [orgId.trim()],
+      );
+      if (conflictingSub.rows.length > 0) {
+        throw new TenantProvisioningError(
+          'SUBSCRIPTION_CONFLICT',
+          `Tenant already has an active or trialing subscription (${conflictingSub.rows[0].id}).`,
+          409,
+        );
       }
 
       // Reactivate organization
@@ -658,6 +702,14 @@ export class TenantProvisioningService {
            WHERE id = $4`,
           [newStatus, periodEnd, newStatus, sub.id],
         );
+
+        // Cancel any remaining older paused subscriptions to enforce single active subscription
+        await tx.query(
+          `UPDATE organization_subscriptions
+           SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+           WHERE organization_id = $1 AND status = 'paused' AND id != $2`,
+          [orgId.trim(), sub.id],
+        );
       }
 
       // Audit
@@ -674,8 +726,8 @@ export class TenantProvisioningService {
           actor.name || actor.id,
           actor.role || 'system_owner',
           orgId.trim(),
-          JSON.stringify({ isActive: false }),
-          JSON.stringify({ isActive: true }),
+          JSON.stringify({ isActive: org.is_active, lifecycleStatus: org.lifecycle_status }),
+          JSON.stringify({ isActive: true, lifecycleStatus: 'active' }),
           JSON.stringify({
             reason: reason || null,
             idempotencyKey: idempotencyKey || null,
@@ -728,7 +780,7 @@ export class TenantProvisioningService {
           const existing = await tx.query<{ response: any }>(
             `SELECT response FROM platform_idempotency_keys
              WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $1 AND actor_id = $2`,
-            [idempotencyKey.trim()],
+            [idempotencyKey.trim(), actor.id],
           );
           const response = existing.rows[0]?.response;
           if (response && !response.pending) return response as TenantLifecycleResult;
@@ -779,8 +831,8 @@ export class TenantProvisioningService {
           actor.name || actor.id,
           actor.role || 'system_owner',
           orgId.trim(),
-          JSON.stringify({ isActive: org.is_active }),
-          JSON.stringify({ isActive: false, archived: true }),
+          JSON.stringify({ isActive: org.is_active, lifecycleStatus: org.lifecycle_status }),
+          JSON.stringify({ isActive: false, lifecycleStatus: 'archived' }),
           JSON.stringify({ reason: reason || null, source: 'platform-control-plane' }),
         ],
       );
@@ -860,7 +912,7 @@ export class TenantProvisioningService {
    */
   async listTenants(
     filters: {
-      status?: 'active' | 'suspended' | 'archived' | 'all';
+      status?: TenantListStatusFilter;
       planTier?: string;
       search?: string;
       limit?: number;
@@ -896,8 +948,10 @@ export class TenantProvisioningService {
     );
     const total = Number(countRes.rows[0]?.count || 0);
 
-    const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
-    const offset = Math.max(Number(filters.offset || 0), 0);
+    const rawLimit = Number(filters.limit);
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+    const rawOffset = Number(filters.offset);
+    const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
     const dataParams = [...params, limit, offset];
 
     const dataRes = await this.db.query<any>(
@@ -922,12 +976,161 @@ export class TenantProvisioningService {
         slug: r.slug,
         code: r.code,
         planTier: r.plan_tier,
-        status: r.lifecycle_status || (r.is_active ? 'active' : 'suspended'),
+        status: (r.lifecycle_status || (r.is_active ? 'active' : 'suspended')) as TenantLifecycleStatus,
         subscriptionStatus: r.subscription_status || null,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       })),
       total,
+      limit,
+      offset,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // updateTenant
+  // -------------------------------------------------------------------------
+
+  /**
+   * Updates non-billing properties of an organization (name, slug, active status).
+   * Plan changes MUST use the billing control plane and will be rejected here with 403.
+   */
+  async updateTenant(
+    orgId: string,
+    updates: {
+      name?: unknown;
+      slug?: unknown;
+      isActive?: unknown;
+      planTier?: unknown;
+    },
+    actor: { id: string; name?: string; role?: string },
+  ): Promise<{
+    id: string;
+    name: string;
+    slug: string;
+    code: string;
+    plan: string;
+    status: TenantLifecycleStatus;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    const tenantId = typeof orgId === 'string' ? orgId.trim() : '';
+    if (!tenantId) {
+      throw new TenantProvisioningError('TENANT_ID_REQUIRED', 'Tenant ID is required.');
+    }
+
+    // Plan changes are billing mutations and must use the billing-scoped change-plan endpoint
+    if (updates?.planTier !== undefined) {
+      throw new TenantProvisioningError(
+        'PLAN_CHANGE_REQUIRES_BILLING_PERMISSION',
+        'Plan changes require platform.billing permission and must use the subscription change-plan operation.',
+        403,
+      );
+    }
+
+    const before = await this.db.query<any>(
+      'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
+      [tenantId],
+    );
+    if (before.rows.length === 0) {
+      throw new TenantProvisioningError('TENANT_NOT_FOUND', 'Tenant not found.', 404);
+    }
+    const current = before.rows[0];
+
+    const sqlUpdates: string[] = [];
+    const params: any[] = [];
+    let index = 1;
+
+    if (updates?.isActive !== undefined) {
+      if (typeof updates.isActive !== 'boolean') {
+        throw new TenantProvisioningError('INVALID_ACTIVE_STATE', 'isActive must be boolean.');
+      }
+      if (current.lifecycle_status === 'archived') {
+        throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot have their active state changed.', 409);
+      }
+      sqlUpdates.push(`is_active = $${index++}`);
+      params.push(updates.isActive);
+      sqlUpdates.push(`lifecycle_status = $${index++}`);
+      params.push(updates.isActive ? 'active' : 'suspended');
+    }
+
+    if (updates?.name !== undefined) {
+      const validatedName = validateName(updates.name);
+      sqlUpdates.push(`name = $${index++}`);
+      params.push(validatedName);
+    }
+
+    if (updates?.slug !== undefined) {
+      const validatedSlug = validateSlug(updates.slug);
+      const conflict = await this.db.query<{ id: string }>(
+        'SELECT id FROM organizations WHERE slug = $1 AND id <> $2 LIMIT 1',
+        [validatedSlug, tenantId],
+      );
+      if (conflict.rows.length > 0) {
+        throw new TenantProvisioningError('TENANT_SLUG_EXISTS', 'Tenant slug is already in use.', 409);
+      }
+      sqlUpdates.push(`slug = $${index++}`);
+      params.push(validatedSlug);
+    }
+
+    if (sqlUpdates.length === 0) {
+      throw new TenantProvisioningError('NO_MUTATIONS', 'No supported tenant changes were supplied.', 422);
+    }
+
+    sqlUpdates.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(tenantId);
+
+    return this.db.withTransaction(async (tx) => {
+      const locked = await tx.query<any>(
+        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 FOR UPDATE',
+        [tenantId],
+      );
+      if (locked.rows.length === 0) {
+        throw new TenantProvisioningError('TENANT_NOT_FOUND', 'Tenant not found.', 404);
+      }
+      const lockedCurrent = locked.rows[0];
+      if (updates?.isActive !== undefined && lockedCurrent.lifecycle_status === 'archived') {
+        throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot have their active state changed.', 409);
+      }
+
+      const updated = await tx.query<any>(
+        `UPDATE organizations SET ${sqlUpdates.join(', ')}
+         WHERE id = $${index}
+         RETURNING id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at, updated_at`,
+        params,
+      );
+      const after = updated.rows[0];
+
+      // Audit (Platform control plane convention: organization_id = NULL, entity_id = tenantId)
+      await tx.query(
+        `INSERT INTO audit_events (
+           id, organization_id, actor_id, actor_name, actor_role,
+           action, entity_type, entity_id,
+           before_state, after_state, metadata, severity, result
+         ) VALUES ($1, NULL, $2, $3, $4, 'PLATFORM_TENANT_UPDATED', 'organization', $5,
+                   $6::jsonb, $7::jsonb, $8::jsonb, 'Medium', 'SUCCESS')`,
+        [
+          `aud_${randomUUID()}`,
+          actor.id,
+          actor.name || actor.id,
+          actor.role || 'system_owner',
+          tenantId,
+          JSON.stringify(lockedCurrent),
+          JSON.stringify(after),
+          JSON.stringify({ source: 'platform-control-plane' }),
+        ],
+      );
+
+      return {
+        id: after.id,
+        name: after.name,
+        slug: after.slug,
+        code: after.code,
+        plan: after.plan_tier,
+        status: (after.lifecycle_status || (after.is_active ? 'active' : 'suspended')) as TenantLifecycleStatus,
+        createdAt: after.created_at,
+        updatedAt: after.updated_at,
+      };
+    });
   }
 }

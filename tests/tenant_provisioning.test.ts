@@ -81,7 +81,7 @@ function validPayload(overrides: Record<string, any> = {}) {
 
 async function main() {
   console.log('\n=================================================================');
-  console.log(' TASK-5.6.4: Tenant Provisioning & Lifecycle (16 Test Scenarios)');
+  console.log(' TASK-5.6.4: Tenant Provisioning & Lifecycle (21 Test Scenarios)');
   console.log('=================================================================\n');
 
   const db: DatabaseClient = createIsolatedTestClient();
@@ -615,7 +615,226 @@ async function main() {
       assert.equal(archived.status, 'archived');
     });
 
-    console.log('\nAll 16 test scenarios in TASK-5.6.4 passed cleanly!\n');
+    // ------------------------------------------------------------------
+    // SCENARIO 17: Lifecycle Idempotency (Suspend, Reactivate, Archive)
+    // ------------------------------------------------------------------
+    await runTest('Scenario 17: Full lifecycle idempotency prevents duplicate mutations & audit events', async () => {
+      // Provision a dedicated tenant for testing lifecycle idempotency
+      const provRes = await request(BASE, '/api/platform/tenants', {
+        method: 'POST',
+        token: sysOwnerToken,
+        body: validPayload({ slug: 'idem-lifecycle-org', adminEmail: 'admin@idem-life.internal' }),
+      });
+      assert.equal(provRes.status, 201);
+      const testOrgId = provRes.body.data.tenant.id;
+
+      // 1. Suspend with idempotency key
+      const suspHeaders = { 'X-Idempotency-Key': 'suspend-key-unique-001' };
+      const susp1 = await request(BASE, `/api/platform/tenants/${testOrgId}/suspend`, {
+        method: 'POST', token: sysOwnerToken, headers: suspHeaders,
+      });
+      assert.equal(susp1.status, 200);
+      assert.equal(susp1.body.data.status, 'suspended');
+
+      // Audit count after first suspend
+      const suspAudit1 = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM audit_events WHERE entity_id = $1 AND action = 'PLATFORM_TENANT_SUSPENDED'",
+        [testOrgId],
+      );
+      assert.equal(Number(suspAudit1.rows[0].c), 1, 'First suspend generates exactly 1 audit event');
+
+      // Replay suspend with same idempotency key
+      const susp2 = await request(BASE, `/api/platform/tenants/${testOrgId}/suspend`, {
+        method: 'POST', token: sysOwnerToken, headers: suspHeaders,
+      });
+      assert.equal(susp2.status, 200);
+      assert.equal(susp2.body.data.status, 'suspended');
+      assert.equal(susp2.body.data.timestamp, susp1.body.data.timestamp, 'Must return identical replay timestamp');
+
+      // Audit count after replay
+      const suspAudit2 = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM audit_events WHERE entity_id = $1 AND action = 'PLATFORM_TENANT_SUSPENDED'",
+        [testOrgId],
+      );
+      assert.equal(Number(suspAudit2.rows[0].c), 1, 'Replay MUST NOT generate duplicate audit event');
+
+      // 2. Reactivate with idempotency key
+      const reactHeaders = { 'X-Idempotency-Key': 'reactivate-key-unique-001' };
+      const react1 = await request(BASE, `/api/platform/tenants/${testOrgId}/reactivate`, {
+        method: 'POST', token: sysOwnerToken, headers: reactHeaders,
+      });
+      assert.equal(react1.status, 200);
+      assert.equal(react1.body.data.status, 'active');
+
+      const reactAudit1 = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM audit_events WHERE entity_id = $1 AND action = 'PLATFORM_TENANT_REACTIVATED'",
+        [testOrgId],
+      );
+      assert.equal(Number(reactAudit1.rows[0].c), 1, 'First reactivation generates exactly 1 audit event');
+
+      // Replay reactivate
+      const react2 = await request(BASE, `/api/platform/tenants/${testOrgId}/reactivate`, {
+        method: 'POST', token: sysOwnerToken, headers: reactHeaders,
+      });
+      assert.equal(react2.status, 200);
+      assert.equal(react2.body.data.status, 'active');
+      assert.equal(react2.body.data.timestamp, react1.body.data.timestamp, 'Must return identical replay timestamp');
+
+      const reactAudit2 = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM audit_events WHERE entity_id = $1 AND action = 'PLATFORM_TENANT_REACTIVATED'",
+        [testOrgId],
+      );
+      assert.equal(Number(reactAudit2.rows[0].c), 1, 'Replay MUST NOT generate duplicate audit event');
+
+      // 3. Archive with idempotency key
+      const archHeaders = { 'X-Idempotency-Key': 'archive-key-unique-001' };
+      const arch1 = await request(BASE, `/api/platform/tenants/${testOrgId}/archive`, {
+        method: 'POST', token: sysOwnerToken, headers: archHeaders,
+      });
+      assert.equal(arch1.status, 200);
+      assert.equal(arch1.body.data.status, 'archived');
+
+      const archAudit1 = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM audit_events WHERE entity_id = $1 AND action = 'PLATFORM_TENANT_ARCHIVED'",
+        [testOrgId],
+      );
+      assert.equal(Number(archAudit1.rows[0].c), 1, 'First archive generates exactly 1 audit event');
+
+      // Replay archive
+      const arch2 = await request(BASE, `/api/platform/tenants/${testOrgId}/archive`, {
+        method: 'POST', token: sysOwnerToken, headers: archHeaders,
+      });
+      assert.equal(arch2.status, 200);
+      assert.equal(arch2.body.data.status, 'archived');
+      assert.equal(arch2.body.data.timestamp, arch1.body.data.timestamp, 'Must return identical replay timestamp');
+
+      const archAudit2 = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM audit_events WHERE entity_id = $1 AND action = 'PLATFORM_TENANT_ARCHIVED'",
+        [testOrgId],
+      );
+      assert.equal(Number(archAudit2.rows[0].c), 1, 'Replay MUST NOT generate duplicate audit event');
+    });
+
+    // ------------------------------------------------------------------
+    // SCENARIO 18: Concurrency Idempotency
+    // ------------------------------------------------------------------
+    await runTest('Scenario 18: Concurrent provisioning with identical idempotency key resolves cleanly', async () => {
+      const payload = validPayload({
+        slug: 'concurrent-idem-tenant',
+        adminEmail: 'admin@concurrent.internal',
+      });
+      const headers = { 'X-Idempotency-Key': 'concurrent-idem-key-999' };
+
+      const [resA, resB] = await Promise.all([
+        request(BASE, '/api/platform/tenants', { method: 'POST', token: sysOwnerToken, body: payload, headers }),
+        request(BASE, '/api/platform/tenants', { method: 'POST', token: sysOwnerToken, body: payload, headers }),
+      ]);
+
+      assert.ok([201, 409].includes(resA.status), `resA status was ${resA.status}`);
+      assert.ok([201, 409].includes(resB.status), `resB status was ${resB.status}`);
+
+      const successfulRes = resA.status === 201 ? resA : resB;
+      assert.equal(successfulRes.status, 201);
+
+      // Exactly 1 organization was created
+      const orgCount = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM organizations WHERE slug = 'concurrent-idem-tenant'",
+      );
+      assert.equal(Number(orgCount.rows[0].c), 1, 'Exactly one tenant created in concurrency race');
+    });
+
+    // ------------------------------------------------------------------
+    // SCENARIO 19: Subscription Reactivation Invariant
+    // ------------------------------------------------------------------
+    await runTest('Scenario 19: Reactivation refuses when conflicting active subscription already exists', async () => {
+      // Create a tenant
+      const provRes = await request(BASE, '/api/platform/tenants', {
+        method: 'POST',
+        token: sysOwnerToken,
+        body: validPayload({ slug: 'sub-conflict-org', adminEmail: 'admin@subconflict.internal' }),
+      });
+      assert.equal(provRes.status, 201);
+      const conflictOrgId = provRes.body.data.tenant.id;
+
+      // Suspend it so subscription is paused
+      const suspRes = await request(BASE, `/api/platform/tenants/${conflictOrgId}/suspend`, {
+        method: 'POST', token: sysOwnerToken,
+      });
+      assert.equal(suspRes.status, 200);
+
+      // Transition the subscription directly to 'active' (e.g. via out-of-band billing mutation)
+      // while the organization is still in suspended state
+      await db.query(
+        "UPDATE organization_subscriptions SET status = 'active' WHERE organization_id = $1",
+        [conflictOrgId],
+      );
+
+      // Attempt to reactivate — must detect conflicting active subscription and fail with 409
+      const reactRes = await request(BASE, `/api/platform/tenants/${conflictOrgId}/reactivate`, {
+        method: 'POST', token: sysOwnerToken,
+      });
+      assert.equal(reactRes.status, 409, 'Must reject when active subscription already exists');
+      assert.equal(reactRes.body.error.code, 'SUBSCRIPTION_CONFLICT');
+    });
+
+    // ------------------------------------------------------------------
+    // SCENARIO 20: GET /tenants Pagination Input Normalization
+    // ------------------------------------------------------------------
+    await runTest('Scenario 20: GET /tenants pagination defensively normalizes malformed inputs', async () => {
+      // Non-numeric limit defaults to 50
+      const resNaN = await request(BASE, '/api/platform/tenants?limit=abc&offset=xyz', { token: sysOwnerToken });
+      assert.equal(resNaN.status, 200);
+      assert.equal(resNaN.body.pagination.limit, 50);
+      assert.equal(resNaN.body.pagination.offset, 0);
+
+      // Negative limit defaults to 50
+      const resNeg = await request(BASE, '/api/platform/tenants?limit=-10&offset=-5', { token: sysOwnerToken });
+      assert.equal(resNeg.status, 200);
+      assert.equal(resNeg.body.pagination.limit, 50);
+      assert.equal(resNeg.body.pagination.offset, 0);
+
+      // Huge limit clamped to 200
+      const resHuge = await request(BASE, '/api/platform/tenants?limit=9999999', { token: sysOwnerToken });
+      assert.equal(resHuge.status, 200);
+      assert.equal(resHuge.body.pagination.limit, 200);
+    });
+
+    // ------------------------------------------------------------------
+    // SCENARIO 21: Full Audit Trail Lifecycle State Inspection
+    // ------------------------------------------------------------------
+    await runTest('Scenario 21: Audit events capture complete before_state and after_state lifecycle status', async () => {
+      const suspEvent = await db.query<any>(
+        "SELECT * FROM audit_events WHERE action = 'PLATFORM_TENANT_SUSPENDED' ORDER BY timestamp DESC LIMIT 1"
+      );
+      assert.ok(suspEvent.rows.length > 0);
+      const suspBefore = typeof suspEvent.rows[0].before_state === 'string'
+        ? JSON.parse(suspEvent.rows[0].before_state) : suspEvent.rows[0].before_state;
+      const suspAfter = typeof suspEvent.rows[0].after_state === 'string'
+        ? JSON.parse(suspEvent.rows[0].after_state) : suspEvent.rows[0].after_state;
+      assert.equal(suspBefore.lifecycleStatus, 'active');
+      assert.equal(suspAfter.lifecycleStatus, 'suspended');
+
+      const reactEvent = await db.query<any>(
+        "SELECT * FROM audit_events WHERE action = 'PLATFORM_TENANT_REACTIVATED' ORDER BY timestamp DESC LIMIT 1"
+      );
+      assert.ok(reactEvent.rows.length > 0);
+      const reactBefore = typeof reactEvent.rows[0].before_state === 'string'
+        ? JSON.parse(reactEvent.rows[0].before_state) : reactEvent.rows[0].before_state;
+      const reactAfter = typeof reactEvent.rows[0].after_state === 'string'
+        ? JSON.parse(reactEvent.rows[0].after_state) : reactEvent.rows[0].after_state;
+      assert.equal(reactBefore.lifecycleStatus, 'suspended');
+      assert.equal(reactAfter.lifecycleStatus, 'active');
+
+      const archEvent = await db.query<any>(
+        "SELECT * FROM audit_events WHERE action = 'PLATFORM_TENANT_ARCHIVED' ORDER BY timestamp DESC LIMIT 1"
+      );
+      assert.ok(archEvent.rows.length > 0);
+      const archAfter = typeof archEvent.rows[0].after_state === 'string'
+        ? JSON.parse(archEvent.rows[0].after_state) : archEvent.rows[0].after_state;
+      assert.equal(archAfter.lifecycleStatus, 'archived');
+    });
+
+    console.log('\nAll 21 test scenarios in TASK-5.6.4 passed cleanly!\n');
   } finally {
     server.close();
   }
