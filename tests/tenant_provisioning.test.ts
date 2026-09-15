@@ -321,6 +321,10 @@ async function main() {
       const allPro = resPro.body.data.every((t: any) => t.planTier === 'professional');
       assert.ok(allPro, 'All returned tenants must be professional plan');
 
+      const invalidStatus = await request(BASE, '/api/platform/tenants?status=bogus', { token: sysOwnerToken });
+      assert.equal(invalidStatus.status, 422);
+      assert.equal(invalidStatus.body.error.code, 'INVALID_TENANT_STATUS');
+
       // Filter by status=active
       const resActive = await request(BASE, '/api/platform/tenants?status=active', { token: sysOwnerToken });
       assert.equal(resActive.status, 200);
@@ -497,6 +501,33 @@ async function main() {
     });
 
     // ------------------------------------------------------------------
+    // SCENARIO 12: Canonical lifecycle boundaries and billing invariants
+    // ------------------------------------------------------------------
+    await runTest('Scenario 12: Legacy lifecycle PATCH is rejected and reactivation fails closed without subscription', async () => {
+      const legacyPatch = await request(BASE, `/api/platform/tenants/${provisionedOrgId}`, {
+        method: 'PATCH', token: sysOwnerToken, body: { isActive: false },
+      });
+      assert.equal(legacyPatch.status, 403);
+      assert.equal(legacyPatch.body.error.code, 'LIFECYCLE_CHANGE_REQUIRES_LIFECYCLE_PERMISSION');
+
+      const noSubOrg = 'org_prov_no_sub';
+      await db.query(`
+        INSERT INTO organizations (id, name, code, slug, is_active, lifecycle_status, plan_tier)
+        VALUES ('org_prov_no_sub', 'No Sub Tenant', 'NO_SUB_TENANT', 'no-sub-tenant', false, 'suspended', 'starter')
+        ON CONFLICT (id) DO UPDATE SET is_active = false, lifecycle_status = 'suspended'
+      `);
+      const res = await request(BASE, `/api/platform/tenants/${noSubOrg}/reactivate`, {
+        method: 'POST', token: sysOwnerToken,
+      });
+      assert.equal(res.status, 409);
+      assert.equal(res.body.error.code, 'SUBSCRIPTION_NOT_REACTIVATABLE');
+
+      const state = await db.query<any>('SELECT is_active, lifecycle_status FROM organizations WHERE id = $1', [noSubOrg]);
+      assert.equal(state.rows[0].is_active, false);
+      assert.equal(state.rows[0].lifecycle_status, 'suspended');
+    });
+
+    // ------------------------------------------------------------------
     // SCENARIO 12: 404 for non-existent tenant lifecycle operations
     // ------------------------------------------------------------------
     await runTest('Scenario 12: Lifecycle operations on non-existent tenant return 404', async () => {
@@ -546,8 +577,8 @@ async function main() {
       const patchArchived = await request(BASE, `/api/platform/tenants/${provisionedOrgId}`, {
         method: 'PATCH', token: sysOwnerToken, body: { isActive: true },
       });
-      assert.equal(patchArchived.status, 409);
-      assert.equal(patchArchived.body.error.code, 'TENANT_ARCHIVED');
+      assert.equal(patchArchived.status, 403);
+      assert.equal(patchArchived.body.error.code, 'LIFECYCLE_CHANGE_REQUIRES_LIFECYCLE_PERMISSION');
     });
 
     // ------------------------------------------------------------------
