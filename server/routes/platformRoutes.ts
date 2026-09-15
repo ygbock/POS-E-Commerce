@@ -255,6 +255,11 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         );
         if (locked.rows.length === 0) return null;
         const lockedCurrent = locked.rows[0];
+        if (req.body?.isActive !== undefined && lockedCurrent.lifecycle_status === 'archived') {
+          const error: any = new Error('TENANT_ARCHIVED');
+          error.statusCode = 409;
+          throw error;
+        }
 
         const updated = await tx.query<any>(
           `UPDATE organizations SET ${updates.join(', ')}
@@ -286,6 +291,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       if (err?.message === 'RESERVED_TENANT_SLUG') return badRequest(res, 'RESERVED_TENANT_SLUG', 'That tenant slug is reserved by the platform.');
       if (err?.message === 'INVALID_TENANT_NAME') return badRequest(res, 'INVALID_TENANT_NAME', 'Tenant name must be 2–255 characters.');
       if (err?.message === 'INVALID_PLAN_TIER') return badRequest(res, 'INVALID_PLAN_TIER', 'Plan tier must be starter, professional, or enterprise.');
+      if (err?.message === 'TENANT_ARCHIVED') return res.status(409).json({ success: false, error: { code: 'TENANT_ARCHIVED', message: 'Archived tenants cannot have their active state changed.' } });
       next(err);
     }
   });
