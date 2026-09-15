@@ -625,19 +625,38 @@ export class TenantProvisioningService {
 
       // Restore the most recently paused subscription
       const subRes = await tx.query<any>(
-        `SELECT id, status, trial_ends_at
-         FROM organization_subscriptions
-         WHERE organization_id = $1 AND status = 'paused'
-         ORDER BY updated_at DESC LIMIT 1`,
+        `SELECT os.id, os.status, os.trial_ends_at, os.current_period_end,
+                os.cancel_at_period_end, os.cancelled_at,
+                sp.billing_interval
+         FROM organization_subscriptions os
+         JOIN subscription_plans sp ON sp.id = os.plan_id
+         WHERE os.organization_id = $1 AND os.status = 'paused'
+         ORDER BY os.updated_at DESC LIMIT 1
+         FOR UPDATE OF os`,
         [orgId.trim()],
       );
       if (subRes.rows.length > 0) {
         const sub = subRes.rows[0];
-        const isTrialActive = sub.trial_ends_at && new Date(sub.trial_ends_at).getTime() > Date.now();
+        const now = new Date();
+        const isTrialActive = sub.trial_ends_at && new Date(sub.trial_ends_at).getTime() > now.getTime();
+        let periodEnd = sub.current_period_end;
+        if (!isTrialActive && (!periodEnd || new Date(periodEnd).getTime() <= now.getTime())) {
+          const nextEnd = new Date(now);
+          if (sub.billing_interval === 'yearly') nextEnd.setUTCFullYear(nextEnd.getUTCFullYear() + 1);
+          else nextEnd.setUTCMonth(nextEnd.getUTCMonth() + 1);
+          periodEnd = nextEnd.toISOString();
+        }
         const newStatus = isTrialActive ? 'trialing' : 'active';
         await tx.query(
-          'UPDATE organization_subscriptions SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-          [newStatus, sub.id],
+          `UPDATE organization_subscriptions
+           SET status = $1,
+               current_period_start = CASE WHEN $3 = 'active' THEN CURRENT_TIMESTAMP ELSE current_period_start END,
+               current_period_end = $2,
+               cancel_at_period_end = FALSE,
+               cancelled_at = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $4`,
+          [newStatus, periodEnd, newStatus, sub.id],
         );
       }
 
