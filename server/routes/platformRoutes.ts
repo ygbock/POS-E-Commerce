@@ -218,7 +218,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       if (!tenantId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
 
       const before = await db.query<any>(
-        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
+        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 FOR UPDATE',
         [tenantId],
       );
       if (before.rows.length === 0) {
@@ -232,14 +232,28 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
 
       if (req.body?.isActive !== undefined) {
         if (typeof req.body.isActive !== 'boolean') return badRequest(res, 'INVALID_ACTIVE_STATE', 'isActive must be boolean.');
+        if (current.lifecycle_status === 'archived') {
+          return res.status(409).json({
+            success: false,
+            error: { code: 'TENANT_ARCHIVED', message: 'Archived tenants cannot have their active state changed.' },
+          });
+        }
         updates.push(`is_active = $${index++}`);
         params.push(req.body.isActive);
+        updates.push(`lifecycle_status = $${index++}`);
+        params.push(req.body.isActive ? 'active' : 'suspended');
       }
 
+      // Plan changes are billing mutations and must use the billing-scoped
+      // change-plan endpoint.
       if (req.body?.planTier !== undefined) {
-        const tier = normalizePlanTier(req.body.planTier);
-        updates.push(`plan_tier = $${index++}`);
-        params.push(tier);
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'PLAN_CHANGE_REQUIRES_BILLING_PERMISSION',
+            message: 'Plan changes require platform.billing permission and must use the subscription change-plan operation.',
+          },
+        });
       }
 
       if (req.body?.name !== undefined) {
@@ -269,7 +283,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         const updated = await tx.query<any>(
           `UPDATE organizations SET ${updates.join(', ')}
            WHERE id = $${index}
-           RETURNING id, name, slug, code, is_active, plan_tier, created_at, updated_at`,
+           RETURNING id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at, updated_at`,
           params,
         );
         if (!updated.rows[0]) return null;
@@ -286,7 +300,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
           slug: after.slug,
           code: after.code,
           plan: after.plan_tier,
-          status: after.is_active ? 'active' : 'suspended',
+          status: after.lifecycle_status || (after.is_active ? 'active' : 'suspended'),
           createdAt: after.created_at,
           updatedAt: after.updated_at,
         },
