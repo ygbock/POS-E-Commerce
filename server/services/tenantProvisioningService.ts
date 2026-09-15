@@ -799,13 +799,9 @@ export class TenantProvisioningService {
     if (orgRes.rows.length === 0) return null;
     const org = orgRes.rows[0];
 
-    // Subscription details (best-effort)
-    let subscription: any = null;
-    try {
-      subscription = await this.subscriptionRepo.getSubscriptionDetails(orgId.trim());
-    } catch {
-      subscription = null;
-    }
+    // Subscription lookup is authoritative. Do not swallow database errors;
+    // returning a partial control-plane view can hide billing inconsistencies.
+    const subscription = await this.subscriptionRepo.getSubscriptionDetails(orgId.trim());
 
     // Resource usage counters
     const [userCountRes, locationCountRes] = await Promise.all([
