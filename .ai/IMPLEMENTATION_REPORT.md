@@ -84,7 +84,15 @@ All six tenant lifecycle endpoints are guarded by `requireAuth()` and `requirePl
 | Command | Result |
 |---|---|
 | `npm run lint` (`tsc --noEmit`) | ✅ PASS — 0 TypeScript errors |
-| `npm run test:tenant-provisioning` | ✅ PASS — 12/12 scenarios |
+| `npm run test:subscription-foundation` | ✅ PASS — 5/5 passed |
+| `npm run test:subscription-limits` | ✅ PASS — 15/15 passed |
+| `npm run test:platform` | ✅ PASS — 12/12 passed |
+| `npm run test:platform-subscriptions` | ✅ PASS — 13/13 passed |
+| `npm run test:tenant-provisioning` | ✅ PASS — 16/16 passed |
+| `npm run test:operational` | ✅ PASS — 26/26 passed |
+| `npm test` | ✅ PASS — All 23 suites passed |
+| `npm run build` | ✅ PASS — Vite client + esbuild server.cjs |
+| `git status` | Clean working tree; staged/unstaged changes tracked |
 
 ---
 

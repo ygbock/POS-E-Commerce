@@ -504,7 +504,7 @@ export class TenantProvisioningService {
 
       // Suspend organization
       await tx.query(
-        'UPDATE organizations SET is_active = FALSE, lifecycle_status = 'suspended', updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        `UPDATE organizations SET is_active = FALSE, lifecycle_status = 'suspended', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
         [orgId.trim()],
       );
 
@@ -619,7 +619,7 @@ export class TenantProvisioningService {
 
       // Reactivate organization
       await tx.query(
-        'UPDATE organizations SET is_active = TRUE, lifecycle_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        `UPDATE organizations SET is_active = TRUE, lifecycle_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
         [orgId.trim()],
       );
 
@@ -872,7 +872,7 @@ export class TenantProvisioningService {
     let idx = 1;
 
     if (filters.status && filters.status !== 'all') {
-      conditions.push(`o.lifecycle_status = ${idx++}`);
+      conditions.push(`o.lifecycle_status = $${idx++}`);
       params.push(filters.status);
     }
 

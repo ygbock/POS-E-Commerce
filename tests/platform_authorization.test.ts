@@ -375,6 +375,7 @@ async function main() {
       });
       assert.equal(duplicateRes.status, 409);
 
+      // Plan mutations via legacy tenant PATCH must be rejected (F-05)
       const updateRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}`, {
         method: 'PATCH',
         headers: {
@@ -383,9 +384,22 @@ async function main() {
         },
         body: JSON.stringify({ planTier: 'enterprise' }),
       });
-      assert.equal(updateRes.status, 200);
+      assert.equal(updateRes.status, 403);
       const updateBody = await updateRes.json();
-      assert.equal(updateBody.data.plan, 'enterprise');
+      assert.equal(updateBody.error.code, 'PLAN_CHANGE_REQUIRES_BILLING_PERMISSION');
+
+      // Canonical plan change must go through billing control plane
+      const changePlanRes = await fetch(`${baseUrl}/api/platform/subscriptions/${tenantId}/change-plan`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${systemOwnerToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ planCodeOrId: 'enterprise' }),
+      });
+      assert.equal(changePlanRes.status, 200);
+      const changePlanBody = await changePlanRes.json();
+      assert.equal(changePlanBody.data.plan.code, 'enterprise');
 
       const suspendRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}`, {
         method: 'PATCH',
