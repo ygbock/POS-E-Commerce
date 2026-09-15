@@ -266,15 +266,15 @@ export class TenantProvisioningService {
           `INSERT INTO platform_idempotency_keys
              (id, operation, idempotency_key, actor_id, response)
            VALUES ($1, 'TENANT_PROVISION', $2, $3, '{"pending":true}'::jsonb)
-           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           ON CONFLICT (operation, idempotency_key, actor_id) DO NOTHING
            RETURNING id, response`,
           [`idem_${randomUUID()}`, idempotencyKey.trim(), actor.id],
         );
         if (claim.rows.length === 0) {
           const existing = await tx.query<{ response: any }>(
             `SELECT response FROM platform_idempotency_keys
-             WHERE operation = 'TENANT_PROVISION' AND idempotency_key = $1`,
-            [idempotencyKey.trim()],
+             WHERE operation = 'TENANT_PROVISION' AND idempotency_key = $1 AND actor_id = $2`,
+            [idempotencyKey.trim(), actor.id],
           );
           const response = existing.rows[0]?.response;
           if (response && !response.pending) return response as ProvisionedTenant;
@@ -461,14 +461,14 @@ export class TenantProvisioningService {
           `INSERT INTO platform_idempotency_keys
              (id, operation, idempotency_key, organization_id, actor_id, response)
            VALUES ($1, 'TENANT_SUSPEND', $2, $3, $4, '{"pending":true}'::jsonb)
-           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           ON CONFLICT (operation, idempotency_key, actor_id) DO NOTHING
            RETURNING id`,
           [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
         );
         if (claim.rows.length === 0) {
           const existing = await tx.query<{ response: any }>(
             `SELECT response FROM platform_idempotency_keys
-             WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $1`,
+             WHERE operation = 'TENANT_SUSPEND' AND idempotency_key = $1 AND actor_id = $2`,
             [idempotencyKey.trim()],
           );
           const response = existing.rows[0]?.response;
@@ -577,14 +577,14 @@ export class TenantProvisioningService {
           `INSERT INTO platform_idempotency_keys
              (id, operation, idempotency_key, organization_id, actor_id, response)
            VALUES ($1, 'TENANT_REACTIVATE', $2, $3, $4, '{"pending":true}'::jsonb)
-           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           ON CONFLICT (operation, idempotency_key, actor_id) DO NOTHING
            RETURNING id`,
           [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
         );
         if (claim.rows.length === 0) {
           const existing = await tx.query<{ response: any }>(
             `SELECT response FROM platform_idempotency_keys
-             WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $1`,
+             WHERE operation = 'TENANT_REACTIVATE' AND idempotency_key = $1 AND actor_id = $2`,
             [idempotencyKey.trim()],
           );
           const response = existing.rows[0]?.response;
@@ -701,14 +701,14 @@ export class TenantProvisioningService {
           `INSERT INTO platform_idempotency_keys
              (id, operation, idempotency_key, organization_id, actor_id, response)
            VALUES ($1, 'TENANT_ARCHIVE', $2, $3, $4, '{"pending":true}'::jsonb)
-           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           ON CONFLICT (operation, idempotency_key, actor_id) DO NOTHING
            RETURNING id`,
           [`idem_${randomUUID()}`, idempotencyKey.trim(), orgId.trim(), actor.id],
         );
         if (claim.rows.length === 0) {
           const existing = await tx.query<{ response: any }>(
             `SELECT response FROM platform_idempotency_keys
-             WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $1`,
+             WHERE operation = 'TENANT_ARCHIVE' AND idempotency_key = $1 AND actor_id = $2`,
             [idempotencyKey.trim()],
           );
           const response = existing.rows[0]?.response;
@@ -724,6 +724,10 @@ export class TenantProvisioningService {
         throw new TenantProvisioningError('TENANT_NOT_FOUND', `Organization '${orgId}' not found.`, 404);
       }
       const org = orgRes.rows[0];
+
+      if (org.lifecycle_status === 'archived') {
+        throw new TenantProvisioningError('TENANT_ALREADY_ARCHIVED', 'Tenant is already archived.', 409);
+      }
 
       // Deactivate organization
       await tx.query(
