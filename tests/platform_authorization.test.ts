@@ -401,13 +401,13 @@ async function main() {
       const changePlanBody = await changePlanRes.json();
       assert.equal(changePlanBody.data.plan.code, 'enterprise');
 
-      const suspendRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}`, {
-        method: 'PATCH',
+      const suspendRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}/suspend`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${platformAdminToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ isActive: false }),
+        body: JSON.stringify({ reason: 'Lifecycle authorization test' }),
       });
       assert.equal(suspendRes.status, 200);
       const suspendBody = await suspendRes.json();
@@ -428,13 +428,13 @@ async function main() {
       const blockedBody = await blockedRes.json();
       assert.equal(blockedBody.error.code, 'TENANT_ACCESS_DENIED');
 
-      const activateRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}`, {
-        method: 'PATCH',
+      const activateRes = await fetch(`${baseUrl}/api/platform/tenants/${tenantId}/reactivate`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${platformAdminToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ isActive: true }),
+        body: JSON.stringify({ reason: 'Lifecycle authorization test' }),
       });
       assert.equal(activateRes.status, 200);
       const activateBody = await activateRes.json();
