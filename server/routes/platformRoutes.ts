@@ -156,7 +156,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
   router.get('/tenants', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const svc = getTenantProvisioningService(req);
-      const status = typeof req.query.status === 'string' && ['active', 'suspended', 'all'].includes(req.query.status)
+      const status = typeof req.query.status === 'string' && ['active', 'suspended', 'archived', 'all'].includes(req.query.status)
         ? req.query.status as 'active' | 'suspended' | 'all'
         : undefined;
       const planTier = typeof req.query.planTier === 'string' ? req.query.planTier : undefined;
