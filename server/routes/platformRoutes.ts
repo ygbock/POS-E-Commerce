@@ -6,6 +6,7 @@ import { PERMISSIONS } from '../auth/roles.ts';
 import { hashPassword } from '../auth/password.ts';
 import { SubscriptionService, SubscriptionLimitError } from '../services/subscriptionService.ts';
 import { SubscriptionRepository } from '../repositories/subscriptionRepository.ts';
+import { TenantProvisioningService, TenantProvisioningError } from '../services/tenantProvisioningService.ts';
 
 const RESERVED_TENANT_SLUGS = new Set([
   'api',
@@ -117,6 +118,13 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
     return new SubscriptionService(new SubscriptionRepository(db), db);
   }
 
+  function getTenantProvisioningService(req?: Request): TenantProvisioningService {
+    if (req?.app?.get('tenantProvisioningService')) {
+      return req.app.get('tenantProvisioningService') as TenantProvisioningService;
+    }
+    return new TenantProvisioningService(db);
+  }
+
   router.get('/overview', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_VIEW), async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const tenants = await db.query<any>(
@@ -145,23 +153,24 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
     }
   });
 
-  router.get('/tenants', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (_req: Request, res: Response, next: NextFunction) => {
+  router.get('/tenants', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await db.query<any>(
-        'SELECT id, name, slug, code, is_active, plan_tier, created_at FROM organizations ORDER BY created_at DESC'
-      );
+      const svc = getTenantProvisioningService(req);
+      const status = typeof req.query.status === 'string' && ['active', 'suspended', 'all'].includes(req.query.status)
+        ? req.query.status as 'active' | 'suspended' | 'all'
+        : undefined;
+      const planTier = typeof req.query.planTier === 'string' ? req.query.planTier : undefined;
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+      const offset = req.query.offset ? parseInt(String(req.query.offset), 10) : 0;
+
+      const result = await svc.listTenants({ status, planTier, search, limit, offset });
       res.json({
         success: true,
-        count: result.rows.length,
-        data: result.rows.map((t) => ({
-          id: t.id,
-          name: t.name,
-          slug: t.slug,
-          code: t.code,
-          status: t.is_active ? 'active' : 'suspended',
-          plan: t.plan_tier,
-          createdAt: t.created_at,
-        })),
+        count: result.tenants.length,
+        total: result.total,
+        data: result.tenants,
+        pagination: { limit, offset, total: result.total },
       });
     } catch (err) {
       next(err);
@@ -170,118 +179,32 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
 
   router.post('/tenants', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const name = normalizeName(req.body?.name);
-      const slug = normalizeSlug(req.body?.slug);
-      const code = normalizeCode(req.body?.code, slug);
-      const planTier = normalizePlanTier(req.body?.planTier);
-      const admin = normalizeAdminPayload(req.body);
-      const tenantId = `org_${randomUUID()}`;
-      const userId = `usr_${randomUUID()}`;
-      const { hash, salt } = hashPassword(admin.password);
-
-      const created = await db.withTransaction(async (tx) => {
-        const duplicate = await tx.query<{ id: string }>(
-          'SELECT id FROM organizations WHERE slug = $1 OR code = $2 LIMIT 1',
-          [slug, code],
-        );
-        if (duplicate.rows.length > 0) {
-          const error: any = new Error('TENANT_SLUG_OR_CODE_EXISTS');
-          error.statusCode = 409;
-          throw error;
-        }
-
-        const org = await tx.query<any>(
-          `INSERT INTO organizations (id, name, slug, code, plan_tier, is_active)
-           VALUES ($1, $2, $3, $4, $5, TRUE)
-           RETURNING id, name, slug, code, plan_tier, is_active, created_at`,
-          [tenantId, name, slug, code, planTier],
-        );
-
-        const existingAdmin = await tx.query<{ id: string }>(
-          'SELECT id FROM users WHERE organization_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1',
-          [tenantId, admin.email],
-        );
-        if (existingAdmin.rows.length > 0) {
-          const error: any = new Error('ADMIN_EMAIL_EXISTS');
-          error.statusCode = 409;
-          throw error;
-        }
-
-        await tx.query(
-          `INSERT INTO users (
-            id, organization_id, email, name, password_hash, password_salt, role, is_active
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'admin', TRUE)`,
-          [userId, tenantId, admin.email, admin.name, hash, salt],
-        );
-
-        // Authoritative Subscription Provisioning (TASK-5.6.1 / TASK-5.6.2)
-        const planCode = (planTier || 'starter').toLowerCase();
-        const planRes = await tx.query<any>(
-          'SELECT id, trial_days FROM subscription_plans WHERE code = $1 LIMIT 1',
-          [planCode]
-        );
-        const planId = planRes.rows[0]?.id || 'plan_starter';
-        const trialDays = Number(planRes.rows[0]?.trial_days || 14);
-
-        await tx.query(
-          `INSERT INTO organization_subscriptions (
-            id, organization_id, plan_id, status, current_period_start, current_period_end, trial_ends_at, metadata
-          ) VALUES (
-            $1, $2, $3, 'trialing', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + ($4 || ' days')::interval, CURRENT_TIMESTAMP + ($4 || ' days')::interval, $5
-          )`,
-          ['sub_' + randomUUID(), tenantId, planId, trialDays, JSON.stringify({ source: 'platform_provisioning' })]
-        );
-
-        await auditTenantMutation(
-          tx,
-          req,
-          'PLATFORM_TENANT_CREATED',
-          tenantId,
-          null,
-          { id: tenantId, name, slug, code, planTier, isActive: true, initialAdminUserId: userId },
-        );
-
-        return org.rows[0];
-      });
-
-      return res.status(201).json({
-        success: true,
-        data: {
-          tenant: {
-            id: created.id,
-            name: created.name,
-            slug: created.slug,
-            code: created.code,
-            plan: created.plan_tier,
-            status: created.is_active ? 'active' : 'suspended',
-            createdAt: created.created_at,
-          },
-          initialAdmin: {
-            id: userId,
-            email: admin.email,
-            name: admin.name,
-            role: 'admin',
-          },
-        },
-      });
-    } catch (err: any) {
-      if (err?.statusCode === 409) {
-        return res.status(409).json({ success: false, error: { code: err.message, message: 'Tenant already exists or the initial admin conflicts.' } });
-      }
-      const known: Record<string, [string, string]> = {
-        TENANT_SLUG_REQUIRED: ['TENANT_SLUG_REQUIRED', 'A tenant slug is required.'],
-        INVALID_TENANT_SLUG: ['INVALID_TENANT_SLUG', 'Tenant slug must be 3–63 lowercase URL-safe characters.'],
-        RESERVED_TENANT_SLUG: ['RESERVED_TENANT_SLUG', 'That tenant slug is reserved by the platform.'],
-        TENANT_NAME_REQUIRED: ['TENANT_NAME_REQUIRED', 'A tenant name is required.'],
-        INVALID_TENANT_NAME: ['INVALID_TENANT_NAME', 'Tenant name must be 2–255 characters.'],
-        INVALID_TENANT_CODE: ['INVALID_TENANT_CODE', 'Tenant code must contain only A–Z, 0–9, and underscores.'],
-        INVALID_PLAN_TIER: ['INVALID_PLAN_TIER', 'Plan tier must be starter, professional, or enterprise.'],
-        INVALID_ADMIN_EMAIL: ['INVALID_ADMIN_EMAIL', 'A valid initial administrator email is required.'],
-        INVALID_ADMIN_NAME: ['INVALID_ADMIN_NAME', 'Initial administrator name must be 2–255 characters.'],
-        ADMIN_PASSWORD_POLICY: ['ADMIN_PASSWORD_POLICY', 'Initial administrator password must be 12–128 characters and contain upper, lower, and numeric characters.'],
+      const svc = getTenantProvisioningService(req);
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
       };
-      const code = err?.message;
-      if (code && known[code]) return badRequest(res, known[code][0], known[code][1]);
+
+      const result = await svc.provisionTenant(
+        {
+          name: req.body?.name,
+          slug: req.body?.slug,
+          code: req.body?.code,
+          planTier: req.body?.planTier,
+          adminEmail: req.body?.adminEmail,
+          adminName: req.body?.adminName,
+          adminPassword: req.body?.adminPassword,
+          metadata: req.body?.metadata,
+        },
+        actor,
+      );
+
+      return res.status(201).json({ success: true, data: result });
+    } catch (err: any) {
+      if (err instanceof TenantProvisioningError) {
+        return res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } });
+      }
       next(err);
     }
   });
@@ -370,6 +293,101 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       if (err?.message === 'RESERVED_TENANT_SLUG') return badRequest(res, 'RESERVED_TENANT_SLUG', 'That tenant slug is reserved by the platform.');
       if (err?.message === 'INVALID_TENANT_NAME') return badRequest(res, 'INVALID_TENANT_NAME', 'Tenant name must be 2–255 characters.');
       if (err?.message === 'INVALID_PLAN_TIER') return badRequest(res, 'INVALID_PLAN_TIER', 'Plan tier must be starter, professional, or enterprise.');
+      next(err);
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // TENANT DETAIL & LIFECYCLE MANAGEMENT (TASK-5.6.4)
+  // Guarded strictly by PERMISSIONS.PLATFORM_TENANTS
+  // ------------------------------------------------------------------
+
+  router.get('/tenants/:id', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const svc = getTenantProvisioningService(req);
+      const orgId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
+
+      const detail = await svc.getTenantDetail(orgId);
+      if (!detail) {
+        return res.status(404).json({ success: false, error: { code: 'TENANT_NOT_FOUND', message: 'Tenant not found.' } });
+      }
+      res.json({ success: true, data: detail });
+    } catch (err: any) {
+      if (err instanceof TenantProvisioningError) {
+        return res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/tenants/:id/suspend', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const svc = getTenantProvisioningService(req);
+      const orgId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const result = await svc.suspendTenant(orgId, actor, reason, idempotencyKey);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      if (err instanceof TenantProvisioningError) {
+        return res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/tenants/:id/reactivate', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const svc = getTenantProvisioningService(req);
+      const orgId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const result = await svc.reactivateTenant(orgId, actor, reason, idempotencyKey);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      if (err instanceof TenantProvisioningError) {
+        return res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } });
+      }
+      next(err);
+    }
+  });
+
+  router.post('/tenants/:id/archive', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const svc = getTenantProvisioningService(req);
+      const orgId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+      if (!orgId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const actor = {
+        id: req.auth?.userId || 'system',
+        name: req.auth?.email || 'platform-operator',
+        role: req.auth?.role || 'system_owner',
+      };
+
+      const result = await svc.archiveTenant(orgId, actor, reason);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      if (err instanceof TenantProvisioningError) {
+        return res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } });
+      }
       next(err);
     }
   });

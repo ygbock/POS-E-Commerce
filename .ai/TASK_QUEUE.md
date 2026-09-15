@@ -1023,3 +1023,69 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - [x] main remains untouched
 - **Supervisor Gate:** `PASSED LOCAL GATES (READY FOR REVIEW)`
 
+
+---
+
+### Task 22: TASK-5.6.4 — Tenant Provisioning, Onboarding & Lifecycle Management
+- **Status:** `READY FOR REVIEW`
+- **Date:** 2026-09-15
+- **Branch:** `upgrade/v2.6/upg-001-platform-hardening`
+- **Objective:** Deliver a production-grade tenant provisioning and lifecycle management control plane that atomically creates organizations, initial admin accounts, and baseline subscriptions, and provides server-authoritative suspend/reactivate/archive lifecycle operations with full audit trails.
+- **Implementation:**
+  - **`TenantProvisioningService` (`server/services/tenantProvisioningService.ts`):**
+    - `provisionTenant()`: Atomic transactional provisioning in a single `db.withTransaction` call — creates `organizations`, `users` (initial admin with PBKDF2-hashed password), and `organization_subscriptions` (trialing). Validates all inputs before entering the transaction. Password is redacted from all audit payloads.
+    - `listTenants()`: Server-authoritative filtered list with status, planTier, search, limit, and offset parameters. Efficient SQL WHERE clause composition using parameterized queries.
+    - `getTenantDetail()`: Rich detail view joining organization, subscription, user count, and location count from authoritative DB sources.
+    - `suspendTenant()`: Idempotent — already-suspended tenants return success without side effects. Marks org inactive, transitions subscription to `paused`, logs `PLATFORM_TENANT_SUSPENDED` audit event.
+    - `reactivateTenant()`: Idempotent — already-active tenants return success. Marks org active, transitions subscription from `paused` to prior active/trialing state, logs `PLATFORM_TENANT_REACTIVATED` audit event.
+    - `archiveTenant()`: Marks org inactive, cancels all non-terminal subscriptions atomically, logs `PLATFORM_TENANT_ARCHIVED` at `Critical` severity.
+    - `TenantProvisioningError`: Typed error class with `code`, `message`, and `statusCode` for route-level structured error serialization.
+  - **`platformRoutes.ts` Refactoring:**
+    - `GET /api/platform/tenants`: Delegated to `TenantProvisioningService.listTenants()` with query parameter filtering (`status`, `planTier`, `search`, `limit`, `offset`) and pagination metadata.
+    - `POST /api/platform/tenants`: Delegated to `TenantProvisioningService.provisionTenant()`. All inline provisioning logic removed from route.
+    - `GET /api/platform/tenants/:id` *(new)*: Returns `getTenantDetail()` with 404 on miss.
+    - `POST /api/platform/tenants/:id/suspend` *(new)*: Idempotent suspension with optional `reason` and `X-Idempotency-Key` header.
+    - `POST /api/platform/tenants/:id/reactivate` *(new)*: Idempotent reactivation with optional `reason` and `X-Idempotency-Key` header.
+    - `POST /api/platform/tenants/:id/archive` *(new)*: Irreversible archive with optional `reason`.
+    - All lifecycle endpoints guarded by `requirePlatformPermission(PERMISSIONS.PLATFORM_TENANTS)`.
+  - **Test Suite (`tests/tenant_provisioning.test.ts`):**
+    - 12 integration scenarios using isolated PGlite in-process database.
+    - Scenario 1: Authorization boundaries (401 unauth, 403 tenant role, 200 platform_admin).
+    - Scenario 2: Input validation with 9 sub-cases (slug required/invalid/reserved, name, plan tier, email, admin name, password policy).
+    - Scenario 3: Full atomic provisioning verification — response shape, DB state, subscription, audit event, and password redaction.
+    - Scenario 4: Duplicate slug → `TENANT_SLUG_OR_CODE_EXISTS` (409).
+    - Scenario 5: GET /tenants filtering — planTier, status, search, pagination.
+    - Scenario 6: GET /tenants/:id — rich detail view including userCount, locationCount, subscription; 404 on miss.
+    - Scenario 7: Suspend — DB state, subscription `paused`, audit event logged.
+    - Scenario 8: Repeated suspend — idempotency, no duplicate subscriptions created.
+    - Scenario 9: Reactivate — DB state restored, subscription active/trialing, audit event logged.
+    - Scenario 10: Repeated reactivate — idempotency.
+    - Scenario 11: Archive — org inactive, all subscriptions cancelled, audit at `Critical` severity.
+    - Scenario 12: 404 for all lifecycle endpoints on non-existent tenant ID.
+  - **`package.json`:** Added `test:tenant-provisioning` script; integrated into master `test` chain after `test:platform-subscriptions`.
+- **Security:**
+  - Password and password hash never appear in API responses or audit `after_state`.
+  - Actor identity derived exclusively from `req.auth`.
+  - All mutations are transactional; any failure triggers full rollback.
+  - Client cannot supply `organization_id`, `plan_tier`, or subscription status.
+- **Verification Completed:**
+  - `npm run lint` → PASS (0 TypeScript errors)
+  - `npm run test:tenant-provisioning` → PASS (12/12 scenarios)
+  - `npm run build` → (compilation clean; verified by `tsc --noEmit` exit code 0)
+- **Acceptance Gate Checklist:**
+  - [x] Atomic provisioning: org + admin + subscription created or none (full rollback on any failure)
+  - [x] Input validation rejects all invalid/missing fields with typed error codes
+  - [x] Duplicate slug/code rejected with 409 before transaction entry
+  - [x] Password never logged, returned, or stored in plain text
+  - [x] Audit event `PLATFORM_TENANT_PROVISIONED` written inside transaction
+  - [x] GET /tenants supports status/planTier/search/limit/offset filters
+  - [x] GET /tenants/:id returns rich detail with userCount, locationCount, subscription
+  - [x] Suspend is idempotent; pauses subscription atomically
+  - [x] Reactivate is idempotent; restores subscription atomically
+  - [x] Archive cancels all non-terminal subscriptions; logged at Critical severity
+  - [x] All lifecycle endpoints return 404 for non-existent tenant
+  - [x] All endpoints guarded by PERMISSIONS.PLATFORM_TENANTS
+  - [x] 12/12 test scenarios pass
+  - [x] TypeScript compiles with 0 errors
+  - [x] main branch untouched
+- **Supervisor Gate:** `PASSED LOCAL GATES (READY FOR REVIEW)`
