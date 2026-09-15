@@ -469,3 +469,20 @@ Status: READY FOR REVIEW
   - Ensured absolute zero changes were introduced to the underlying business rules, source code, and validation assertions.
 - **Supervisor Action Required**: Direct release candidate sign-off under YELLOW Go/Conditional Go handover.
 
+---
+
+### Queue Item: TASK-5.6.3 — Super Admin Platform & Subscription Management
+- **Submitted By**: Senior Software Engineer / Implementation Lead & Platform Architect
+- **Submission Date**: 2026-09-15
+- **Current Status**: `PENDING REVIEW`
+- **Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Scope**:
+  - Implemented plan CRUD management and versioning (`starter`, `professional`, `enterprise`, and custom tiers).
+  - Implemented tenant subscription state management (assign plan, trial extension, suspend, reactivate, cancel, restore).
+  - Implemented platform API routes under `/api/platform/plans` and `/api/platform/subscriptions/*` protected by `requireSuperAdmin` middleware.
+  - Enforced strict platform role authorization (`super_admin`); non-super-admins receive `403 PERMISSION_DENIED`.
+  - Maintained server-authoritative tenant isolation and full state audit tracking (`subscription_history` table and `audit_logs`).
+  - Added comprehensive test suite `tests/platform_subscription_management.test.ts` verifying all security boundaries, CRUD operations, state transitions, and audit logs.
+- **Supervisor Action Required**: Review platform hardening implementation and test suite results.
+
+

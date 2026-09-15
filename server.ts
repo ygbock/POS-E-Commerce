@@ -1946,6 +1946,286 @@ export async function createApp(options: CreateAppOptions = {}) {
     res.json({ success: true, data: ROLE_PERMISSIONS });
   });
 
+  // ------------------------------------------------------------------
+  // 8.1 TENANT SUBSCRIPTION SELF-SERVICE
+  // ------------------------------------------------------------------
+  app.get(
+    '/api/tenant/subscription',
+    requireAuth(),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'SUBSCRIPTION');
+        const entitlements = await subscriptionService.getEntitlements(orgId);
+        res.json({ success: true, data: entitlements });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // ------------------------------------------------------------------
+  // 8.2 SUPER ADMIN PLATFORM PLAN & SUBSCRIPTION MANAGEMENT
+  // ------------------------------------------------------------------
+
+  const requireSuperAdmin = () => {
+    return (req: Request, res: Response, next: NextFunction) => {
+      if (!req.auth || req.auth.role !== 'super_admin') {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'PERMISSION_DENIED',
+            message: 'Only super_admin role can access Super Admin platform operations.',
+          },
+        });
+      }
+      next();
+    };
+  };
+
+  // Platform Plans List
+  app.get('/api/platform/plans', requireAuth(), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isSuperAdmin = req.auth?.role === 'super_admin';
+      const includeInactive = isSuperAdmin && req.query.includeInactive === 'true';
+      const plans = await subscriptionService.listPlans({ includeInactive });
+      res.json({ success: true, count: plans.length, data: plans });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Platform Plan Details
+  app.get('/api/platform/plans/:id', requireAuth(), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const plan = await subscriptionService.getPlan(req.params.id);
+      res.json({ success: true, data: plan });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Platform Plan Create (Super Admin only)
+  app.post(
+    '/api/platform/plans',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const plan = await subscriptionService.createPlan(req.body, {
+          userId: req.auth!.userId,
+          role: req.auth!.role,
+        });
+        res.status(201).json({ success: true, data: plan });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Platform Plan Update (Super Admin only)
+  app.put(
+    '/api/platform/plans/:id',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const plan = await subscriptionService.updatePlan(req.params.id, req.body, {
+          userId: req.auth!.userId,
+          role: req.auth!.role,
+        });
+        res.json({ success: true, data: plan });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // List All Platform Subscriptions (Super Admin only)
+  app.get(
+    '/api/platform/subscriptions',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const subs = await subscriptionService.listAllSubscriptions();
+        res.json({ success: true, count: subs.length, data: subs });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Get Organization Subscription & Entitlements (Super Admin only)
+  app.get(
+    '/api/platform/subscriptions/:orgId',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const entitlements = await subscriptionService.getEntitlements(req.params.orgId);
+        res.json({ success: true, data: entitlements });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Assign Plan (Super Admin only)
+  app.post(
+    '/api/platform/subscriptions/:orgId/assign',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { planCode, planId, reason, customPeriodDays } = req.body;
+        const targetPlan = planCode || planId;
+        if (!targetPlan) {
+          return res.status(400).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'planCode or planId is required.' },
+          });
+        }
+        const updated = await subscriptionService.assignPlan(
+          req.params.orgId,
+          targetPlan,
+          { userId: req.auth!.userId, role: req.auth!.role },
+          { reason, customPeriodDays }
+        );
+        res.json({ success: true, data: updated });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Start / Extend Trial (Super Admin only)
+  app.post(
+    '/api/platform/subscriptions/:orgId/trial',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { trialEndsAt, trialDays, reason } = req.body;
+        let endDate: Date;
+        if (trialEndsAt) {
+          endDate = new Date(trialEndsAt);
+        } else if (trialDays) {
+          endDate = new Date(Date.now() + Number(trialDays) * 24 * 60 * 60 * 1000);
+        } else {
+          return res.status(400).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'trialEndsAt or trialDays is required.' },
+          });
+        }
+        const updated = await subscriptionService.startOrExtendTrial(
+          req.params.orgId,
+          endDate,
+          { userId: req.auth!.userId, role: req.auth!.role },
+          reason
+        );
+        res.json({ success: true, data: updated });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Suspend Subscription (Super Admin only)
+  app.post(
+    '/api/platform/subscriptions/:orgId/suspend',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { reason } = req.body;
+        const updated = await subscriptionService.suspendSubscription(
+          req.params.orgId,
+          { userId: req.auth!.userId, role: req.auth!.role },
+          reason
+        );
+        res.json({ success: true, data: updated });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Reactivate Subscription (Super Admin only)
+  app.post(
+    '/api/platform/subscriptions/:orgId/reactivate',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { reason } = req.body;
+        const updated = await subscriptionService.reactivateSubscription(
+          req.params.orgId,
+          { userId: req.auth!.userId, role: req.auth!.role },
+          reason
+        );
+        res.json({ success: true, data: updated });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Cancel Subscription (Super Admin only)
+  app.post(
+    '/api/platform/subscriptions/:orgId/cancel',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { reason } = req.body;
+        const updated = await subscriptionService.cancelSubscription(
+          req.params.orgId,
+          { userId: req.auth!.userId, role: req.auth!.role },
+          reason
+        );
+        res.json({ success: true, data: updated });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Restore Subscription (Super Admin only)
+  app.post(
+    '/api/platform/subscriptions/:orgId/restore',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { reason } = req.body;
+        const updated = await subscriptionService.restoreSubscription(
+          req.params.orgId,
+          { userId: req.auth!.userId, role: req.auth!.role },
+          reason
+        );
+        res.json({ success: true, data: updated });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Subscription History Logs (Super Admin only)
+  app.get(
+    '/api/platform/subscriptions/:orgId/history',
+    requireAuth(),
+    requireSuperAdmin(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const history = await subscriptionService.getSubscriptionHistory(req.params.orgId);
+        res.json({ success: true, count: history.length, data: history });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   // Diagnostic Test Error Route (Non-production test harness for error sanitization validation)
   if (process.env.NODE_ENV !== 'production') {
     app.get('/api/test-error-trigger', (req: Request, res: Response, next: NextFunction) => {

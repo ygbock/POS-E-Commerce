@@ -657,3 +657,25 @@ PROD-001 (NOT STARTED)
   - [x] No credentials or secrets committed.
 - **Supervisor Gate**: Marked `READY FOR REVIEW`.
 
+---
+
+### Task 13: TASK-5.6.3 — Super Admin Platform & Subscription Management
+- **Status**: `READY FOR REVIEW`
+- **Objective**: Build Super Admin platform capabilities for Plan Management, Tenant Subscription Management, and Super Admin Operations on `upgrade/v2.6/upg-001-platform-hardening`.
+- **Scope**:
+  - Implemented CRUD and versioning for plans (`starter`, `professional`, `enterprise`, custom tiers) with prices, billing intervals, quotas, and feature flags in `SubscriptionService.ts`.
+  - Implemented tenant subscription state management (assign plan, trial extension, suspend, reactivate, cancel, restore).
+  - Built platform-level Super Admin API endpoints (`/api/platform/plans`, `/api/platform/subscriptions/*`) secured by `requireSuperAdmin` middleware.
+  - Recorded detailed subscription state audit history in `subscription_history` table and `audit_logs`.
+  - Created comprehensive test suite `tests/platform_subscription_management.test.ts`.
+- **Dependencies**: `REL-012R3`
+- **Acceptance Criteria**:
+  - [x] Super Admin plan management (create, list, update, versioning) implemented.
+  - [x] Tenant subscription operations (assign, trial, suspend, reactivate, cancel, restore) implemented.
+  - [x] Platform role authorization (`super_admin`) enforced; 403 PERMISSION_DENIED on unauthorized attempts.
+  - [x] Server-authoritative organization IDs and audit history tracking verified.
+  - [x] Comprehensive test suite `tests/platform_subscription_management.test.ts` passes 100%.
+  - [x] Full test suite and lint checks pass cleanly with 0 errors.
+  - [x] Branch implemented on `upgrade/v2.6/upg-001-platform-hardening`.
+- **Supervisor Gate**: Marked `READY FOR REVIEW`.
+
