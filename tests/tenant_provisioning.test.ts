@@ -81,7 +81,7 @@ function validPayload(overrides: Record<string, any> = {}) {
 
 async function main() {
   console.log('\n=================================================================');
-  console.log(' TASK-5.6.4: Tenant Provisioning & Lifecycle (12 Test Scenarios)');
+  console.log(' TASK-5.6.4: Tenant Provisioning & Lifecycle (16 Test Scenarios)');
   console.log('=================================================================\n');
 
   const db: DatabaseClient = createIsolatedTestClient();
@@ -525,7 +525,97 @@ async function main() {
       assert.equal(resDetail.body.error.code, 'TENANT_NOT_FOUND');
     });
 
-    console.log('\nAll 12 test scenarios in TASK-5.6.4 passed cleanly!\n');
+
+    // ------------------------------------------------------------------
+    // SCENARIO 13: Durable lifecycle state + archive is terminal
+    // ------------------------------------------------------------------
+    await runTest('Scenario 13: Durable lifecycle state distinguishes suspended from archived and blocks reactivation', async () => {
+      const archivedRow = await db.query<any>(
+        'SELECT lifecycle_status, is_active FROM organizations WHERE id = $1',
+        [provisionedOrgId],
+      );
+      assert.equal(archivedRow.rows[0].lifecycle_status, 'archived');
+      assert.equal(archivedRow.rows[0].is_active, false);
+
+      const reactivateArchived = await request(BASE, `/api/platform/tenants/${provisionedOrgId}/reactivate`, {
+        method: 'POST', token: sysOwnerToken,
+      });
+      assert.equal(reactivateArchived.status, 409);
+      assert.equal(reactivateArchived.body.error.code, 'TENANT_ARCHIVED');
+
+      const patchArchived = await request(BASE, `/api/platform/tenants/${provisionedOrgId}`, {
+        method: 'PATCH', token: sysOwnerToken, body: { isActive: true },
+      });
+      assert.equal(patchArchived.status, 409);
+      assert.equal(patchArchived.body.error.code, 'TENANT_ARCHIVED');
+    });
+
+    // ------------------------------------------------------------------
+    // SCENARIO 14: Provisioning idempotency
+    // ------------------------------------------------------------------
+    await runTest('Scenario 14: Provisioning idempotency returns the original result without duplicate tenant state', async () => {
+      const payload = validPayload({
+        slug: 'idempotent-tenant',
+        adminEmail: 'admin@idempotent.internal',
+      });
+      const headers = { 'X-Idempotency-Key': 'tenant-provision-key-001' };
+
+      const first = await request(BASE, '/api/platform/tenants', {
+        method: 'POST', token: sysOwnerToken, body: payload, headers,
+      });
+      assert.equal(first.status, 201);
+      const second = await request(BASE, '/api/platform/tenants', {
+        method: 'POST', token: sysOwnerToken, body: { ...payload, name: 'Changed Name' }, headers,
+      });
+      assert.equal(second.status, 201);
+      assert.equal(second.body.data.tenant.id, first.body.data.tenant.id);
+      assert.equal(second.body.data.tenant.name, first.body.data.tenant.name);
+
+      const orgs = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM organizations WHERE slug = 'idempotent-tenant'",
+      );
+      assert.equal(Number(orgs.rows[0].c), 1);
+    });
+
+    // ------------------------------------------------------------------
+    // SCENARIO 15: Canonical plan enforcement
+    // ------------------------------------------------------------------
+    await runTest('Scenario 15: Provisioning rejects inactive canonical plans instead of silently falling back', async () => {
+      await db.query("UPDATE subscription_plans SET is_active = false WHERE code = 'enterprise'");
+
+      const res = await request(BASE, '/api/platform/tenants', {
+        method: 'POST',
+        token: sysOwnerToken,
+        body: validPayload({
+          name: 'Inactive Plan Tenant',
+          slug: 'inactive-plan-tenant',
+          planTier: 'enterprise',
+          adminEmail: 'admin@inactive-plan.internal',
+        }),
+      });
+      assert.equal(res.status, 422);
+      assert.equal(res.body.error.code, 'PLAN_NOT_FOUND');
+
+      const org = await db.query<any>(
+        "SELECT COUNT(*) AS c FROM organizations WHERE slug = 'inactive-plan-tenant'",
+      );
+      assert.equal(Number(org.rows[0].c), 0, 'Failed plan resolution must roll back organization creation');
+
+      await db.query("UPDATE subscription_plans SET is_active = true WHERE code = 'enterprise'");
+    });
+
+    // ------------------------------------------------------------------
+    // SCENARIO 16: Archived tenant listing
+    // ------------------------------------------------------------------
+    await runTest('Scenario 16: Tenant listing exposes archived state explicitly', async () => {
+      const res = await request(BASE, '/api/platform/tenants?status=archived', { token: sysOwnerToken });
+      assert.equal(res.status, 200);
+      assert.ok(res.body.data.some((t: any) => t.id === provisionedOrgId));
+      const archived = res.body.data.find((t: any) => t.id === provisionedOrgId);
+      assert.equal(archived.status, 'archived');
+    });
+
+    console.log('\nAll 16 test scenarios in TASK-5.6.4 passed cleanly!\n');
   } finally {
     server.close();
   }
