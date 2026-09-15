@@ -198,6 +198,9 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
           metadata: req.body?.metadata,
         },
         actor,
+        typeof (req.headers['x-idempotency-key'] || req.headers['idempotency-key']) === 'string'
+          ? String(req.headers['x-idempotency-key'] || req.headers['idempotency-key'])
+          : undefined,
       );
 
       return res.status(201).json({ success: true, data: result });
@@ -215,7 +218,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       if (!tenantId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
 
       const before = await db.query<any>(
-        'SELECT id, name, slug, code, is_active, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
+        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
         [tenantId],
       );
       if (before.rows.length === 0) {
@@ -382,7 +385,8 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         role: req.auth?.role || 'system_owner',
       };
 
-      const result = await svc.archiveTenant(orgId, actor, reason);
+      const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotencyKey) as string | undefined;
+      const result = await svc.archiveTenant(orgId, actor, reason, idempotencyKey);
       res.json({ success: true, data: result });
     } catch (err: any) {
       if (err instanceof TenantProvisioningError) {
