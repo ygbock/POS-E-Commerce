@@ -86,7 +86,7 @@ export interface TenantListItem {
   slug: string;
   code: string;
   planTier: string;
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'archived';
   subscriptionStatus: string | null;
   createdAt: string;
   updatedAt: string;
@@ -99,6 +99,7 @@ export interface TenantDetail {
   code: string;
   planTier: string;
   isActive: boolean;
+  lifecycleStatus: 'active' | 'suspended' | 'archived';
   createdAt: string;
   updatedAt: string;
   subscription: any | null;
@@ -239,6 +240,7 @@ export class TenantProvisioningService {
   async provisionTenant(
     params: ProvisionTenantParams,
     actor: { id: string; name?: string; role?: string },
+    idempotencyKey?: string,
   ): Promise<ProvisionedTenant> {
     // 1. Server-authoritative validation (before transaction)
     const name = validateName(params.name);
@@ -256,6 +258,30 @@ export class TenantProvisioningService {
     const subscriptionId = `sub_${randomUUID()}`;
 
     return this.db.withTransaction(async (tx) => {
+      // Idempotency is claimed before any mutation. ON CONFLICT DO NOTHING
+      // allows a concurrent retry to wait for the first transaction and then
+      // return its committed response.
+      if (idempotencyKey?.trim()) {
+        const claim = await tx.query<{ id: string; response: any }>(
+          `INSERT INTO platform_idempotency_keys
+             (id, operation, idempotency_key, actor_id, response)
+           VALUES ($1, 'TENANT_PROVISION', $2, $3, '{"pending":true}'::jsonb)
+           ON CONFLICT (operation, idempotency_key) DO NOTHING
+           RETURNING id, response`,
+          [`idem_${randomUUID()}`, idempotencyKey.trim(), actor.id],
+        );
+        if (claim.rows.length === 0) {
+          const existing = await tx.query<{ response: any }>(
+            `SELECT response FROM platform_idempotency_keys
+             WHERE operation = 'TENANT_PROVISION' AND idempotency_key = $1`,
+            [idempotencyKey.trim()],
+          );
+          const response = existing.rows[0]?.response;
+          if (response && !response.pending) return response as ProvisionedTenant;
+          throw new TenantProvisioningError('IDEMPOTENCY_IN_PROGRESS', 'An identical provisioning request is already in progress.', 409);
+        }
+      }
+
       // 4. Duplicate detection (slug OR code)
       const dup = await tx.query<{ id: string }>(
         'SELECT id FROM organizations WHERE slug = $1 OR code = $2 LIMIT 1',
@@ -272,8 +298,8 @@ export class TenantProvisioningService {
 
       // 5. Create organization
       const orgResult = await tx.query<any>(
-        `INSERT INTO organizations (id, name, slug, code, plan_tier, is_active)
-         VALUES ($1, $2, $3, $4, $5, TRUE)
+        `INSERT INTO organizations (id, name, slug, code, plan_tier, is_active, lifecycle_status)
+         VALUES ($1, $2, $3, $4, $5, TRUE, 'active')
          RETURNING id, name, slug, code, plan_tier, is_active, created_at`,
         [tenantId, name, slug, code, planTier],
       );
@@ -300,15 +326,22 @@ export class TenantProvisioningService {
         [userId, tenantId, admin.email, admin.name, hash, salt],
       );
 
-      // 8. Resolve canonical plan from the subscription_plans catalog
+      // 8. Resolve the canonical active plan. Never silently fall back to a
+      // different plan: that would create a billing/entitlement mismatch.
       const planRes = await tx.query<any>(
         'SELECT id, code, trial_days FROM subscription_plans WHERE code = $1 AND is_active = TRUE LIMIT 1',
         [planTier],
       );
-      // Fallback to plan_starter if plan not found (resilience)
-      const planId = planRes.rows[0]?.id || 'plan_starter';
-      const trialDays = Number(planRes.rows[0]?.trial_days ?? 14);
-      const resolvedPlanCode = planRes.rows[0]?.code || planTier;
+      if (planRes.rows.length === 0) {
+        throw new TenantProvisioningError(
+          'PLAN_NOT_FOUND',
+          `The requested plan '${planTier}' does not exist or is inactive.`,
+          422,
+        );
+      }
+      const planId = planRes.rows[0].id;
+      const trialDays = Number(planRes.rows[0].trial_days ?? 14);
+      const resolvedPlanCode = planRes.rows[0].code;
 
       const now = new Date();
       const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
@@ -365,7 +398,7 @@ export class TenantProvisioningService {
         ],
       );
 
-      return {
+      const response: ProvisionedTenant = {
         tenant: {
           id: created.id,
           name: created.name,
@@ -389,6 +422,17 @@ export class TenantProvisioningService {
           role: 'admin',
         },
       };
+
+      if (idempotencyKey?.trim()) {
+        await tx.query(
+          `UPDATE platform_idempotency_keys
+           SET organization_id = $1, response = $2::jsonb
+           WHERE operation = 'TENANT_PROVISION' AND idempotency_key = $3`,
+          [tenantId, JSON.stringify(response), idempotencyKey.trim()],
+        );
+      }
+
+      return response;
     });
   }
 
@@ -413,7 +457,7 @@ export class TenantProvisioningService {
 
     return this.db.withTransaction(async (tx) => {
       const orgRes = await tx.query<any>(
-        'SELECT id, name, is_active FROM organizations WHERE id = $1 FOR UPDATE',
+        'SELECT id, name, is_active, lifecycle_status FROM organizations WHERE id = $1 FOR UPDATE',
         [orgId.trim()],
       );
       if (orgRes.rows.length === 0) {
@@ -421,14 +465,18 @@ export class TenantProvisioningService {
       }
       const org = orgRes.rows[0];
 
-      // Idempotent: already suspended
-      if (!org.is_active) {
+      // Only active tenants can transition to suspended. Archived is a
+      // terminal state and must never be reactivated through this API.
+      if (org.lifecycle_status === 'archived') {
+        throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot be suspended.', 409);
+      }
+      if (org.lifecycle_status === 'suspended') {
         return { id: org.id, status: 'suspended', timestamp: new Date().toISOString() };
       }
 
       // Suspend organization
       await tx.query(
-        'UPDATE organizations SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        'UPDATE organizations SET is_active = FALSE, lifecycle_status = 'suspended', updated_at = CURRENT_TIMESTAMP WHERE id = $1',
         [orgId.trim()],
       );
 
@@ -489,7 +537,7 @@ export class TenantProvisioningService {
 
     return this.db.withTransaction(async (tx) => {
       const orgRes = await tx.query<any>(
-        'SELECT id, name, is_active FROM organizations WHERE id = $1 FOR UPDATE',
+        'SELECT id, name, is_active, lifecycle_status FROM organizations WHERE id = $1 FOR UPDATE',
         [orgId.trim()],
       );
       if (orgRes.rows.length === 0) {
@@ -497,14 +545,17 @@ export class TenantProvisioningService {
       }
       const org = orgRes.rows[0];
 
+      if (org.lifecycle_status === 'archived') {
+        throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants cannot be reactivated.', 409);
+      }
       // Idempotent: already active
-      if (org.is_active) {
+      if (org.lifecycle_status === 'active') {
         return { id: org.id, status: 'active', timestamp: new Date().toISOString() };
       }
 
       // Reactivate organization
       await tx.query(
-        'UPDATE organizations SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        'UPDATE organizations SET is_active = TRUE, lifecycle_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1',
         [orgId.trim()],
       );
 
@@ -573,7 +624,7 @@ export class TenantProvisioningService {
 
     return this.db.withTransaction(async (tx) => {
       const orgRes = await tx.query<any>(
-        'SELECT id, name, is_active FROM organizations WHERE id = $1 FOR UPDATE',
+        'SELECT id, name, is_active, lifecycle_status FROM organizations WHERE id = $1 FOR UPDATE',
         [orgId.trim()],
       );
       if (orgRes.rows.length === 0) {
@@ -583,7 +634,7 @@ export class TenantProvisioningService {
 
       // Deactivate organization
       await tx.query(
-        'UPDATE organizations SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        'UPDATE organizations SET is_active = FALSE, lifecycle_status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = $1',
         [orgId.trim()],
       );
 
@@ -636,7 +687,7 @@ export class TenantProvisioningService {
     }
 
     const orgRes = await this.db.query<any>(
-      `SELECT id, name, slug, code, plan_tier, is_active, created_at, updated_at
+      `SELECT id, name, slug, code, plan_tier, is_active, lifecycle_status, created_at, updated_at
        FROM organizations WHERE id = $1 LIMIT 1`,
       [orgId.trim()],
     );
@@ -670,6 +721,7 @@ export class TenantProvisioningService {
       code: org.code,
       planTier: org.plan_tier,
       isActive: Boolean(org.is_active),
+      lifecycleStatus: org.lifecycle_status,
       createdAt: org.created_at,
       updatedAt: org.updated_at,
       subscription,
@@ -730,7 +782,7 @@ export class TenantProvisioningService {
 
     const dataRes = await this.db.query<any>(
       `SELECT
-         o.id, o.name, o.slug, o.code, o.plan_tier, o.is_active,
+         o.id, o.name, o.slug, o.code, o.plan_tier, o.is_active, o.lifecycle_status,
          o.created_at, o.updated_at,
          os.status AS subscription_status
        FROM organizations o
@@ -750,7 +802,7 @@ export class TenantProvisioningService {
         slug: r.slug,
         code: r.code,
         planTier: r.plan_tier,
-        status: r.is_active ? 'active' : 'suspended',
+        status: r.lifecycle_status || (r.is_active ? 'active' : 'suspended'),
         subscriptionStatus: r.subscription_status || null,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
