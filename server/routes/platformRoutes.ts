@@ -187,7 +187,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       if (!tenantId) return badRequest(res, 'TENANT_ID_REQUIRED', 'Tenant ID is required.');
 
       const before = await db.query<any>(
-        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 FOR UPDATE',
+        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
         [tenantId],
       );
       if (before.rows.length === 0) {
@@ -249,6 +249,13 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       params.push(tenantId);
 
       const after = await db.withTransaction(async (tx) => {
+        const locked = await tx.query<any>(
+          'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 FOR UPDATE',
+          [tenantId],
+        );
+        if (locked.rows.length === 0) return null;
+        const lockedCurrent = locked.rows[0];
+
         const updated = await tx.query<any>(
           `UPDATE organizations SET ${updates.join(', ')}
            WHERE id = $${index}
@@ -257,7 +264,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         );
         if (!updated.rows[0]) return null;
 
-        await auditTenantMutation(tx, req, 'PLATFORM_TENANT_UPDATED', tenantId, current, updated.rows[0]);
+        await auditTenantMutation(tx, req, 'PLATFORM_TENANT_UPDATED', tenantId, lockedCurrent, updated.rows[0]);
         return updated.rows[0];
       });
 
