@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { DatabaseClient, getDatabaseClient } from '../db/client';
-import { hashPassword } from '../auth/password';
-import { SubscriptionRepository } from '../repositories/subscriptionRepository';
+import { DatabaseClient, getDatabaseClient } from '../db/client.ts';
+import { hashPassword } from '../auth/password.ts';
+import { SubscriptionRepository } from '../repositories/subscriptionRepository.ts';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1123,7 +1123,7 @@ export class TenantProvisioningService {
       try {
         updated = await tx.query<any>(
           `UPDATE organizations SET ${sqlUpdates.join(', ')}
-           WHERE id = ${index}
+           WHERE id = $${index}
            RETURNING id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at, updated_at`,
           params,
         );
