@@ -61,13 +61,6 @@ export class AuthService {
       if (matches.rows.length > 1) throw new Error('TENANT_SELECTION_REQUIRED: This account belongs to multiple organizations');
       orgId = matches.rows[0].organization_id;
     }
-    if (
-      !credentials.organizationId ||
-      typeof credentials.organizationId !== 'string' ||
-      credentials.organizationId.trim().length === 0
-    ) {
-      throw new Error('ORGANIZATION_REQUIRED: Valid organizationId is required for authentication');
-    }
     if (!(await this.isOrganizationActive(orgId))) {
       throw new Error('INACTIVE_ORGANIZATION: Organization is inactive');
     }
