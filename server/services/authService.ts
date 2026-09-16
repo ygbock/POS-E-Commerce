@@ -139,6 +139,72 @@ export class AuthService {
     }
   }
 
+
+  /**
+   * Provision the first tenant administrator using a server-side bootstrap secret.
+   * This is intentionally one-time: once any active admin/super_admin exists for
+   * the organization, bootstrap is permanently refused for that organization.
+   */
+  async bootstrapInitialAdmin(input: {
+    bootstrapSecret: string;
+    email: string;
+    name: string;
+    password: string;
+    organizationId?: string;
+  }): Promise<LoginResult['user']> {
+    const expectedSecret = process.env.ADMIN_BOOTSTRAP_SECRET?.trim();
+    if (!expectedSecret || expectedSecret.length < 32) {
+      throw new Error('BOOTSTRAP_DISABLED: ADMIN_BOOTSTRAP_SECRET is not configured securely');
+    }
+    if (!input.bootstrapSecret || input.bootstrapSecret !== expectedSecret) {
+      throw new Error('BOOTSTRAP_FORBIDDEN: Invalid bootstrap credentials');
+    }
+
+    const orgId = (input.organizationId || 'org_default').trim();
+    const email = input.email.toLowerCase().trim();
+    const name = input.name.trim();
+
+    if (!email || !name || !input.password || input.password.length < 12) {
+      throw new Error('VALIDATION_ERROR: email, name and a password of at least 12 characters are required');
+    }
+
+    if (!(await this.isOrganizationActive(orgId))) {
+      throw new Error('INACTIVE_ORGANIZATION: Organization is inactive');
+    }
+
+    const existingAdmins = await this.userRepo.countActiveAdmins(orgId);
+    if (existingAdmins > 0) {
+      throw new Error('BOOTSTRAP_ALREADY_COMPLETED: An active administrator already exists');
+    }
+
+    const existing = await this.userRepo.findByEmail(orgId, email);
+    if (existing) {
+      throw new Error('BOOTSTRAP_USER_EXISTS: A user with this email already exists');
+    }
+
+    const { hash, salt } = hashPassword(input.password);
+    const user = await this.userRepo.createUser({
+      organization_id: orgId,
+      email,
+      name,
+      password_hash: hash,
+      password_salt: salt,
+      role: 'super_admin',
+      is_active: true,
+    });
+
+    const permissions = getPermissionsForRole(user.role);
+    return {
+      id: user.id,
+      organizationId: user.organization_id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      permissions,
+      locationId: user.location_id,
+    };
+  }
+
   /**
    * Seed standard system users if they do not already exist.
    * Ensures development and tests have valid credentials immediately when explicitly enabled.
