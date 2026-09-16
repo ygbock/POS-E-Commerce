@@ -2,14 +2,14 @@
 
 ## TASK-5.6.4 — Tenant Provisioning, Onboarding & Lifecycle Management
 
-- **Status**: `CORRECTION APPLIED — PENDING FINAL REGRESSION/BUILD GATE`
-- **Date**: 2026-09-15
+- **Status**: `MERGED INTO MAIN — ALL GATES GREEN`
+- **Date**: 2026-09-16
 - **Program**: `VERSION-2.6-UPGRADE` / `Phase 5.6 SaaS Tenant Provisioning`
-- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Working Branch**: `main` (Merged from `upgrade/v2.6/upg-001-platform-hardening`)
 
 ---
 
-### Review Findings Resolution (F-01 through F-12)
+### Review Findings Resolution (F-01 through F-13)
 
 Following supervisor review, the implementation was comprehensively audited and hardened against production correctness criteria:
 
@@ -31,11 +31,12 @@ Following supervisor review, the implementation was comprehensively audited and 
 
 ---
 
-### Post-Correction Inspection — 2026-09-16
+### Post-Correction Inspection & Merge — 2026-09-16
 
-- Fixed the `updateTenant()` concurrent slug-update race boundary: database `23505` conflicts from the actual `UPDATE` are now translated to stable 409 `TENANT_SLUG_EXISTS` rather than leaking as an internal error.
-- Corrected governance documentation to reflect the committed state and the canonical `PLAN_NOT_FOUND` contract.
-- Final local regression and production-build verification remains mandatory before TASK-5.6.4 can be closed.
+- Reconciled branch history on `main` following supervisor authorization: reverted accidental commit `3165931` and merged `upgrade/v2.6/upg-001-platform-hardening`.
+- Integrated `PlatformDashboard.tsx` from commit `91a02a0`, resolving case-insensitive import disambiguation in `src/App.tsx`.
+- Applied `$${index}` parameter binding fix in `TenantProvisioningService.updateTenant()`.
+- Verified all quality gates on `main`: `npm run lint` (0 errors), `npm run test:tenant-provisioning` (21/21 passed), `npm test` (all 23 suites passed), `npm run build` (passed).
 
 ### Scope & Changes
 
