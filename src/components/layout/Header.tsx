@@ -16,10 +16,12 @@ import {
   X,
   Sun,
   Moon,
+  LogOut,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Role } from '../../types';
 import { isPlatformRole } from '../platform/platformAccess';
+import { authClient } from '../../services/authClient';
 
 interface HeaderProps {
   activeTab: string;
@@ -54,6 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifs, setShowNotifs] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showLocMenu, setShowLocMenu] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -236,6 +239,27 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
+
+        {/* Authenticated session controls */}
+        <button
+          id="btn-logout"
+          type="button"
+          disabled={loggingOut}
+          onClick={async () => {
+            setLoggingOut(true);
+            try {
+              await authClient.logout();
+              window.location.reload();
+            } finally {
+              setLoggingOut(false);
+            }
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60"
+          title="Sign out"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="hidden sm:inline">{loggingOut ? 'Signing out…' : 'Sign out'}</span>
+        </button>
 
         {/* Global Theme Toggle Button */}
         <button
