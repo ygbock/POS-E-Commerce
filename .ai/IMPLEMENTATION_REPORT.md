@@ -2,7 +2,7 @@
 
 ## TASK-5.6.4 — Tenant Provisioning, Onboarding & Lifecycle Management
 
-- **Status**: `READY FOR REVIEW`
+- **Status**: `CORRECTION APPLIED — PENDING FINAL REGRESSION/BUILD GATE`
 - **Date**: 2026-09-15
 - **Program**: `VERSION-2.6-UPGRADE` / `Phase 5.6 SaaS Tenant Provisioning`
 - **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
@@ -30,6 +30,12 @@ Following supervisor review, the implementation was comprehensively audited and 
 | **F-13** | **P1** | Cross-Tenant Idempotency Key Reuse | Reusing an idempotency key across different tenants returns 409 `IDEMPOTENCY_KEY_REUSE`. |
 
 ---
+
+### Post-Correction Inspection — 2026-09-16
+
+- Fixed the `updateTenant()` concurrent slug-update race boundary: database `23505` conflicts from the actual `UPDATE` are now translated to stable 409 `TENANT_SLUG_EXISTS` rather than leaking as an internal error.
+- Corrected governance documentation to reflect the committed state and the canonical `PLAN_NOT_FOUND` contract.
+- Final local regression and production-build verification remains mandatory before TASK-5.6.4 can be closed.
 
 ### Scope & Changes
 
@@ -77,7 +83,7 @@ Expanded to 21 integration test scenarios against an isolated PGlite in-process 
 | 12 | 404 lifecycle operations | suspend/reactivate/archive/detail all return 404 `TENANT_NOT_FOUND` |
 | 13 | Durable lifecycle state | Distinguishes suspended from archived; blocks suspend/reactivate on archived with 409 |
 | 14 | Provisioning idempotency | Returns original result on identical key replay without duplicate DB state |
-| 15 | Inactive plan rejection | Provisioning rejects inactive canonical plans with 422 `INVALID_PLAN_TIER` |
+| 15 | Inactive plan rejection | Provisioning rejects inactive/missing canonical plans with 422 `PLAN_NOT_FOUND` |
 | 16 | Tenant listing archived state | Listing exposes archived state explicitly in status filter and results |
 | 17 | Full lifecycle idempotency replay | Replaying suspend, reactivate, and archive produces identical response, 0 duplicate mutations, 0 duplicate audit events |
 | 18 | Concurrent provisioning | Concurrent requests with identical idempotency key resolve cleanly to single committed tenant |
