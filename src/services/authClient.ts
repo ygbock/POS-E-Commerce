@@ -7,7 +7,7 @@
 
 export interface AuthUser {
   id: string;
-  organizationId: string;
+  organizationId?: string;
   email: string;
   name: string;
   role: string;
