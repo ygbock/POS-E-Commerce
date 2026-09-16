@@ -150,14 +150,23 @@ export function isCanonicalPlatformHost(hostHeader: string | undefined): boolean
   const canonicalAppUrl = process.env.APP_URL 
     ? process.env.APP_URL.replace(/^https?:\/\//, '').split('/')[0].split(':')[0].toLowerCase() 
     : null;
-  const explicitCanonicalHost = process.env.CANONICAL_STOREFRONT_HOST 
-    ? process.env.CANONICAL_STOREFRONT_HOST.toLowerCase().trim() 
+  const explicitCanonicalHost = process.env.CANONICAL_STOREFRONT_HOST
+    ? process.env.CANONICAL_STOREFRONT_HOST.toLowerCase().trim()
+    : null;
+
+  // Render exposes the public service hostname as RENDER_EXTERNAL_HOSTNAME.
+  // Treat it as a canonical platform host in production so the storefront can
+  // resolve the default tenant on the deployed service URL without requiring
+  // a hard-coded infrastructure hostname or a user-controlled header.
+  const renderExternalHost = process.env.RENDER_EXTERNAL_HOSTNAME
+    ? process.env.RENDER_EXTERNAL_HOSTNAME.toLowerCase().trim()
     : null;
 
   if (env === 'production') {
     return (
       rawHost === 'shop.abacha.com' ||
       (explicitCanonicalHost !== null && rawHost === explicitCanonicalHost) ||
+      (renderExternalHost !== null && rawHost === renderExternalHost) ||
       (canonicalAppUrl !== null && rawHost === canonicalAppUrl)
     );
   }
@@ -168,6 +177,7 @@ export function isCanonicalPlatformHost(hostHeader: string | undefined): boolean
     rawHost === 'shop.abacha.com' ||
     rawHost === 'abacha-app.onrender.com' ||
     (explicitCanonicalHost !== null && rawHost === explicitCanonicalHost) ||
+    (renderExternalHost !== null && rawHost === renderExternalHost) ||
     (canonicalAppUrl !== null && rawHost === canonicalAppUrl)
   );
 }
