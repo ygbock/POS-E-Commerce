@@ -445,12 +445,12 @@ export async function createApp(options: CreateAppOptions = {}) {
         });
       } catch (err: any) {
         const msg = err?.message || '';
-        if (msg.includes('ORGANIZATION_REQUIRED')) {
-          return res.status(422).json({
+        if (msg.includes('TENANT_SELECTION_REQUIRED')) {
+          return res.status(409).json({
             success: false,
             error: {
-              code: 'VALIDATION_ERROR',
-              message: 'organizationId is required and must be a non-empty string',
+              code: 'TENANT_SELECTION_REQUIRED',
+              message: 'This account belongs to multiple organizations. Select an organization to continue.',
             },
           });
         }
