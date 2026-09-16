@@ -1083,11 +1083,11 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - `npm run test:operational`: ✅ PASS (26/26)
   - `npm test`: ✅ PASS (All 23 suites pass)
   - `npm run build`: ✅ PASS (Vite + esbuild dist/server.cjs)
-  - `git status`: Verified tracked files; no commit performed.
+  - `git status`: Verified after committed correction; working tree must be clean on the workstation.
 - **Acceptance Gate Checklist:**
   - [x] Atomic provisioning: org + admin + subscription created or none (full rollback on any failure)
   - [x] Input validation rejects all invalid/missing fields with typed error codes
-  - [x] Duplicate slug/code rejected with 409 before transaction entry and backed by DB unique constraints
+  - [x] Duplicate slug/code rejected with 409 and backed by DB unique constraints; concurrent update collisions are translated to the same domain error
   - [x] Password never logged, returned, or stored in plain text
   - [x] Audit event `PLATFORM_TENANT_PROVISIONED` written inside transaction
   - [x] GET /tenants supports status/planTier/search/limit/offset filters with input normalization
@@ -1100,4 +1100,4 @@ Run `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run b
   - [x] 21/21 test scenarios pass
   - [x] TypeScript compiles with 0 errors
   - [x] main branch untouched
-- **Supervisor Gate:** `PASSED POST-FIX REGRESSION & BUILD GATES (READY FOR REVIEW)`
+- **Supervisor Gate:** `POST-CORRECTION INSPECTION — CORRECTION APPLIED; FINAL LOCAL REGRESSION/BUILD GATE REQUIRED`
