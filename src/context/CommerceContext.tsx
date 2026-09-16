@@ -269,7 +269,39 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const [currentRole, setCurrentRoleState] = useState<Role>(() => loadStored('role', 'Super Admin'));
-  
+
+  // UI role labels are derived from the server-authoritative role after authentication.
+  // "Super Admin" is a tenant-scoped administrator; platform control-plane access
+  // is reserved for the explicit platform roles.
+  const roleFromServer = (serverRole: string): Role => {
+    const roleMap: Record<string, Role> = {
+      super_admin: 'Super Admin',
+      admin: 'Business Owner',
+      manager: 'Store Manager',
+      cashier: 'Cashier',
+      inventory_manager: 'Inventory Manager',
+      purchasing_manager: 'Inventory Manager',
+      sales_user: 'Business Owner',
+      viewer: 'E-commerce Customer',
+      system_owner: 'System Owner',
+      platform_admin: 'Platform Admin',
+      platform_support: 'Platform Support',
+      platform_finance: 'Platform Finance',
+    };
+    return roleMap[serverRole.trim().toLowerCase()] || 'E-commerce Customer';
+  };
+
+  const applyAuthenticatedUser = (user: { role: string } | null) => {
+    if (!user?.role) return;
+    const resolvedRole = roleFromServer(user.role);
+    setCurrentRoleState(resolvedRole);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_role`, JSON.stringify(resolvedRole));
+    } catch {
+      // ignore
+    }
+  };
+
   const setCurrentRole = (role: Role) => {
     setCurrentRoleState(role);
     try {
@@ -277,12 +309,23 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch {
       // ignore
     }
-    authClient.loginAsPersona(role);
+    void authClient.loginAsPersona(role).then(applyAuthenticatedUser);
   };
 
   useEffect(() => {
-    // Initial server authentication for current persona
-    authClient.loginAsPersona(currentRole);
+    // Demo persona login is development-only. In production, hydrate the UI
+    // from the already-authenticated server session instead of trusting localStorage.
+    void (async () => {
+      if (import.meta.env.DEV) {
+        const demoUser = await authClient.loginAsPersona(currentRole);
+        if (demoUser) {
+          applyAuthenticatedUser(demoUser);
+          return;
+        }
+      }
+      const authenticatedUser = await authClient.fetchMe();
+      applyAuthenticatedUser(authenticatedUser);
+    })();
   }, []);
 
   const [currentLocationId, setCurrentLocationId] = useState<BranchLocationId>(() => loadStored('locationId', 'loc-store-downtown'));
