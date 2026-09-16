@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Product, ProductVariant } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface ProductCardProps {
   product: Product;
@@ -34,6 +35,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     toggleWishlist,
     isInWishlist,
   } = useCommerce();
+  const { formatCurrency: formatStorefrontCurrency } = useStorefrontContext();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
@@ -195,11 +197,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
           <div className="flex items-baseline gap-1 sm:gap-1.5 flex-wrap pt-1">
             <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-              {formatCurrency(price)}
+              {formatStorefrontCurrency(price)}
             </span>
             {compareAtPrice && compareAtPrice > price && (
               <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 line-through">
-                {formatCurrency(compareAtPrice)}
+                {formatStorefrontCurrency(compareAtPrice)}
               </span>
             )}
           </div>

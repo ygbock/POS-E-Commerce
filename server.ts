@@ -12,8 +12,12 @@ import { OrderRepository, OrderRecord, OrderItemRecord, PaymentRecord } from './
 import { CustomerRepository } from './server/repositories/customerRepository.ts';
 import { InventoryRepository } from './server/repositories/inventoryRepository.ts';
 import { AuditRepository } from './server/repositories/auditRepository.ts';
+import { SubscriptionRepository } from './server/repositories/subscriptionRepository.ts';
+import { SubscriptionService, SubscriptionLimitError } from './server/services/subscriptionService.ts';
 import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
 import { createPosRouter } from './server/routes/posRoutes.ts';
+import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
+import { createPlatformRouter } from './server/routes/platformRoutes.ts';
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
@@ -36,6 +40,7 @@ import {
   validateProductPayload,
   validateVariantPayload,
   validateUserPayload,
+  validateLocationPayload,
   validateCustomerPayload,
   validateCategoryPayload,
   validateBrandPayload,
@@ -44,16 +49,13 @@ import {
 } from './server/validation/index.ts';
 import { apiErrorHandler, buildApiErrorResponse, ApiError } from './server/utils/errorSanitizer.ts';
 import { hashPassword } from './server/auth/password.ts';
-import { PERMISSIONS, ROLE_PERMISSIONS, VALID_ROLES } from './server/auth/roles.ts';
-import { SubscriptionRepository } from './server/repositories/subscriptionRepository.ts';
-import { SubscriptionService } from './server/services/subscriptionService.ts';
-import { requireFeature, requireWithinLimit } from './server/middleware/entitlements.ts';
+import { PERMISSIONS, ROLE_PERMISSIONS, VALID_ROLES, isPlatformRole } from './server/auth/roles.ts';
+
+import { validateEnvironment } from './server/config/environment.ts';
 
 export interface CreateAppOptions {
   db?: DatabaseClient;
   authService?: AuthService;
-  subscriptionRepo?: SubscriptionRepository;
-  subscriptionService?: SubscriptionService;
   skipVite?: boolean;
   initialProducts?: Product[];
 }
@@ -62,21 +64,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   const app = express();
   const isProd = process.env.NODE_ENV === 'production';
 
-  // Validate production environment requirements before proceeding
-  if (isProd) {
-    const dbUrl = process.env.DATABASE_URL;
-    const pgHost = process.env.PGHOST;
-    if (!dbUrl && !pgHost) {
-      throw new Error('[AbaCha Config Fatal] Production environment requires a valid PostgreSQL configuration (DATABASE_URL or PGHOST is missing).');
-    }
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error('[AbaCha Config Fatal] JWT_SECRET environment variable is mandatory in production.');
-    }
-    if (jwtSecret.length < 32 || jwtSecret.includes('dev') || jwtSecret.includes('default')) {
-      throw new Error('[AbaCha Config Fatal] Production JWT_SECRET must be a high-entropy string of at least 32 characters.');
-    }
-  }
+  // Centralized Environment & Runtime Contract Validation (UPG-001)
+  validateEnvironment();
 
   // Initialize Database Persistence Layer
   const dbStatus = {
@@ -142,8 +131,36 @@ export async function createApp(options: CreateAppOptions = {}) {
   const customerRepo = new CustomerRepository(db);
   const inventoryRepo = new InventoryRepository(db);
   const auditRepo = new AuditRepository(db);
-  const subscriptionRepo = options.subscriptionRepo || new SubscriptionRepository(db);
-  const subscriptionService = options.subscriptionService || new SubscriptionService(subscriptionRepo, auditRepo, db);
+  app.set('auditRepo', auditRepo);
+  const subscriptionRepo = new SubscriptionRepository(db);
+  const subscriptionService = new SubscriptionService(subscriptionRepo);
+  app.set('subscriptionRepo', subscriptionRepo);
+  app.set('subscriptionService', subscriptionService);
+
+  // Ensure any existing organizations have baseline subscription records (TASK-5.6.1 / TASK-5.6.2)
+  try {
+    await db.query(`
+      INSERT INTO organization_subscriptions (
+        id, organization_id, plan_id, status, current_period_start, current_period_end, trial_ends_at, metadata
+      )
+      SELECT
+        'sub_' || md5(o.id || ':initial'),
+        o.id,
+        COALESCE((SELECT sp.id FROM subscription_plans sp WHERE sp.code = lower(COALESCE(o.plan_tier, 'starter')) LIMIT 1), 'plan_starter'),
+        'trialing',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP + INTERVAL '14 days',
+        CURRENT_TIMESTAMP + INTERVAL '14 days',
+        jsonb_build_object('source', 'create_app_bootstrap')
+      FROM organizations o
+      WHERE NOT EXISTS (
+        SELECT 1 FROM organization_subscriptions os WHERE os.organization_id = o.id
+      )
+    `);
+  } catch {
+    // Non-blocking in degraded persistence or unmigrated tests
+  }
+
   const posService = new PosService(undefined, orderRepo, inventoryRepo, auditRepo, db);
   const orderService = new OrderService(orderRepo, customerRepo, inventoryRepo, auditRepo, db);
 
@@ -281,6 +298,29 @@ export async function createApp(options: CreateAppOptions = {}) {
       if (targetOrgParam && typeof targetOrgParam === 'string' && targetOrgParam.trim() !== '') {
         const requested = targetOrgParam.trim();
         if (requested !== callerOrg) {
+          if (auditRepository) {
+            try {
+              await auditRepository.recordEvent({
+                organization_id: callerOrg,
+                actor_id: req.auth.userId,
+                actor_name: (req.auth as any)?.name || req.auth.email || req.auth.userId,
+                actor_role: req.auth.role,
+                action: 'SECURITY_CROSS_TENANT_DENIED',
+                entity_type: entityType,
+                entity_id: requested,
+                metadata: {
+                  callerTenant: callerOrg,
+                  attemptedTenant: requested,
+                  path: req.originalUrl || req.url,
+                  method: req.method,
+                },
+                severity: 'Critical',
+                result: 'DENIED',
+              });
+            } catch (auditErr) {
+              console.warn('[Audit] Failed to log cross-tenant denial:', auditErr);
+            }
+          }
           throw new ApiError('TENANT_ACCESS_DENIED', 'Cross-tenant access forbidden.', 403);
         }
       }
@@ -342,6 +382,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Central Cryptographic Authentication Extraction (SEC-001)
   app.use('/api', createAuthenticateMiddleware(authService));
+
+  // SaaS control-plane routes. Authorization is enforced inside the router.
+  app.use('/api/platform', createPlatformRouter(db, subscriptionService));
 
   // Request Header Metadata
   app.use('/api', (req, res, next) => {
@@ -407,6 +450,22 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ------------------------------------------------------------------
   // 2. SYSTEM HEALTH & DIAGNOSTICS ENDPOINTS
   // ------------------------------------------------------------------
+  const runtimeRevision = (
+    process.env.GIT_COMMIT_SHA ||
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.APP_REVISION ||
+    ''
+  ).trim();
+
+  app.get('/api/version', (req: Request, res: Response) => {
+    res.json({
+      service: 'Centralized Product Service',
+      version: '2.6.0',
+      revision: runtimeRevision,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   app.get('/api/health', async (req: Request, res: Response) => {
     let isDbHealthy = false;
     try {
@@ -426,7 +485,8 @@ export async function createApp(options: CreateAppOptions = {}) {
         status: 'unhealthy',
         ready: false,
         service: 'Centralized Product Service',
-        version: '2.4.0',
+        version: '2.6.0',
+        revision: runtimeRevision,
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
         database: {
@@ -439,7 +499,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       status: 'ok',
       ready: true,
       service: 'Centralized Product Service',
-      version: '2.4.0',
+      version: '2.6.0',
+      revision: runtimeRevision,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       database: {
@@ -584,146 +645,86 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
-  // Authoritative Audit Logs Query Endpoint
+  // ------------------------------------------------------------------
+  // 3. AUDIT & SECURITY ADMINISTRATION ENDPOINTS (AUD-001)
+  // ------------------------------------------------------------------
+  const handleAuditQuery = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = await resolveAuthorizedTenant(req, auditRepo, 'AUDIT');
+
+      const rawPage = parseInt(req.query.page as string, 10);
+      const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+
+      const rawLimit = parseInt((req.query.pageSize || req.query.limit) as string, 10);
+      const pageSize = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 100);
+
+      const result = await auditRepo.queryAuditEvents({
+        organizationId: orgId,
+        page,
+        pageSize,
+        startDate: typeof req.query.startDate === 'string' ? req.query.startDate : undefined,
+        endDate: typeof req.query.endDate === 'string' ? req.query.endDate : undefined,
+        action: typeof req.query.action === 'string' ? req.query.action : undefined,
+        entityType: typeof (req.query.entityType || req.query.module) === 'string' ? (req.query.entityType || req.query.module) as string : undefined,
+        entityId: typeof (req.query.entityId || req.query.targetId || req.query.target) === 'string' ? (req.query.entityId || req.query.targetId || req.query.target) as string : undefined,
+        actorId: typeof (req.query.actorId || req.query.actor) === 'string' ? (req.query.actorId || req.query.actor) as string : undefined,
+        severity: typeof req.query.severity === 'string' ? (req.query.severity as any) : undefined,
+        result: typeof req.query.result === 'string' ? (req.query.result as any) : undefined,
+        search: typeof (req.query.search || req.query.q) === 'string' ? (req.query.search || req.query.q) as string : undefined,
+      });
+
+      res.json({
+        success: true,
+        count: result.items.length,
+        data: result.items,
+        pagination: {
+          totalCount: result.totalCount,
+          page: result.page,
+          pageSize: result.pageSize,
+          totalPages: result.totalPages,
+          hasMore: result.hasMore,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  // Authoritative Security Metrics Overview
+  app.get(
+    '/api/tenant/audit/overview',
+    requireAuth(),
+    requirePermission(PERMISSIONS.AUDIT_VIEW),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'AUDIT');
+        const metrics = await auditRepo.getSecurityMetrics(orgId);
+        res.json({
+          success: true,
+          data: metrics,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Authoritative Audit Logs Query Endpoints
+  app.get(
+    '/api/tenant/audit',
+    requireAuth(),
+    requirePermission(PERMISSIONS.AUDIT_VIEW),
+    requireTenantAccess(),
+    handleAuditQuery
+  );
+
   app.get(
     '/api/audit-logs',
     requireAuth(),
     requirePermission(PERMISSIONS.AUDIT_VIEW),
     requireTenantAccess(),
-    requireFeature('audit_logs', subscriptionService),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const isSuperAdmin = req.auth!.role === 'super_admin';
-        const orgId = isSuperAdmin && req.query.orgId ? (req.query.orgId as string) : req.auth!.organizationId;
-
-        const dbEvents = await auditRepo.listRecentEvents({ orgId, limit: 50 });
-        res.json({
-          success: true,
-          count: dbEvents.length,
-          data: dbEvents,
-        });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // ------------------------------------------------------------------
-  // 3.5 SAAS SUBSCRIPTIONS & ENTITLEMENTS API
-  // ------------------------------------------------------------------
-  app.get(
-    '/api/tenant/subscription/entitlements',
-    requireAuth(),
-    requireTenantAccess(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const orgId = req.auth!.organizationId;
-        const entitlements = await subscriptionService.getEntitlements(orgId);
-        res.json({
-          success: true,
-          data: entitlements,
-        });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  app.put(
-    '/api/admin/subscriptions/:orgId',
-    requireAuth(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        if (req.auth!.role !== 'super_admin' && !req.auth!.permissions?.includes('admin.all')) {
-          return res.status(403).json({
-            success: false,
-            error: { code: 'FORBIDDEN', message: 'Admin authorization required to manage subscriptions.' },
-          });
-        }
-        const { orgId } = req.params;
-        const { planCode, status } = req.body;
-        const updated = await subscriptionRepo.upsertSubscription({
-          organizationId: orgId,
-          planCode: planCode || 'starter',
-          status: status || 'active',
-        });
-        res.json({ success: true, data: updated });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  app.get(
-    '/api/reports/advanced',
-    requireAuth(),
-    requireTenantAccess(),
-    requireFeature('advanced_reports', subscriptionService),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const orgId = req.auth!.organizationId;
-        res.json({
-          success: true,
-          data: { organizationId: orgId, report: 'Executive Advanced Sales Analysis' },
-        });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  app.get(
-    '/api/reports/analytics',
-    requireAuth(),
-    requireTenantAccess(),
-    requireFeature('advanced_analytics', subscriptionService),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const orgId = req.auth!.organizationId;
-        res.json({
-          success: true,
-          data: { organizationId: orgId, analytics: 'Predictive Analytics Engine' },
-        });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  app.get(
-    '/api/export/data',
-    requireAuth(),
-    requireTenantAccess(),
-    requireFeature('export', subscriptionService),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const orgId = req.auth!.organizationId;
-        res.json({
-          success: true,
-          data: { organizationId: orgId, downloadUrl: `/exports/${orgId}.csv` },
-        });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  app.get(
-    '/api/developer/api-keys',
-    requireAuth(),
-    requireTenantAccess(),
-    requireFeature('api_access', subscriptionService),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const orgId = req.auth!.organizationId;
-        res.json({
-          success: true,
-          data: { organizationId: orgId, keys: [] },
-        });
-      } catch (err) {
-        next(err);
-      }
-    }
+    handleAuditQuery
   );
 
   // ------------------------------------------------------------------
@@ -732,6 +733,16 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // GET /api/products - List products with tenant isolation
   app.get('/api/products', (req: Request, res: Response) => {
+    if (req.auth && req.auth.organizationActive === false && !isPlatformRole(req.auth.role)) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'TENANT_ACCESS_DENIED',
+          message: 'This organization is currently inactive.',
+        },
+      });
+    }
+
     const { category, brand, search, channel, status, page = '1', limit = '100' } = req.query;
 
     let result = [...masterProductsStore];
@@ -834,12 +845,9 @@ export async function createApp(options: CreateAppOptions = {}) {
         // Server-authoritative tenant assignment: stamped from authenticated context
         const authoritativeOrg = await resolveAuthorizedTenant(req, auditRepo, 'PRODUCT');
 
-        if (req.auth!.role !== 'super_admin') {
-          await subscriptionService.assertWithinLimit(authoritativeOrg, 'products', 1, {
-            userId: req.auth!.userId,
-            role: req.auth!.role,
-          });
-        }
+        // Subscription plan product limit enforcement (TASK-5.6.2)
+        const tenantProductsCount = masterProductsStore.filter((p) => (p.organizationId || 'org_default') === authoritativeOrg).length;
+        await subscriptionService.assertCanCreateProduct(authoritativeOrg, tenantProductsCount);
 
         const newProduct: Product = {
           id,
@@ -1505,59 +1513,101 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
-  // Locations Creation API (Permission-protected, tenant-stamped & quota-enforced)
+
   app.post(
     '/api/locations',
     requireAuth(),
-    requirePermission('locations.manage'),
+    requirePermission(PERMISSIONS.LOCATIONS_MANAGE),
     requireTenantAccess(),
+    validateBody(validateLocationPayload),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
-        if (req.auth!.role !== 'super_admin') {
-          const count = await subscriptionRepo.countLocations(orgId);
-          if (count >= 1) {
-            await subscriptionService.assertFeature(orgId, 'multi_location', {
-              userId: req.auth!.userId,
-              role: req.auth!.role,
-            });
-          }
-          await subscriptionService.assertWithinLimit(orgId, 'locations', 1, {
-            userId: req.auth!.userId,
-            role: req.auth!.role,
-          });
-        }
-
-        const { code, name, type, address, phone, isPosEnabled } = req.body;
-        if (!name) {
-          return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Location name is required.' } });
-        }
-        const id = `loc_${randomUUID().slice(0, 8)}`;
+        // Subscription plan location limit & multi-location feature gating (TASK-5.6.2)
+        await subscriptionService.assertCanCreateLocation(orgId, db);
+        const { code, name, type, address, phone, manager_name, is_pos_enabled, is_active } = req.body;
+        const id = `loc-${randomUUID()}`;
         const result = await db.query(
-          `INSERT INTO locations (id, organization_id, code, name, type, address, phone, is_pos_enabled, is_active)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
-           RETURNING *`,
-          [
-            id,
-            orgId,
-            code || `LOC-${randomUUID().slice(0, 4).toUpperCase()}`,
-            name,
-            type || 'Retail Store',
-            address || '',
-            phone || '',
-            isPosEnabled ?? true,
-          ]
+          `INSERT INTO locations
+            (id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, created_at, updated_at`,
+          [id, orgId, code, name, type, address ?? null, phone ?? null, manager_name ?? null, is_pos_enabled ?? false, is_active ?? true]
         );
-        res.status(201).json({ success: true, data: result.rows[0] });
-      } catch (err) {
+        const created = result.rows[0];
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'CREATE_LOCATION',
+          entity_type: 'LOCATION', entity_id: id,
+          metadata: { code, name, type }
+        });
+        return res.status(201).json({ success: true, data: created });
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          return res.status(409).json({ success: false, error: { code: 'DUPLICATE_LOCATION_CODE', message: 'A location with this code already exists in this tenant.' } });
+        }
+        next(err);
+      }
+    }
+  );
+
+  app.put(
+    '/api/locations/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.LOCATIONS_MANAGE),
+    requireTenantAccess(),
+    validateBody((body: any) => validateLocationPayload(body, true)),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
+        const existing = await db.query('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [req.params.id, orgId]);
+        if (existing.rows.length === 0) {
+          const other = await db.query('SELECT 1 FROM locations WHERE id = $1 AND organization_id <> $2', [req.params.id, orgId]);
+          if (other.rows.length > 0) {
+            return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant location modification forbidden.' } });
+          }
+          return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Location not found.' } });
+        }
+        const allowed = ['code','name','type','address','phone','manager_name','is_pos_enabled','is_active'];
+        const sets: string[] = [];
+        const values: any[] = [];
+        for (const key of allowed) {
+          if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+            values.push(req.body[key] ?? null);
+            sets.push(`${key} = ${values.length}`);
+          }
+        }
+        if (sets.length === 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least one mutable location field is required.' } });
+        values.push(req.params.id, orgId);
+        const result = await db.query(
+          `UPDATE locations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ${values.length - 1} AND organization_id = ${values.length}
+           RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, created_at, updated_at`,
+          values
+        );
+        const updated = result.rows[0];
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'UPDATE_LOCATION',
+          entity_type: 'LOCATION', entity_id: req.params.id,
+          metadata: { changedFields: Object.keys(req.body) }
+        });
+        return res.json({ success: true, data: updated });
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          return res.status(409).json({ success: false, error: { code: 'DUPLICATE_LOCATION_CODE', message: 'A location with this code already exists in this tenant.' } });
+        }
         next(err);
       }
     }
   );
 
   // Inventory Management API (INV-001: Balances, Movements, Reservations, Transfers, Stock Counts)
-  app.use('/api/inventory', createInventoryRouter(db, inventoryRepo));
+  app.use('/api/inventory', createInventoryRouter(db, inventoryRepo, subscriptionService));
   app.use('/api/pos', createPosRouter(db, posService, subscriptionService));
+  app.use('/api/storefront', createStorefrontRouter(db, orderService, subscriptionService));
   if (process.env.NODE_ENV !== 'test') {
     app.locals.reservationExpiryWorker = startReservationExpiryWorker({ db });
   }
@@ -1588,20 +1638,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const orgId = await resolveAuthorizedTenant(req, auditRepo, 'ORDER');
-
-        if (req.auth!.role !== 'super_admin') {
-          if (req.body.channel === 'ecommerce' || req.body.channel === 'storefront') {
-            await subscriptionService.assertFeature(orgId, 'ecommerce', {
-              userId: req.auth!.userId,
-              role: req.auth!.role,
-            });
-          }
-          await subscriptionService.assertWithinLimitTx(db, orgId, 'orders', 1, {
-            userId: req.auth!.userId,
-            role: req.auth!.role,
-          });
-        }
-
+        // Subscription plan order limit & storefront feature gating (TASK-5.6.2)
+        await subscriptionService.assertFeatureEnabled(orgId, 'storefront');
+        await subscriptionService.assertCanCreateOrder(orgId, db);
         const actorName = (req.auth as any)?.name || req.auth!.userId;
 
         // Secure authentication/role boundary check
@@ -1658,11 +1697,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         let status = 500;
         let message = 'An internal server error occurred while processing the order. Please try again later.';
 
-        if (err instanceof ApiError) {
-          status = err.status;
-          code = err.code;
-          message = err.message;
-        } else if (err instanceof DomainError) {
+        if (err instanceof DomainError) {
           code = err.code;
           message = err.message;
           if (code === 'IDEMPOTENCY_CONFLICT') {
@@ -1850,6 +1885,83 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
+
+  app.post(
+    '/api/customers',
+    requireAuth(),
+    requirePermission(PERMISSIONS.CUSTOMERS_CREATE),
+    requireTenantAccess(),
+    validateBody(validateCustomerPayload),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'CUSTOMER');
+        const id = `cust-${randomUUID()}`;
+        const body = req.body;
+        const created = await customerRepo.createCustomer({
+          id,
+          organization_id: orgId,
+          name: body.name.trim(),
+          email: body.email || null,
+          phone: body.phone || null,
+          tier: body.tier || 'Bronze',
+          store_credit_balance: body.store_credit_balance || '0.00',
+          credit_limit: body.credit_limit || '0.00',
+          notes: body.notes || null,
+        });
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'CREATE_CUSTOMER',
+          entity_type: 'CUSTOMER', entity_id: id, metadata: { name: body.name }
+        });
+        return res.status(201).json({ success: true, data: created });
+      } catch (err) { next(err); }
+    }
+  );
+
+  app.put(
+    '/api/customers/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.CUSTOMERS_UPDATE),
+    requireTenantAccess(),
+    validateBody((body: any) => validateCustomerPayload(body, true)),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'CUSTOMER');
+        const existing = await customerRepo.findCustomerById(req.params.id, orgId);
+        if (!existing) {
+          const other = await db.query('SELECT 1 FROM customers WHERE id = $1 AND organization_id <> $2', [req.params.id, orgId]);
+          if (other.rows.length > 0) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant customer modification forbidden.' } });
+          return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Customer not found.' } });
+        }
+        const b = req.body;
+        const sets: string[] = [];
+        const values: any[] = [];
+        for (const key of ['name','email','phone','tier','store_credit_balance','credit_limit','notes']) {
+          if (Object.prototype.hasOwnProperty.call(b, key)) {
+            values.push(b[key] === '' ? null : b[key]);
+            sets.push(`${key} = ${values.length}`);
+          }
+        }
+        if (sets.length === 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least one mutable customer field is required.' } });
+        values.push(req.params.id, orgId);
+        const result = await db.query(
+          `UPDATE customers SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ${values.length - 1} AND organization_id = ${values.length} RETURNING id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at, created_at, updated_at`,
+          values
+        );
+        const updated = result.rows[0];
+        await auditRepo.recordEvent({
+          organization_id: orgId, actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.userId,
+          actor_role: req.auth!.role, action: 'UPDATE_CUSTOMER',
+          entity_type: 'CUSTOMER', entity_id: req.params.id,
+          metadata: { changedFields: Object.keys(b) }
+        });
+        return res.json({ success: true, data: updated });
+      } catch (err) { next(err); }
+    }
+  );
+
   // User Management
   app.get(
     '/api/users',
@@ -1890,26 +2002,20 @@ export async function createApp(options: CreateAppOptions = {}) {
         const { email, name, password, role, locationId } = req.body;
         const isSuperAdmin = req.auth!.role === 'super_admin';
 
-        // Privilege escalation guard: ordinary admins/managers cannot assign super_admin role
-        if (role === 'super_admin' && !isSuperAdmin) {
-          return res.status(403).json({
-            success: false,
-            error: {
-              code: 'PERMISSION_DENIED',
-              message: 'Only super_admin can assign the super_admin role.',
-            },
-          });
+        // Tenant user creation can never create platform identities or privilege-escalate into super_admin.
+        const tenantAssignableRoles = ['admin', 'manager', 'cashier', 'inventory_manager', 'purchasing_manager', 'sales_user', 'viewer'];
+        if (!tenantAssignableRoles.includes(role) && !(isSuperAdmin && role === 'admin')) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'The requested role is not assignable as a tenant user.' } });
+        }
+        if (role === 'admin' && !isSuperAdmin) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Only super_admin can assign the admin role.' } });
         }
 
         // Server-authoritative tenant assignment via Model B
         const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
 
-        if (!isSuperAdmin) {
-          await subscriptionService.assertWithinLimitTx(db, targetOrgId, 'users', 1, {
-            userId: req.auth!.userId,
-            role: req.auth!.role,
-          });
-        }
+        // Subscription plan user limit enforcement (TASK-5.6.2)
+        await subscriptionService.assertCanCreateUser(targetOrgId, db);
 
         const { hash, salt } = hashPassword(password);
         const created = await userRepo.createUser({
@@ -1920,6 +2026,30 @@ export async function createApp(options: CreateAppOptions = {}) {
           passwordSalt: salt,
           role,
           locationId: locationId || undefined,
+        });
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: 'USER_CREATED',
+          entity_type: 'USER',
+          entity_id: created.id,
+          after_state: {
+            id: created.id,
+            email: created.email,
+            name: created.name,
+            role: created.role,
+            location_id: created.location_id,
+            is_active: created.is_active,
+          },
+          metadata: {
+            createdUserEmail: created.email,
+            createdUserRole: created.role,
+          },
+          severity: 'Medium',
+          result: 'SUCCESS',
         });
 
         res.status(201).json({
@@ -1941,285 +2071,297 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
+  app.patch(
+    '/api/users/:id/status',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_UPDATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { id } = req.params;
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+
+        const existing = await userRepo.findById(id, targetOrgId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found in organization.' } });
+        }
+
+        let targetIsActive: boolean;
+        if (typeof req.body.isActive === 'boolean') {
+          targetIsActive = req.body.isActive;
+        } else if (typeof req.body.status === 'string') {
+          targetIsActive = req.body.status.toLowerCase() === 'active';
+        } else {
+          return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'isActive (boolean) or status (string) is required.' } });
+        }
+
+        if (!targetIsActive && (existing.role === 'admin' || existing.role === 'super_admin')) {
+          const activeAdmins = await userRepo.countActiveAdmins(targetOrgId);
+          if (activeAdmins <= 1) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'OWNER_PROTECTION_VIOLATION',
+                message: 'Cannot deactivate the organization owner or last active administrator.',
+              },
+            });
+          }
+          if (req.auth!.userId === existing.id) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'SELF_DEACTIVATION_FORBIDDEN',
+                message: 'Administrators cannot deactivate their own account.',
+              },
+            });
+          }
+        }
+
+        const updated = await userRepo.updateUser(id, targetOrgId, { is_active: targetIsActive });
+        if (!updated) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found.' } });
+        }
+
+        if (!targetIsActive) {
+          try {
+            await userRepo.revokeToken(`rev_user_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User suspended');
+          } catch (tokErr) {
+            console.warn('[Auth] Failed to revoke user token on suspension:', tokErr);
+          }
+        }
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: targetIsActive ? 'USER_REACTIVATED' : 'USER_SUSPENDED',
+          entity_type: 'USER',
+          entity_id: updated.id,
+          before_state: { is_active: existing.is_active },
+          after_state: { is_active: updated.is_active },
+          metadata: {
+            targetEmail: updated.email,
+            targetName: updated.name,
+            reason: req.body.reason || (targetIsActive ? 'Staff reactivated' : 'Staff suspended'),
+          },
+          severity: targetIsActive ? 'Medium' : 'High',
+          result: 'SUCCESS',
+        });
+
+        res.json({
+          success: true,
+          data: {
+            id: updated.id,
+            organizationId: updated.organization_id,
+            email: updated.email,
+            name: updated.name,
+            role: updated.role,
+            locationId: updated.location_id,
+            isActive: updated.is_active,
+            updatedAt: updated.updated_at,
+          },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.put(
+    '/api/users/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_UPDATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { id } = req.params;
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+        const isSuperAdmin = req.auth!.role === 'super_admin';
+
+        const existing = await userRepo.findById(id, targetOrgId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found in organization.' } });
+        }
+
+        const { name, role, locationId } = req.body;
+        const targetRole = role || existing.role;
+
+        const tenantAssignableRoles = ['admin', 'manager', 'cashier', 'inventory_manager', 'purchasing_manager', 'sales_user', 'viewer'];
+        if (!tenantAssignableRoles.includes(targetRole) && !(isSuperAdmin && targetRole === 'admin')) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'The requested role is not assignable as a tenant user.' } });
+        }
+        if (targetRole === 'admin' && existing.role !== 'admin' && !isSuperAdmin) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Only super_admin can assign the admin role.' } });
+        }
+
+        if (existing.role === 'admin' && targetRole !== 'admin') {
+          const activeAdmins = await userRepo.countActiveAdmins(targetOrgId);
+          if (activeAdmins <= 1) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'OWNER_PROTECTION_VIOLATION',
+                message: 'Cannot demote the organization owner or last active administrator.',
+              },
+            });
+          }
+        }
+
+        const updated = await userRepo.updateUser(id, targetOrgId, {
+          name: typeof name === 'string' && name.trim() ? name.trim() : existing.name,
+          role: targetRole,
+          location_id: locationId !== undefined ? (locationId || null) : existing.location_id,
+        });
+
+        if (!updated) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found.' } });
+        }
+
+        const roleChanged = existing.role !== updated.role;
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: roleChanged ? 'USER_ROLE_CHANGED' : 'USER_UPDATED',
+          entity_type: 'USER',
+          entity_id: updated.id,
+          before_state: { name: existing.name, role: existing.role, location_id: existing.location_id },
+          after_state: { name: updated.name, role: updated.role, location_id: updated.location_id },
+          metadata: {
+            targetEmail: updated.email,
+            previousRole: existing.role,
+            newRole: updated.role,
+          },
+          severity: roleChanged ? 'High' : 'Low',
+          result: 'SUCCESS',
+        });
+
+        res.json({
+          success: true,
+          data: {
+            id: updated.id,
+            organizationId: updated.organization_id,
+            email: updated.email,
+            name: updated.name,
+            role: updated.role,
+            locationId: updated.location_id,
+            isActive: updated.is_active,
+            updatedAt: updated.updated_at,
+          },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.delete(
+    '/api/users/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_DELETE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { id } = req.params;
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+
+        const existing = await userRepo.findById(id, targetOrgId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found in organization.' } });
+        }
+
+        if (req.auth!.userId === existing.id) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'SELF_DELETION_FORBIDDEN',
+              message: 'Users cannot delete their own account.',
+            },
+          });
+        }
+
+        if (existing.role === 'admin' || existing.role === 'super_admin') {
+          const activeAdmins = await userRepo.countActiveAdmins(targetOrgId);
+          if (activeAdmins <= 1) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'OWNER_PROTECTION_VIOLATION',
+                message: 'Cannot delete the organization owner or last active administrator.',
+              },
+            });
+          }
+        }
+
+        try {
+          await userRepo.revokeToken(`rev_del_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User deleted');
+        } catch (tokErr) {
+          console.warn('[Auth] Failed to revoke user token on deletion:', tokErr);
+        }
+
+        const deleted = await userRepo.deleteUser(id, targetOrgId);
+        if (!deleted) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found.' } });
+        }
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: 'USER_DELETED',
+          entity_type: 'USER',
+          entity_id: id,
+          before_state: {
+            email: existing.email,
+            name: existing.name,
+            role: existing.role,
+            location_id: existing.location_id,
+          },
+          metadata: {
+            deletedUserEmail: existing.email,
+            deletedUserRole: existing.role,
+          },
+          severity: 'High',
+          result: 'SUCCESS',
+        });
+
+        res.json({
+          success: true,
+          message: 'User successfully deleted.',
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   // Role Permissions Matrix
   app.get('/api/roles/permissions', requireAuth(), (req: Request, res: Response) => {
     res.json({ success: true, data: ROLE_PERMISSIONS });
   });
 
-  // ------------------------------------------------------------------
-  // 8.1 TENANT SUBSCRIPTION SELF-SERVICE
-  // ------------------------------------------------------------------
+  // Advanced Reports API (Gated by 'reports_advanced' / 'advanced_reports' subscription feature - TASK-5.6.2)
   app.get(
-    '/api/tenant/subscription',
+    '/api/reports/advanced',
     requireAuth(),
+    requirePermission(PERMISSIONS.REPORTS_VIEW),
     requireTenantAccess(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'SUBSCRIPTION');
-        const entitlements = await subscriptionService.getEntitlements(orgId);
-        res.json({ success: true, data: entitlements });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // ------------------------------------------------------------------
-  // 8.2 SUPER ADMIN PLATFORM PLAN & SUBSCRIPTION MANAGEMENT
-  // ------------------------------------------------------------------
-
-  const requireSuperAdmin = () => {
-    return (req: Request, res: Response, next: NextFunction) => {
-      if (!req.auth || req.auth.role !== 'super_admin') {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: 'PERMISSION_DENIED',
-            message: 'Only super_admin role can access Super Admin platform operations.',
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'REPORT');
+        await subscriptionService.assertFeatureEnabled(orgId, 'reports_advanced');
+        res.json({
+          success: true,
+          data: {
+            organizationId: orgId,
+            reportType: 'advanced_analytics',
+            generatedAt: new Date().toISOString(),
           },
         });
-      }
-      next();
-    };
-  };
-
-  // Platform Plans List
-  app.get('/api/platform/plans', requireAuth(), async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const isSuperAdmin = req.auth?.role === 'super_admin';
-      const includeInactive = isSuperAdmin && req.query.includeInactive === 'true';
-      const plans = await subscriptionService.listPlans({ includeInactive });
-      res.json({ success: true, count: plans.length, data: plans });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // Platform Plan Details
-  app.get('/api/platform/plans/:id', requireAuth(), async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const plan = await subscriptionService.getPlan(req.params.id);
-      res.json({ success: true, data: plan });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // Platform Plan Create (Super Admin only)
-  app.post(
-    '/api/platform/plans',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const plan = await subscriptionService.createPlan(req.body, {
-          userId: req.auth!.userId,
-          role: req.auth!.role,
-        });
-        res.status(201).json({ success: true, data: plan });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Platform Plan Update (Super Admin only)
-  app.put(
-    '/api/platform/plans/:id',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const plan = await subscriptionService.updatePlan(req.params.id, req.body, {
-          userId: req.auth!.userId,
-          role: req.auth!.role,
-        });
-        res.json({ success: true, data: plan });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // List All Platform Subscriptions (Super Admin only)
-  app.get(
-    '/api/platform/subscriptions',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const subs = await subscriptionService.listAllSubscriptions();
-        res.json({ success: true, count: subs.length, data: subs });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Get Organization Subscription & Entitlements (Super Admin only)
-  app.get(
-    '/api/platform/subscriptions/:orgId',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const entitlements = await subscriptionService.getEntitlements(req.params.orgId);
-        res.json({ success: true, data: entitlements });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Assign Plan (Super Admin only)
-  app.post(
-    '/api/platform/subscriptions/:orgId/assign',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const { planCode, planId, reason, customPeriodDays } = req.body;
-        const targetPlan = planCode || planId;
-        if (!targetPlan) {
-          return res.status(400).json({
-            success: false,
-            error: { code: 'VALIDATION_ERROR', message: 'planCode or planId is required.' },
-          });
-        }
-        const updated = await subscriptionService.assignPlan(
-          req.params.orgId,
-          targetPlan,
-          { userId: req.auth!.userId, role: req.auth!.role },
-          { reason, customPeriodDays }
-        );
-        res.json({ success: true, data: updated });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Start / Extend Trial (Super Admin only)
-  app.post(
-    '/api/platform/subscriptions/:orgId/trial',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const { trialEndsAt, trialDays, reason } = req.body;
-        let endDate: Date;
-        if (trialEndsAt) {
-          endDate = new Date(trialEndsAt);
-        } else if (trialDays) {
-          endDate = new Date(Date.now() + Number(trialDays) * 24 * 60 * 60 * 1000);
-        } else {
-          return res.status(400).json({
-            success: false,
-            error: { code: 'VALIDATION_ERROR', message: 'trialEndsAt or trialDays is required.' },
-          });
-        }
-        const updated = await subscriptionService.startOrExtendTrial(
-          req.params.orgId,
-          endDate,
-          { userId: req.auth!.userId, role: req.auth!.role },
-          reason
-        );
-        res.json({ success: true, data: updated });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Suspend Subscription (Super Admin only)
-  app.post(
-    '/api/platform/subscriptions/:orgId/suspend',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const { reason } = req.body;
-        const updated = await subscriptionService.suspendSubscription(
-          req.params.orgId,
-          { userId: req.auth!.userId, role: req.auth!.role },
-          reason
-        );
-        res.json({ success: true, data: updated });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Reactivate Subscription (Super Admin only)
-  app.post(
-    '/api/platform/subscriptions/:orgId/reactivate',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const { reason } = req.body;
-        const updated = await subscriptionService.reactivateSubscription(
-          req.params.orgId,
-          { userId: req.auth!.userId, role: req.auth!.role },
-          reason
-        );
-        res.json({ success: true, data: updated });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Cancel Subscription (Super Admin only)
-  app.post(
-    '/api/platform/subscriptions/:orgId/cancel',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const { reason } = req.body;
-        const updated = await subscriptionService.cancelSubscription(
-          req.params.orgId,
-          { userId: req.auth!.userId, role: req.auth!.role },
-          reason
-        );
-        res.json({ success: true, data: updated });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Restore Subscription (Super Admin only)
-  app.post(
-    '/api/platform/subscriptions/:orgId/restore',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const { reason } = req.body;
-        const updated = await subscriptionService.restoreSubscription(
-          req.params.orgId,
-          { userId: req.auth!.userId, role: req.auth!.role },
-          reason
-        );
-        res.json({ success: true, data: updated });
-      } catch (err) {
-        next(err);
-      }
-    }
-  );
-
-  // Subscription History Logs (Super Admin only)
-  app.get(
-    '/api/platform/subscriptions/:orgId/history',
-    requireAuth(),
-    requireSuperAdmin(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const history = await subscriptionService.getSubscriptionHistory(req.params.orgId);
-        res.json({ success: true, count: history.length, data: history });
       } catch (err) {
         next(err);
       }
@@ -2253,6 +2395,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
       app.use(vite.middlewares);
     } else {
+      // Security Hardening (UPG-001): Block public access to source maps
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        if (req.path.endsWith('.map')) {
+          return res.status(404).send('Not Found');
+        }
+        next();
+      });
+
       const distPath = path.join(process.cwd(), 'dist');
       app.use(express.static(distPath));
       app.get('*', (req: Request, res: Response) => {
@@ -2279,12 +2429,18 @@ export async function createApp(options: CreateAppOptions = {}) {
       customerRepo,
       inventoryRepo,
       auditRepo,
+      subscriptionRepo,
+    },
+    services: {
+      posService,
+      orderService,
+      subscriptionService,
     },
   };
 }
 
 export async function startServer() {
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   const { app } = await createApp();
 

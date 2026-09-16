@@ -50,6 +50,10 @@ export class AuthService {
     const orgId = credentials.organizationId.trim();
     const email = credentials.email.toLowerCase().trim();
 
+    if (!(await this.isOrganizationActive(orgId))) {
+      throw new Error('INACTIVE_ORGANIZATION: Organization is inactive');
+    }
+
     const user = await this.userRepo.findByEmail(orgId, email);
     if (!user) {
       throw new Error('Invalid email or password');
@@ -105,6 +109,19 @@ export class AuthService {
     }
 
     return claims;
+  }
+
+  /**
+   * Revalidate tenant lifecycle state for an authenticated session.
+   * Platform identities are intentionally handled separately from tenant users.
+   */
+  async isOrganizationActive(organizationId: string): Promise<boolean> {
+    if (!organizationId || typeof organizationId !== 'string') return false;
+    const result = await this.db.query<{ is_active: boolean }>(
+      'SELECT is_active FROM organizations WHERE id = $1 LIMIT 1',
+      [organizationId],
+    );
+    return result.rows[0]?.is_active === true;
   }
 
   /**

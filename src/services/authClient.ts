@@ -1,6 +1,6 @@
 /**
  * Frontend Authentication Client (SEC-001)
- * 
+ *
  * Manages server-issued cryptographic JWTs, handles login/logout,
  * and attaches Authorization: Bearer <token> headers to outbound requests.
  */
@@ -17,6 +17,26 @@ export interface AuthUser {
 
 const TOKEN_KEY = 'abacha_auth_jwt';
 const USER_KEY = 'abacha_auth_user';
+
+/**
+ * Demo persona credentials are intentionally supplied through Vite development
+ * environment variables. They are never embedded in the production bundle.
+ * Production authentication always uses the normal login form/API.
+ */
+const DEMO_PERSONA_ENV: Record<string, [string, string]> = {
+  'Super Admin': ['VITE_DEMO_SUPER_ADMIN_EMAIL', 'VITE_DEMO_SUPER_ADMIN_PASSWORD'],
+  'Business Owner': ['VITE_DEMO_BUSINESS_OWNER_EMAIL', 'VITE_DEMO_BUSINESS_OWNER_PASSWORD'],
+  'Store Manager': ['VITE_DEMO_STORE_MANAGER_EMAIL', 'VITE_DEMO_STORE_MANAGER_PASSWORD'],
+  'Cashier': ['VITE_DEMO_CASHIER_EMAIL', 'VITE_DEMO_CASHIER_PASSWORD'],
+  'Inventory Manager': ['VITE_DEMO_INVENTORY_MANAGER_EMAIL', 'VITE_DEMO_INVENTORY_MANAGER_PASSWORD'],
+  'Warehouse Manager': ['VITE_DEMO_WAREHOUSE_MANAGER_EMAIL', 'VITE_DEMO_WAREHOUSE_MANAGER_PASSWORD'],
+  'Accountant': ['VITE_DEMO_ACCOUNTANT_EMAIL', 'VITE_DEMO_ACCOUNTANT_PASSWORD'],
+  'E-commerce Customer': ['VITE_DEMO_ECOMMERCE_CUSTOMER_EMAIL', 'VITE_DEMO_ECOMMERCE_CUSTOMER_PASSWORD'],
+  'System Owner': ['VITE_DEMO_SYSTEM_OWNER_EMAIL', 'VITE_DEMO_SYSTEM_OWNER_PASSWORD'],
+  'Platform Admin': ['VITE_DEMO_PLATFORM_ADMIN_EMAIL', 'VITE_DEMO_PLATFORM_ADMIN_PASSWORD'],
+  'Platform Support': ['VITE_DEMO_PLATFORM_SUPPORT_EMAIL', 'VITE_DEMO_PLATFORM_SUPPORT_PASSWORD'],
+  'Platform Finance': ['VITE_DEMO_PLATFORM_FINANCE_EMAIL', 'VITE_DEMO_PLATFORM_FINANCE_PASSWORD'],
+};
 
 class AuthClient {
   private currentToken: string | null = null;
@@ -85,7 +105,7 @@ class AuthClient {
           headers: this.getAuthHeaders(),
         });
       } catch {
-        // Continue clearing local state even if network fails
+        // Continue clearing local state even if network fails.
       }
     }
 
@@ -106,11 +126,16 @@ class AuthClient {
       });
       if (!res.ok) {
         if (res.status === 401) {
-          this.logout();
+          await this.logout();
         }
         return null;
       }
       const data = await res.json();
+      if (!data.success || !data.data) return null;
+      this.currentUser = data.data;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(USER_KEY, JSON.stringify(data.data));
+      }
       return data.data;
     } catch {
       return null;
@@ -118,24 +143,33 @@ class AuthClient {
   }
 
   /**
-   * Helper to synchronize the client session when persona switcher is clicked in UI.
-   * Logs in as the server-authoritative seeded persona.
+   * Development-only persona helper. Credentials are read from Vite's DEV
+   * environment and therefore cannot silently become production credentials.
+   * Real production access must use the authenticated login flow.
    */
   async loginAsPersona(roleName: string): Promise<AuthUser | null> {
-    const personaMap: Record<string, { email: string; pass: string }> = {
-      'Super Admin': { email: 'superadmin@abacha.internal', pass: 'SuperAdmin123!' },
-      'Business Owner': { email: 'superadmin@abacha.internal', pass: 'SuperAdmin123!' },
-      'Store Manager': { email: 'manager@abacha.internal', pass: 'ManagerPass123!' },
-      'Cashier': { email: 'cashier@abacha.internal', pass: 'CashierPass123!' },
-      'Inventory Manager': { email: 'inventory@abacha.internal', pass: 'InventoryPass123!' },
-      'Warehouse Manager': { email: 'inventory@abacha.internal', pass: 'InventoryPass123!' },
-      'Accountant': { email: 'sales@abacha.internal', pass: 'SalesPass123!' },
-      'E-commerce Customer': { email: 'viewer@abacha.internal', pass: 'ViewerPass123!' },
-    };
+    if (!import.meta.env.DEV) {
+      console.warn('[AuthClient] Persona auto-login is disabled outside development.');
+      return null;
+    }
 
-    const target = personaMap[roleName] || { email: 'viewer@abacha.internal', pass: 'ViewerPass123!' };
+    const envKeys = DEMO_PERSONA_ENV[roleName];
+    if (!envKeys) {
+      console.warn(`[AuthClient] Unknown demo persona: ${roleName}`);
+      return null;
+    }
+
+    const [emailKey, passwordKey] = envKeys;
+    const email = import.meta.env[emailKey]?.trim();
+    const password = import.meta.env[passwordKey];
+
+    if (!email || !password) {
+      console.warn(`[AuthClient] Demo credentials are not configured for persona '${roleName}'.`);
+      return null;
+    }
+
     try {
-      return await this.login(target.email, target.pass);
+      return await this.login(email, password);
     } catch (err) {
       console.warn(`[AuthClient] Auto-login for persona '${roleName}' failed:`, err);
       return null;

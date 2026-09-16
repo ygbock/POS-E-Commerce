@@ -26,6 +26,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { isPlatformRole } from '../platform/platformAccess';
+import { getPlatformNavigation } from '../platform/platformNavigation';
 
 interface SidebarProps {
   activeTab: string;
@@ -147,6 +149,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         group: 'Administration',
         items: [
+          ...(currentRole === 'Super Admin' || currentRole === 'Business Owner'
+            ? [{ id: 'users', label: 'User Management', icon: Users }]
+            : []),
+          ...(currentRole === 'Super Admin' || currentRole === 'Business Owner' || currentRole === 'Store Manager' || currentRole === 'Inventory Manager'
+            ? [{ id: 'locations', label: 'Location Management', icon: MapPin }]
+            : []),
           { id: 'audit', label: 'Security & Audit Logs', icon: ShieldAlert },
           { id: 'settings', label: 'System Settings', icon: Settings },
         ],
@@ -155,11 +163,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
     [activeHeldCount, pendingPOCount, pendingOrdersCount]
   );
 
+  const isPlatform = isPlatformRole(currentRole);
+
+  const platformGroups = useMemo(() => {
+    if (!isPlatform) return [];
+    const items = getPlatformNavigation(currentRole);
+    const iconMap: Record<string, any> = {
+      'platform-dashboard': LayoutDashboard,
+      'tenants': Building2,
+      'subscriptions': ReceiptText,
+      'support': Users,
+      'security': ShieldAlert,
+    };
+    return [
+      {
+        group: 'Platform Control Plane',
+        items: items.map((item) => ({
+          id: item.id,
+          label: item.label,
+          icon: iconMap[item.id] || LayoutDashboard,
+        })),
+      },
+    ];
+  }, [isPlatform, currentRole]);
+
+  const activeNavGroups = isPlatform ? platformGroups : navGroups;
+
   // Filter items if search is typed
   const filteredGroups = useMemo(() => {
-    if (!navSearch.trim()) return navGroups;
+    if (!navSearch.trim()) return activeNavGroups;
     const query = navSearch.toLowerCase().trim();
-    return navGroups
+    return activeNavGroups
       .map((g) => ({
         ...g,
         items: g.items.filter(
@@ -170,7 +204,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ),
       }))
       .filter((g) => g.items.length > 0);
-  }, [navGroups, navSearch]);
+  }, [activeNavGroups, navSearch]);
+
+  const roleLabel = currentRole === 'Super Admin' ? 'Administrator' : currentRole;
+  const roleInitial = roleLabel.trim().charAt(0).toUpperCase() || 'U';
 
   return (
     <>
@@ -378,7 +415,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Operator Card */}
             <div className="flex items-center space-x-2.5 p-2 rounded-xl bg-slate-900/60 border border-slate-800/60">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600/30 to-indigo-600/30 border border-blue-500/40 flex items-center justify-center font-black text-xs text-blue-400 flex-shrink-0">
-                {currentRole.charAt(0)}
+                {roleInitial}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
@@ -390,22 +427,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">
                   <MapPin className="w-2.5 h-2.5 text-blue-400 flex-shrink-0" />
-                  <span className="truncate">{currentLocation.name}</span>
+                  <span className="truncate">{isPlatform ? 'Global Control Plane' : currentLocation.name}</span>
                 </p>
               </div>
             </div>
 
-            {/* Quick Switch to Storefront */}
-            <button
-              onClick={() => handleNavClick('storefront')}
-              className="w-full py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-semibold transition-all flex items-center justify-between group"
-            >
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
-                <span>Customer Storefront</span>
-              </div>
-              <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-slate-300" />
-            </button>
+            {/* Quick Switch to Storefront (Tenant Roles only) */}
+            {!isPlatform && (
+              <button
+                onClick={() => handleNavClick('storefront')}
+                className="w-full py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-semibold transition-all flex items-center justify-between group"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
+                  <span>Customer Storefront</span>
+                </div>
+                <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-slate-300" />
+              </button>
+            )}
           </div>
 
           {collapsed && (
@@ -419,7 +458,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
               <div
                 className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-black text-xs text-blue-400"
-                title={`Active: ${currentRole} (${currentLocation.name})`}
+                title={`Active: ${roleLabel} (${currentLocation.name})`}
               >
                 {currentRole.charAt(0)}
               </div>
