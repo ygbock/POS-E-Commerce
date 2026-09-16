@@ -24,6 +24,8 @@ import { SubscriptionsManagementView } from './components/platform/Subscriptions
 import { UserManagementView } from './components/admin/UserManagementView';
 import { LocationManagementView } from './components/admin/LocationManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
+import { LoginPage } from './components/auth/LoginPage';
+import { authClient, AuthUser } from './services/authClient';
 
 const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () => void }> = ({ onOpenAdmin, onOpenPos }) => {
   const { route } = useStorefrontRoute();
@@ -141,6 +143,36 @@ const MainLayout: React.FC = () => {
 };
 
 export default function App() {
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => authClient.getUser());
+  const [authLoading, setAuthLoading] = useState(true);
+
+  React.useEffect(() => {
+    let mounted = true;
+    void authClient.fetchMe().then((user) => {
+      if (!mounted) return;
+      setAuthUser(user);
+      setAuthLoading(false);
+    }).catch(() => {
+      if (mounted) setAuthLoading(false);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-slate-600 border-t-white" />
+          <p className="text-sm text-slate-400">Checking your session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <LoginPage onAuthenticated={setAuthUser} />;
+  }
+
   return (
     <ErrorBoundary>
       <ToastProvider>
