@@ -1119,12 +1119,27 @@ export class TenantProvisioningService {
       }
       const lockedCurrent = locked.rows[0];
 
-      const updated = await tx.query<any>(
-        `UPDATE organizations SET ${sqlUpdates.join(', ')}
-         WHERE id = $${index}
-         RETURNING id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at, updated_at`,
-        params,
-      );
+      let updated: { rows: any[] };
+      try {
+        updated = await tx.query<any>(
+          `UPDATE organizations SET ${sqlUpdates.join(', ')}
+           WHERE id = ${index}
+           RETURNING id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at, updated_at`,
+          params,
+        );
+      } catch (err: any) {
+        // The database unique constraint is the final authority under concurrent
+        // updates. Translate a concurrent slug collision into the same stable
+        // domain error as the preflight conflict check.
+        if (err?.code === '23505' && (err?.constraint?.toLowerCase().includes('slug') || updates?.slug !== undefined)) {
+          throw new TenantProvisioningError(
+            'TENANT_SLUG_EXISTS',
+            'Tenant slug is already in use.',
+            409,
+          );
+        }
+        throw err;
+      }
       const after = updated.rows[0];
 
       // Audit (Platform control plane convention: organization_id = NULL, entity_id = tenantId)
