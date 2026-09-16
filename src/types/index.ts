@@ -1,4 +1,4 @@
-export type Role =
+export type TenantRole =
   | 'Super Admin'
   | 'Business Owner'
   | 'Inventory Manager'
@@ -7,6 +7,14 @@ export type Role =
   | 'Store Manager'
   | 'Accountant'
   | 'E-commerce Customer';
+
+export type PlatformRole =
+  | 'System Owner'
+  | 'Platform Admin'
+  | 'Platform Support'
+  | 'Platform Finance';
+
+export type Role = TenantRole | PlatformRole;
 
 export type BranchLocationId = 'loc-main-wh' | 'loc-store-downtown' | 'loc-branch-north' | 'loc-dist-center';
 

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Role } from '../../types';
+import { isPlatformRole } from '../platform/platformAccess';
 
 interface HeaderProps {
   activeTab: string;
@@ -65,6 +66,10 @@ export const Header: React.FC<HeaderProps> = ({
     'Store Manager',
     'Accountant',
     'E-commerce Customer',
+    'System Owner',
+    'Platform Admin',
+    'Platform Support',
+    'Platform Finance',
   ];
 
   return (
@@ -215,6 +220,8 @@ export const Header: React.FC<HeaderProps> = ({
                         setActiveTab('storefront');
                       } else if (role === 'Cashier') {
                         setActiveTab('pos');
+                      } else if (isPlatformRole(role)) {
+                        setActiveTab('platform-dashboard');
                       }
                     }}
                     className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${

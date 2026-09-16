@@ -15,6 +15,9 @@ import { PurchasingManagement } from './components/purchasing/PurchasingManageme
 import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
 import { CustomerManagement } from './components/crm/CustomerManagement';
 import { AuditLogsView } from './components/admin/AuditLogsView';
+import { PlatformSubscriptionsView } from './components/admin/PlatformSubscriptionsView';
+import { PlatformDashboard } from './components/platform/PlatformDashboard';
+import { isPlatformRole } from './components/platform/platformAccess';
 
 const MainLayout: React.FC = () => {
   // Default first page is the public customer Storefront
@@ -30,6 +33,8 @@ const MainLayout: React.FC = () => {
       setActiveTab('storefront');
     } else if (currentRole === 'Cashier' && activeTab === 'dashboard') {
       setActiveTab('pos');
+    } else if (isPlatformRole(currentRole) && (activeTab === 'storefront' || activeTab === 'dashboard')) {
+      setActiveTab('platform-dashboard');
     }
   }, [currentRole]);
 
@@ -88,6 +93,9 @@ const MainLayout: React.FC = () => {
             {activeTab === 'reports' && <LedgerAndFinance />}
             {activeTab === 'audit' && <AuditLogsView />}
             {activeTab === 'settings' && <ProductManagement />}
+            {activeTab === 'platform-dashboard' && <PlatformDashboard setActiveTab={setActiveTab} />}
+            {(activeTab === 'subscriptions' || activeTab === 'tenants' || activeTab === 'support') && <PlatformSubscriptionsView />}
+            {activeTab === 'security' && <AuditLogsView />}
           </div>
         </main>
       </div>
