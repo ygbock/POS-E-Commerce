@@ -173,6 +173,11 @@ export default function App() {
     return <LoginPage onAuthenticated={setAuthUser} />;
   }
 
+  const handleLogout = async () => {
+    await authClient.logout();
+    setAuthUser(null);
+  };
+
   return (
     <ErrorBoundary>
       <ToastProvider>
