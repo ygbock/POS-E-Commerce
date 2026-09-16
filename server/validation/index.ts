@@ -182,7 +182,7 @@ export function sanitizeInput<T>(input: T): T {
 /**
  * Login Request Validator
  */
-export function validateLoginPayload(body: any): { email: string; password: string; organizationId: string } {
+export function validateLoginPayload(body: any): { email: string; password: string; organizationId?: string } {
   const errors: ValidationErrorDetail[] = [];
 
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -202,8 +202,8 @@ export function validateLoginPayload(body: any): { email: string; password: stri
     errors.push({ field: 'password', message: 'Password is required' });
   }
 
-  if (!body.organizationId || typeof body.organizationId !== 'string' || body.organizationId.trim().length === 0) {
-    errors.push({ field: 'organizationId', message: 'organizationId is required and must be a non-empty string' });
+  if (body.organizationId !== undefined && (typeof body.organizationId !== 'string' || body.organizationId.trim().length === 0)) {
+    errors.push({ field: 'organizationId', message: 'organizationId must be a non-empty string when supplied' });
   }
 
   if (errors.length > 0) {
@@ -213,7 +213,7 @@ export function validateLoginPayload(body: any): { email: string; password: stri
   return {
     email: body.email.toLowerCase().trim(),
     password: body.password,
-    organizationId: String(body.organizationId).trim(),
+    ...(body.organizationId !== undefined ? { organizationId: String(body.organizationId).trim() } : {}),
   };
 }
 
