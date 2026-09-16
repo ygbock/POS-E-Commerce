@@ -89,14 +89,21 @@ export async function getAppliedMigrations(client: DatabaseClient): Promise<Set<
 /**
  * Historical production compatibility.
  *
- * Migration 011 was applied in production from an earlier storefront revision.
- * Its recorded checksum is retained as a narrowly scoped compatibility alias:
- * the already-applied migration is skipped; it is never executed again and
- * the production schema_migrations row is never modified.
+ * Migrations 011 and 012 were applied in production from earlier revisions:
+ * - 011: earlier storefront revision (b2c9e9ffe21dd2795065a5228bbca6e8adcbc7a3ca44fc239c6ed527efcaac14)
+ * - 012: platform_subscription_management revision (2f29563803d2341bc5a030553f523d6e696933baca8f5230b0c3d6d9b211ab07)
+ *
+ * Their recorded checksums are retained as narrowly scoped compatibility aliases:
+ * the already-applied migrations are skipped from re-recording; their production
+ * schema_migrations rows are never modified. Any idempotent DDL required forward
+ * is safely executed to ensure subsequent migrations (e.g. referencing plan_tier) succeed.
  */
 const LEGACY_APPLIED_MIGRATION_CHECKSUMS: Record<string, ReadonlySet<string>> = {
   '011': new Set([
     'b2c9e9ffe21dd2795065a5228bbca6e8adcbc7a3ca44fc239c6ed527efcaac14',
+  ]),
+  '012': new Set([
+    '2f29563803d2341bc5a030553f523d6e696933baca8f5230b0c3d6d9b211ab07',
   ]),
 };
 
@@ -125,9 +132,12 @@ export async function runMigrations(
       if (!appliedRecord.checksum || appliedRecord.checksum !== migration.checksum) {
         if (isKnownLegacyAppliedMigration(migration.version, appliedRecord.checksum)) {
           console.warn(
-            `[AbaCha DB] Skipping known legacy migration ${migration.version}_${migration.name}; ` +
+            `[AbaCha DB] Reconciling known legacy migration ${migration.version}_${migration.name}; ` +
             `production checksum ${appliedRecord.checksum} is a recognized historical revision.`
           );
+          await db.withTransaction(async (tx) => {
+            await tx.exec(migration.sql);
+          });
           skipped.push(`${migration.version}_${migration.name}`);
           continue;
         }
