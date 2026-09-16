@@ -8,7 +8,6 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [organizationId, setOrganizationId] = useState('org_default');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -22,7 +21,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
     setError('');
     setLoading(true);
     try {
-      const user = await authClient.login(email.trim(), password, organizationId.trim() || 'org_default');
+      const user = await authClient.login(email.trim(), password);
       localStorage.setItem('abacha_login_email', email.trim());
       onAuthenticated(user);
     } catch (err) {
@@ -76,17 +75,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               placeholder="••••••••"
-            />
-          </label>
-
-          <label className="mt-4 block text-sm font-medium text-slate-700">
-            Organization
-            <input
-              type="text"
-              value={organizationId}
-              onChange={(e) => setOrganizationId(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-              placeholder="Organization ID"
             />
           </label>
 
