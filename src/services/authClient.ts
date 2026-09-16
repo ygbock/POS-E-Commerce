@@ -74,11 +74,11 @@ class AuthClient {
     return headers;
   }
 
-  async login(email: string, password: string, organizationId = 'org_default'): Promise<AuthUser> {
+  async login(email: string, password: string, organizationId?: string): Promise<AuthUser> {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, organizationId }),
+      body: JSON.stringify(organizationId ? { email, password, organizationId } : { email, password }),
     });
 
     const data = await res.json();
