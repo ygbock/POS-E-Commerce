@@ -86,6 +86,24 @@ export async function getAppliedMigrations(client: DatabaseClient): Promise<Set<
  *   - MISMATCH -> throw fatal error immediately and abort
  *   - Applied migrations must NEVER be modified in-place or silently skipped.
  */
+/**
+ * Historical production compatibility.
+ *
+ * Migration 011 was applied in production from an earlier storefront revision.
+ * Its recorded checksum is retained as a narrowly scoped compatibility alias:
+ * the already-applied migration is skipped; it is never executed again and
+ * the production schema_migrations row is never modified.
+ */
+const LEGACY_APPLIED_MIGRATION_CHECKSUMS: Record<string, ReadonlySet<string>> = {
+  '011': new Set([
+    'b2c9e9ffe21dd2795065a5228bbca6e8adcbc7a3ca44fc239c6ed527efcaac14',
+  ]),
+};
+
+function isKnownLegacyAppliedMigration(version: string, checksum: string | null): boolean {
+  return Boolean(checksum && LEGACY_APPLIED_MIGRATION_CHECKSUMS[version]?.has(checksum));
+}
+
 export async function runMigrations(
   client?: DatabaseClient,
   migrationsDir?: string
@@ -105,6 +123,15 @@ export async function runMigrations(
     if (appliedRecord) {
       // Checksum verification: ensure migration script has not been modified after being applied
       if (!appliedRecord.checksum || appliedRecord.checksum !== migration.checksum) {
+        if (isKnownLegacyAppliedMigration(migration.version, appliedRecord.checksum)) {
+          console.warn(
+            `[AbaCha DB] Skipping known legacy migration ${migration.version}_${migration.name}; ` +
+            `production checksum ${appliedRecord.checksum} is a recognized historical revision.`
+          );
+          skipped.push(`${migration.version}_${migration.name}`);
+          continue;
+        }
+
         throw new Error(
           `[AbaCha DB Fatal] Migration checksum mismatch for version ${migration.version} (${migration.name}). ` +
           `Stored checksum: ${appliedRecord.checksum || '(none)'}, Computed checksum: ${migration.checksum}. ` +
