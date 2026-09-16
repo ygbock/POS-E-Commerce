@@ -17,7 +17,7 @@ import { PurchasingManagement } from './components/purchasing/PurchasingManageme
 import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
 import { CustomerManagementView } from './components/crm/CustomerManagementView';
 import { AuditLogsView } from './components/admin/AuditLogsView';
-import { PlatformDashboard } from './components/platform/PlatformDashboard';
+import { PlatformDashboard } from './components/platform/PlatformDashboard.tsx';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
 import { TenantManagementView } from './components/platform/TenantManagementView';
 import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
