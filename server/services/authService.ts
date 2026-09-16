@@ -38,8 +38,29 @@ export class AuthService {
   async login(credentials: {
     email: string;
     password: string;
-    organizationId: string;
+    organizationId?: string;
   }): Promise<LoginResult> {
+    const email = credentials.email.toLowerCase().trim();
+    if (!email || !credentials.password) throw new Error('Invalid email or password');
+
+    let orgId = credentials.organizationId?.trim() || '';
+
+    // If no tenant was supplied, resolve it from the email. Never allow the
+    // client to select an arbitrary tenant when the account belongs elsewhere.
+    if (!orgId) {
+      const matches = await this.db.query<UserRecord>(
+        `SELECT u.* FROM users u
+         JOIN organizations o ON o.id = u.organization_id
+         WHERE LOWER(u.email) = LOWER($1)
+           AND u.is_active = true
+           AND o.is_active = true
+         LIMIT 2`,
+        [email],
+      );
+      if (matches.rows.length === 0) throw new Error('Invalid email or password');
+      if (matches.rows.length > 1) throw new Error('TENANT_SELECTION_REQUIRED: This account belongs to multiple organizations');
+      orgId = matches.rows[0].organization_id;
+    }
     if (
       !credentials.organizationId ||
       typeof credentials.organizationId !== 'string' ||
@@ -47,9 +68,6 @@ export class AuthService {
     ) {
       throw new Error('ORGANIZATION_REQUIRED: Valid organizationId is required for authentication');
     }
-    const orgId = credentials.organizationId.trim();
-    const email = credentials.email.toLowerCase().trim();
-
     if (!(await this.isOrganizationActive(orgId))) {
       throw new Error('INACTIVE_ORGANIZATION: Organization is inactive');
     }
