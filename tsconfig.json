@@ -22,7 +22,5 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  },
-  "include": ["src", "server", "tests", "*.ts"],
-  "exclude": ["node_modules", "dist", ".data"]
+  }
 }

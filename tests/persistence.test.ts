@@ -390,7 +390,7 @@ async function main() {
         }
         assert.ok(connThrew, 'PostgreSQL connection failure must throw in production');
       } finally {
-        if (originalEnv) process.env.NODE_ENV = originalEnv; else delete process.env.NODE_ENV;
+        process.env.NODE_ENV = originalEnv;
         if (originalUrl) process.env.DATABASE_URL = originalUrl; else delete process.env.DATABASE_URL;
         if (originalHost) process.env.PGHOST = originalHost; else delete process.env.PGHOST;
         resetDatabaseClient();
@@ -472,8 +472,8 @@ async function main() {
 
         assert.ok(seedThrew, 'Demo seed must be blocked in production by default');
       } finally {
-        if (originalEnv) process.env.NODE_ENV = originalEnv; else delete process.env.NODE_ENV;
-        if (originalAllow) process.env.ALLOW_DEMO_SEED = originalAllow; else delete process.env.ALLOW_DEMO_SEED;
+        process.env.NODE_ENV = originalEnv;
+        if (originalAllow) process.env.ALLOW_DEMO_SEED = originalAllow;
       }
     });
 

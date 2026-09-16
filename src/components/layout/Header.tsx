@@ -65,10 +65,6 @@ export const Header: React.FC<HeaderProps> = ({
     'Store Manager',
     'Accountant',
     'E-commerce Customer',
-    'System Owner',
-    'Platform Admin',
-    'Platform Support',
-    'Platform Finance',
   ];
 
   return (

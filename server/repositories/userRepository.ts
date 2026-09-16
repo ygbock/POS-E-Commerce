@@ -176,26 +176,4 @@ export class UserRepository {
     );
     return res.rows.length > 0;
   }
-
-  async countActiveAdmins(organizationId: string, client?: DatabaseClient): Promise<number> {
-    const db = this.getClient(client);
-    const res = await db.query<{ count: string | number }>(
-      `SELECT COUNT(*) as count FROM users WHERE organization_id = $1 AND role IN ('admin', 'super_admin') AND is_active = true`,
-      [organizationId]
-    );
-    return Number(res.rows[0]?.count || 0);
-  }
-
-  async deleteUser(id: string, organizationId: string, client?: DatabaseClient): Promise<boolean> {
-    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
-      throw new Error('TENANT_REQUIRED: organizationId is required to delete user.');
-    }
-    const db = this.getClient(client);
-    const res = await db.query(
-      `DELETE FROM users WHERE id = $1 AND organization_id = $2 RETURNING id`,
-      [id, organizationId]
-    );
-    return (res.rows.length || 0) > 0;
-  }
 }
-

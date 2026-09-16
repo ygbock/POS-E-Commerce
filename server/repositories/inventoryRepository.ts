@@ -236,7 +236,7 @@ export class InventoryRepository {
     const orgId = params.organization_id;
     const db = this.getClient(client);
 
-    const execute = async (tx: DatabaseClient) => {
+    return db.withTransaction(async (tx) => {
       // 1. Validate location & variant tenant isolation
       const isLocValid = await this.verifyLocationOwnership(orgId, params.location_id, tx);
       if (!isLocValid) {
@@ -457,10 +457,7 @@ export class InventoryRepository {
         balance: mapBalanceRow(updatedBalRes.rows[0]),
         movement: mapMovementRow(movRes.rows[0]),
       };
-    };
-
-    // Reuse the caller's transaction during fulfillment/compound operations.
-    return client ? execute(client) : db.withTransaction(execute);;
+    });
   }
 
   /**
@@ -478,19 +475,20 @@ export class InventoryRepository {
     if (!params.organization_id || typeof params.organization_id !== 'string' || params.organization_id.trim() === '') {
       throw new Error('TENANT_REQUIRED: Explicit organization_id is mandatory for adjustReserved.');
     }
-
     const db = this.getClient(client);
-    const execute = async (tx: DatabaseClient): Promise<InventoryBalanceRecord> => {
+
+    return db.withTransaction(async (tx) => {
+      // 1. Ensure balance row exists
       const balanceId = `bal_${params.location_id}_${params.variant_id}`;
       await tx.query(
-        `INSERT INTO inventory_balances
-          (id, organization_id, location_id, variant_id, on_hand, reserved, damaged, expired, in_transit)
+        `INSERT INTO inventory_balances (id, organization_id, location_id, variant_id, on_hand, reserved, damaged, expired, in_transit)
          VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0)
          ON CONFLICT (location_id, variant_id) DO NOTHING`,
         [balanceId, params.organization_id, params.location_id, params.variant_id]
       );
 
-      const lockedBal = await tx.query<any>(
+      // 2. Lock row FOR UPDATE scoped by organization_id
+      const lockedBal = await tx.query(
         `SELECT id, organization_id, location_id, variant_id,
                 on_hand::text, reserved::text, damaged::text, expired::text,
                 in_transit::text, available::text
@@ -500,36 +498,30 @@ export class InventoryRepository {
         [params.organization_id, params.location_id, params.variant_id]
       );
 
-      if (lockedBal.rows.length === 0) {
-        throw new Error('INVENTORY_BALANCE_NOT_FOUND: Inventory balance could not be created or located.');
-      }
-
       const bal = lockedBal.rows[0];
       const currentReserved = toQtyString(bal.reserved);
       const currentOnHand = toQtyString(bal.on_hand);
       const currentDamaged = toQtyString(bal.damaged);
       const currentExpired = toQtyString(bal.expired);
+
       const deltaReserved = toQtyString(params.delta_reserved);
       const newReserved = addQtyExact(currentReserved, deltaReserved);
 
       if (parseQtyToScaled(newReserved) < 0n) {
-        throw new Error('INVALID_RESERVATION: Reserved stock cannot be negative.');
+        throw new Error(
+          `INVALID_RESERVATION: Reserved stock cannot be negative. Current: ${currentReserved}, Delta: ${deltaReserved}.`
+        );
       }
 
-      const availableUnreserved = calculateAvailableExact(
-        currentOnHand,
-        '0.0000',
-        currentDamaged,
-        currentExpired
-      );
-
+      // Check available stock
+      const availableUnreserved = calculateAvailableExact(currentOnHand, '0.0000', currentDamaged, currentExpired);
       if (parseQtyToScaled(newReserved) > parseQtyToScaled(availableUnreserved)) {
         throw new Error(
           `INSUFFICIENT_STOCK_FOR_RESERVATION: Cannot reserve ${newReserved} units. Total unquarantined stock: ${availableUnreserved}.`
         );
       }
 
-      const updated = await tx.query<any>(
+      const updated = await tx.query(
         `UPDATE inventory_balances
          SET reserved = $1, updated_at = CURRENT_TIMESTAMP
          WHERE id = $2 AND organization_id = $3
@@ -541,12 +533,8 @@ export class InventoryRepository {
       );
 
       return mapBalanceRow(updated.rows[0]);
-    };
-
-    // Never open a nested transaction when a transaction-scoped client was supplied.
-    return client ? execute(client) : db.withTransaction(execute);
+    });
   }
-
 
   /**
    * Quarantines stock by moving units from available to damaged or expired.

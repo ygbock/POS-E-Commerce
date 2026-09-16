@@ -2,11 +2,11 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, requirePermission, requireTenantAccess } from '../middleware/auth';
 import { PERMISSIONS } from '../auth/roles';
 import { PosService } from '../services/posService';
+import { SubscriptionService } from '../services/subscriptionService';
 import { PosRepository } from '../repositories/posRepository';
 import { OrderRepository } from '../repositories/orderRepository';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { parseExactMoney, parseExactQuantity, parseQtyToScaled } from '../inventory/inventoryPolicies';
-import { SubscriptionService } from '../services/subscriptionService';
 
 // ============================================================================
 // STRICT INPUT VALIDATION UTILITIES (Rejects non-strings and whitespace)
@@ -142,26 +142,6 @@ export function handlePosRouteError(res: Response, err: any): Response {
     });
   }
 
-  if (msg.includes('SUBSCRIPTION_LIMIT_REACHED')) {
-    return res.status(403).json({
-      success: false,
-      error: {
-        code: 'SUBSCRIPTION_LIMIT_REACHED',
-        message: safeMessage,
-      },
-    });
-  }
-
-  if (msg.includes('FEATURE_NOT_AVAILABLE') || msg.includes('FEATURE_NOT_INCLUDED')) {
-    return res.status(403).json({
-      success: false,
-      error: {
-        code: 'FEATURE_NOT_AVAILABLE',
-        message: safeMessage,
-      },
-    });
-  }
-
   if (msg.includes('SESSION_NOT_FOUND')) {
     return res.status(404).json({
       success: false,
@@ -251,10 +231,15 @@ export function handlePosRouteError(res: Response, err: any): Response {
   });
 }
 
-export function createPosRouter(db: DatabaseClient, posService: PosService, subscriptionService?: SubscriptionService): Router {
+export function createPosRouter(
+  db: DatabaseClient,
+  posService: PosService,
+  subscriptionService?: SubscriptionService
+): Router {
   const router = Router();
   const posRepo = new PosRepository(db);
   const orderRepo = new OrderRepository(db);
+  const subService = subscriptionService || new SubscriptionService(undefined, undefined, db);
 
   /**
    * GET /api/pos/products/search
@@ -472,9 +457,10 @@ export function createPosRouter(db: DatabaseClient, posService: PosService, subs
       try {
         const orgId = req.auth!.organizationId;
 
-        if (subscriptionService) {
-          await subscriptionService.assertFeatureEnabled(orgId, 'pos');
-          await subscriptionService.assertCanCreateOrder(orgId, db);
+        // Server-authoritative SaaS Plan Feature & Order Quota Enforcement
+        if (req.auth!.role !== 'super_admin') {
+          await subService.assertFeature(orgId, 'pos', { userId: req.auth!.userId, role: req.auth!.role });
+          await subService.assertWithinLimit(orgId, 'orders', 1, { userId: req.auth!.userId, role: req.auth!.role });
         }
 
         const { locationId, sessionId, customerId, cartItems, paymentMethod, amountPaid, notes } = req.body;

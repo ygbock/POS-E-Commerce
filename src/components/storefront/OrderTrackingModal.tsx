@@ -26,8 +26,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { Order, OrderStatus } from '../../types';
-import { useStorefrontContext } from '../../context/StorefrontContext';
-import { storefrontApi, StorefrontTrackedOrder } from '../../services/storefrontApi';
+import { useCommerce } from '../../context/CommerceContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface OrderTrackingModalProps {
@@ -57,40 +56,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   onOpenClaimModal,
   onOpenClaimAccount,
 }) => {
-  const { tenant, formatCurrency } = useStorefrontContext();
-  const orders: Order[] = [];
-
-  const toOrder = (tracked: StorefrontTrackedOrder): Order => ({
-    id: tracked.id,
-    orderNumber: tracked.orderNumber,
-    status: tracked.status as OrderStatus,
-    paymentStatus: tracked.paymentStatus as Order['paymentStatus'],
-    fulfillmentMethod: tracked.fulfillmentMethod as Order['fulfillmentMethod'],
-    carrierName: tracked.carrierName,
-    trackingNumber: tracked.trackingNumber,
-    createdAt: tracked.createdAt,
-    customerName: tracked.customerName,
-    customerEmail: tracked.maskedEmail,
-    customerPhone: '',
-    channel: 'Online Web Store',
-    loyaltyPointsEarned: 0,
-    shippingAddress: {},
-    locationName: '',
-    items: tracked.items.map((item) => ({
-      productName: item.name,
-      variantName: item.name,
-      sku: item.sku || '',
-      quantity: Number(item.quantity),
-      price: Number(item.unitPrice),
-      image: item.image,
-    })),
-    subtotal: Number(tracked.totals.subtotal),
-    discountAmount: 0,
-    discountCode: '',
-    shippingFee: Number(tracked.totals.shippingFee),
-    taxAmount: Number(tracked.totals.taxAmount),
-    totalAmount: Number(tracked.totals.totalAmount),
-  } as Order);
+  const { orders, formatCurrency, activeCustomerUser, simulateAdvanceOrderStatus } = useCommerce();
 
   const handleClaimAccount = (email: string) => {
     onClose();
@@ -99,57 +65,74 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   };
 
   const [orderQuery, setOrderQuery] = useState(initialOrderNumber);
-  const [emailQuery, setEmailQuery] = useState(initialEmail || '');
+  const [emailQuery, setEmailQuery] = useState(initialEmail || activeCustomerUser?.email || '');
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSimulating, setIsSimulating] = useState(false);
 
-  // Auto-search when the route supplies an order number. Contact is required
-  // for public verification; no client-side order array is consulted.
+  // Auto-search if initialOrderNumber is passed
   useEffect(() => {
-    if (!isOpen || !initialOrderNumber || !tenant?.slug) return;
-    setOrderQuery(initialOrderNumber);
-    if (initialEmail) setEmailQuery(initialEmail);
-    void storefrontApi.trackOrder(tenant.slug, initialOrderNumber, initialEmail || undefined)
-      .then((tracked) => {
-        setSearchedOrder(toOrder(tracked));
+    if (isOpen && initialOrderNumber) {
+      setOrderQuery(initialOrderNumber);
+      const found = orders.find(
+        (o) =>
+          o.orderNumber.toLowerCase() === initialOrderNumber.trim().toLowerCase() ||
+          o.id.toLowerCase() === initialOrderNumber.trim().toLowerCase()
+      );
+      if (found) {
+        setSearchedOrder(found);
+        if (found.customerEmail) setEmailQuery(found.customerEmail);
         setHasSearched(true);
-        setErrorMessage('');
-      })
-      .catch(() => {
-        setSearchedOrder(null);
-        setHasSearched(true);
-        setErrorMessage('Order not found or contact verification failed.');
-      });
-  }, [isOpen, initialOrderNumber, initialEmail, tenant?.slug]);
+      }
+    }
+  }, [isOpen, initialOrderNumber, orders]);
 
   const modalRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, modalRef);
 
   if (!isOpen) return null;
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage('');
-    const cleanOrder = orderQuery.trim();
-    const cleanContact = emailQuery.trim();
+    const cleanOrder = orderQuery.trim().toLowerCase();
+    const cleanEmail = emailQuery.trim().toLowerCase();
 
-    if (!cleanOrder || !cleanContact || !tenant?.slug) {
-      setErrorMessage('Please enter an order number and the email or phone used at checkout.');
+    if (!cleanOrder) {
+      setErrorMessage('Please enter a valid Order Number (e.g. ORD-2026-001)');
       return;
     }
 
-    setHasSearched(false);
-    try {
-      const tracked = await storefrontApi.trackOrder(tenant.slug, cleanOrder, cleanContact);
-      setSearchedOrder(toOrder(tracked));
+    // Lookup order by number
+    const matchingOrder = orders.find(
+      (o) => o.orderNumber.toLowerCase() === cleanOrder || o.id.toLowerCase() === cleanOrder
+    );
+
+    if (!matchingOrder) {
       setHasSearched(true);
-    } catch {
       setSearchedOrder(null);
-      setHasSearched(true);
-      setErrorMessage('Order not found or contact verification failed.');
+      setErrorMessage(`No order found matching "${orderQuery.trim()}". Please verify your order number.`);
+      return;
     }
+
+    // Dual validation: check email match if provided or prompt if order has customer email
+    if (cleanEmail && matchingOrder.customerEmail) {
+      const orderEmail = matchingOrder.customerEmail.toLowerCase().trim();
+      if (!orderEmail.includes(cleanEmail) && !cleanEmail.includes(orderEmail)) {
+        setHasSearched(true);
+        setSearchedOrder(null);
+        setErrorMessage(
+          `Security & Privacy: The email "${emailQuery.trim()}" does not match the billing email on file for ${matchingOrder.orderNumber}. Please check your spelling or use your magic tracking email link.`
+        );
+        return;
+      }
+    }
+
+    setHasSearched(true);
+    setSearchedOrder(matchingOrder);
+    setErrorMessage('');
   };
 
   const handleSelectQuickOrder = (order: Order) => {
@@ -164,6 +147,16 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
     navigator.clipboard.writeText(text);
     setCopiedTracking(true);
     setTimeout(() => setCopiedTracking(false), 2000);
+  };
+
+  const handleAdvanceStatus = () => {
+    if (!searchedOrder) return;
+    setIsSimulating(true);
+    const updated = simulateAdvanceOrderStatus(searchedOrder.id);
+    if (updated) {
+      setSearchedOrder(updated);
+    }
+    setTimeout(() => setIsSimulating(false), 300);
   };
 
   const getStepIndex = (status: OrderStatus) => {
@@ -285,6 +278,38 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
             </div>
           </form>
 
+          {/* Quick Demo Selector for immediate testing */}
+          {orders.length > 0 && !searchedOrder && (
+            <div className="bg-slate-850/60 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1">
+                <span className="text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Test Sample Orders (1-Click Fill):</span>
+                </span>
+                <span className="text-sky-400 font-mono text-[10px]">Preloaded sample orders</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {orders.slice(0, 6).map((ord) => (
+                  <button
+                    key={ord.id}
+                    type="button"
+                    onClick={() => handleSelectQuickOrder(ord)}
+                    className="p-2.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-750 hover:border-sky-500/50 rounded-xl text-left transition-all group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-sky-400 text-xs">{ord.orderNumber}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:text-white">
+                        {ord.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate mt-0.5">{ord.customerName}</p>
+                    <p className="text-[10px] text-slate-500 truncate">{ord.customerEmail}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {errorMessage && (
             <div className="p-3.5 sm:p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-3 text-rose-300 text-xs">
@@ -334,10 +359,21 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                       <span>Emails & SMS</span>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={handleAdvanceStatus}
+                    disabled={isSimulating}
+                    className="flex-1 sm:flex-initial justify-center px-3.5 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-sky-600/20 transition-all min-h-[38px] cursor-pointer active:scale-98"
+                    title="Advance to next fulfillment milestone"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-white" />
+                    <span>Advance Milestone</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Multi-step Visual Progress Timeline */}
+              {/* Multi-step Visual Progress Timeline - Responsive Grid for tablet/desktop, smooth card flow */}
               {!isCancelled ? (
                 <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 sm:space-y-4">
                   <div className="flex items-center justify-between">
@@ -393,6 +429,60 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                 </div>
               )}
 
+              {/* 4 Methods Hub Spotlight Bar */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                {/* Method 2: Magic Link in Email */}
+                <div
+                  onClick={() => onOpenNotificationHub && onOpenNotificationHub(searchedOrder)}
+                  className="p-3.5 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 cursor-pointer transition-all space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-sky-400 flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>Method 2: Email Magic Link</span>
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-500" />
+                  </div>
+                  <p className="text-[10px] sm:text-[11px] text-slate-600 dark:text-slate-400">
+                    View simulated Confirmation & Shipping emails with 1-click magic auth.
+                  </p>
+                </div>
+
+                {/* Method 3: SMS & WhatsApp */}
+                <div
+                  onClick={() => onOpenNotificationHub && onOpenNotificationHub(searchedOrder)}
+                  className="p-3.5 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 cursor-pointer transition-all space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Method 3: SMS / WhatsApp</span>
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-500" />
+                  </div>
+                  <p className="text-[10px] sm:text-[11px] text-slate-600 dark:text-slate-400">
+                    Live mobile text alerts sent to {searchedOrder.customerPhone || 'mobile'}.
+                  </p>
+                </div>
+
+                {/* Method 4: Retroactive Claiming */}
+                <div
+                  onClick={() => handleClaimAccount(searchedOrder.customerEmail || '')}
+                  className="p-3.5 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-amber-500/50 cursor-pointer transition-all space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Method 4: Claim Order</span>
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-500" />
+                  </div>
+                  <p className="text-[10px] sm:text-[11px] text-slate-600 dark:text-slate-400">
+                    Link guest order to permanent account & earn {searchedOrder.loyaltyPointsEarned || 20} points.
+                  </p>
+                </div>
+              </div>
+
               {/* Shipping & Delivery Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 {/* Logistics info */}
@@ -410,7 +500,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-slate-600 dark:text-slate-400">Carrier:</span>
-                      <span className="text-slate-900 dark:text-white font-semibold truncate max-w-[180px] sm:max-w-none text-right">{searchedOrder.carrierName || 'OmniTrack / Carrier'}</span>
+                      <span className="text-slate-900 dark:text-white font-semibold truncate max-w-[180px] sm:max-w-none text-right">{searchedOrder.carrierName || 'OmniTrack / FedEx Ground'}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -439,7 +529,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                   </div>
                 </div>
 
-                {/* Recipient / Customer address */}
+                {/* Recipient / Pickup address */}
                 <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 sm:space-y-3">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                     <MapPin className="w-4 h-4 text-sky-400" />
@@ -450,13 +540,13 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                     <p className="font-bold text-slate-900 dark:text-white">{searchedOrder.customerName}</p>
                     {searchedOrder.customerEmail && <p className="text-slate-600 dark:text-slate-400 truncate">{searchedOrder.customerEmail}</p>}
                     {searchedOrder.customerPhone && <p className="text-slate-600 dark:text-slate-400">{searchedOrder.customerPhone}</p>}
-                    {searchedOrder.shippingAddress && searchedOrder.shippingAddress.street ? (
+                    {searchedOrder.shippingAddress ? (
                       <p className="text-slate-700 dark:text-slate-300 pt-1 leading-relaxed text-[11px] sm:text-xs">
                         {searchedOrder.shippingAddress.street}, {searchedOrder.shippingAddress.city},{' '}
                         {searchedOrder.shippingAddress.state} {searchedOrder.shippingAddress.zip}
                       </p>
                     ) : (
-                      <p className="text-sky-300 pt-1">Pickup Location</p>
+                      <p className="text-sky-300 pt-1">Pickup Warehouse: {searchedOrder.locationName}</p>
                     )}
                   </div>
                 </div>
@@ -465,7 +555,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
               {/* Order Items Breakdown */}
               <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                 <div className="p-3 sm:p-3.5 bg-slate-100 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                  <span>Items in this order ({searchedOrder.items.length})</span>
+                  <span>Items in this shipment ({searchedOrder.items.length})</span>
                   <span>Line Total</span>
                 </div>
 
@@ -549,5 +639,3 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
     </div>
   );
 };
-
-

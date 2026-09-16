@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { UserRole, hasPermission, isPlatformRole } from '../auth/roles';
+import { UserRole, hasPermission } from '../auth/roles';
 import { AuthService } from '../services/authService';
 import { TokenClaims } from '../auth/token';
 
@@ -17,7 +17,6 @@ export interface AuthContext {
   locationId?: string | null;
   email?: string;
   jti?: string;
-  organizationActive?: boolean;
 }
 
 declare global {
@@ -55,11 +54,6 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
 
     try {
       const claims: TokenClaims = await service.verifySession(token);
-      let organizationActive = true;
-      if (!isPlatformRole(claims.role)) {
-        organizationActive = await service.isOrganizationActive(claims.orgId);
-      }
-
       req.auth = {
         userId: claims.sub,
         organizationId: claims.orgId,
@@ -68,7 +62,6 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
         locationId: claims.locId,
         email: claims.email,
         jti: claims.jti,
-        organizationActive,
       };
       next();
     } catch {
@@ -94,15 +87,6 @@ export function requireAuth() {
         },
       });
     }
-    if (req.auth.organizationActive === false && !isPlatformRole(req.auth.role)) {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'TENANT_ACCESS_DENIED',
-          message: 'This organization is currently inactive.',
-        },
-      });
-    }
     next();
   };
 }
@@ -120,16 +104,6 @@ export function requirePermission(...requiredPermissions: string[]) {
         error: {
           code: 'UNAUTHORIZED',
           message: 'Authentication required.',
-        },
-      });
-    }
-
-    if (req.auth.organizationActive === false && !isPlatformRole(req.auth.role)) {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'TENANT_ACCESS_DENIED',
-          message: 'This organization is currently inactive.',
         },
       });
     }
@@ -195,23 +169,13 @@ export function requireRole(...allowedRoles: UserRole[]) {
  * Super Admins are granted cross-tenant supervisory access.
  */
 export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => string | undefined) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
       return res.status(401).json({
         success: false,
         error: {
           code: 'UNAUTHORIZED',
           message: 'Authentication required.',
-        },
-      });
-    }
-
-    if (req.auth.organizationActive === false && !isPlatformRole(req.auth.role)) {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'TENANT_ACCESS_DENIED',
-          message: 'This organization is currently inactive.',
         },
       });
     }
@@ -229,31 +193,6 @@ export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => stri
 
     // If request explicitly targets a different organization, forbid it
     if (targetOrgId && targetOrgId !== req.auth.organizationId) {
-      const auditRepo: any = req.app?.get?.('auditRepo');
-      if (auditRepo && typeof auditRepo.recordEvent === 'function') {
-        try {
-          await auditRepo.recordEvent({
-            organization_id: req.auth.organizationId,
-            actor_id: req.auth.userId,
-            actor_name: req.auth.email || req.auth.userId,
-            actor_role: req.auth.role,
-            action: 'SECURITY_CROSS_TENANT_DENIED',
-            entity_type: 'SECURITY',
-            entity_id: String(targetOrgId),
-            metadata: {
-              callerTenant: req.auth.organizationId,
-              attemptedTenant: targetOrgId,
-              path: req.originalUrl || req.url,
-              method: req.method,
-            },
-            severity: 'Critical',
-            result: 'DENIED',
-          });
-        } catch (e: any) {
-          console.warn('[Audit] Cross-tenant denial log failed:', e);
-        }
-      }
-
       return res.status(403).json({
         success: false,
         error: {
@@ -264,18 +203,6 @@ export function requireTenantAccess(getOrgIdFromRequest?: (req: Request) => stri
       });
     }
 
-    next();
-  };
-}
-
-/** Require a platform control-plane permission. Never infer platform access from client state. */
-export function requirePlatformPermission(...permissions: string[]) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth) return res.status(401).json({ success:false, error:{ code:'UNAUTHORIZED', message:'Authentication required.' } });
-    const platformRoles = ['system_owner','platform_admin','platform_support','platform_finance'];
-    if (!platformRoles.includes(req.auth.role)) return res.status(403).json({ success:false, error:{ code:'PLATFORM_ACCESS_DENIED', message:'Platform access required.' } });
-    const allowed = permissions.some(permission => hasPermission(req.auth!.permissions, permission));
-    if (!allowed) return res.status(403).json({ success:false, error:{ code:'PLATFORM_PERMISSION_DENIED', message:'Insufficient platform permission.' } });
     next();
   };
 }

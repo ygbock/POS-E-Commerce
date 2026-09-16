@@ -10,8 +10,6 @@ import {
   formatScaledToQtyString,
 } from '../inventory/inventoryPolicies.ts';
 import crypto from 'node:crypto';
-import { StorefrontCartService } from './storefrontCartService.ts';
-import { ReservationService } from '../inventory/reservationService.ts';
 
 export class DomainError extends Error {
   constructor(public code: string, message: string) {
@@ -69,8 +67,6 @@ export class OrderService {
   private customerRepo: CustomerRepository;
   private invRepo: InventoryRepository;
   private auditRepo: AuditRepository;
-  private storefrontCartService: StorefrontCartService;
-  private reservationService: ReservationService;
 
   constructor(
     orderRepo?: OrderRepository,
@@ -84,8 +80,6 @@ export class OrderService {
     this.customerRepo = customerRepo || new CustomerRepository(this.db);
     this.invRepo = invRepo || new InventoryRepository(this.db);
     this.auditRepo = auditRepo || new AuditRepository(this.db);
-    this.storefrontCartService = new StorefrontCartService(this.db);
-    this.reservationService = new ReservationService(undefined, undefined, this.db);
   }
 
   private localDivideRoundHalfUp(num: bigint, denom: bigint): bigint {
@@ -232,7 +226,7 @@ export class OrderService {
           fulfillmentLocId = locRes.rows[0].id;
         }
 
-        // B. Customer Validation / Guest Customer Materialization
+        // B. Customer Validation
         let authorCustomerRecord = null;
         if (params.customer_id) {
           const custRes = await tx.query<any>(
@@ -243,43 +237,6 @@ export class OrderService {
             throw new DomainError('VALIDATION_ERROR', `Customer with ID '${params.customer_id}' not found under this tenant.`);
           }
           authorCustomerRecord = custRes.rows[0];
-        } else if (params.customer_details) {
-          const email = String(params.customer_details.email || '').trim().toLowerCase();
-          const phone = String(params.customer_details.phone || '').trim();
-          if (!String(params.customer_details.name || '').trim() || (!email && !phone)) {
-            throw new DomainError('VALIDATION_ERROR', 'Customer name and email or phone are required for storefront checkout.');
-          }
-
-          // Reuse an existing tenant customer when contact matches; otherwise
-          // materialize a guest customer so public order tracking has an
-          // authoritative contact record without trusting client order IDs.
-          const existing = await tx.query<any>(
-            `SELECT id, organization_id, name, email, phone
-             FROM customers
-             WHERE organization_id = $1
-               AND (
-                 ($2 <> '' AND LOWER(COALESCE(email, '')) = $2)
-                 OR ($3 <> '' AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = regexp_replace($3, '[^0-9]', '', 'g'))
-               )
-             ORDER BY created_at ASC
-             LIMIT 1`,
-            [organization_id, email, phone]
-          );
-          if (existing.rows[0]) {
-            authorCustomerRecord = existing.rows[0];
-          } else {
-            authorCustomerRecord = await this.customerRepo.createCustomer({
-              id: `cust_${crypto.randomUUID()}`,
-              organization_id,
-              name: String(params.customer_details.name).trim(),
-              email: email || null,
-              phone: phone || null,
-              customer_group: 'Retail',
-              tier: 'Bronze',
-              loyalty_points: 0,
-              notes: 'Created by public storefront checkout',
-            }, tx);
-          }
         }
 
         // C. Calculate Totals & Lock Stock
@@ -360,39 +317,12 @@ export class OrderService {
           });
         }
 
-        // D. Shipping is policy-driven, never hard-coded in the order service.
-        // Keep the checkout arithmetic identical to cart validation.
-        const orgPolicyRes = await tx.query<any>(
-          `SELECT policies, currency_code
-           FROM organizations
-           WHERE id = $1 AND is_active = true
-           LIMIT 1`,
-          [organization_id]
-        );
-        if (orgPolicyRes.rows.length === 0) {
-          throw new DomainError('TENANT_NOT_FOUND', 'Store tenant is unavailable.');
-        }
-
-        const rawPolicies =
-          typeof orgPolicyRes.rows[0].policies === 'string'
-            ? JSON.parse(orgPolicyRes.rows[0].policies)
-            : (orgPolicyRes.rows[0].policies || {});
-
-        const freeThreshold = this.localParseMoneyToCents(
-          String(rawPolicies.freeShippingThreshold ?? '75.00')
-        );
+        // D. Calculate Shipping Fee
         let shippingFeeCents = 0n;
         if (fulfillment_method === 'Express Delivery') {
-          shippingFeeCents = this.localParseMoneyToCents(
-            String(rawPolicies.expressShippingFee ?? '19.99')
-          );
+          shippingFeeCents = 1500n;
         } else if (fulfillment_method === 'Standard Delivery') {
-          shippingFeeCents =
-            totalSubtotalCents >= freeThreshold
-              ? 0n
-              : this.localParseMoneyToCents(
-                  String(rawPolicies.standardShippingFee ?? '9.99')
-                );
+          shippingFeeCents = 500n;
         }
 
         const finalTotalCents = totalSubtotalCents + totalTaxCents + shippingFeeCents;
@@ -437,7 +367,7 @@ export class OrderService {
           order_id: orderId,
           payment_method,
           amount: this.localFormatCentsToMoneyString(finalTotalCents),
-          currency: String(orgPolicyRes.rows[0].currency_code || 'SLE'),
+          currency: 'SLE',
           status: 'Pending', // Honest Pending status
           reference: orderNumber,
           provider: 'Storefront',
@@ -448,23 +378,22 @@ export class OrderService {
         try {
           const saved = await this.orderRepo.createOrderWithItems(orderRecord, orderItems, paymentRecord, tx);
 
-          // Create first-class reservations while the order is in "Stock Reserved".
-          // Reservation records provide the lifecycle required for cancellation,
-          // expiry and fulfillment; their balance updates occur in this transaction.
+          // Record stock reservation / movements
           for (const item of orderItems) {
-            await this.reservationService.createReservation(
-              organization_id,
+            await this.invRepo.recordMovement(
               {
+                organization_id,
                 location_id: fulfillmentLocId!,
                 variant_id: item.variant_id,
-                quantity: item.quantity,
+                movement_type: 'ECOMMERCE_SALE',
+                quantity_change: `-${item.quantity}`,
+                unit_cost: this.localFormatCentsToMoneyString(this.localParseMoneyToCents(item.cost_price)),
                 reference_type: 'orders',
                 reference_id: orderId,
-                notes: `Storefront order ${orderNumber}`,
-                idempotency_key: `${orderId}:reservation:${item.variant_id}`,
+                performed_by: 'Online Storefront',
+                idempotency_key: `${orderId}_${item.variant_id}`,
+                allowNegativeStock: false,
               },
-              'Online Storefront',
-              `${orderId}:reservation:${item.variant_id}`,
               tx
             );
           }
@@ -583,141 +512,5 @@ export class OrderService {
       }
       throw err;
     }
-  }
-
-  /**
-   * Cancel a storefront order and atomically release all ACTIVE reservations.
-   * Safe to retry: released/cancelled reservations are idempotent.
-   */
-  async cancelStorefrontOrder(
-    organizationId: string,
-    orderId: string,
-    actor = 'System'
-  ): Promise<OrderRecord> {
-    return this.db.withTransaction(async (tx) => {
-      const orderRes = await tx.query<any>(
-        `SELECT * FROM orders
-         WHERE id = $1 AND organization_id = $2
-         FOR UPDATE`,
-        [orderId, organizationId]
-      );
-      if (orderRes.rows.length === 0) {
-        throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
-      }
-
-      const order = orderRes.rows[0];
-      if (order.status === 'Cancelled') {
-        return order as OrderRecord;
-      }
-      if (order.status === 'Fulfilled' || order.status === 'Completed') {
-        throw new DomainError('INVALID_ORDER_STATE', 'A fulfilled order cannot be cancelled through the reservation workflow.');
-      }
-
-      const reservations = await this.reservationService.listReservations(organizationId, {
-        referenceType: 'orders',
-        referenceId: orderId,
-        status: 'ACTIVE',
-      }, tx);
-
-      for (const reservation of reservations) {
-        await this.reservationService.releaseReservation(
-          organizationId,
-          reservation.id,
-          actor,
-          tx
-        );
-      }
-
-      const updated = await tx.query<any>(
-        `UPDATE orders
-         SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND organization_id = $2
-         RETURNING *`,
-        [orderId, organizationId]
-      );
-
-      await this.auditRepo.recordEvent({
-        organization_id: organizationId,
-        actor_name: actor,
-        actor_role: 'System',
-        action: 'storefront.order_cancel',
-        entity_type: 'orders',
-        entity_id: orderId,
-        metadata: { released_reservation_count: reservations.length },
-        severity: 'Info',
-      }, tx);
-
-      return updated.rows[0] as OrderRecord;
-    });
-  }
-
-  /**
-   * Fulfill a storefront order atomically: every active reservation becomes
-   * fulfilled and on_hand is reduced exactly once.
-   */
-  async fulfillStorefrontOrder(
-    organizationId: string,
-    orderId: string,
-    actor = 'System'
-  ): Promise<OrderRecord> {
-    return this.db.withTransaction(async (tx) => {
-      const orderRes = await tx.query<any>(
-        `SELECT * FROM orders
-         WHERE id = $1 AND organization_id = $2
-         FOR UPDATE`,
-        [orderId, organizationId]
-      );
-      if (orderRes.rows.length === 0) {
-        throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
-      }
-
-      const order = orderRes.rows[0];
-      if (order.status === 'Fulfilled' || order.status === 'Completed') {
-        return order as OrderRecord;
-      }
-      if (order.status === 'Cancelled') {
-        throw new DomainError('INVALID_ORDER_STATE', 'A cancelled order cannot be fulfilled.');
-      }
-
-      const reservations = await this.reservationService.listReservations(organizationId, {
-        referenceType: 'orders',
-        referenceId: orderId,
-        status: 'ACTIVE',
-      }, tx);
-
-      if (reservations.length === 0) {
-        throw new DomainError('RESERVATION_NOT_FOUND', 'No active reservations remain for this order.');
-      }
-
-      for (const reservation of reservations) {
-        await this.reservationService.fulfillReservation(
-          organizationId,
-          reservation.id,
-          actor,
-          tx
-        );
-      }
-
-      const updated = await tx.query<any>(
-        `UPDATE orders
-         SET status = 'Completed', updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND organization_id = $2
-         RETURNING *`,
-        [orderId, organizationId]
-      );
-
-      await this.auditRepo.recordEvent({
-        organization_id: organizationId,
-        actor_name: actor,
-        actor_role: 'System',
-        action: 'storefront.order_fulfill',
-        entity_type: 'orders',
-        entity_id: orderId,
-        metadata: { fulfilled_reservation_count: reservations.length },
-        severity: 'Info',
-      }, tx);
-
-      return updated.rows[0] as OrderRecord;
-    });
   }
 }

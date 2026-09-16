@@ -312,18 +312,24 @@
 
 ---
 
-### ADR-021: Platform Control-Plane Idempotency Ledger, Audit Conventions, and Durable Lifecycle State (TASK-5.6.4)
-- **Date**: 2026-09-15
+### ADR-020: Fail-Closed Tenant Verification, Strict Anti-Spoofing Rejection, and Exact-Decimal Validation Hardening (API-001R3)
+- **Date**: 2026-09-09
 - **Status**: `IMPLEMENTED (READY FOR REVIEW)`
-- **Task Association**: `TASK-5.6.4`
-- **Context**: Supervisor review identified potential gaps in lifecycle idempotency parameter lookups, duplicate audit records on replays, ambiguous subscription state during tenant reactivation, and missing architectural clarity on platform audit conventions.
+- **Task Association**: `API-001R3`
+- **Context**: Supervisor review identified potential fail-open gaps in tenant verification, overly permissive credential responses, silent stripping of spoofed body fields instead of strict rejection, and non-strict regex checks in decimal validators.
 - **Decision**:
-  1. **Platform Idempotency Ledger (`platform_idempotency_keys`)**: privileged platform control-plane mutations (`TENANT_PROVISION`, `TENANT_SUSPEND`, `TENANT_REACTIVATE`, `TENANT_ARCHIVE`) require durable, transactionally claimed idempotency keys uniquely scoped by `(operation, idempotency_key, actor_id)`. Replayed requests with identical keys return the committed response with zero redundant side-effects and zero duplicate audit events. Lookups query both `idempotency_key` and `actor_id`.
-  2. **Platform Audit Convention (AUD-002 / SEC-003)**: Platform-level audit events record `organization_id = NULL` because the actor operates in the platform realm (`system_owner`, `platform_admin`), not within an individual tenant boundary. The affected tenant is stored explicitly in `entity_type = 'organization'` and `entity_id = <organization_id>`. Audit events capture full before-and-after lifecycle state: `{ isActive: boolean, lifecycleStatus: 'active' | 'suspended' | 'archived' }`.
-  3. **Terminal Archived Lifecycle State**: `organizations.lifecycle_status` has values `'active'`, `'suspended'`, `'archived'`. Transitions from `'archived'` to any other state are strictly prohibited across all APIs and service methods (returns 409 `TENANT_ARCHIVED`). Repeated archive without an idempotency replay returns 409 `TENANT_ALREADY_ARCHIVED`.
-  4. **Authoritative Subscription Invariant on Reactivation**: Before reactivating a tenant, the service explicitly asserts no conflicting active or trialing subscription exists (returns 409 `SUBSCRIPTION_CONFLICT`). When restoring a paused subscription, any older paused subscriptions are cancelled to enforce at most one current billable subscription per tenant.
-  5. **Thin Route & Service Responsibility Separation**: Route handlers (`platformRoutes.ts`) are thin adapters performing HTTP authorization and input translation, delegating all domain validation and transactional mutations to `TenantProvisioningService` (`provisionTenant`, `updateTenant`, `listTenants`, `getTenantDetail`, `suspendTenant`, `reactivateTenant`, `archiveTenant`).
+  1. **Fail-Closed Tenant Verification**: Refactored `resolveAuthorizedTenant()` in `server.ts` to implement strict fail-closed semantics. Any database lookup exception, timeout, or inactive/missing organization result explicitly rejects the request with HTTP 403 `TENANT_ACCESS_DENIED`, completely eliminating default tenant fallback or exception swallowing.
+  2. **Fail-Closed Login Endpoint**: Hardened `/api/auth/login` to validate existence of credentials upfront. Missing fields (such as `organizationId`) return a 422 `VALIDATION_ERROR`, while invalid passwords/emails return a standard 401 `UNAUTHORIZED` without leaking tenant existence details.
+  3. **Product Route Refactoring**: Rewrote product mutation endpoints (`POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id`) to be fully async with clear `try/catch` and explicit `resolveAuthorizedTenant()` guards, ensuring no unhandled promise rejections and enforcing strict cross-tenant isolation boundaries.
+  4. **Strict DTO Rejection for Spoofing Attempts**: Configured the validator schema to explicitly reject identity and tenant keys (`organizationId`, `userId`, `role`, `actorId`, etc.) in request bodies with HTTP 422 `VALIDATION_ERROR` rather than silently stripping them. This ensures clients receive immediate, unambiguous feedback when attempting to spoof security parameters.
+  5. **Exact-Decimal Regex Hardening**: Hardened `validateMoneyDecimal()` and `validateQuantityDecimal()` to strictly reject strings with leading/trailing whitespaces (e.g. `" 10.00 "`) without doing `.trim()`, enforcing rigorous, high-integrity numeric format validation.
 - **Consequences**:
-  - Full mitigation of lifecycle drift, duplicate operations, and multi-tenant billing race conditions.
-  - 21 integration tests in `tests/tenant_provisioning.test.ts` pass with 100% pass rate.
-  - All 23 test suites in `npm test` pass cleanly.
+  - Full compliance with absolute zero-trust tenant isolation principles.
+  - Complete elimination of silent stripping in favor of loud, explicit rejection for identity/tenant spoofing.
+  - 102/102 automated tests across all 6 test suites are passing cleanly with 100% correct behavior.
+  - Zero TypeScript linter issues and clean production compilation.
+
+
+
+
+

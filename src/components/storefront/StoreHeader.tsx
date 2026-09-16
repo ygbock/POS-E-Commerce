@@ -26,7 +26,6 @@ import {
   Bell,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
-import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface StoreHeaderProps {
   searchQuery: string;
@@ -71,8 +70,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   isDarkMode,
   onToggleTheme,
 }) => {
-  const { activeCustomerUser, products, appliedCoupon } = useCommerce();
-  const { storeCart, wishlistIds: wishlist, formatCurrency } = useStorefrontContext();
+  const { storeCart, wishlist, activeCustomerUser, products, appliedCoupon, formatCurrency } = useCommerce();
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
