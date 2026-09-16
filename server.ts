@@ -396,6 +396,29 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ------------------------------------------------------------------
   // 1. AUTHENTICATION & IDENTITY ENDPOINTS (SEC-001)
   // ------------------------------------------------------------------
+  app.post('/api/auth/forgot-password', authRateLimiter, async (req: Request, res: Response) => {
+    try {
+      await authService.requestPasswordReset(String(req.body?.email || ''), req.body?.organizationId ? String(req.body.organizationId) : undefined);
+      return res.status(202).json({ success: true, message: 'If the account exists, password reset instructions have been sent.' });
+    } catch (err: any) {
+      if (err?.message === 'PASSWORD_RESET_DELIVERY_NOT_CONFIGURED') {
+        return res.status(503).json({ success: false, error: { code: 'PASSWORD_RESET_UNAVAILABLE', message: 'Password reset is temporarily unavailable.' } });
+      }
+      return res.status(202).json({ success: true, message: 'If the account exists, password reset instructions have been sent.' });
+    }
+  });
+
+  app.post('/api/auth/reset-password', authRateLimiter, async (req: Request, res: Response) => {
+    try {
+      await authService.resetPassword(String(req.body?.token || ''), String(req.body?.password || ''));
+      return res.status(200).json({ success: true, message: 'Password reset successfully. Please sign in again.' });
+    } catch (err: any) {
+      const msg = err?.message || '';
+      const status = msg.startsWith('VALIDATION_ERROR') ? 422 : 400;
+      return res.status(status).json({ success: false, error: { code: msg.split(':')[0] || 'PASSWORD_RESET_FAILED', message: msg } });
+    }
+  });
+
   app.post(
     '/api/auth/bootstrap',
     authRateLimiter,
