@@ -1,54 +1,94 @@
 -- AbaCha Unified Commerce
--- Migration 011: Storefront Multi-Tenant Configuration & Domain Binding
+-- Migration 011: SaaS Subscriptions, Plan Limits & Feature Entitlements
+-- Establishes server-authoritative plans, organization subscriptions, feature gating, and quota enforcement.
 
-ALTER TABLE organizations
-  ADD COLUMN IF NOT EXISTS slug VARCHAR(64) UNIQUE,
-  ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255) UNIQUE,
-  ADD COLUMN IF NOT EXISTS currency_code VARCHAR(16) NOT NULL DEFAULT 'USD',
-  ADD COLUMN IF NOT EXISTS currency_symbol VARCHAR(8) NOT NULL DEFAULT '$',
-  ADD COLUMN IF NOT EXISTS locale VARCHAR(16) NOT NULL DEFAULT 'en-US',
-  ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
-  ADD COLUMN IF NOT EXISTS branding JSONB NOT NULL DEFAULT '{
-    "storeName": "AbaCha Unified Commerce",
-    "logoUrl": null,
-    "faviconUrl": null,
-    "primaryColor": "#4f46e5",
-    "accentColor": "#f59e0b",
-    "heroTitle": "Modern Unified Commerce",
-    "heroSubtitle": "Engineered for speed, reliability, and precision inventory.",
-    "trustBadges": [
-      { "icon": "Truck", "title": "Free Delivery", "subtitle": "On qualifying orders" },
-      { "icon": "ShieldCheck", "title": "Official Warranty", "subtitle": "Guaranteed quality" },
-      { "icon": "RotateCcw", "title": "Hassle-Free Returns", "subtitle": "Customer first policy" }
-    ]
-  }'::jsonb,
-  ADD COLUMN IF NOT EXISTS policies JSONB NOT NULL DEFAULT '{
-    "freeShippingThreshold": 75.00,
-    "standardShippingFee": 9.99,
-    "expressShippingFee": 19.99,
-    "shippingPolicy": "Standard shipping delivers within 3-5 business days.",
-    "returnPolicy": "Returns accepted within 30 days of receipt in original condition.",
-    "warrantyPolicy": "Standard 1-year manufacturer warranty applies to all electronics.",
-    "deliveryPromise": "Orders placed before 2 PM dispatch same-day.",
-    "pickupEnabled": true,
-    "pickupInstructions": "Ready for pickup within 2 hours at your selected branch."
-  }'::jsonb,
-  ADD COLUMN IF NOT EXISTS catalog_policy JSONB NOT NULL DEFAULT '{
-    "allowBackorders": false,
-    "showInventoryCount": true,
-    "lowStockThreshold": 5,
-    "defaultSort": "featured"
-  }'::jsonb,
-  ADD COLUMN IF NOT EXISTS feature_flags JSONB NOT NULL DEFAULT '{
-    "reviewsEnabled": true,
-    "wishlistEnabled": true,
-    "couponsEnabled": true,
-    "pickupEnabled": true,
-    "guestCheckoutEnabled": true,
-    "orderTrackingEnabled": true
-  }'::jsonb;
+CREATE TABLE IF NOT EXISTS plans (
+  id VARCHAR(64) PRIMARY KEY,
+  code VARCHAR(64) NOT NULL UNIQUE,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  max_users INTEGER NOT NULL DEFAULT 5,
+  max_locations INTEGER NOT NULL DEFAULT 1,
+  max_products INTEGER NOT NULL DEFAULT 500,
+  max_monthly_orders INTEGER NOT NULL DEFAULT 1000,
+  max_monthly_pos_transactions INTEGER NOT NULL DEFAULT 1000,
+  max_storage_bytes BIGINT NOT NULL DEFAULT 1073741824,
+  features JSONB NOT NULL DEFAULT '{}'::jsonb,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
--- Ensure canonical default organization has valid slug
-UPDATE organizations 
-SET slug = 'default' 
-WHERE id = 'org_default' AND (slug IS NULL OR slug = '');
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id VARCHAR(64) PRIMARY KEY,
+  organization_id VARCHAR(64) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  plan_id VARCHAR(64) NOT NULL REFERENCES plans(id) ON DELETE RESTRICT,
+  status VARCHAR(32) NOT NULL CHECK (status IN ('trial', 'active', 'past_due', 'suspended', 'cancelled', 'expired')),
+  trial_ends_at TIMESTAMPTZ,
+  current_period_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  current_period_end TIMESTAMPTZ NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 days'),
+  cancelled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_subscriptions_org UNIQUE (organization_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_org ON subscriptions(organization_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+
+-- Populate Standard Tier Plans
+INSERT INTO plans (id, code, name, description, max_users, max_locations, max_products, max_monthly_orders, max_monthly_pos_transactions, max_storage_bytes, features)
+VALUES
+  ('plan_starter', 'starter', 'Starter Plan', 'Entry-level tier for single-location small businesses', 3, 1, 100, 200, 500, 1073741824, '{
+    "pos": true,
+    "inventory": true,
+    "ecommerce": false,
+    "storefront": false,
+    "advanced_reports": false,
+    "multi_location": false,
+    "staff_management": true,
+    "audit_logs": false,
+    "api_access": false,
+    "export": false,
+    "advanced_analytics": false
+  }'::jsonb),
+  ('plan_professional', 'professional', 'Professional Plan', 'Full feature tier for growing multi-location retailers', 25, 5, 5000, 5000, 10000, 10737418240, '{
+    "pos": true,
+    "inventory": true,
+    "ecommerce": true,
+    "storefront": true,
+    "advanced_reports": true,
+    "multi_location": true,
+    "staff_management": true,
+    "audit_logs": true,
+    "api_access": false,
+    "export": true,
+    "advanced_analytics": false
+  }'::jsonb),
+  ('plan_enterprise', 'enterprise', 'Enterprise Plan', 'Unrestricted tier for high-volume enterprise operations', 1000, 100, 100000, 100000, 500000, 107374182400, '{
+    "pos": true,
+    "inventory": true,
+    "ecommerce": true,
+    "storefront": true,
+    "advanced_reports": true,
+    "multi_location": true,
+    "staff_management": true,
+    "audit_logs": true,
+    "api_access": true,
+    "export": true,
+    "advanced_analytics": true
+  }'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+  features = EXCLUDED.features,
+  max_users = EXCLUDED.max_users,
+  max_locations = EXCLUDED.max_locations,
+  max_products = EXCLUDED.max_products,
+  max_monthly_orders = EXCLUDED.max_monthly_orders,
+  max_monthly_pos_transactions = EXCLUDED.max_monthly_pos_transactions,
+  max_storage_bytes = EXCLUDED.max_storage_bytes;
+
+-- Ensure default tenant org_default has an active enterprise subscription
+INSERT INTO subscriptions (id, organization_id, plan_id, status, current_period_start, current_period_end)
+SELECT 'sub_org_default', 'org_default', 'plan_enterprise', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years'
+WHERE EXISTS (SELECT 1 FROM organizations WHERE id = 'org_default')
+ON CONFLICT (organization_id) DO NOTHING;
