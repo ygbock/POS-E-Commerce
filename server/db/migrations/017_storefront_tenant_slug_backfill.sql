@@ -1,49 +1,55 @@
 -- AbaCha Unified Commerce
--- Migration 017: Complete storefront tenant slug backfill and uniqueness hardening
+-- Migration 017: Storefront Multi-Tenant Configuration & Domain Binding
 --
--- Migration 011 is immutable because it has already been applied in production.
--- These corrective operations therefore live in a new forward-only migration.
+-- Migration 011 is immutable and is the production subscription migration.
+-- Migration 012 already establishes organizations.slug. This migration adds
+-- storefront-specific tenant configuration without renumbering old migrations.
 
--- Backfill the canonical default tenant first.
-UPDATE organizations
-SET slug = 'default'
-WHERE id = 'org_default'
-  AND (slug IS NULL OR slug = '');
-
--- Backfill existing organizations from their unique code where possible.
-UPDATE organizations
-SET slug = LOWER(REGEXP_REPLACE(code, '[^a-zA-Z0-9]+', '-', 'g'))
-WHERE (slug IS NULL OR slug = '')
-  AND code IS NOT NULL
-  AND code <> '';
-
--- Fall back to the organization id when no usable code exists.
-UPDATE organizations
-SET slug = LOWER(REGEXP_REPLACE(id, '[^a-zA-Z0-9]+', '-', 'g'))
-WHERE slug IS NULL OR slug = '';
-
--- Resolve any pre-existing collisions deterministically before enforcing uniqueness.
-UPDATE organizations o
-SET slug = o.slug || '-' || SUBSTRING(MD5(o.id) FROM 1 FOR 6)
-WHERE o.id IN (
-  SELECT id
-  FROM (
-    SELECT
-      id,
-      ROW_NUMBER() OVER (
-        PARTITION BY slug
-        ORDER BY created_at ASC, id ASC
-      ) AS rn
-    FROM organizations
-    WHERE slug IS NOT NULL
-  ) duplicates
-  WHERE rn > 1
-);
-
--- The original migration used column-level UNIQUE constraints. These indexes
--- make the uniqueness contract explicit and remain safe if the indexes already exist.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_organizations_slug
-  ON organizations (slug);
+ALTER TABLE organizations
+  ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS currency_code VARCHAR(16) NOT NULL DEFAULT 'USD',
+  ADD COLUMN IF NOT EXISTS currency_symbol VARCHAR(8) NOT NULL DEFAULT '$',
+  ADD COLUMN IF NOT EXISTS locale VARCHAR(16) NOT NULL DEFAULT 'en-US',
+  ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+  ADD COLUMN IF NOT EXISTS branding JSONB NOT NULL DEFAULT '{
+    "storeName": "AbaCha Unified Commerce",
+    "logoUrl": null,
+    "faviconUrl": null,
+    "primaryColor": "#4f46e5",
+    "accentColor": "#f59e0b",
+    "heroTitle": "Modern Unified Commerce",
+    "heroSubtitle": "Engineered for speed, reliability, and precision inventory.",
+    "trustBadges": [
+      { "icon": "Truck", "title": "Free Delivery", "subtitle": "On qualifying orders" },
+      { "icon": "ShieldCheck", "title": "Official Warranty", "subtitle": "Guaranteed quality" },
+      { "icon": "RotateCcw", "title": "Hassle-Free Returns", "subtitle": "Customer first policy" }
+    ]
+  }'::jsonb,
+  ADD COLUMN IF NOT EXISTS policies JSONB NOT NULL DEFAULT '{
+    "freeShippingThreshold": 75.00,
+    "standardShippingFee": 9.99,
+    "expressShippingFee": 19.99,
+    "shippingPolicy": "Standard shipping delivers within 3-5 business days.",
+    "returnPolicy": "Returns accepted within 30 days of receipt in original condition.",
+    "warrantyPolicy": "Standard 1-year manufacturer warranty applies to all electronics.",
+    "deliveryPromise": "Orders placed before 2 PM dispatch same-day.",
+    "pickupEnabled": true,
+    "pickupInstructions": "Ready for pickup within 2 hours at your selected branch."
+  }'::jsonb,
+  ADD COLUMN IF NOT EXISTS catalog_policy JSONB NOT NULL DEFAULT '{
+    "allowBackorders": false,
+    "showInventoryCount": true,
+    "lowStockThreshold": 5,
+    "defaultSort": "featured"
+  }'::jsonb,
+  ADD COLUMN IF NOT EXISTS feature_flags JSONB NOT NULL DEFAULT '{
+    "reviewsEnabled": true,
+    "wishlistEnabled": true,
+    "couponsEnabled": true,
+    "pickupEnabled": true,
+    "guestCheckoutEnabled": true,
+    "orderTrackingEnabled": true
+  }'::jsonb;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_organizations_custom_domain
   ON organizations (custom_domain)
