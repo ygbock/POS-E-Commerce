@@ -397,6 +397,42 @@ export async function createApp(options: CreateAppOptions = {}) {
   // 1. AUTHENTICATION & IDENTITY ENDPOINTS (SEC-001)
   // ------------------------------------------------------------------
   app.post(
+    '/api/auth/bootstrap',
+    authRateLimiter,
+    validateBody(validateLoginPayload),
+    async (req: Request, res: Response) => {
+      try {
+        const user = await authService.bootstrapInitialAdmin({
+          bootstrapSecret: String(req.headers['x-admin-bootstrap-secret'] || req.body?.bootstrapSecret || ''),
+          email: String(req.body?.email || ''),
+          name: String(req.body?.name || ''),
+          password: String(req.body?.password || ''),
+          organizationId: req.body?.organizationId ? String(req.body.organizationId) : 'org_default',
+        });
+        return res.status(201).json({
+          success: true,
+          data: user,
+          message: 'Initial administrator provisioned. Remove ADMIN_BOOTSTRAP_SECRET from the environment now.',
+        });
+      } catch (err: any) {
+        const msg = err?.message || 'Bootstrap failed';
+        const status =
+          msg.startsWith('BOOTSTRAP_FORBIDDEN') || msg.startsWith('BOOTSTRAP_DISABLED') ? 403 :
+          msg.startsWith('BOOTSTRAP_ALREADY_COMPLETED') || msg.startsWith('BOOTSTRAP_USER_EXISTS') ? 409 :
+          msg.startsWith('VALIDATION_ERROR') ? 422 :
+          msg.startsWith('INACTIVE_ORGANIZATION') ? 403 : 400;
+        return res.status(status).json({
+          success: false,
+          error: {
+            code: msg.split(':')[0] || 'BOOTSTRAP_FAILED',
+            message: msg,
+          },
+        });
+      }
+    }
+  );
+
+  app.post(
     '/api/auth/login',
     authRateLimiter,
     validateBody(validateLoginPayload),
