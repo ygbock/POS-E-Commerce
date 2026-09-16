@@ -126,6 +126,51 @@ export function classifyApiError(
     };
   }
 
+  if (
+    errCode === 'SUBSCRIPTION_LIMIT_REACHED' ||
+    msg.includes('SUBSCRIPTION_LIMIT_REACHED')
+  ) {
+    return {
+      status: 403,
+      code: 'SUBSCRIPTION_LIMIT_REACHED',
+      message: sanitizeApiErrorMessage(msg),
+    };
+  }
+
+  if (
+    errCode === 'FEATURE_NOT_AVAILABLE' ||
+    msg.includes('FEATURE_NOT_AVAILABLE') ||
+    msg.includes('FEATURE_NOT_INCLUDED')
+  ) {
+    return {
+      status: 403,
+      code: 'FEATURE_NOT_AVAILABLE',
+      message: sanitizeApiErrorMessage(msg),
+    };
+  }
+
+  if (
+    errCode === 'SUBSCRIPTION_NOT_FOUND' ||
+    msg.includes('SUBSCRIPTION_NOT_FOUND')
+  ) {
+    return {
+      status: 403,
+      code: 'SUBSCRIPTION_NOT_FOUND',
+      message: sanitizeApiErrorMessage(msg),
+    };
+  }
+
+  if (
+    errCode === 'SUBSCRIPTION_INACTIVE' ||
+    msg.includes('SUBSCRIPTION_INACTIVE')
+  ) {
+    return {
+      status: 403,
+      code: 'SUBSCRIPTION_INACTIVE',
+      message: sanitizeApiErrorMessage(msg),
+    };
+  }
+
   // 2. Authentication & Authorization
   if (msg.includes('UNAUTHORIZED') || status === 401) {
     return {

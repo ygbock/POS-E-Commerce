@@ -47,7 +47,8 @@ export class ReservationService {
       idempotency_key?: string;
     },
     performed_by: string,
-    explicitIdempotencyKey?: string
+    explicitIdempotencyKey?: string,
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
       throw new Error('TENANT_REQUIRED: Organization context is required for createReservation.');
@@ -60,7 +61,7 @@ export class ReservationService {
       throw new Error('INVALID_QUANTITY: Reservation quantity must be greater than zero.');
     }
 
-    return this.db.withTransaction(async (tx) => {
+    const execute = async (tx: DatabaseClient) => {
       // 1. Check idempotency key if provided
       if (idempotencyKey) {
         const existing = await this.reservationRepo.findByIdempotencyKey(organizationId, idempotencyKey, tx);
@@ -161,18 +162,22 @@ export class ReservationService {
         }
         throw err;
       }
-    });
+    };
+
+    // Compose into an existing checkout transaction when supplied.
+    return client ? execute(client) : this.db.withTransaction(execute);
   }
 
   async releaseReservation(
     organizationId: string,
     reservationId: string,
-    performed_by: string
+    performed_by: string,
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
       throw new Error('TENANT_REQUIRED: Organization context is required for releaseReservation.');
     }
-    return this.db.withTransaction(async (tx) => {
+    const execute = async (tx: DatabaseClient) => {
       const reservation = await this.reservationRepo.findById(organizationId, reservationId, tx);
       if (!reservation) {
         throw new Error(`RESERVATION_NOT_FOUND: Reservation '${reservationId}' not found.`);
@@ -200,18 +205,20 @@ export class ReservationService {
       // 2. Update reservation status
       const updated = await this.reservationRepo.updateStatus(organizationId, reservationId, 'RELEASED', tx);
       return updated!;
-    });
+    };
+    return client ? execute(client) : this.db.withTransaction(execute);
   }
 
   async fulfillReservation(
     organizationId: string,
     reservationId: string,
-    performed_by: string
+    performed_by: string,
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
       throw new Error('TENANT_REQUIRED: Organization context is required for fulfillReservation.');
     }
-    return this.db.withTransaction(async (tx) => {
+    const execute = async (tx: DatabaseClient) => {
       const reservation = await this.reservationRepo.findById(organizationId, reservationId, tx);
       if (!reservation) {
         throw new Error(`RESERVATION_NOT_FOUND: Reservation '${reservationId}' not found.`);
@@ -256,18 +263,20 @@ export class ReservationService {
       // 3. Mark reservation fulfilled
       const updated = await this.reservationRepo.updateStatus(organizationId, reservationId, 'FULFILLED', tx);
       return updated!;
-    });
+    };
+    return client ? execute(client) : this.db.withTransaction(execute);
   }
 
   async cancelReservation(
     organizationId: string,
     reservationId: string,
-    performed_by: string
+    performed_by: string,
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord> {
     if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
       throw new Error('TENANT_REQUIRED: Organization context is required for cancelReservation.');
     }
-    return this.db.withTransaction(async (tx) => {
+    const execute = async (tx: DatabaseClient) => {
       const reservation = await this.reservationRepo.findById(organizationId, reservationId, tx);
       if (!reservation) {
         throw new Error(`RESERVATION_NOT_FOUND: Reservation '${reservationId}' not found.`);
@@ -295,7 +304,8 @@ export class ReservationService {
       // 2. Mark reservation cancelled
       const updated = await this.reservationRepo.updateStatus(organizationId, reservationId, 'CANCELLED', tx);
       return updated!;
-    });
+    };
+    return client ? execute(client) : this.db.withTransaction(execute);
   }
 
   /**
@@ -321,6 +331,27 @@ export class ReservationService {
               tx
             );
             await this.reservationRepo.updateStatus(current.organization_id, current.id, 'EXPIRED', tx);
+
+            // An expired reservation invalidates the pending storefront order when
+            // no other active reservation remains. Keep this transition atomic with
+            // the stock release so orders cannot remain indefinitely in Stock Reserved.
+            if (current.reference_type === 'orders') {
+              const activeRes = await this.reservationRepo.listReservations({
+                organizationId: current.organization_id,
+                referenceType: 'orders',
+                referenceId: current.reference_id,
+                status: 'ACTIVE',
+                limit: 1,
+                offset: 0,
+              }, tx);
+              if (activeRes.length === 0) {
+                await tx.query(
+                  "UPDATE orders SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND organization_id = $2 AND status = 'Stock Reserved'",
+                  [current.reference_id, current.organization_id]
+                );
+              }
+            }
+
             expiredIds.push(current.id);
           }
         });
@@ -350,11 +381,12 @@ export class ReservationService {
       status?: ReservationStatus;
       limit?: number;
       offset?: number;
-    } = {}
+    } = {},
+    client?: DatabaseClient
   ): Promise<InventoryReservationRecord[]> {
     return this.reservationRepo.listReservations({
       organizationId,
       ...options,
-    });
+    }, client);
   }
 }

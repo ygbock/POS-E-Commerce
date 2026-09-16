@@ -48,6 +48,119 @@ Reviewers must evaluate submissions across these ten dimensions:
 
 ## 4. Current Review Backlog
 
+### Queue Item: AUD-001 — Audit & Security Administration Modernization
+- **Submitted By**: Senior Software Architect, Security Engineer & Implementation Lead
+- **Submission Date**: 2026-09-14
+- **Current Status**: `READY FOR REVIEW`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Artifacts Delivered**:
+  - `server/db/migrations/013_audit_and_security_hardening.sql`: Append-only trigger (`trg_immutable_audit_events`), `result` check constraint, performance composite indexes, and slug trigger.
+  - `server/repositories/auditRepository.ts`: Deep recursive sanitization of credentials, bounded pagination, parameterized filtering/searching, authoritative tenant security metrics.
+  - `server/repositories/userRepository.ts`: Safe active admin counting and deleteUser method.
+  - `server.ts` & `server/middleware/auth.ts`: Mounted `/api/tenant/audit` and `/api/tenant/audit/overview`, staff status transition with owner guard and token revocation, role updates, and automated cross-tenant denial auditing.
+  - `src/services/auditApi.ts`: Client API for tenant audit and metrics.
+  - `src/components/admin/AuditLogsView.tsx`: Modernized responsive admin experience with 6 KPI summary cards, composable filters, safe search, and accessible slide-over drawer with formatted JSON.
+  - `tests/audit_security_administration.test.ts`: 13 automated test cases verifying immutability, sanitization, RBAC, tenant isolation, spoofing rejection, staff lifecycle mutations, and metrics.
+- **Verification Evidence**:
+  - `npm run lint`: **PASS** (0 errors)
+  - `npm test`: **PASS** (19/19 test suites passed, 258+ tests total)
+  - `npm run test:audit`: **PASS** (13/13 tests)
+  - `npm run test:security`: **PASS** (22/22 tests)
+  - `npm run test:tenant-business-plane`: **PASS** (18 assertions)
+  - `npm run build`: **PASS** (Exit 0, 2484 modules transformed, dist/server.cjs bundled)
+- **Supervisor Action Required**: Perform security and architecture review on the AUD-001 implementation, database immutability triggers, and credential sanitization routines.
+
+---
+
+### Queue Item: PHASE-5 — Current-State Audit & Strategic Roadmap
+- **Submitted By**: Senior Software Architect & Principal Engineer
+- **Submission Date**: 2026-09-14
+- **Current Status**: `READY FOR REVIEW`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Artifacts Produced**:
+  - `.ai/PHASE_5_CURRENT_STATE_AUDIT.md`: Complete 34-module status matrix, dashboard audit, UI/UX audit, security verification, production readiness breakdown, and live test execution proof.
+  - `.ai/PHASE_5_ROADMAP.md`: Strategic engineering roadmap covering Phases 5.1 through 5.10 with granular task specifications (objectives, impact, RBAC, tests, acceptance criteria).
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm test`: 17 test suites passed, 219 tests total (PASS).
+  - `npm run build`: 2,476 modules transformed, 0 source-map leakage, server bundle generated (PASS).
+  - `npm run test:platform`: 11 passed, 0 failed (PASS).
+  - `npm run test:security`: 22 passed, 0 failed (PASS).
+  - `npm run test:pos`: 17 passed, 0 failed (PASS).
+  - `npm run test:prod-gate`: 9 passed, 0 failed (PASS).
+- **Supervisor Action Required**: Review Phase 5 current-state audit and approve Phase 5 roadmap to begin sequential implementation with `TASK-5.2.1` (Design System and UI/UX Foundation).
+
+---
+
+### Queue Item: UX-001A Phase 1 — Multi-Tenant Storefront Data & API Foundation (Final Verification Corrections Completed)
+- **Submitted By**: Senior Software Engineer / Implementation Lead
+- **Submission Date**: 2026-09-12
+- **Current Status**: `READY FOR REVIEW`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Exact Commits**:
+  - `dc986a0`: `feat: implement multi-tenant storefront architecture with tenant resolution and routing`
+  - `d45403c`: `docs(ux-001a): record Phase 1 multi-tenant data & API foundation completion in task queue, review queue, and implementation report`
+  - `29e4f61`: `test(ux-001a): harden tenant resolver reverse proxy headers, query override assertions, and test:storefront gate`
+  - `56fdebf`: `feat: add multi-tenant storefront architecture with tenant resolution, routes, migration, and tests`
+  - `004feb9`: `docs(ux-001a): apply supervisor corrections on fail-closed resolution, migration 011, and tests A-E`
+  - `2ed6255`: `docs(ux-001a): add multi-tenant storefront architecture, implementation plan, and acceptance tests`
+- **Scope & Final Corrections**:
+  - `server/db/migrations/011_storefront_tenant_config.sql`: Extends `organizations` with `slug`, `custom_domain`, and JSONB configurations. Proven against pre-existing multi-tenant data with deterministic backfill from unique codes, unique indexes on `slug` and `custom_domain`, and non-destructive rollback strategy preserving core tenant catalog and orders.
+  - `server/services/tenantResolver.ts`: Establishes reverse-proxy trust boundary (`isProxyTrusted()`, `isTenantDomainHeaderAllowed()`). Forwarded headers are untrusted by default in production/staging and only honored if `TRUST_PROXY=true`. Prioritizes direct `Host` header over untrusted forwarded headers. Enforces fail-closed semantics for unknown slugs, inactive tenants (HTTP 404), and mismatched domain/path slugs (HTTP 400 `TENANT_MISMATCH`). Default fallback to `org_default` occurs strictly on explicitly configured canonical production endpoints.
+  - `server/routes/storefrontRoutes.ts`: Standardized response contracts, including structured `pagination` metadata (`page`, `pageSize`, `totalCount`, `totalPages`, `hasMore`).
+  - `tests/storefront_multi_tenant.test.ts`: Reconciled full test suite with 22 passed assertions covering all 14 Acceptance Criteria and 8 Supervisor Test Suites (Tests A–H).
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm run test:storefront`: 22 passed, 0 failed (PASS).
+  - `npm run test:operational`: 26 passed, 0 failed (PASS).
+  - `npm test`: 13 test suites passed (208 test cases total, 0 failed, PASS).
+  - Working tree: clean.
+- **Supervisor Action Required**: Review Phase 1 Data & API foundation with final verification corrections; authorize Phase 2 Frontend Architecture (lightweight HTML5 History router and dedicated `StorefrontContext`).
+
+---
+
+### Queue Item: UPG-001, UPG-001R1, UPG-001R2 & UPG-001R2.1 — Production Operations Hardening & Platform Controls
+- **Submitted By**: Senior Software Engineer / Implementation Lead
+- **Submission Date**: 2026-09-11
+- **Current Status**: `APPROVED / CLOSED` (Approved by Supervisor 2026-09-12)
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Base Release (`main`)**: `b0a68954ee09ef5e39578df2cbb7041c76eed20f` (Unchanged)
+- **Approved Application Baseline**: `9ae4b7528aecd195a9167e1b2a060513cbf83223` (Frozen & Untouched)
+- **Exact Commits**:
+  - `14d457c`: `feat(ci): enforce strict 40-character lowercase hex regex on approved_commit_sha and add tests`
+  - `ab97851`: `feat(ci): UPG-001R2.1 parameterize production deploy hook with exact approved commit SHA and add tests`
+  - `4790d90`: `fix(ci): quote workflow step names containing colons to resolve YAML parsing syntax error`
+  - `da22594`: `docs: record UPG-001R2 supervisor review corrections in task queue, review queue, and implementation report`
+  - `661bafa`: `feat(hardening): UPG-001R2 complete 1:1 environment contract, 4-gate deployment workflow, and expanded contradiction matrix`
+  - `e840027`: `feat(hardening): UPG-001R1 production operations hardening corrections`
+  - `5e3f801`: `docs: add operational platform hardening specifications and runbooks (UPG-001)`
+  - `21ac17c`: `feat: add CI/CD deployment pipelines, operational hardening scripts, and backup verification utilities`
+- **Deployment Governance Chain**:
+  `approved SHA (Validated: ^[0-9a-f]{40}$) → reproducible artifact → exact SHA deployment → runtime SHA verification → health/readiness`
+  - Render production deploy hook is explicitly parameterized with the validated approved commit SHA via `?ref=` or `&ref=`.
+- **Scope**:
+  - `server/config/environment.ts`: Strict 1:1 `DEPLOY_ENV` and `NODE_ENV` contract, generalized contradiction rejection across all 12 non-matching pairs, explicit rejection of unknown `NODE_ENV` values (no silent downgrade), decimal integer PORT validation (`1-65535`), PostgreSQL connection URL validation without credential leakage, HTTPS `APP_URL` requirement in staging/production, and configurable cross-environment isolation.
+  - `.github/workflows/production-deploy.yml`: 4 distinct deployment gates: Gate A (reproducible artifact digest verification), Gate B (validates approved_commit_sha is 40-character lowercase hex, exact approved commit deployment via parameterized Render hook with `ref=${APPROVED_COMMIT}` and fail-closed missing hook handling), Gate C (post-deploy runtime revision verification comparing `approved_commit_sha == deployed_runtime_revision`), and Gate D (health/readiness probes fail-closed).
+  - `server.ts`: Exposes sanitized runtime revision identity (`/api/version` and `/api/health`) without credential leakage.
+  - `.github/workflows/ci.yml`: Source-map exposure guard rejecting all `.map` files in `dist/`.
+  - `package.json`: Source-map stripping from production server bundle build.
+  - `tests/operational_hardening.test.ts`: Deterministic contract test suite with 26 test cases verifying all positive and negative failure paths, complete 12-pair contradiction matrix, unknown `NODE_ENV` handling, 4-gate workflow checks, exact-commit deploy URL construction (`?ref=` and `&ref=`), and commit SHA regex validation.
+- **Verification Evidence**:
+  - `npm run lint`: 0 errors (PASS).
+  - `npm run test:operational`: 26 passed, 0 failed (PASS).
+  - `npm run test:prod-gate`: 9 passed, 0 failed (PASS).
+  - `npm test`: 186 passed, 0 failed across all 12 domain suites (PASS).
+  - `npm run build`: 0 map files generated in deployable artifacts (PASS).
+  - `git status --short`: clean (PASS).
+
+---
+
 ### Queue Item: REL-011 & REL-011R1 — Production Database Fail-Closed + PostgreSQL Staging Gate
 - **Submitted By**: Senior Software Engineer / Implementation Lead & Security Architect
 - **Submission Date**: 2026-09-11
@@ -471,18 +584,193 @@ Status: READY FOR REVIEW
 
 ---
 
-### Queue Item: TASK-5.6.3 — Super Admin Platform & Subscription Management
-- **Submitted By**: Senior Software Engineer / Implementation Lead & Platform Architect
-- **Submission Date**: 2026-09-15
-- **Current Status**: `PENDING REVIEW`
-- **Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+### Queue Item: UPG-001 (and R1, R2, R2.1) — Production Platform Hardening & Operational Controls
+- **Submitted By**: Senior Software Engineer / Implementation Lead & Security Architect
+- **Submission Date**: 2026-09-12
+- **Current Status**: `APPROVED`
+- **Supervisor Decision**: **CLOSED & APPROVED**. Platform operational controls, 1:1 environment contract, and Render exact commit SHA deployment workflow approved.
 - **Scope**:
-  - Implemented plan CRUD management and versioning (`starter`, `professional`, `enterprise`, and custom tiers).
-  - Implemented tenant subscription state management (assign plan, trial extension, suspend, reactivate, cancel, restore).
-  - Implemented platform API routes under `/api/platform/plans` and `/api/platform/subscriptions/*` protected by `requireSuperAdmin` middleware.
-  - Enforced strict platform role authorization (`super_admin`); non-super-admins receive `403 PERMISSION_DENIED`.
-  - Maintained server-authoritative tenant isolation and full state audit tracking (`subscription_history` table and `audit_logs`).
-  - Added comprehensive test suite `tests/platform_subscription_management.test.ts` verifying all security boundaries, CRUD operations, state transitions, and audit logs.
-- **Supervisor Action Required**: Review platform hardening implementation and test suite results.
+  - 1:1 runtime environment contract in `server/config/environment.ts`.
+  - 4-gate deployment workflow in `.github/workflows/production-deploy.yml` with commit SHA regex validation.
+  - Sanitized runtime revision endpoints (`/api/version`, `/api/health`).
+  - Source-map blocking on server route and stripping from production bundles.
+  - 26/26 operational tests, 9/9 prod-gate tests, and 186/186 full regression suite passed.
+- **Next Directive**: Proceed to `UX-001A` Multi-Tenant Storefront Modernization.
+
+---
+
+### Queue Item: UX-001A Phase 13 — Multi-Tenant Storefront Modernization Architecture & Planning Deliverables
+- **Submitted By**: Senior Software Engineer / Implementation Lead & UX Architect
+- **Submission Date**: 2026-09-12
+- **Current Status**: `PENDING SUPERVISOR REVIEW`
+- **Scope**:
+  - Phase 1 Baseline Audit of 15 storefront components, contexts, and API routes; documented data flow trace and authority leaks.
+  - Phase 2 Tenant-Aware Storefront Contract: `GET /api/storefront/:tenantSlug/context`, dual-strategy tenant resolver, and schema migration `011_storefront_tenant_config.sql`.
+  - Phase 3 & 4 Tenant-Scoped Catalog & Server-Authoritative Commerce Engine (real-time inventory balances, server pricing, dynamic policy shipping).
+  - Phase 5 Native URL-Based Router (`/shop`, `/shop/category/:slug`, `/product/:slug`, `/cart`, `/checkout`, `/account`, `/order/:orderNumber`).
+  - Phase 6 & 7 Modular Component Decomposition (product detail and modern homepage views).
+  - Phase 8 & 9 Responsive ($375\text{px}$–$1440\text{px}+$, $\ge 44\times 44\text{px}$ touch targets) and WCAG 2.2 AA accessibility architecture.
+  - Phase 10 & 11 Dedicated `StorefrontContext` state decoupling; zero catalog in `localStorage`.
+  - Phase 12 Mapped all 14 acceptance criteria to deterministic test suites.
+  - Phase 13 Pre-implementation architectural documents delivered:
+    - `.ai/UX-001A_STOREFRONT_ARCHITECTURE.md`
+    - `.ai/UX-001A_STOREFRONT_IMPLEMENTATION_PLAN.md`
+    - `.ai/UX-001A_STOREFRONT_ACCEPTANCE_TESTS.md`
+- **Supervisor Action Required**: Review architectural deliverables and approve implementation plan before broad storefront code changes commence.
 
 
+
+
+---
+
+### Queue Item: UX-001A Phase 3 — Initial Modular Storefront Decomposition
+- **Submitted By**: Senior Software Engineer / Implementation Lead
+- **Submission Date**: 2026-09-12
+- **Current Status**: `PENDING LOCAL/CI VERIFICATION`
+- **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
+- **Implementation**:
+  - `src/components/storefront/StorefrontFooter.tsx` extracted from `Storefront.tsx`.
+  - `src/components/storefront/storefrontCatalog.ts` now owns catalog filtering and sorting rules.
+  - `tests/storefront_catalog.test.ts` added for extracted domain behavior.
+  - `package.json` registers the catalog test as a standalone gate and in `npm test`.
+- **Security/Architecture**:
+  - No new tenant authority is introduced in the client.
+  - Catalog filtering is a presentation/query concern and does not replace server-authoritative inventory, pricing, or tenant isolation.
+  - Footer actions are callback-driven and no longer depend directly on parent state.
+  - Existing route and checkout architecture remains intact.
+- **Verification Required Before Approval**:
+  - `npm run lint`
+  - `npm run test:storefront-catalog`
+  - `npm run test:storefront-router`
+  - `npm run test:storefront-api`
+  - `npm run test:storefront`
+  - `npm test`
+  - `npm run build`
+- **Supervisor Action Required**: Review the incremental decomposition and local/CI verification evidence before approving the Phase 3 increment.
+
+
+---
+
+## Phase 5.2 Review Item — TASK-5.2.1
+
+- **Status:** `READY FOR VERIFICATION`
+- **Scope:** Shared UI primitives and responsive page anatomy.
+- **Implementation:** Button, Table, Input, Select, and global UI layout primitives hardened on 2026-09-14.
+- **Required verification:** `npm run lint`, `npm run test:ux`, `npm run build`, and `npm test`.
+- **Reviewer focus:** keyboard navigation, focus visibility, screen-reader semantics, loading/empty states, responsive behavior, and regression compatibility.
+
+
+---
+
+## Phase 5.3 Review Item — TASK-5.3.1
+
+- **Status:** `READY FOR VERIFICATION`
+- **Scope:** Tenant creation, lifecycle mutations, suspended-tenant fail-closed behavior, audit logging, and tenant management UI.
+- **Security focus:** server-authoritative RBAC, transactional provisioning, password hashing, slug/code uniqueness, suspended-session denial, and audit attribution.
+- **Required verification:** `npm run lint`, `npm run test:platform`, `npm run test:security`, `npm run build`, `npm test`.
+
+
+---
+
+### Queue Item: TASK-5.4.1 — Tenant Business-Plane Completion
+- **Submitted By**: Senior Software Engineer / Implementation Lead / Security & QA Lead
+- **Submission Date**: 2026-09-14
+- **Current Status**: `READY FOR VERIFICATION`
+- **Scope**:
+  - Server-backed tenant User Management.
+  - Tenant-scoped Location CRUD.
+  - Server-backed Customer creation/update.
+  - RBAC and tenant isolation protections.
+  - Shared UI primitives and responsive administrative views.
+- **Required Verification**:
+  - `npm run lint`
+  - `npm run test:tenant-business-plane`
+  - `npm run test:security`
+  - `npm run build`
+  - `npm test`
+- **Supervisor Action Required**: Execute workstation/CI verification and approve or return TASK-5.4.1 for correction.
+
+
+## Phase 5.5 Review Item — TASK-5.5.1
+- **Status:** `PENDING LOCAL/CI VERIFICATION`
+- **Scope:** Customer storefront modernization, tenant-scoped cart persistence, catalog visibility, server-authoritative order tracking, and checkout hardening.
+- **Security focus:** Tenant-bound cart namespaces, inactive/ecommerce catalog filtering, contact-verified order tracking, no client-authoritative order data.
+- **Required verification:** `npm run lint`, storefront test suites, `npm run test:storefront-modernization`, `npm test`, `npm run build`.
+- **Reviewer focus:** cross-tenant cart isolation, deep-link/popstate behavior, order contact verification, checkout authority, mobile accessibility, and regression compatibility.
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.1
+- **Status:** `READY FOR REVIEW`
+- **Scope:** SaaS subscription and billing domain foundation.
+- **Security focus:** tenant-scoped subscription records, database-enforced single active billable subscription, provider event idempotency, server-authoritative plan limits/features, and no client/payment-provider authority introduced at this stage.
+- **Verification completed:** `npm run lint` (PASS, 0 TS errors), `npm run test:subscription-foundation` (PASS, 5/5), `npm run test:operational` (PASS, 26/26, migrations 001-014), `npm test` (PASS, 21 suites), `npm run build` (PASS, Vite + Esbuild).
+- **Reviewer focus:** migration compatibility, plan/tenant isolation, lifecycle constraints, idempotency schema, and fail-closed feature access.
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.2
+- **Status:** `READY FOR REVIEW`
+- **Scope:** Plan limits and feature gating enforcement across server-authoritative mutation boundaries.
+- **Security focus:**
+  - Authoritative plan limits for Users/Staff, Locations, Products, and Monthly Orders.
+  - Fail-closed feature checks for POS, Inventory, Storefront/Ecommerce, Multi-Location transfers, and Advanced Reports.
+  - Missing and inactive subscriptions fail closed with HTTP 403 (`SUBSCRIPTION_NOT_FOUND`, `SUBSCRIPTION_INACTIVE`).
+  - Standardized error codes and HTTP 403 envelopes (`SUBSCRIPTION_LIMIT_REACHED`, `FEATURE_NOT_AVAILABLE`).
+  - Platform/super admin roles respect tenant plan limits for all business resource creations.
+  - Concurrency safety with pessimistic row locking (`FOR UPDATE OF os`).
+- **Verification completed:**
+  - `npm run lint` -> PASS (0 TypeScript errors)
+  - `npm run test:subscription-limits` -> PASS (15/15 passed)
+  - `npm run test:subscription-foundation` -> PASS (5/5 passed)
+  - `npm run test:operational` -> PASS (26/26 passed)
+  - `npm test` -> PASS (all 22 test suites passed)
+  - `npm run build` -> PASS (Vite client + esbuild server production bundles)
+- **Reviewer focus:**
+  - Strict server-side limit checks on POST /api/users, POST /api/locations, POST /api/products, POST /api/orders, /api/pos/checkout, and /api/inventory/transfers.
+  - No client-side bypass of limits or features.
+  - Complete isolation across tenants.
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.3
+- **Status:** `READY FOR REVIEW`
+- **Scope:** Super Admin Plans & Subscription Management (SaaS Control Plane).
+- **Security focus:**
+  - Platform billing permission boundary strictly enforced via `requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING)`.
+  - Accessible only to `system_owner` and `platform_finance`. Forbidden to `platform_admin` and tenant personas.
+  - Server-authoritative plan catalog and validation (pricing, limits, intervals, features, active state).
+  - Transactional state transitions with pessimistic row locking (`FOR UPDATE OF os` and `organizations`).
+  - Strict in-transaction append-only audit evidence for all privileged mutations.
+  - Full transactional rollback on failure.
+  - Deterministic MRR calculation based purely on active paid subscriptions and database plan pricing.
+  - Immediate vs scheduled (`cancel_at_period_end`) cancellation distinction.
+  - State coherence validation on subscription restoration (valid active plan, no conflicting active subscription).
+- **Verification completed:**
+  - `npm run lint` -> PASS (0 TypeScript errors)
+  - `npm run test:platform-subscriptions` -> PASS (13/13 scenarios)
+  - `npm run test:subscription-limits` -> PASS (15/15 scenarios)
+  - `npm run test:subscription-foundation` -> PASS (5/5 scenarios)
+  - `npm run test:platform` -> PASS (12/12 scenarios)
+  - `npm run test:operational` -> PASS (26/26 scenarios)
+  - `npm test` -> PASS (all 23 test suites passed)
+  - `npm run build` -> PASS (Vite client + esbuild server production bundles)
+- **Reviewer focus:**
+  - Route authorization boundaries.
+  - In-transaction audit event generation.
+  - Coherence of restore and cancellation semantics.
+  - Determinism of MRR calculation.
+  - Responsive Super Admin Subscriptions view and accessible action modals.
+
+
+
+---
+
+## Phase 5.6 Review Item — TASK-5.6.4
+- **Status:** `HARDENED — PENDING POST-FIX VERIFICATION`
+- **Scope:** Tenant provisioning, onboarding, suspension, reactivation, and archival lifecycle control.
+- **Review findings fixed:** durable archived state, transactional actor-scoped idempotency, canonical plan fail-closed provisioning, terminal archive semantics, legacy PATCH lifecycle/billing drift, expired-period reactivation, and swallowed billing lookup errors.
+- **Regression coverage:** 16 tenant provisioning/lifecycle scenarios.
+- **Required verification:** `npm run lint`, `npm run test:subscription-foundation`, `npm run test:subscription-limits`, `npm run test:platform`, `npm run test:platform-subscriptions`, `npm run test:tenant-provisioning`, `npm run test:operational`, `npm test`, `npm run build`, `git status`.
+- **Reviewer focus:** lifecycle-state integrity, archived tenant terminality, idempotency replay isolation, plan/subscription consistency, transaction rollback, and cross-tenant safety.
+- **Gate:** TASK-5.6.5 is blocked until post-fix workstation/CI execution passes.

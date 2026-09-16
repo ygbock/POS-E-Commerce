@@ -8,40 +8,66 @@ import { AdminMobileBottomNav } from './components/layout/AdminMobileBottomNav';
 import { ExecutiveDashboard } from './components/dashboard/ExecutiveDashboard';
 import { PosTerminal } from './components/pos/PosTerminal';
 import { Storefront } from './components/storefront/Storefront';
+import { StorefrontProvider } from './context/StorefrontContext';
+import { useStorefrontRoute } from './router/StorefrontRouter';
 import { ProductManagement } from './components/catalog/ProductManagement';
 import { StockManagement } from './components/inventory/StockManagement';
 import { OrderFulfillment } from './components/orders/OrderFulfillment';
 import { PurchasingManagement } from './components/purchasing/PurchasingManagement';
 import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
-import { CustomerManagement } from './components/crm/CustomerManagement';
+import { CustomerManagementView } from './components/crm/CustomerManagementView';
 import { AuditLogsView } from './components/admin/AuditLogsView';
-import { PlatformSubscriptionsView } from './components/admin/PlatformSubscriptionsView';
 import { PlatformDashboard } from './components/platform/PlatformDashboard';
+import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
+import { TenantManagementView } from './components/platform/TenantManagementView';
+import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
+import { UserManagementView } from './components/admin/UserManagementView';
+import { LocationManagementView } from './components/admin/LocationManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
 
+const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () => void }> = ({ onOpenAdmin, onOpenPos }) => {
+  const { route } = useStorefrontRoute();
+  return (
+    <div data-storefront-route={route.name} data-storefront-tenant={route.tenantSlug || ''} className="min-h-screen">
+      <Storefront onOpenAdmin={onOpenAdmin} onOpenPos={onOpenPos} />
+    </div>
+  );
+};
+
 const MainLayout: React.FC = () => {
-  // Default first page is the public customer Storefront
-  const [activeTab, setActiveTab] = useState<string>('storefront');
+  const { currentRole } = useCommerce();
+  const isPlatform = isPlatformRole(currentRole);
+
+  // Default initial active tab: platform control plane for platform operators, storefront for customer/tenant
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    isPlatform ? 'platform-dashboard' : 'storefront'
+  );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
-  const { currentRole } = useCommerce();
 
-  // Handle role-based navigation changes
+  // Enforce strict boundary between platform control plane and tenant operations
   React.useEffect(() => {
-    if (currentRole === 'E-commerce Customer' && activeTab !== 'storefront') {
-      setActiveTab('storefront');
-    } else if (currentRole === 'Cashier' && activeTab === 'dashboard') {
-      setActiveTab('pos');
-    } else if (isPlatformRole(currentRole) && (activeTab === 'storefront' || activeTab === 'dashboard')) {
-      setActiveTab('platform-dashboard');
+    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support'];
+    if (isPlatform) {
+      if (!platformTabs.includes(activeTab) && activeTab !== 'security') {
+        setActiveTab('platform-dashboard');
+      }
+    } else {
+      if (platformTabs.includes(activeTab)) {
+        setActiveTab('dashboard');
+      } else if (currentRole === 'E-commerce Customer' && activeTab !== 'storefront') {
+        setActiveTab('storefront');
+      } else if (currentRole === 'Cashier' && activeTab === 'dashboard') {
+        setActiveTab('pos');
+      }
     }
-  }, [currentRole]);
+  }, [currentRole, isPlatform, activeTab]);
 
-  // When activeTab is 'storefront', render the full customer-facing store as the root page
-  if (activeTab === 'storefront') {
+  // When activeTab is 'storefront' (and user is not a platform operator), render customer storefront
+  if (activeTab === 'storefront' && !isPlatform) {
     return (
-      <Storefront
+      <StorefrontRouteShell
         onOpenAdmin={() => setActiveTab('dashboard')}
         onOpenPos={() => setActiveTab('pos')}
       />
@@ -78,7 +104,14 @@ const MainLayout: React.FC = () => {
         {/* Content Viewport */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 custom-scrollbar bg-[#f8fafc] dark:bg-slate-950">
           <div className="max-w-7xl mx-auto space-y-6">
+            {activeTab === 'platform-dashboard' && <PlatformDashboard setActiveTab={setActiveTab} />}
+            {activeTab === 'tenants' && <TenantManagementView />}
+            {activeTab === 'subscriptions' && <SubscriptionsManagementView />}
+            {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
+            {activeTab === 'users' && <UserManagementView />}
+            {activeTab === 'locations' && <LocationManagementView />}
             {activeTab === 'pos' && <PosTerminal />}
             {(activeTab === 'catalog' || activeTab === 'products') && <ProductManagement />}
             {(activeTab === 'inventory' || activeTab === 'stock' || activeTab === 'movements' || activeTab === 'transfers' || activeTab === 'stocktaking') && (
@@ -87,15 +120,12 @@ const MainLayout: React.FC = () => {
             {activeTab === 'orders' && <OrderFulfillment />}
             {activeTab === 'purchasing' && <PurchasingManagement />}
             {(activeTab === 'fintech' || activeTab === 'finance') && <LedgerAndFinance />}
-            {activeTab === 'crm' && <CustomerManagement />}
+            {activeTab === 'crm' && <CustomerManagementView />}
             {activeTab === 'pricing' && <ProductManagement />}
             {activeTab === 'warehouse' && <StockManagement initialSubTab="matrix" />}
             {activeTab === 'reports' && <LedgerAndFinance />}
             {activeTab === 'audit' && <AuditLogsView />}
             {activeTab === 'settings' && <ProductManagement />}
-            {activeTab === 'platform-dashboard' && <PlatformDashboard setActiveTab={setActiveTab} />}
-            {(activeTab === 'subscriptions' || activeTab === 'tenants' || activeTab === 'support') && <PlatformSubscriptionsView />}
-            {activeTab === 'security' && <AuditLogsView />}
           </div>
         </main>
       </div>
@@ -115,7 +145,9 @@ export default function App() {
     <ErrorBoundary>
       <ToastProvider>
         <CommerceProvider>
-          <MainLayout />
+          <StorefrontProvider>
+            <MainLayout />
+          </StorefrontProvider>
         </CommerceProvider>
       </ToastProvider>
     </ErrorBoundary>

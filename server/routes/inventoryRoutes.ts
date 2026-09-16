@@ -8,6 +8,7 @@ import { TransferService } from '../inventory/transferService';
 import { StockCountService } from '../inventory/stockCountService';
 import { DatabaseClient } from '../db/client';
 import { AuditRepository } from '../repositories/auditRepository';
+import { SubscriptionService } from '../services/subscriptionService';
 import { parseExactQuantity, parseExactMoney } from '../inventory/inventoryPolicies';
 import { ApiError } from '../utils/errorSanitizer';
 
@@ -78,6 +79,26 @@ export function handleInventoryRouteError(res: Response, err: any): Response {
       error: {
         code: 'TENANT_ACCESS_DENIED',
         message: 'Access to the specified inventory resource is denied for this organization.',
+      },
+    });
+  }
+
+  if (msg.includes('SUBSCRIPTION_LIMIT_REACHED')) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'SUBSCRIPTION_LIMIT_REACHED',
+        message: safeMessage,
+      },
+    });
+  }
+
+  if (msg.includes('FEATURE_NOT_AVAILABLE') || msg.includes('FEATURE_NOT_INCLUDED')) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FEATURE_NOT_AVAILABLE',
+        message: safeMessage,
       },
     });
   }
@@ -188,7 +209,11 @@ export function handleInventoryRouteError(res: Response, err: any): Response {
   });
 }
 
-export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: InventoryRepository): Router {
+export function createInventoryRouter(
+  db?: DatabaseClient,
+  inventoryRepo?: InventoryRepository,
+  subscriptionService?: SubscriptionService
+): Router {
   const router = Router();
   const repo = inventoryRepo || new InventoryRepository(db);
   const inventoryService = new InventoryService(repo, undefined, db);
@@ -707,6 +732,10 @@ export function createInventoryRouter(db?: DatabaseClient, inventoryRepo?: Inven
     async (req: Request, res: Response) => {
       try {
         const orgId = req.auth!.organizationId;
+        const subService = subscriptionService || (req.app?.get('subscriptionService') as SubscriptionService | undefined);
+        if (subService) {
+          await subService.assertFeatureEnabled(orgId, 'multi_location');
+        }
         const actor = req.auth!.userId;
         const idempotencyKey = (req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key) as string | undefined;
         const { transfer_number, source_location_id, destination_location_id, status, items, notes } = req.body;

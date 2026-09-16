@@ -6,7 +6,11 @@ export type TenantRole =
   | 'Cashier'
   | 'Store Manager'
   | 'Accountant'
-  | 'E-commerce Customer';
+  | 'E-commerce Customer'
+  | 'System Owner'
+  | 'Platform Admin'
+  | 'Platform Support'
+  | 'Platform Finance';
 
 export type PlatformRole =
   | 'System Owner'
@@ -142,6 +146,7 @@ export interface ProductVariant {
   wholesalePrice: number;
   memberPrice: number;
   minSellingPrice: number;
+  compareAtPrice?: number | null;
   weightKg?: number;
   dimensionsCm?: { length: number; width: number; height: number };
   unit?: string;

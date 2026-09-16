@@ -1,4 +1,5 @@
-import { Role } from '../../types';
+import type { Role } from '../../types';
+import { isPlatformRole } from './platformAccess';
 
 export interface PlatformNavItem {
   id: 'platform-dashboard' | 'tenants' | 'subscriptions' | 'support' | 'security';
@@ -6,6 +7,7 @@ export interface PlatformNavItem {
 }
 
 export function getPlatformNavigation(role: Role | string): PlatformNavItem[] {
+  if (!isPlatformRole(role)) return [];
   switch (role) {
     case 'Platform Finance':
       return [

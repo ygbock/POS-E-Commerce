@@ -12,6 +12,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface StoreCartDrawerProps {
@@ -26,14 +27,11 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
   onProceedToCheckout,
 }) => {
   const {
-    storeCart,
-    updateStoreCartQty,
-    removeFromStoreCart,
     appliedCoupon,
     applyCoupon,
     removeCoupon,
-    formatCurrency,
   } = useCommerce();
+  const { storeCart, updateStoreCartQty, removeFromStoreCart, formatCurrency } = useStorefrontContext();
 
   const [couponInput, setCouponInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
@@ -141,14 +139,14 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                 <div className="w-14 h-14 rounded-xl bg-slate-50 dark:bg-slate-950 overflow-hidden flex-shrink-0 border border-slate-200 dark:border-slate-800">
                   <img
                     src={item.image}
-                    alt={item.productName}
+                    alt={item.productName || item.name}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover"
                   />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-slate-900 dark:text-white truncate text-xs">{item.productName}</h4>
+                  <h4 className="font-semibold text-slate-900 dark:text-white truncate text-xs">{item.productName || item.name}</h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{item.variantName}</p>
                   <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
                     {formatCurrency(item.price)}

@@ -37,9 +37,9 @@ async function runStorefrontCheckoutIntegrityTests() {
 
   // Seed organizations, locations, customers, categories, products, variants, stock balances
   await db.exec(`
-    INSERT INTO organizations (id, name, code, is_active) VALUES
-      ('org_store_alpha', 'Store Org Alpha', 'STORE_ALPHA', TRUE),
-      ('org_store_beta', 'Store Org Beta', 'STORE_BETA', TRUE)
+    INSERT INTO organizations (id, name, code, slug, is_active, policies) VALUES
+      ('org_store_alpha', 'Store Org Alpha', 'STORE_ALPHA', 'store-alpha', TRUE, '{"standardShippingFee": 5.00, "freeShippingThreshold": 75.00, "expressShippingFee": 15.00}'),
+      ('org_store_beta', 'Store Org Beta', 'STORE_BETA', 'store-beta', TRUE, '{"standardShippingFee": 5.00, "freeShippingThreshold": 75.00, "expressShippingFee": 15.00}')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO locations (id, organization_id, code, name, type, is_pos_enabled, is_active) VALUES
@@ -275,9 +275,10 @@ async function runStorefrontCheckoutIntegrityTests() {
 
       // Query initial stock balance before concurrent requests
       const preReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const preOnHand = parseFloat(preReservations.rows[0].on_hand);
+      const preReserved = parseFloat(preReservations.rows[0].reserved || '0');
 
       // Dispatched concurrent duplicate requests in parallel
       const reqPromises = Array.from({ length: 4 }).map(() =>
@@ -310,12 +311,19 @@ async function runStorefrontCheckoutIntegrityTests() {
       );
       assert.strictEqual(dbPayments.rows.length, 1, 'Exactly one payment record must exist in the database.');
 
-      // Verify that ONLY ONE stock reservation/decrement occurred (by checking the relative decrease is exactly 1.0000)
+      // Checkout reserves stock; it must not reduce on_hand until fulfillment.
+      // Therefore concurrent duplicate submission may increase reserved by exactly 1,
+      // while on_hand remains unchanged.
+      // The reservation for this order must be exactly one unit and the ledger
+      // must not contain multiple reservations caused by duplicate submissions.
+      assert.strictEqual(preOnHand, parseFloat(preReservations.rows[0].on_hand));
       const postReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const postOnHand = parseFloat(postReservations.rows[0].on_hand);
-      assert.strictEqual(preOnHand - postOnHand, 1.0000, 'Exactly 1.0000 stock deduction must have occurred.');
+      const postReserved = parseFloat(postReservations.rows[0].reserved);
+      assert.strictEqual(postOnHand, preOnHand, 'Checkout reservation must not decrement on_hand.');
+      assert.strictEqual(postReserved - preReserved, 1.0000, 'Exactly 1.0000 stock must be reserved.');
 
       // 2f. Explicit Location Fingerprinting Regression
       const locFingerprintKey = crypto.randomUUID();
@@ -366,9 +374,10 @@ async function runStorefrontCheckoutIntegrityTests() {
       };
 
       const pgPreReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const pgPreOnHand = parseFloat(pgPreReservations.rows[0].on_hand);
+      const pgPreReserved = parseFloat(pgPreReservations.rows[0].reserved || '0');
 
       // Execute simultaneously to trigger a real race/unique constraint condition
       const pgReqPromises = Array.from({ length: 4 }).map(() =>
@@ -400,12 +409,14 @@ async function runStorefrontCheckoutIntegrityTests() {
       );
       assert.strictEqual(pgDbPayments.rows.length, 1, 'Exactly one payment record must exist.');
 
-      // Prove exactly one inventory reservation/decrement occurs (on_hand balance goes down by exactly 1.0000)
+      // Prove exactly one inventory reservation occurs (on_hand unchanged, reserved increases by 1.0000)
       const pgPostReservations = await db.query<any>(
-        `SELECT on_hand FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
       );
       const pgPostOnHand = parseFloat(pgPostReservations.rows[0].on_hand);
-      assert.strictEqual(pgPreOnHand - pgPostOnHand, 1.0000, 'Exactly one stock decrement of 1.0000 must occur.');
+      const pgPostReserved = parseFloat(pgPostReservations.rows[0].reserved || '0');
+      assert.strictEqual(pgPostOnHand, pgPreOnHand, 'Checkout reservation must not decrement on_hand.');
+      assert.strictEqual(pgPostReserved - pgPreReserved, 1.0000, 'Exactly one stock reservation of 1.0000 must occur.');
 
       // Prove identical replay returns the original order (201 status and identical order ID)
       const pgReplayRes = await fetch(`${baseUrl}/api/orders`, {
@@ -694,6 +705,147 @@ async function runStorefrontCheckoutIntegrityTests() {
       markPassed('Production Error Redaction & Leak Protection');
     } catch (err) {
       markFailed('Production Error Redaction & Leak Protection', err);
+    }
+
+    // -----------------------------------------------------------------
+    // SECTION 8: SERVER-AUTHORITATIVE CART VALIDATION (PHASE 4)
+    // -----------------------------------------------------------------
+    try {
+      const tenantRow = await db.query<any>(
+        `SELECT slug FROM organizations WHERE id = 'org_store_alpha' LIMIT 1`
+      );
+      const tenantSlug = tenantRow.rows[0]?.slug;
+      assert.ok(tenantSlug, 'Alpha storefront must have a canonical slug.');
+
+      // 8a. Exact string quantity accepted and server calculates price/tax/shipping.
+      const res8a = await fetch(
+        `${baseUrl}/api/storefront/${encodeURIComponent(tenantSlug)}/cart/validate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [
+              {
+                variantId: 'var_alpha_active_1',
+                quantity: '2.0000',
+                price: '0.01',
+                lineTotal: '0.01',
+              },
+            ],
+          }),
+        }
+      );
+      assert.strictEqual(res8a.status, 200);
+      const json8a = await res8a.json();
+      assert.strictEqual(json8a.success, true);
+      assert.strictEqual(json8a.data.items[0].unitPrice, '20.00');
+      assert.strictEqual(json8a.data.items[0].quantity, '2.0000');
+      assert.strictEqual(json8a.data.items[0].lineSubtotal, '40.00');
+      assert.strictEqual(json8a.data.items[0].lineTax, '6.00');
+      assert.strictEqual(json8a.data.subtotal, '40.00');
+      assert.strictEqual(json8a.data.tax, '6.00');
+      assert.strictEqual(json8a.data.shippingFee, '5.00');
+      assert.strictEqual(json8a.data.total, '51.00');
+
+      // 8b. Numeric quantity must fail closed instead of being coerced with toString().
+      const res8b = await fetch(
+        `${baseUrl}/api/storefront/${encodeURIComponent(tenantSlug)}/cart/validate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [{ variantId: 'var_alpha_active_1', quantity: 2 }],
+          }),
+        }
+      );
+      assert.strictEqual(res8b.status, 400);
+      const json8b = await res8b.json();
+      assert.strictEqual(json8b.error.code, 'VALIDATION_ERROR');
+
+      // 8c. Duplicate variants are rejected rather than double-counted.
+      const res8c = await fetch(
+        `${baseUrl}/api/storefront/${encodeURIComponent(tenantSlug)}/cart/validate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [
+              { variantId: 'var_alpha_active_1', quantity: '1.0000' },
+              { variantId: 'var_alpha_active_1', quantity: '1.0000' },
+            ],
+          }),
+        }
+      );
+      assert.strictEqual(res8c.status, 400);
+      const json8c = await res8c.json();
+      assert.strictEqual(json8c.error.code, 'DUPLICATE_CART_ITEM');
+
+      // 8d. Cross-tenant variants cannot be validated through another tenant slug.
+      const res8d = await fetch(
+        `${baseUrl}/api/storefront/${encodeURIComponent(tenantSlug)}/cart/validate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [{ variantId: 'var_beta_active_1', quantity: '1.0000' }],
+          }),
+        }
+      );
+      assert.strictEqual(res8d.status, 404);
+      const json8d = await res8d.json();
+      assert.strictEqual(json8d.error.code, 'PRODUCT_NOT_FOUND');
+
+      // 8e. Validation reports live stock without mutating it.
+      const before8e = await db.query<any>(
+        `SELECT on_hand, reserved FROM inventory_balances
+         WHERE organization_id = 'org_store_alpha'
+           AND location_id = 'loc_alpha_wh'
+           AND variant_id = 'var_alpha_active_2'`
+      );
+      const res8e = await fetch(
+        `${baseUrl}/api/storefront/${encodeURIComponent(tenantSlug)}/cart/validate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [{ variantId: 'var_alpha_active_2', quantity: '10.0000' }],
+            fulfillmentLocationId: 'loc_alpha_wh',
+          }),
+        }
+      );
+      assert.strictEqual(res8e.status, 200);
+      const json8e = await res8e.json();
+      assert.strictEqual(json8e.data.items[0].isAvailable, false);
+      assert.strictEqual(json8e.data.items[0].availableStock, '5.0000');
+
+      const after8e = await db.query<any>(
+        `SELECT on_hand, reserved FROM inventory_balances
+         WHERE organization_id = 'org_store_alpha'
+           AND location_id = 'loc_alpha_wh'
+           AND variant_id = 'var_alpha_active_2'`
+      );
+      assert.strictEqual(after8e.rows[0].on_hand, before8e.rows[0].on_hand);
+      assert.strictEqual(after8e.rows[0].reserved, before8e.rows[0].reserved);
+
+      // 8f. Inactive fulfillment locations fail closed.
+      const res8f = await fetch(
+        `${baseUrl}/api/storefront/${encodeURIComponent(tenantSlug)}/cart/validate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [{ variantId: 'var_alpha_active_1', quantity: '1.0000' }],
+            fulfillmentLocationId: 'loc_alpha_inactive',
+          }),
+        }
+      );
+      assert.strictEqual(res8f.status, 400);
+      const json8f = await res8f.json();
+      assert.strictEqual(json8f.error.code, 'INVALID_FULFILLMENT_LOCATION');
+
+      markPassed('Server-Authoritative Cart Validation (Phase 4)');
+    } catch (err) {
+      markFailed('Server-Authoritative Cart Validation (Phase 4)', err);
     }
 
   } finally {
