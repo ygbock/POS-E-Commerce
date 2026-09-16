@@ -206,7 +206,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       .filter((g) => g.items.length > 0);
   }, [activeNavGroups, navSearch]);
 
-  const roleLabel = currentRole === 'Super Admin' ? 'Administrator' : currentRole;
+  const roleLabel = currentRole === 'Super Admin' ? 'Tenant Super Admin' : currentRole;
   const roleInitial = roleLabel.trim().charAt(0).toUpperCase() || 'U';
 
   return (
