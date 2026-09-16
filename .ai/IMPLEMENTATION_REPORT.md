@@ -36,6 +36,7 @@ Following supervisor review, the implementation was comprehensively audited and 
 - Reconciled branch history on `main` following supervisor authorization: reverted accidental commit `3165931` and merged `upgrade/v2.6/upg-001-platform-hardening`.
 - Integrated `PlatformDashboard.tsx` from commit `91a02a0`, resolving case-insensitive import disambiguation in `src/App.tsx`.
 - Applied `$${index}` parameter binding fix in `TenantProvisioningService.updateTenant()`.
+- Reconciled historical migration 012 production checksum (`2f295638...` from `platform_subscription_management`) in `server/db/migrator.ts`, executing idempotent DDL forward without altering historical schema_migrations rows.
 - Verified all quality gates on `main`: `npm run lint` (0 errors), `npm run test:tenant-provisioning` (21/21 passed), `npm test` (all 23 suites passed), `npm run build` (passed).
 
 ### Scope & Changes
