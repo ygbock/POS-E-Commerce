@@ -21,3 +21,4 @@ export * from './DiscoveryRateLimitState';
 export * from './DiscoveryPagination';
 export * from './DiscoveryResultCount';
 export * from './DiscoveryStateContainer';
+export * from './DiscoveryHome';

@@ -43,6 +43,7 @@ import { StorefrontHome } from './StorefrontHome';
 import { StorefrontCatalog } from './StorefrontCatalog.tsx';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileFilterDrawer } from './MobileFilterDrawer';
+import { DiscoveryHome } from '../discovery/DiscoveryHome';
 
 export interface StorefrontProps {
   onOpenAdmin?: () => void;
@@ -65,6 +66,14 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     categories, allBrands, filteredProducts, sortedProducts, featuredProducts, bestSellers, newArrivals, recommendedProducts,
     handleBuyNow, handleClearAllFilters, hasActiveFilters, tenantSlug, goHome, goShop, goCategory, goBrand, goSearch, goProduct, goCart, goCheckout, goAccount
   } = state;
+
+  if (route.name === 'discover' || route.name.startsWith('discover-')) {
+    return (
+      <div className={isDarkMode ? 'dark' : ''}>
+        <DiscoveryHome onReturnToStore={goHome} />
+      </div>
+    );
+  }
 
   if (tenantLoading) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950" role="status" aria-live="polite">Loading storefront…</div>;

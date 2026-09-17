@@ -1,5 +1,62 @@
 # Implementation Report
 
+## TASK: FRONT-002 — Discovery Home
+
+- **Status**: `IMPLEMENTED — READY FOR REVIEW`
+- **Date**: 2026-09-17
+- **Program**: `AbaCha Discovery Experience / FRONT-002`
+- **Boundary**: `FRONTEND ONLY` (Zero backend/database modifications)
+
+---
+
+### Scope & Changes
+
+1. **Canonical Discovery Home Component (`src/components/discovery/DiscoveryHome.tsx`)**:
+   - Implemented the single canonical customer Discovery Home page at `/discover`.
+   - Created the full 10-section page hierarchy:
+     1. **Discovery Header**: AbaCha Discovery brand identity, "Back to Store" action, and active location indicator badge.
+     2. **Hero/Search**: Primary heading "Discover what's near you", supporting text, `DiscoverySearchBar` integration, and clickable search suggestions (`groceries`, `restaurant`, `phone repair`, `barber`, `shoes`, `plumber`, `electronics`).
+     3. **Location Controls**: Integrated `DiscoveryLocationSelector` with manual city selection (Freetown, Bo, Kenema, Makeni, Koidu), non-mandatory HTML5 geolocation, radius slider (1–50km), and permission/denial explanation.
+     4. **Discovery Tabs**: Integrated `DiscoveryTabs` (`all`, `businesses`, `products`, `services`), synchronized with state and URL.
+     5. **Quick Filters**: Integrated `DiscoveryFilters` (`nearMe`, `openNow`, `delivery`, `pickup`) directly wired to API query parameters.
+     6. **Explore Categories**: Dynamically fetched from `discoveryApi.getCategories()` (zero hardcoding), responsive carousel/grid, keyboard accessible with visible focus rings, and section-level skeleton/empty/error states.
+     7. **Nearby Businesses**: Section adapts heading to active location (e.g. "Businesses in Freetown" or "Local businesses"), renders real API data via `BusinessCard`, with "View all businesses" routing preserving context.
+     8. **Nearby Products**: Renders real API data via `ProductDiscoveryCard`, respects privacy/business settings (`show_prices`, `show_stock_status`), with "View all products" routing.
+     9. **Nearby Services**: Renders real API data via `ServiceCard`, showing provider, verification, rating, and service areas, with "Explore services" routing.
+     10. **Service Request CTA**: "Can't find what you need? Tell local businesses what you need and let them respond", CTA opening `ServiceRequestModal` or routing to `/discover/request-service`.
+
+2. **Delegation & Routing Convergence**:
+   - **`src/components/discovery/DiscoveryMarketplace.tsx`**: Refactored to delegate directly to canonical `<DiscoveryHome />`, eliminating parallel implementations.
+   - **`src/components/discovery/index.ts`**: Re-exported `DiscoveryHome`.
+   - **`src/components/storefront/Storefront.tsx`**: Added top-level route guard for `route.name === 'discover'` or `route.name.startsWith('discover-')` to render canonical `<DiscoveryHome />` seamlessly within the application without tenant-resolution lockouts.
+
+3. **Resilient Independent Section State Management**:
+   - Categories, Businesses, Products, and Services each maintain independent state machine lifecycles (`idle`, `loading`, `success`, `empty`, `error`, `rate-limited`).
+   - Skeletons, empty states (`DiscoveryEmptyState`), errors (`DiscoveryErrorState`), and rate-limit warnings (`DiscoveryRateLimitState`) render per section without blanking the overall page.
+   - Request cancellation via `AbortController` on rapid filter/search updates.
+
+4. **URL Synchronization & History**:
+   - Synchronized `q`, `type`, `city`, `district`, `radiusKm`, `openNow`, and `sort` with browser search parameters (`window.location.search`).
+   - Full support for browser Back/Forward (`popstate`) and direct bookmarking.
+
+5. **Design Tokens, Accessibility & Responsiveness**:
+   - Styled using Tailwind CSS classes consistent with AbaCha dark mode and light mode tokens.
+   - Accessible heading hierarchy (single `h1`, semantic `h2`/`h3`, semantic `nav`, `main`, `section` landmarks).
+   - Touch targets ≥44px, focus rings, ARIA live announcements for state updates.
+
+6. **Documentation**:
+   - Created `docs/DISCOVERY_FRONTEND_HOME.md` detailing architecture, page hierarchy, API data flow, resilience matrix, URL state sync, responsive layout, and deferred tasks.
+
+---
+
+### Verification Results
+
+- `npm run lint` (`tsc --noEmit`): ✅ PASS (0 errors)
+- `npm run build` (Vite + esbuild): ✅ PASS (2511 modules transformed, `dist/server.cjs` bundled in 889ms)
+- `git status --short`: ✅ PASS (Only frontend component and documentation files modified/created; 0 backend files touched)
+
+---
+
 ## TASK-5.6.4 — Tenant Provisioning, Onboarding & Lifecycle Management
 
 - **Status**: `MERGED INTO MAIN — ALL GATES GREEN`
