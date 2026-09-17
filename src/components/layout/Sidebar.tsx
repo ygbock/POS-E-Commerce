@@ -156,6 +156,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ...(currentRole === 'Super Admin' || currentRole === 'Business Owner' || currentRole === 'Store Manager' || currentRole === 'Inventory Manager'
             ? [{ id: 'locations', label: 'Location Management', icon: MapPin }]
             : []),
+          ...(currentRole === 'Super Admin' || currentRole === 'Business Owner'
+            ? [{ id: 'discovery-admin', label: 'Discovery Management', icon: Sparkles }]
+            : []),
           { id: 'audit', label: 'Security & Audit Logs', icon: ShieldAlert },
           { id: 'settings', label: 'System Settings', icon: Settings },
         ],

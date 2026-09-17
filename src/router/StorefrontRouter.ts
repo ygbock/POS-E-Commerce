@@ -11,6 +11,11 @@ export type StorefrontRoute =
   | { name: 'checkout'; tenantSlug?: string }
   | { name: 'account'; tenantSlug?: string }
   | { name: 'order'; tenantSlug?: string; orderNumber: string }
+  | { name: 'discover'; tenantSlug?: string }
+  | { name: 'discover-search'; tenantSlug?: string; query?: string; searchType?: string }
+  | { name: 'discover-business'; tenantSlug?: string; slug: string }
+  | { name: 'discover-service'; tenantSlug?: string; serviceId: string }
+  | { name: 'discover-request-service'; tenantSlug?: string }
   | { name: 'not-found'; tenantSlug?: string };
 
 const decode = (value: string) => {
@@ -40,6 +45,24 @@ export function parseStorefrontRoute(pathname = window.location.pathname, search
   const base = tenantSlug ? { tenantSlug } : {};
 
   if (!first) return { name: 'home', ...base };
+  if (first === 'discover') {
+    if (!second) return { name: 'discover', ...base };
+    if (second === 'search') {
+      const query = params.get('q') || undefined;
+      const searchType = params.get('type') || undefined;
+      return { name: 'discover-search', ...base, query, searchType };
+    }
+    if (second === 'business' && segments[2]) {
+      return { name: 'discover-business', ...base, slug: segments[2] };
+    }
+    if (second === 'service' && segments[2]) {
+      return { name: 'discover-service', ...base, serviceId: segments[2] };
+    }
+    if (second === 'request-service') {
+      return { name: 'discover-request-service', ...base };
+    }
+    return { name: 'discover', ...base };
+  }
   if (first === 'shop' && !second) return { name: 'shop', ...base };
   if (first === 'shop' && second === 'category' && segments[2]) {
     return { name: 'category', ...base, slug: segments[2] };
@@ -65,6 +88,17 @@ export function buildStorefrontPath(route: StorefrontRoute): string {
 
   switch (route.name) {
     case 'home': return `${prefix}/`;
+    case 'discover': return `${prefix}/discover`;
+    case 'discover-search': {
+      const sp = new URLSearchParams();
+      if (route.query?.trim()) sp.set('q', route.query.trim());
+      if (route.searchType) sp.set('type', route.searchType);
+      const qs = sp.toString();
+      return `${prefix}/discover/search${qs ? `?${qs}` : ''}`;
+    }
+    case 'discover-business': return `${prefix}/discover/business/${encodeURIComponent(route.slug)}`;
+    case 'discover-service': return `${prefix}/discover/service/${encodeURIComponent(route.serviceId)}`;
+    case 'discover-request-service': return `${prefix}/discover/request-service`;
     case 'shop': return `${prefix}/shop`;
     case 'category': return `${prefix}/shop/category/${encodeURIComponent(route.slug)}`;
     case 'brand': return `${prefix}/shop/brand/${encodeURIComponent(route.slug)}`;

@@ -113,7 +113,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
-            {activeTab === 'discovery' && <DiscoveryMarketplace />}
+            {(activeTab === 'discovery' || activeTab === 'discovery-admin') && <DiscoveryMarketplace />}
             {activeTab === 'users' && <UserManagementView />}
             {activeTab === 'locations' && <LocationManagementView />}
             {activeTab === 'pos' && <PosTerminal />}

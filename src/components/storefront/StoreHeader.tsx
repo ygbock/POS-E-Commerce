@@ -492,6 +492,14 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 {cat}
               </button>
             ))}
+
+            <a
+              href="/discover"
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs hover:from-blue-700 hover:to-indigo-700"
+            >
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Discover Local</span>
+            </a>
           </div>
 
           {/* Quick links to special sections */}
@@ -668,6 +676,17 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                   <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
                   <span className="text-xs font-bold">All Catalog</span>
                 </button>
+
+                <a
+                  href="/discover"
+                  className="p-2.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 col-span-2 flex items-center justify-between transition-all"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-xs font-bold">Discover Local Businesses</span>
+                  </div>
+                  <span className="text-[10px] uppercase font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded">New</span>
+                </a>
               </div>
 
               {/* Quick Action Buttons Grid */}
