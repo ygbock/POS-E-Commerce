@@ -19,6 +19,7 @@ import { createPosRouter } from './server/routes/posRoutes.ts';
 import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
 import { createPlatformRouter } from './server/routes/platformRoutes.ts';
 import { createDiscoveryBusinessRouter } from './server/routes/discoveryBusinessRoutes.ts';
+import { createDiscoveryRouter } from './server/routes/discoveryRoutes.ts';
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
@@ -389,6 +390,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Discovery business directory and listing lifecycle API.
   app.use('/api/discovery', createDiscoveryBusinessRouter(db));
+
+  // Discovery search, product/service discovery, marketplace, reviews and analytics.
+  app.use('/api/discovery', createDiscoveryRouter(db));
 
   // Request Header Metadata
   app.use('/api', (req, res, next) => {
