@@ -8,6 +8,7 @@ async function main() {
   const db: DatabaseClient = createIsolatedTestClient();
   await runMigrations(db);
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_test_org','Discovery Test Org','DISC_TEST',TRUE)");
+  await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_other_org','Other Org','DISC_OTHER',TRUE)");
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
@@ -29,6 +30,26 @@ async function main() {
   const publicProfile = await service.getPublicProfile(business.id);
   assert.ok(publicProfile);
   assert.ok(publicProfile?.settings);
+
+  // A tenant user may not rebind an existing discovery business to another tenant.
+  await assert.rejects(
+    () => service.update(business.id, { organizationId: 'disc_other_org' }, owner),
+    /TENANT_ACCESS_DENIED:/,
+  );
+
+  // Discovery-only businesses are editable by their authorized creator without tenant middleware.
+  const discoveryOnly = await service.create({ name: 'Independent Discovery Listing', businessMode: 'DISCOVERY_ONLY' }, owner);
+  const edited = await service.update(discoveryOnly.id, { shortDescription: 'Updated independently.' }, owner);
+  assert.strictEqual(edited.short_description, 'Updated independently.');
+
+  // A discovery-only listing can be converted to the creator's tenant, preserving its identity and slug.
+  const converted = await service.update(discoveryOnly.id, {
+    businessMode: 'DISCOVERY_AND_STORE',
+    organizationId: 'disc_test_org',
+  }, owner);
+  assert.strictEqual(converted.business_mode, 'DISCOVERY_AND_STORE');
+  assert.strictEqual(converted.organization_id, 'disc_test_org');
+  assert.strictEqual(converted.slug, discoveryOnly.slug);
 
   await db.query("UPDATE organizations SET is_active=FALSE WHERE id='disc_test_org'");
   assert.strictEqual(await service.getBySlug(business.slug, true), null);

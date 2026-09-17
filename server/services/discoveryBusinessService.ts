@@ -158,7 +158,7 @@ export class DiscoveryBusinessService {
 
   async getById(id: string, options?: { publicOnly?: boolean }, client?: DatabaseClient): Promise<DiscoveryBusinessRecord | null> {
     if (!id?.trim()) return null;
-    const business = options?.publicOnly ? await this.repository.findById(id, client) : await this.repository.findById(id, client);
+    const business = await this.repository.findById(id, client);
     if (!business) return null;
     if (options?.publicOnly && !(await this.isPubliclyVisible(business, client))) return null;
     return business;
@@ -193,10 +193,22 @@ export class DiscoveryBusinessService {
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
     this.assertCanManage(existing, actor);
     if (existing.listing_status === 'ARCHIVED') throw new Error('DISCOVERY_ARCHIVED:Archived listings cannot be edited.');
-    if (patch.businessMode && patch.businessMode !== existing.business_mode) {
-      if (patch.businessMode === 'DISCOVERY_AND_STORE' && !patch.organizationId && !existing.organization_id) throw new Error('VALIDATION_ERROR:organizationId is required when attaching a store.');
-      if (patch.businessMode === 'DISCOVERY_ONLY' && (patch.organizationId || existing.organization_id)) throw new Error('VALIDATION_ERROR:Detach the organization before switching to DISCOVERY_ONLY.');
+
+    const nextMode = patch.businessMode ?? existing.business_mode;
+    const nextOrganizationId = patch.organizationId !== undefined ? (patch.organizationId || null) : existing.organization_id;
+    if (!['DISCOVERY_ONLY', 'DISCOVERY_AND_STORE'].includes(nextMode)) throw new Error('VALIDATION_ERROR:Invalid businessMode.');
+    if (nextMode === 'DISCOVERY_ONLY' && nextOrganizationId) {
+      throw new Error('VALIDATION_ERROR:organizationId must be empty for DISCOVERY_ONLY businesses.');
     }
+    if (nextMode === 'DISCOVERY_AND_STORE' && !nextOrganizationId) {
+      throw new Error('VALIDATION_ERROR:organizationId is required for DISCOVERY_AND_STORE businesses.');
+    }
+    if (patch.organizationId !== undefined && nextOrganizationId !== existing.organization_id && actor.role !== 'super_admin') {
+      if (!nextOrganizationId || actor.organizationId !== nextOrganizationId) {
+        throw new Error('TENANT_ACCESS_DENIED:You cannot attach a discovery business to another organization.');
+      }
+    }
+
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
       const nextSlug = patch.name && patch.name.trim() !== existing.name ? await this.uniqueSlug(normalizeText(patch.name, 255, 'name', true)!, existing.id, tx) : existing.slug;
@@ -212,8 +224,8 @@ export class DiscoveryBusinessService {
         ...(patch.website !== undefined ? { website: normalizeText(patch.website, 2048, 'website') } : {}),
         ...(patch.logoUrl !== undefined ? { logo_url: normalizeText(patch.logoUrl, 2048, 'logoUrl') } : {}),
         ...(patch.coverImageUrl !== undefined ? { cover_image_url: normalizeText(patch.coverImageUrl, 2048, 'coverImageUrl') } : {}),
-        ...(patch.businessMode !== undefined ? { business_mode: patch.businessMode } : {}),
-        ...(patch.organizationId !== undefined ? { organization_id: patch.organizationId } : {}),
+        ...(patch.businessMode !== undefined ? { business_mode: nextMode } : {}),
+        ...(patch.organizationId !== undefined ? { organization_id: nextOrganizationId } : {}),
         ...(patch.name !== undefined ? { slug: nextSlug } : {}),
       } as any, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
