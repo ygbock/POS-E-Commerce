@@ -115,7 +115,7 @@ export class DiscoveryBusinessRepository {
   }
   async listLocations(businessId: string, options?: { activeOnly?: boolean }, client?: DatabaseClient): Promise<DiscoveryBusinessLocationRecord[]> {
     const result = await this.db(client).query<DiscoveryBusinessLocationRecord>(
-      `SELECT * FROM discovery_business_locations WHERE business_id = $1 ${options?.activeOnly === false ? '' : 'AND is_active = TRUE'} ORDER BY is_primary DESC, name ASC`, [businessId]);
+      `SELECT id, business_id, name, location_type, address_line_1, address_line_2, city, district, region, country, postal_code, latitude, longitude, service_radius_km, phone, is_primary, is_active, created_at, updated_at FROM discovery_business_locations WHERE business_id = $1 ${options?.activeOnly === false ? '' : 'AND is_active = TRUE'} ORDER BY is_primary DESC, name ASC`, [businessId]);
     return result.rows;
   }
   async listCategories(businessId: string, client?: DatabaseClient): Promise<Array<{ id: string; name: string; slug: string; is_primary: boolean }>> {

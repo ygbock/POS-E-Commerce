@@ -244,6 +244,10 @@ export class DiscoveryBusinessService {
     return this.transition(id, 'SUSPENDED', actor, reason || 'Listing suspended.', client, true);
   }
 
+  async archive(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    return this.transition(id, 'ARCHIVED', actor, reason || 'Listing archived.', client);
+  }
+
   private async transition(id: string, toStatus: DiscoveryListingStatus, actor: { userId: string; role: string; organizationId?: string }, reason: string, client?: DatabaseClient, moderatorOnly = false): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
