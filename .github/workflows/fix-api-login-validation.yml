@@ -9,13 +9,9 @@ permissions:
 
 jobs:
   fix:
-    if: github.actor == 'github-actions[bot]' || github.event.head_commit.author.username == 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
       - name: Harden login tenant validation
         shell: bash
         run: |
