@@ -191,8 +191,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Role Persona Switcher — development-only. Production role is server-authoritative. */}
         {import.meta.env.DEV && (
-                  {/* Role Persona Switcher */}
-                  <div className="relative">
+          <div className="relative">
                     <button
                       id="btn-role-switcher"
                       onClick={() => {
@@ -240,9 +239,7 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                       </div>
                     )}
-                  </div>
-          
-          
+          </div>
         )}
         {/* Authenticated session controls */}
         <button

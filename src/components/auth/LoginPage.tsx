@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import { authClient, AuthUser } from '../services/authClient';
+import { authClient, AuthUser } from '../../services/authClient';
 
 interface LoginPageProps {
   onAuthenticated: (user: AuthUser) => void;
