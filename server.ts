@@ -48,6 +48,7 @@ import {
   validateBrandPayload,
   validateAttributePayload,
   validateBody,
+  ValidationError,
 } from './server/validation/index.ts';
 import { apiErrorHandler, buildApiErrorResponse, ApiError } from './server/utils/errorSanitizer.ts';
 import { hashPassword } from './server/auth/password.ts';
@@ -466,7 +467,15 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.post(
     '/api/auth/login',
     authRateLimiter,
-    validateBody(validateLoginPayload),
+    validateBody((body) => {
+      const payload = validateLoginPayload(body);
+      if (!payload.organizationId) {
+        throw new ValidationError('Authentication input validation failed', [
+          { field: 'organizationId', message: 'organizationId is required for login' },
+        ]);
+      }
+      return payload;
+    }),
     async (req: Request, res: Response) => {
       try {
         const result = await authService.login(req.body);
