@@ -8,3 +8,4 @@ export * from './orderRepository';
 export * from './customerRepository';
 export * from './auditRepository';
 export * from './userRepository';
+export * from './discoveryBusinessRepository';
