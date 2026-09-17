@@ -97,6 +97,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             badge: activeHeldCount > 0 ? `${activeHeldCount} Held` : undefined,
             badgeColor: 'bg-blue-600 text-white',
           },
+          { id: 'discovery', label: 'Discover Local', icon: Sparkles, badge: 'New', badgeColor: 'bg-indigo-600 text-white' },
           {
             id: 'storefront',
             label: 'Storefront Portal',
