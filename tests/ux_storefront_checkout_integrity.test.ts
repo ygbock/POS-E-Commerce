@@ -271,11 +271,14 @@ async function runStorefrontCheckoutIntegrityTests() {
         fulfillmentMethod: 'Standard Delivery',
         paymentMethod: 'Credit Card',
         cart_items: [{ variant_id: 'var_alpha_active_1', quantity: '1.0000' }],
+        location_id: 'loc_alpha_wh',
       };
 
-      // Query initial stock balance before concurrent requests
+      // Query the exact fulfillment-location balance used by the concurrent checkout.
+      // The variant intentionally exists at multiple locations in this fixture; an
+      // unconstrained SELECT can inspect the wrong balance row and make the test flaky.
       const preReservations = await db.query<any>(
-        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE location_id = 'loc_alpha_wh' AND variant_id = 'var_alpha_active_1'`
       );
       const preOnHand = parseFloat(preReservations.rows[0].on_hand);
       const preReserved = parseFloat(preReservations.rows[0].reserved || '0');
@@ -318,7 +321,7 @@ async function runStorefrontCheckoutIntegrityTests() {
       // must not contain multiple reservations caused by duplicate submissions.
       assert.strictEqual(preOnHand, parseFloat(preReservations.rows[0].on_hand));
       const postReservations = await db.query<any>(
-        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances WHERE location_id = 'loc_alpha_wh' AND variant_id = 'var_alpha_active_1'`
       );
       const postOnHand = parseFloat(postReservations.rows[0].on_hand);
       const postReserved = parseFloat(postReservations.rows[0].reserved);
