@@ -1,0 +1,56 @@
+name: Wire Discovery Routes
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Wire Discovery router into server
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('server.ts')
+          text = path.read_text(encoding='utf-8')
+
+          import_marker = "import { createPlatformRouter } from './server/routes/platformRoutes.ts';"
+          import_line = import_marker + "\nimport { createDiscoveryBusinessRouter } from './server/routes/discoveryBusinessRoutes.ts';"
+          if "createDiscoveryBusinessRouter" not in text:
+              if import_marker not in text:
+                  raise SystemExit('Discovery route import anchor not found')
+              text = text.replace(import_marker, import_line, 1)
+
+          mount_marker = "  app.use('/api/platform', createPlatformRouter(db, subscriptionService));"
+          mount_line = mount_marker + "\n\n  // Discovery business directory and listing lifecycle API.\n  app.use('/api/discovery', createDiscoveryBusinessRouter(db));"
+          if "app.use('/api/discovery', createDiscoveryBusinessRouter(db));" not in text:
+              if mount_marker not in text:
+                  raise SystemExit('Platform router mount anchor not found')
+              text = text.replace(mount_marker, mount_line, 1)
+
+          path.write_text(text, encoding='utf-8')
+
+      - name: Commit server integration
+        shell: bash
+        run: |
+          if git diff --quiet -- server.ts; then
+            echo "Discovery router already wired."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.ts
+          git commit -m "fix(discovery): mount discovery router in application"
+          git push origin main
