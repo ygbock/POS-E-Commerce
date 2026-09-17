@@ -1,0 +1,70 @@
+name: Repair Build Gate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Repair known compile regressions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          header = Path('src/components/layout/Header.tsx')
+          text = header.read_text(encoding='utf-8')
+          text = text.replace(
+              "        {import.meta.env.DEV && (\n                  {/* Role Persona Switcher */}\n                  <div className=\"relative\">",
+              "        {import.meta.env.DEV && (\n          <div className=\"relative\">",
+              1,
+          )
+          text = text.replace(
+              "                  </div>\n          \n          \n        )}",
+              "          </div>\n        )}",
+              1,
+          )
+          header.write_text(text, encoding='utf-8')
+
+          login = Path('src/components/auth/LoginPage.tsx')
+          login_text = login.read_text(encoding='utf-8')
+          login_text = login_text.replace("from '../services/authClient'", "from '../../services/authClient'", 1)
+          login.write_text(login_text, encoding='utf-8')
+
+          package_file = Path('package.json')
+          import json
+          package_data = json.loads(package_file.read_text(encoding='utf-8'))
+          package_data.setdefault('scripts', {})['test:discovery'] = 'tsx tests/discovery.test.ts'
+          package_file.write_text(json.dumps(package_data, indent=2) + '\n', encoding='utf-8')
+
+          ci = Path('.github/workflows/ci.yml')
+          ci_text = ci.read_text(encoding='utf-8')
+          marker = "      - name: 23. Tenant Business Plane (test:tenant-business-plane)\n        run: npm run test:tenant-business-plane\n"
+          if 'npm run test:discovery' not in ci_text and marker in ci_text:
+              ci_text = ci_text.replace(marker, marker + "\n      - name: 24. Discovery Marketplace (test:discovery)\n        run: npm run test:discovery\n", 1)
+              ci_text = ci_text.replace('      - name: 24. Full Regression Suite (npm test)', '      - name: 25. Full Regression Suite (npm test)', 1)
+          ci.write_text(ci_text, encoding='utf-8')
+
+      - name: Validate TypeScript
+        run: |
+          npm ci
+          npm run lint
+
+      - name: Commit repairs
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/layout/Header.tsx src/components/auth/LoginPage.tsx package.json .github/workflows/ci.yml
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "fix(build): repair UI compile regressions and add discovery test"
+          git push origin main
