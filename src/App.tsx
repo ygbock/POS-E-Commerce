@@ -37,6 +37,20 @@ const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () =>
   );
 };
 
+const PublicStorefrontShell: React.FC = () => (
+  <CommerceProvider>
+    <StorefrontProvider>
+      <StorefrontRouteShell onOpenAdmin={() => window.location.assign('/')} onOpenPos={() => window.location.assign('/')} />
+    </StorefrontProvider>
+  </CommerceProvider>
+);
+
+const isPublicStorefrontPath = (pathname: string) =>
+  pathname === '/' ||
+  pathname.startsWith('/store/') ||
+  pathname === '/discover' ||
+  pathname.startsWith('/discover/');
+
 const MainLayout: React.FC = () => {
   const { currentRole } = useCommerce();
   const isPlatform = isPlatformRole(currentRole);
@@ -159,6 +173,17 @@ export default function App() {
     });
     return () => { mounted = false; };
   }, []);
+
+  // Public storefront and Discovery routes must be previewable without an admin session.
+  if (!authLoading && !authUser && isPublicStorefrontPath(window.location.pathname)) {
+    return (
+      <ErrorBoundary>
+        <ToastProvider>
+          <PublicStorefrontShell />
+        </ToastProvider>
+      </ErrorBoundary>
+    );
+  }
 
   if (authLoading) {
     return (
