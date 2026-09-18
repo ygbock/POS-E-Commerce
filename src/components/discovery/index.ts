@@ -27,3 +27,6 @@ export * from './DiscoverySearchResults';
 export { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
 
 export { DiscoveryServiceRequestPage } from './DiscoveryServiceRequestPage';
+
+export * from './business';
+
