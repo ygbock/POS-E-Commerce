@@ -586,6 +586,92 @@ export class OrderService {
   }
 
   /**
+   * Confirm a storefront payment without consuming stock.
+   * Payment confirmation is the gate between reservation and fulfillment.
+   * The amount is re-read from the order inside the transaction so a client
+   * cannot confirm an arbitrary amount or cross tenant.
+   */
+  async confirmStorefrontPayment(
+    organizationId: string,
+    orderId: string,
+    paymentReference?: string | null,
+    transactionPayload?: Record<string, any>,
+    actor = 'System'
+  ): Promise<{ order: OrderRecord; payment: PaymentRecord }> {
+    return this.db.withTransaction(async (tx) => {
+      const orderRes = await tx.query<any>(
+        `SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
+        [orderId, organizationId]
+      );
+      if (orderRes.rows.length === 0) {
+        throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
+      }
+      const order = orderRes.rows[0];
+
+      if (order.status === 'Cancelled' || order.status === 'Refunded') {
+        throw new DomainError('INVALID_ORDER_STATE', 'A cancelled or refunded order cannot be payment-confirmed.');
+      }
+      if (order.status === 'Completed' || order.status === 'Delivered') {
+        throw new DomainError('INVALID_ORDER_STATE', 'A completed order cannot be payment-confirmed.');
+      }
+      if (order.payment_status === 'Paid') {
+        const existing = await tx.query<any>(
+          `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1`,
+          [orderId, organizationId]
+        );
+        if (!existing.rows[0]) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+        return { order: order as OrderRecord, payment: mapPaymentRow(existing.rows[0]) };
+      }
+      if (!['Pending', 'Failed', 'Partial'].includes(order.payment_status)) {
+        throw new DomainError('INVALID_PAYMENT_STATE', `Order payment status '${order.payment_status}' cannot transition to Paid.`);
+      }
+
+      const paymentRes = await tx.query<any>(
+        `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at DESC FOR UPDATE LIMIT 1`,
+        [orderId, organizationId]
+      );
+      if (paymentRes.rows.length === 0) {
+        throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+      }
+      const payment = paymentRes.rows[0];
+      const orderTotal = this.localParseMoneyToCents(String(order.total_amount));
+      const paymentAmount = this.localParseMoneyToCents(String(payment.amount));
+      if (paymentAmount !== orderTotal) {
+        throw new DomainError('PAYMENT_AMOUNT_MISMATCH', 'Payment amount does not match the order total.');
+      }
+
+      const updatedPayment = await tx.query<any>(
+        `UPDATE payments
+         SET status = 'Completed', reference = COALESCE($3, reference), transaction_payload = $4
+         WHERE id = $1 AND organization_id = $2
+         RETURNING *`,
+        [payment.id, organizationId, paymentReference || null, JSON.stringify(transactionPayload || payment.transaction_payload || {})]
+      );
+      const updatedOrder = await tx.query<any>(
+        `UPDATE orders
+         SET payment_status = 'Paid', status = CASE WHEN status = 'Stock Reserved' THEN 'Payment Confirmed' ELSE status END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2
+         RETURNING *`,
+        [orderId, organizationId]
+      );
+
+      await this.auditRepo.recordEvent({
+        organization_id: organizationId,
+        actor_name: actor,
+        actor_role: 'System',
+        action: 'storefront.payment_confirm',
+        entity_type: 'orders',
+        entity_id: orderId,
+        metadata: { payment_id: payment.id, payment_reference: paymentReference || payment.reference, amount: payment.amount },
+        severity: 'Info',
+      }, tx);
+
+      return { order: updatedOrder.rows[0] as OrderRecord, payment: mapPaymentRow(updatedPayment.rows[0]) };
+    });
+  }
+
+  /**
    * Cancel a storefront order and atomically release all ACTIVE reservations.
    * Safe to retry: released/cancelled reservations are idempotent.
    */
@@ -609,8 +695,11 @@ export class OrderService {
       if (order.status === 'Cancelled') {
         return order as OrderRecord;
       }
-      if (order.status === 'Fulfilled' || order.status === 'Completed') {
+      if (order.status === 'Fulfilled' || order.status === 'Completed' || order.status === 'Delivered') {
         throw new DomainError('INVALID_ORDER_STATE', 'A fulfilled order cannot be cancelled through the reservation workflow.');
+      }
+      if (order.payment_status === 'Paid' || order.payment_status === 'Partially Refunded') {
+        throw new DomainError('INVALID_ORDER_STATE', 'A paid order must use the refund workflow before cancellation.');
       }
 
       const reservations = await this.reservationService.listReservations(organizationId, {
@@ -677,6 +766,9 @@ export class OrderService {
       }
       if (order.status === 'Cancelled') {
         throw new DomainError('INVALID_ORDER_STATE', 'A cancelled order cannot be fulfilled.');
+      }
+      if (order.payment_status !== 'Paid') {
+        throw new DomainError('PAYMENT_REQUIRED', 'Payment must be confirmed before a storefront order can be fulfilled.');
       }
 
       const reservations = await this.reservationService.listReservations(organizationId, {
