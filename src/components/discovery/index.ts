@@ -25,3 +25,5 @@ export * from './DiscoveryHome';
 export * from './DiscoverySearchResults';
 
 export { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
+
+export { DiscoveryServiceRequestPage } from './DiscoveryServiceRequestPage';
