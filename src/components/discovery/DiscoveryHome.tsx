@@ -11,6 +11,7 @@ import {
   Building2,
   BriefcaseBusiness,
   Search,
+  Zap,
 } from 'lucide-react';
 import type {
   DiscoverySearchType,
