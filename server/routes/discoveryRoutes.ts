@@ -83,6 +83,15 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     } catch (err) { next(err); }
   });
 
+  router.post('/businesses/:id/convert-to-store', requireAuth(), async (req, res, next) => {
+    try {
+      if (!req.auth!.organizationId) return res.status(422).json({success:false,error:{code:'TENANT_REQUIRED',message:'An active organization is required to enable store mode.'}});
+      if (!(await owned(req, req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Business conversion forbidden.'}});
+      const data = await businessService.update(req.params.id, { businessMode: 'DISCOVERY_AND_STORE', organizationId: req.auth!.organizationId }, actor(req));
+      res.json({success:true,data});
+    } catch (err) { next(err); }
+  });
+
   router.patch('/businesses/:id', requireAuth(), requireTenantAccess(), async (req, res, next) => {
     try {
       if (!(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business modification forbidden.' } });

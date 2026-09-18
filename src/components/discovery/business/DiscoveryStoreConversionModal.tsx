@@ -45,7 +45,7 @@ export const DiscoveryStoreConversionModal: React.FC<DiscoveryStoreConversionMod
     try {
       await discoveryApi.updateBusiness(business.id, {
         name: storeName.trim() || business.name,
-        businessMode: 'DISCOVERY_AND_STORE',
+        business_mode: 'DISCOVERY_AND_STORE',
       });
 
       // Update business mode in local state

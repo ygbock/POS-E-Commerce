@@ -333,6 +333,8 @@ export const discoveryApi = {
       body: JSON.stringify(patch),
     });
   },
+  async convertBusinessToStore(id: string): Promise<DiscoveryBusiness> { return request<DiscoveryBusiness>('/api/discovery/businesses/' + encodeURIComponent(id) + '/convert-to-store', { method: 'POST', body: JSON.stringify({}) }); },
+
 
   /**
    * Lifecycle actions
