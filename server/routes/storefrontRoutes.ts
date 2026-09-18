@@ -646,14 +646,27 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   });
 
   // POST /api/storefront/orders/:id/refund
+  // Body may omit returnItems for a full remaining return, or provide
+  // returnItems: [{ variant_id, quantity }] for a partial return.
   router.post('/orders/:id/refund', requireAuth(), requirePermission(PERMISSIONS.ORDERS_REFUND), requireTenantAccess(), async (req: Request, res: Response) => {
     try {
       const organizationId = req.auth!.organizationId;
+      const returnItems = req.body?.returnItems === undefined
+        ? undefined
+        : Array.isArray(req.body.returnItems)
+          ? req.body.returnItems.map((item: any) => ({
+              variant_id: String(item?.variant_id ?? item?.variantId ?? ''),
+              quantity: String(item?.quantity ?? ''),
+            }))
+          : req.body.returnItems;
+
       const order = await orders.refundOrder(
         organizationId,
         req.params.id,
         req.auth!.userId,
         req.body?.reason ? String(req.body.reason) : undefined,
+        returnItems,
+        req.body?.refundMethod ? String(req.body.refundMethod) : undefined,
       );
       res.json({ success: true, data: order });
     } catch (err) {
