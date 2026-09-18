@@ -24,8 +24,31 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         },
       });
     }
-    const status = err?.status || 500;
     const code = err?.code || 'INTERNAL_ERROR';
+    const domainClientCodes = new Set([
+      'VALIDATION_ERROR',
+      'ORDER_NOT_FOUND',
+      'ORDER_ITEMS_NOT_FOUND',
+      'ORDER_ITEM_NOT_FOUND',
+      'PRODUCT_NOT_FOUND',
+      'PAYMENT_NOT_FOUND',
+      'PAYMENT_REQUIRED',
+      'PAYMENT_AMOUNT_MISMATCH',
+      'INVALID_ORDER_STATE',
+      'INVALID_PAYMENT_STATE',
+      'NOTHING_TO_RETURN',
+      'RETURN_QUANTITY_EXCEEDED',
+      'REFUND_AMOUNT_EXCEEDED',
+      'ALREADY_REFUNDED',
+    ]);
+    const status = err?.status || (
+      domainClientCodes.has(code)
+        ? (code.endsWith('_NOT_FOUND') || code === 'ORDER_NOT_FOUND' || code === 'PRODUCT_NOT_FOUND' ? 404
+          : code === 'RETURN_QUANTITY_EXCEEDED' || code === 'REFUND_AMOUNT_EXCEEDED' ? 422
+          : code === 'INVALID_ORDER_STATE' || code === 'INVALID_PAYMENT_STATE' || code === 'ALREADY_REFUNDED' ? 409
+          : 400)
+        : 500
+    );
     const message = err?.message || 'An unexpected error occurred.';
     return res.status(status).json({
       success: false,
