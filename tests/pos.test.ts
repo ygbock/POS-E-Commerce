@@ -495,6 +495,22 @@ async function runPosTests() {
     assert.ok(error2.includes('RETURN_INVALID'));
 
     markPassed('Concurrent Return Double-Refund Lock Protection');
+
+    // Ledger invariant: every successful POS return has exactly one immutable REFUND transaction.
+    const ledgerRows = await db.query<any>(
+      `SELECT transaction_type, amount, status, organization_id, payment_id, order_id
+       FROM payment_transactions
+       WHERE organization_id = $1 AND order_id = $2
+       ORDER BY created_at ASC, id ASC`,
+      ['org_pos_a', sale.order.id],
+    );
+    const refundLedgerRows = ledgerRows.rows.filter((row: any) => row.transaction_type === 'REFUND');
+    const chargeLedgerRows = ledgerRows.rows.filter((row: any) => row.transaction_type === 'CHARGE');
+    assert.strictEqual(chargeLedgerRows.length, 1, 'A sale must have one captured CHARGE ledger row.');
+    assert.strictEqual(refundLedgerRows.length, 1, 'The successful return must have one REFUND ledger row.');
+    assert.strictEqual(refundLedgerRows[0].amount, '20.00');
+    assert.strictEqual(refundLedgerRows[0].organization_id, 'org_pos_a');
+
   } catch (err) {
     markFailed('Concurrent Return Double-Refund Lock Protection', err);
   }

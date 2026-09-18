@@ -3,6 +3,7 @@ import { PosRepository, PosSessionRecord, PosCashMovementRecord, PosReturnRecord
 import { OrderRepository, OrderRecord, OrderItemRecord, PaymentRecord } from '../repositories/orderRepository';
 import { InventoryRepository } from '../repositories/inventoryRepository';
 import { AuditRepository } from '../repositories/auditRepository';
+import { PaymentTransactionRepository } from '../repositories/paymentTransactionRepository';
 import { toQtyString, parseExactMoney, parseQtyToScaled, formatScaledToQtyString, parseExactQuantity } from '../inventory/inventoryPolicies';
 import crypto from 'node:crypto';
 
@@ -113,6 +114,7 @@ export class PosService {
   private orderRepo: OrderRepository;
   private invRepo: InventoryRepository;
   private auditRepo: AuditRepository;
+  private paymentTransactionRepo: PaymentTransactionRepository;
   private db: DatabaseClient;
 
   constructor(
@@ -127,6 +129,7 @@ export class PosService {
     this.orderRepo = orderRepo || new OrderRepository(this.db);
     this.invRepo = invRepo || new InventoryRepository(this.db);
     this.auditRepo = auditRepo || new AuditRepository(this.db);
+    this.paymentTransactionRepo = new PaymentTransactionRepository(this.db);
   }
 
   /**
@@ -576,6 +579,24 @@ export class PosService {
         // D. Save Order, Items, and Payment
         const saved = await this.orderRepo.createOrderWithItems(order, orderItems, payment, tx);
 
+        await this.paymentTransactionRepo.create({
+          id: `pt_charge_${payment.id}`,
+          organization_id,
+          payment_id: payment.id,
+          order_id: orderId,
+          transaction_type: 'CHARGE',
+          amount: payment.amount,
+          currency: payment.currency,
+          status: 'POSTED',
+          payment_method: payment.payment_method,
+          reference: payment.reference,
+          provider: payment.provider,
+          source_type: 'pos_checkout',
+          source_id: orderId,
+          metadata: payment.transaction_payload || {},
+          performed_by: cashier_name,
+        }, tx);
+
         // E. Deduct inventory through inventory domain (pessimistic locks applied during recordMovement)
         for (const item of orderItems) {
           await this.invRepo.recordMovement(
@@ -815,10 +836,15 @@ export class PosService {
           return alreadyReturned + requestedQty === originalQty;
         });
 
-        const priorRefundedCents = prevReturns.reduce(
-          (sum, ret) => sum + parseMoneyToCents(String(ret.refund_amount)),
-          0n
+        const priorRefundedCents = parseMoneyToCents(
+          await this.paymentTransactionRepo.getRefundedAmount(payment.id, organization_id, tx)
         );
+        const capturedLedgerCents = parseMoneyToCents(
+          await this.paymentTransactionRepo.getCapturedAmount(payment.id, organization_id, tx)
+        );
+        if (capturedLedgerCents !== paymentAmountCents) {
+          throw new Error('PAYMENT_INVALID: Payment transaction ledger does not reconcile to the captured payment.');
+        }
         const remainingRefundCents = orderTotalCents - priorRefundedCents;
         if (allRemainingReturned) {
           const residual = remainingRefundCents - totalRefundCents;
@@ -857,8 +883,27 @@ export class PosService {
         // E. Save return records
         const saved = await this.posRepo.createReturn(returnRecord, savedItems, tx);
 
+        await this.paymentTransactionRepo.create({
+          id: `pt_refund_${returnId}`,
+          organization_id,
+          payment_id: payment.id,
+          order_id: order_id,
+          transaction_type: 'REFUND',
+          amount: refundAmountStr,
+          currency: payment.currency,
+          status: 'POSTED',
+          payment_method: refund_method,
+          reference: payment.reference,
+          provider: payment.provider || 'AbaCha',
+          idempotency_key: params.idempotency_key || null,
+          source_type: 'pos_return',
+          source_id: returnId,
+          metadata: { reason, order_number: order.order_number },
+          performed_by,
+        }, tx);
+
         // F. Reconcile order and payment state from the cumulative return ledger.
-        const paymentStatus = priorRefundedCents + totalRefundCents === orderTotalCents && allRemainingReturned
+        const paymentStatus = priorRefundedCents + totalRefundCents === capturedLedgerCents && allRemainingReturned
           ? 'Refunded'
           : 'Partially Refunded';
         const orderStatus = paymentStatus === 'Refunded' ? 'Refunded' : order.status;

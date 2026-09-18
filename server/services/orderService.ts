@@ -12,6 +12,7 @@ import {
 import crypto from 'node:crypto';
 import { StorefrontCartService } from './storefrontCartService.ts';
 import { ReservationService } from '../inventory/reservationService.ts';
+import { PaymentTransactionRepository } from '../repositories/paymentTransactionRepository.ts';
 
 export class DomainError extends Error {
   constructor(public code: string, message: string) {
@@ -71,6 +72,7 @@ export class OrderService {
   private auditRepo: AuditRepository;
   private storefrontCartService: StorefrontCartService;
   private reservationService: ReservationService;
+  private paymentTransactionRepo: PaymentTransactionRepository;
 
   constructor(
     orderRepo?: OrderRepository,
@@ -86,6 +88,7 @@ export class OrderService {
     this.auditRepo = auditRepo || new AuditRepository(this.db);
     this.storefrontCartService = new StorefrontCartService(this.db);
     this.reservationService = new ReservationService(undefined, undefined, this.db);
+    this.paymentTransactionRepo = new PaymentTransactionRepository(this.db);
   }
 
   private localDivideRoundHalfUp(num: bigint, denom: bigint): bigint {
@@ -598,6 +601,12 @@ export class OrderService {
     transactionPayload?: Record<string, any>,
     actor = 'System'
   ): Promise<{ order: OrderRecord; payment: PaymentRecord }> {
+    if (idempotencyKey !== undefined) {
+      if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.length > 128) {
+        throw new DomainError('VALIDATION_ERROR', 'Refund idempotency key must be a non-empty value no longer than 128 characters.');
+      }
+    }
+
     return this.db.withTransaction(async (tx) => {
       const orderRes = await tx.query<any>(
         `SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
@@ -647,6 +656,24 @@ export class OrderService {
          RETURNING *`,
         [payment.id, organizationId, paymentReference || null, JSON.stringify(transactionPayload || payment.transaction_payload || {})]
       );
+      await this.paymentTransactionRepo.create({
+        id: `pt_charge_${payment.id}_${crypto.randomUUID()}`,
+        organization_id: organizationId,
+        payment_id: payment.id,
+        order_id: orderId,
+        transaction_type: 'CHARGE',
+        amount: String(payment.amount),
+        currency: String(payment.currency || 'SLE'),
+        status: 'POSTED',
+        payment_method: String(payment.payment_method),
+        reference: paymentReference || payment.reference || null,
+        provider: payment.provider || 'AbaCha Storefront',
+        source_type: 'storefront_payment_confirmation',
+        source_id: orderId,
+        metadata: transactionPayload || {},
+        performed_by: actor,
+      }, tx);
+
       const updatedOrder = await tx.query<any>(
         `UPDATE orders
          SET payment_status = 'Paid', status = CASE WHEN status = 'Stock Reserved' THEN 'Payment Confirmed' ELSE status END,
@@ -830,7 +857,8 @@ export class OrderService {
     actor = 'System',
     reason = 'Order refund',
     returnItems?: Array<{ variant_id: string; quantity: string }>,
-    refundMethod?: string
+    refundMethod?: string,
+    idempotencyKey?: string
   ): Promise<OrderRecord> {
     return this.db.withTransaction(async (tx) => {
       const orderRes = await tx.query<any>(
@@ -860,6 +888,23 @@ export class OrderService {
       );
       const payment = paymentRes.rows[0];
       if (!payment) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+
+      if (idempotencyKey) {
+        const existingTx = await tx.query<any>(
+          `SELECT * FROM payment_transactions
+           WHERE organization_id = $1 AND idempotency_key = $2
+             AND transaction_type = 'REFUND' AND status = 'POSTED'
+           LIMIT 1`,
+          [organizationId, idempotencyKey],
+        );
+        if (existingTx.rows.length > 0) {
+          const existing = existingTx.rows[0];
+          if (existing.payment_id !== payment.id || existing.order_id !== orderId) {
+            throw new DomainError('IDEMPOTENCY_CONFLICT', 'Refund idempotency key is already associated with a different payment or order.');
+          }
+          return order as OrderRecord;
+        }
+      }
 
       const itemsRes = await tx.query<any>(
         `SELECT * FROM order_items
@@ -970,13 +1015,8 @@ export class OrderService {
         }
       }
 
-      const existingRefundRes = await tx.query<any>(
-        `SELECT COALESCE(SUM(refund_amount), 0)::text AS refunded_amount
-         FROM pos_returns
-         WHERE order_id = $1 AND organization_id = $2`,
-        [orderId, organizationId]
-      );
-      const alreadyRefundedCents = this.localParseMoneyToCents(String(existingRefundRes.rows[0]?.refunded_amount || '0.00'));
+      const alreadyRefundedAmount = await this.paymentTransactionRepo.getRefundedAmount(payment.id, organizationId, tx);
+      const alreadyRefundedCents = this.localParseMoneyToCents(alreadyRefundedAmount);
       const orderTotalCents = this.localParseMoneyToCents(String(order.total_amount));
       const remainingRefundCents = orderTotalCents - alreadyRefundedCents;
       if (remainingRefundCents <= 0n) {
@@ -1056,8 +1096,28 @@ export class OrderService {
           effectiveRefundMethod,
           actor,
           reason,
+          idempotencyKey || null,
         ]
       );
+
+      await this.paymentTransactionRepo.create({
+        id: `pt_refund_${returnId}`,
+        organization_id: organizationId,
+        payment_id: payment.id,
+        order_id: orderId,
+        transaction_type: 'REFUND',
+        amount: this.localFormatCentsToMoneyString(calculatedRefundCents),
+        currency: String(payment.currency || 'SLE'),
+        status: 'POSTED',
+        payment_method: effectiveRefundMethod,
+        reference: payment.reference || null,
+        provider: payment.provider || 'AbaCha',
+        idempotency_key: idempotencyKey || null,
+        source_type: 'pos_return',
+        source_id: returnId,
+        metadata: { reason, order_number: order.order_number },
+        performed_by: actor,
+      }, tx);
 
       for (const line of refundLines) {
         const returnItemId = `retitem_${crypto.randomUUID()}`;
@@ -1094,7 +1154,16 @@ export class OrderService {
       }
 
       const newRefundedCents = alreadyRefundedCents + calculatedRefundCents;
-      const isFullyRefunded = newRefundedCents === orderTotalCents && allRemainingReturned;
+      const capturedCents = this.localParseMoneyToCents(
+        await this.paymentTransactionRepo.getCapturedAmount(payment.id, organizationId, tx)
+      );
+      if (capturedCents !== paymentAmountCents && capturedCents !== orderTotalCents) {
+        throw new DomainError('PAYMENT_LEDGER_MISMATCH', 'Payment ledger does not reconcile to the captured payment.');
+      }
+      if (newRefundedCents > capturedCents) {
+        throw new DomainError('REFUND_AMOUNT_EXCEEDED', 'Cumulative refunds cannot exceed the captured payment amount.');
+      }
+      const isFullyRefunded = newRefundedCents === capturedCents && allRemainingReturned;
       if (newRefundedCents > orderTotalCents) {
         throw new DomainError('REFUND_AMOUNT_EXCEEDED', 'Cumulative refunds cannot exceed the original order total.');
       }

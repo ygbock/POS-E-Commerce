@@ -690,6 +690,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         req.body?.reason ? String(req.body.reason) : undefined,
         returnItems,
         req.body?.refundMethod ? String(req.body.refundMethod) : undefined,
+        req.header('Idempotency-Key') || (req.body?.idempotencyKey ? String(req.body.idempotencyKey) : undefined),
       );
       res.json({ success: true, data: order });
     } catch (err) {
