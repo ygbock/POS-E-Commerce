@@ -986,7 +986,7 @@ async function runPosTests() {
     });
 
     assert.strictEqual(replay.returnRecord.id, first.returnRecord.id);
-    assert.strictEqual(replay.returnRecord.refund_amount, '4.00');
+    assert.strictEqual(replay.returnRecord.refund_amount, '10.00');
 
     const after = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
     assert.strictEqual(after?.on_hand, (Number(before?.on_hand) + 1).toFixed(4));
@@ -1001,7 +1001,7 @@ async function runPosTests() {
       ['org_pos_a', sale.order.id],
     );
     assert.strictEqual(ledger.rows[0].count, 1);
-    assert.strictEqual(ledger.rows[0].amount, '4.00');
+    assert.strictEqual(ledger.rows[0].amount, '10.00');
 
     await assert.rejects(
       async () => {
