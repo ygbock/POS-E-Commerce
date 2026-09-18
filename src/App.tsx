@@ -25,6 +25,7 @@ import { UserManagementView } from './components/admin/UserManagementView';
 import { LocationManagementView } from './components/admin/LocationManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
 import { DiscoveryMarketplace } from './components/discovery/DiscoveryMarketplace';
+import { DiscoveryHome } from './components/discovery/DiscoveryHome';
 import { LoginPage } from './components/auth/LoginPage';
 import { authClient, AuthUser } from './services/authClient';
 
@@ -38,7 +39,7 @@ const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () =>
 };
 
 const PublicDiscoveryShell: React.FC = () => (
-  <DiscoveryMarketplace />
+  <DiscoveryHome />
 );
 
 const PublicStorefrontShell: React.FC = () => (
