@@ -627,7 +627,7 @@ export class OrderService {
       }
 
       const paymentRes = await tx.query<any>(
-        `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at DESC FOR UPDATE LIMIT 1`,
+        `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
         [orderId, organizationId]
       );
       if (paymentRes.rows.length === 0) {
