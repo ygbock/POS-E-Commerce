@@ -959,19 +959,19 @@ async function runPosTests() {
       location_id: 'loc_store_a',
       session_id: openSession.id,
       cashier_name: 'cashier_a',
-      cart_items: [{ variant_id: 'var_milk', quantity: '4.0000' }],
+      cart_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
       payment_method: 'Cash',
-      amount_paid: '16.00',
+      amount_paid: '10.00',
     });
 
-    const before = await invRepo.getBalance('loc_store_a', 'var_milk', 'org_pos_a');
+    const before = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
     const first = await posService.processReturn({
       organization_id: 'org_pos_a',
       order_id: sale.order.id,
       refund_method: 'Cash',
       performed_by: 'manager_a',
       reason: 'Idempotent return',
-      return_items: [{ variant_id: 'var_milk', quantity: '1.0000' }],
+      return_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
       idempotency_key: key,
     });
 
@@ -981,14 +981,14 @@ async function runPosTests() {
       refund_method: 'Cash',
       performed_by: 'manager_a',
       reason: 'Different reason must not alter fingerprint',
-      return_items: [{ variant_id: 'var_milk', quantity: '1.0000' }],
+      return_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
       idempotency_key: key,
     });
 
     assert.strictEqual(replay.returnRecord.id, first.returnRecord.id);
     assert.strictEqual(replay.returnRecord.refund_amount, '4.00');
 
-    const after = await invRepo.getBalance('loc_store_a', 'var_milk', 'org_pos_a');
+    const after = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
     assert.strictEqual(after?.on_hand, (Number(before?.on_hand) + 1).toFixed(4));
 
     const ledger = await db.query<any>(
