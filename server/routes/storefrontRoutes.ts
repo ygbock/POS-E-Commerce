@@ -40,6 +40,9 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
       'RETURN_QUANTITY_EXCEEDED',
       'REFUND_AMOUNT_EXCEEDED',
       'ALREADY_REFUNDED',
+      'IDEMPOTENCY_CONFLICT',
+      'PAYMENT_LEDGER_MISMATCH',
+      'INVALID_REFUND_AMOUNT',
     ]);
     const status = err?.status || (
       domainClientCodes.has(code)
