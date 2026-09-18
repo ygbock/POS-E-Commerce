@@ -81,7 +81,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
   if (route.name === 'discover-business') {
     return (
       <div className={isDarkMode ? 'dark' : ''}>
-        <DiscoveryBusinessProfile businessId={route.businessId} onBack={goHome} />
+        <DiscoveryBusinessProfile businessId={route.businessId} onBack={goHome} onRequestService={(service) => { window.history.pushState({}, '', '/discover/request-service?serviceId=' + encodeURIComponent(service.id) + '&serviceName=' + encodeURIComponent(service.name)); window.dispatchEvent(new PopStateEvent('popstate')); }} />
       </div>
     );
   }
