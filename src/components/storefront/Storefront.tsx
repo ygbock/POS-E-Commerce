@@ -44,6 +44,7 @@ import { StorefrontCatalog } from './StorefrontCatalog.tsx';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileFilterDrawer } from './MobileFilterDrawer';
 import { DiscoveryHome } from '../discovery/DiscoveryHome';
+import { DiscoverySearchResults } from '../discovery/DiscoverySearchResults';
 
 export interface StorefrontProps {
   onOpenAdmin?: () => void;
@@ -66,6 +67,14 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     categories, allBrands, filteredProducts, sortedProducts, featuredProducts, bestSellers, newArrivals, recommendedProducts,
     handleBuyNow, handleClearAllFilters, hasActiveFilters, tenantSlug, goHome, goShop, goCategory, goBrand, goSearch, goProduct, goCart, goCheckout, goAccount
   } = state;
+
+  if (route.name === 'discover-search') {
+    return (
+      <div className={isDarkMode ? 'dark' : ''}>
+        <DiscoverySearchResults onReturnToStore={goHome} />
+      </div>
+    );
+  }
 
   if (route.name === 'discover' || route.name.startsWith('discover-')) {
     return (

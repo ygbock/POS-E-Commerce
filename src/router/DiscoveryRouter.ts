@@ -7,7 +7,21 @@
 
 export type DiscoveryCustomerRoute =
   | { name: 'discover-home' }
-  | { name: 'discover-search'; query?: string; type?: string; city?: string }
+  | {
+      name: 'discover-search';
+      query?: string;
+      type?: string;
+      city?: string;
+      district?: string;
+      region?: string;
+      lat?: number;
+      lng?: number;
+      radiusKm?: number;
+      openNow?: boolean;
+      sort?: string;
+      page?: number;
+      limit?: number;
+    }
   | { name: 'discover-business'; businessId: string }
   | { name: 'discover-service'; serviceId: string }
   | { name: 'discover-request-service' };
@@ -55,11 +69,25 @@ export function parseDiscoveryPath(pathname = window.location.pathname, search =
     const second = segments[1];
     if (!second) return { name: 'discover-home' };
     if (second === 'search') {
+      const pageVal = params.get('page');
+      const limitVal = params.get('limit');
+      const radiusVal = params.get('radiusKm');
+      const latVal = params.get('lat');
+      const lngVal = params.get('lng');
       return {
         name: 'discover-search',
         query: params.get('q') || undefined,
         type: params.get('type') || undefined,
         city: params.get('city') || undefined,
+        district: params.get('district') || undefined,
+        region: params.get('region') || undefined,
+        lat: latVal ? Number(latVal) : undefined,
+        lng: lngVal ? Number(lngVal) : undefined,
+        radiusKm: radiusVal ? Number(radiusVal) : undefined,
+        openNow: params.get('openNow') ? params.get('openNow') === 'true' : undefined,
+        sort: params.get('sort') || undefined,
+        page: pageVal ? Math.max(1, Number(pageVal)) : 1,
+        limit: limitVal ? Number(limitVal) : undefined,
       };
     }
     if (second === 'business' && segments[2]) {
@@ -113,8 +141,17 @@ export function buildDiscoveryPath(route: DiscoveryRoute): string {
     case 'discover-search': {
       const sp = new URLSearchParams();
       if (route.query?.trim()) sp.set('q', route.query.trim());
-      if (route.type) sp.set('type', route.type);
+      if (route.type && route.type !== 'all') sp.set('type', route.type);
       if (route.city?.trim()) sp.set('city', route.city.trim());
+      if (route.district?.trim()) sp.set('district', route.district.trim());
+      if (route.region?.trim()) sp.set('region', route.region.trim());
+      if (route.lat != null) sp.set('lat', String(route.lat));
+      if (route.lng != null) sp.set('lng', String(route.lng));
+      if (route.radiusKm != null && route.radiusKm !== 25) sp.set('radiusKm', String(route.radiusKm));
+      if (route.openNow) sp.set('openNow', 'true');
+      if (route.sort && route.sort !== 'relevance') sp.set('sort', route.sort);
+      if (route.page && route.page > 1) sp.set('page', String(route.page));
+      if (route.limit && route.limit !== 20) sp.set('limit', String(route.limit));
       const qs = sp.toString();
       return `/discover/search${qs ? `?${qs}` : ''}`;
     }
