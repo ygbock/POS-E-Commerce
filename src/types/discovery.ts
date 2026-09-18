@@ -192,6 +192,7 @@ export interface DiscoveryCategory {
   icon_name?: string | null;
   display_order: number;
   is_active: boolean;
+  item_count?: number;
 }
 
 /**
