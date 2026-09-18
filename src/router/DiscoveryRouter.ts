@@ -19,6 +19,7 @@ export type DiscoveryCustomerRoute =
       radiusKm?: number;
       openNow?: boolean;
       sort?: string;
+      categoryId?: string;
       page?: number;
       limit?: number;
     }
@@ -86,6 +87,7 @@ export function parseDiscoveryPath(pathname = window.location.pathname, search =
         radiusKm: radiusVal ? Number(radiusVal) : undefined,
         openNow: params.get('openNow') ? params.get('openNow') === 'true' : undefined,
         sort: params.get('sort') || undefined,
+        categoryId: params.get('categoryId') || undefined,
         page: pageVal ? Math.max(1, Number(pageVal)) : 1,
         limit: limitVal ? Number(limitVal) : undefined,
       };
@@ -150,6 +152,7 @@ export function buildDiscoveryPath(route: DiscoveryRoute): string {
       if (route.radiusKm != null && route.radiusKm !== 25) sp.set('radiusKm', String(route.radiusKm));
       if (route.openNow) sp.set('openNow', 'true');
       if (route.sort && route.sort !== 'relevance') sp.set('sort', route.sort);
+      if (route.categoryId?.trim()) sp.set('categoryId', route.categoryId.trim());
       if (route.page && route.page > 1) sp.set('page', String(route.page));
       if (route.limit && route.limit !== 20) sp.set('limit', String(route.limit));
       const qs = sp.toString();

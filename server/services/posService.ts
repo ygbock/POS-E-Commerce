@@ -597,20 +597,29 @@ export class PosService {
           performed_by: cashier_name,
         }, tx);
 
-        // E. Deduct inventory through inventory domain (pessimistic locks applied during recordMovement)
+        // E. Deduct inventory once per variant. POS carts may contain duplicate
+        // variant lines; aggregate them before writing the immutable movement ledger
+        // so one order/variant produces exactly one idempotent movement.
+        const inventoryDeductions = new Map<string, { quantity: bigint; unitCost: string }>();
         for (const item of orderItems) {
+          const existing = inventoryDeductions.get(item.variant_id);
+          const quantity = parseQtyToScaled(item.quantity);
+          if (existing) existing.quantity += quantity;
+          else inventoryDeductions.set(item.variant_id, { quantity, unitCost: String(item.cost_price) });
+        }
+        for (const [variantId, deduction] of inventoryDeductions) {
           await this.invRepo.recordMovement(
             {
               organization_id,
               location_id,
-              variant_id: item.variant_id,
+              variant_id: variantId,
               movement_type: 'POS_SALE',
-              quantity_change: `-${item.quantity}`,
-              unit_cost: formatCentsToMoneyString(parseMoneyToCents(item.cost_price)),
+              quantity_change: `-${formatScaledToQtyString(deduction.quantity)}`,
+              unit_cost: formatCentsToMoneyString(parseMoneyToCents(deduction.unitCost)),
               reference_type: 'orders',
               reference_id: orderId,
               performed_by: cashier_name,
-              idempotency_key: `${orderId}_${item.variant_id}`,
+              idempotency_key: `${orderId}_${variantId}`,
               allowNegativeStock: false,
             },
             tx

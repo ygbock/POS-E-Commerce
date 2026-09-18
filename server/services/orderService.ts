@@ -637,7 +637,7 @@ export class OrderService {
       const payment = paymentRes.rows[0];
 
       if (order.payment_status === 'Paid' && payment.status === 'Completed') {
-        return { order: order as OrderRecord, payment: mapPaymentRow(payment) };
+        return { order: order as OrderRecord, payment: payment as PaymentRecord };
       }
       if (!['Pending', 'Failed'].includes(String(payment.status)) ||
           !['Pending', 'Failed', 'Partial'].includes(String(order.payment_status))) {
@@ -689,7 +689,7 @@ export class OrderService {
         metadata: { payment_id: payment.id, payment_reference: paymentReference || payment.reference, amount: payment.amount },
         severity: 'Info',
       }, tx);
-      return { order: updatedOrder.rows[0] as OrderRecord, payment: mapPaymentRow(updatedPayment.rows[0]) };
+      return { order: updatedOrder.rows[0] as OrderRecord, payment: updatedPayment.rows[0] as PaymentRecord };
     });
   }
 
@@ -718,8 +718,8 @@ export class OrderService {
         metadata: payload, performed_by: actor,
       }, tx);
       const updatedOrder = await tx.query<any>(`UPDATE orders SET payment_status='Failed', updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND organization_id=$2 RETURNING *`, [orderId, organizationId]);
-      await this.auditRepo.recordEvent({ organization_id: organizationId, actor_name: actor, actor_role: 'System', action: 'storefront.payment_failed', entity_type: 'orders', entity_id: orderId, metadata: { payment_id: payment.id, failure_reference: failureReference || payment.reference }, severity: 'Warning' }, tx);
-      return { order: updatedOrder.rows[0] as OrderRecord, payment: mapPaymentRow({ ...payment, status: 'Failed', reference: failureReference || payment.reference, transaction_payload: payload }) };
+      await this.auditRepo.recordEvent({ organization_id: organizationId, actor_name: actor, actor_role: 'System', action: 'storefront.payment_failed', entity_type: 'orders', entity_id: orderId, metadata: { payment_id: payment.id, failure_reference: failureReference || payment.reference }, severity: 'Medium' }, tx);
+      return { order: updatedOrder.rows[0] as OrderRecord, payment: { ...payment, status: 'Failed', reference: failureReference || payment.reference, transaction_payload: payload } as PaymentRecord };
     });
   }
 
@@ -740,7 +740,7 @@ export class OrderService {
       const refunded = this.localParseMoneyToCents(await this.paymentTransactionRepo.getRefundedAmount(payment.id, organizationId, tx));
       if (refunded > 0n) throw new DomainError('INVALID_PAYMENT_STATE', 'A refunded payment cannot be voided.');
       const existingVoid = await tx.query<any>(`SELECT id FROM payment_transactions WHERE organization_id=$1 AND payment_id=$2 AND transaction_type='VOID' AND status='POSTED' LIMIT 1`, [organizationId, payment.id]);
-      if (existingVoid.rows[0]) return { order: order as OrderRecord, payment: mapPaymentRow({ ...payment, status: 'Voided' }) };
+      if (existingVoid.rows[0]) return { order: order as OrderRecord, payment: { ...payment, status: 'Voided' } as PaymentRecord };
       const payload = transactionPayload || payment.transaction_payload || {};
       await this.paymentTransactionRepo.create({
         id: `pt_void_${payment.id}_${crypto.randomUUID()}`, organization_id: organizationId, payment_id: payment.id, order_id: orderId,
@@ -955,8 +955,6 @@ export class OrderService {
       );
       const payment = paymentRes.rows[0];
       if (!payment) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
-      const paymentAmountCents = this.localParseMoneyToCents(String(payment.amount));
-
       if (idempotencyKey) {
         const existingTx = await tx.query<any>(
           `SELECT * FROM payment_transactions
@@ -1209,7 +1207,7 @@ export class OrderService {
           ]
         );
 
-        await this.inventoryRepo.recordMovement({
+        await this.invRepo.recordMovement({
           id: `mov_refund_${crypto.randomUUID()}`,
           organization_id: organizationId,
           location_id: order.location_id,

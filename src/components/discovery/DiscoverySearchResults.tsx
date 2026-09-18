@@ -68,6 +68,7 @@ function readUrlParams(): {
   radiusKm: number;
   openNow: boolean;
   sort: DiscoverySortOption;
+  categoryId?: string;
   page: number;
 } {
   if (typeof window === 'undefined') {
