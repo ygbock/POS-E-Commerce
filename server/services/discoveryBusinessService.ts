@@ -237,6 +237,11 @@ export class DiscoveryBusinessService {
     return this.transition(id, 'SUBMITTED', actor, reason || 'Listing submitted for review.', client);
   }
 
+  async review(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    this.assertModerator(actor);
+    return this.transition(id, 'UNDER_REVIEW', actor, reason || 'Listing moved into moderation review.', client, true);
+  }
+
   async approve(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     this.assertModerator(actor);
     return this.transition(id, 'APPROVED', actor, reason || 'Listing approved.', client, true);

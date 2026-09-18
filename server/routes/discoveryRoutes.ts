@@ -100,7 +100,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   });
 
   for (const [path, action] of [
-    ['/submit', 'submit'], ['/approve', 'approve'], ['/publish', 'publish'], ['/pause', 'pause'], ['/suspend', 'suspend'],
+    ['/submit', 'submit'], ['/review', 'review'], ['/approve', 'approve'], ['/publish', 'publish'], ['/pause', 'pause'], ['/suspend', 'suspend'],
   ] as const) {
     router.post(`/businesses/:id${path}`, requireAuth(), async (req, res, next) => {
       try {
@@ -259,7 +259,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.post('/reports', async(req,res,next)=>{try{if(!req.body?.businessId&&!req.body?.serviceId)throw new Error('VALIDATION_ERROR:businessId or serviceId is required.');if(!String(req.body?.reasonCode||'').trim())throw new Error('VALIDATION_ERROR:reasonCode is required.');const r=await db.query(`INSERT INTO discovery_reports(id,business_id,service_id,reporter_user_id,reason_code,description) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,status,created_at`,[`report_${randomUUID().replace(/-/g,'')}`,req.body.businessId||null,req.body.serviceId||null,req.auth?.userId||null,String(req.body.reasonCode).trim(),req.body.description||null]);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
-  router.get('/categories', async(req,res,next)=>{try{const r=await db.query(`SELECT id,parent_id,name,slug,description,icon_name,display_order FROM discovery_business_categories WHERE is_active=TRUE ORDER BY display_order,name`);res.json({success:true,data:r.rows});}catch(err){next(err);}});
+  router.get('/categories', async(req,res,next)=>{try{const r=await db.query(`SELECT c.id,c.parent_id,c.name,c.slug,c.description,c.icon_name,c.display_order,COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE) AS item_count FROM discovery_business_categories c LEFT JOIN discovery_business_category_map bcm ON bcm.category_id=c.id LEFT JOIN discovery_businesses b ON b.id=bcm.business_id WHERE c.is_active=TRUE GROUP BY c.id ORDER BY c.display_order,c.name`);res.json({success:true,data:r.rows.map((x:any)=>({...x,item_count:Number(x.item_count||0)}))});}catch(err){next(err);}});
   router.put('/businesses/:id/categories', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});const ids=Array.isArray(req.body?.categoryIds)?req.body.categoryIds.map(String):[];if(!ids.length)throw new Error('VALIDATION_ERROR:categoryIds must contain at least one category.');await db.query('BEGIN');try{await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1',[req.params.id]);for(let i=0;i<ids.length;i++)await db.query('INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1,$2,$3)',[req.params.id,ids[i],i===0]);await db.query('COMMIT');}catch(e){await db.query('ROLLBACK');throw e;}res.json({success:true,data:await repo.listCategories(req.params.id)});}catch(err){next(err);}});
 
   // ------------------------------------------------------------------
