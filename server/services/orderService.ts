@@ -919,6 +919,14 @@ export class OrderService {
     refundMethod?: string,
     idempotencyKey?: string
   ): Promise<OrderRecord> {
+    const refundFingerprint = computeRefundRequestFingerprint({
+      organization_id: organizationId,
+      order_id: orderId,
+      return_items: returnItems,
+      refund_method: refundMethod,
+      reason,
+    });
+
     return this.db.withTransaction(async (tx) => {
       const orderRes = await tx.query<any>(
         `SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
@@ -947,6 +955,7 @@ export class OrderService {
       );
       const payment = paymentRes.rows[0];
       if (!payment) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+      const paymentAmountCents = this.localParseMoneyToCents(String(payment.amount));
 
       if (idempotencyKey) {
         const existingTx = await tx.query<any>(
@@ -1159,7 +1168,6 @@ export class OrderService {
           effectiveRefundMethod,
           actor,
           reason,
-          idempotencyKey || null,
         ]
       );
 
