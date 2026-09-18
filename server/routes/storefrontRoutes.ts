@@ -715,6 +715,38 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
     }
   });
 
+  // POST /api/storefront/orders/:id/payment/fail
+  router.post('/orders/:id/payment/fail', requireAuth(), requirePermission(PERMISSIONS.ORDERS_PAYMENT_CONFIRM), requireTenantAccess(), async (req: Request, res: Response) => {
+    try {
+      const result = await orders.failStorefrontPayment(
+        req.auth!.organizationId,
+        req.params.id,
+        req.body?.failureReference ? String(req.body.failureReference) : null,
+        req.body?.transactionPayload && typeof req.body.transactionPayload === 'object' ? req.body.transactionPayload : undefined,
+        req.auth!.userId,
+      );
+      res.json({ success: true, data: result });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
+  // POST /api/storefront/orders/:id/payment/void
+  router.post('/orders/:id/payment/void', requireAuth(), requirePermission(PERMISSIONS.ORDERS_PAYMENT_VOID), requireTenantAccess(), async (req: Request, res: Response) => {
+    try {
+      const result = await orders.voidStorefrontPayment(
+        req.auth!.organizationId,
+        req.params.id,
+        req.body?.voidReference ? String(req.body.voidReference) : null,
+        req.body?.transactionPayload && typeof req.body.transactionPayload === 'object' ? req.body.transactionPayload : undefined,
+        req.auth!.userId,
+      );
+      res.json({ success: true, data: result });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
   // POST /api/storefront/orders/:id/fulfill
   router.post('/orders/:id/fulfill', requireAuth(), requirePermission(PERMISSIONS.ORDERS_FULFILL), requireTenantAccess(), async (req: Request, res: Response) => {
     try {
