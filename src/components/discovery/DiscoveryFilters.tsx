@@ -18,6 +18,8 @@ interface DiscoveryFiltersProps {
   categories?: DiscoveryCategory[];
   hasLocation?: boolean;
   onRequestLocation?: () => void;
+  /** Restrict visible controls to filters supported by the current API surface. */
+  supportedFilters?: Partial<Record<keyof DiscoveryFilterState, boolean>>;
   className?: string;
 }
 
@@ -27,18 +29,20 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
   categories = [],
   hasLocation = false,
   onRequestLocation,
+  supportedFilters,
   className = '',
 }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  const isSupported = (key: keyof DiscoveryFilterState) => supportedFilters?.[key] !== false;
   const activeCount = [
-    filters.nearMe,
-    filters.openNow,
-    filters.availableToday,
-    filters.delivery,
-    filters.pickup,
-    filters.categoryId,
-    filters.minRating,
+    isSupported('nearMe') && filters.nearMe,
+    isSupported('openNow') && filters.openNow,
+    isSupported('availableToday') && filters.availableToday,
+    isSupported('delivery') && filters.delivery,
+    isSupported('pickup') && filters.pickup,
+    isSupported('categoryId') && filters.categoryId,
+    isSupported('minRating') && filters.minRating,
   ].filter(Boolean).length;
 
   const toggleFilter = (key: keyof DiscoveryFilterState) => {
@@ -79,7 +83,7 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
       </button>
 
       {/* Fast Pill: Near me */}
-      <button
+      {isSupported('nearMe') && <button
         type="button"
         onClick={() => toggleFilter('nearMe')}
         aria-pressed={Boolean(filters.nearMe)}
@@ -91,10 +95,10 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
       >
         <Navigation className="w-3.5 h-3.5" aria-hidden="true" />
         <span>Near me</span>
-      </button>
+      </button>}
 
       {/* Fast Pill: Open now */}
-      <button
+      {isSupported('openNow') && <button
         type="button"
         onClick={() => toggleFilter('openNow')}
         aria-pressed={Boolean(filters.openNow)}
@@ -106,10 +110,10 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
       >
         <Clock className="w-3.5 h-3.5" aria-hidden="true" />
         <span>Open now</span>
-      </button>
+      </button>}
 
       {/* Fast Pill: Available today */}
-      <button
+      {isSupported('availableToday') && <button
         type="button"
         onClick={() => toggleFilter('availableToday')}
         aria-pressed={Boolean(filters.availableToday)}
@@ -121,10 +125,10 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
       >
         <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
         <span>Available today</span>
-      </button>
+      </button>}
 
       {/* Fast Pill: Delivery */}
-      <button
+      {isSupported('delivery') && <button
         type="button"
         onClick={() => toggleFilter('delivery')}
         aria-pressed={Boolean(filters.delivery)}
@@ -136,10 +140,10 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
       >
         <Truck className="w-3.5 h-3.5" aria-hidden="true" />
         <span>Delivery</span>
-      </button>
+      </button>}
 
       {/* Fast Pill: Pickup */}
-      <button
+      {isSupported('pickup') && <button
         type="button"
         onClick={() => toggleFilter('pickup')}
         aria-pressed={Boolean(filters.pickup)}
@@ -151,7 +155,7 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
       >
         <ShoppingBag className="w-3.5 h-3.5" aria-hidden="true" />
         <span>Pickup</span>
-      </button>
+      </button>}
 
       {/* Active Filter Clear button */}
       {activeCount > 0 && (
@@ -187,7 +191,7 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
               </div>
 
               {/* Status & Timing */}
-              <div className="space-y-2">
+              {isSupported('openNow') && <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Availability & Status
                 </label>
@@ -212,10 +216,10 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
                     <span className="text-xs font-semibold">Available Today</span>
                   </label>
                 </div>
-              </div>
+              </div>}
 
               {/* Fulfillment Method */}
-              <div className="space-y-2">
+              {isSupported('delivery') || isSupported('pickup') ? <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Fulfillment
                 </label>
@@ -240,10 +244,10 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
                     <span className="text-xs font-semibold">Pickup</span>
                   </label>
                 </div>
-              </div>
+              </div> : null}
 
               {/* Minimum Rating */}
-              <div className="space-y-2">
+              {isSupported('minRating') && <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Minimum Rating
                 </label>
@@ -263,10 +267,10 @@ export const DiscoveryFilters: React.FC<DiscoveryFiltersProps> = ({
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
 
               {/* Category selection */}
-              {categories.length > 0 && (
+              {isSupported('categoryId') && categories.length > 0 && (
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Category

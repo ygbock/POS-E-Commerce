@@ -106,7 +106,7 @@ export const discoveryApi = {
   /**
    * Unified discovery search across published businesses, products and services
    */
-  async search(filters: DiscoverySearchFilters = {}): Promise<DiscoverySearchResponse> {
+  async search(filters: DiscoverySearchFilters = {}, options?: { signal?: AbortSignal }): Promise<DiscoverySearchResponse> {
     const params = new URLSearchParams();
     if (filters.q?.trim()) params.set('q', filters.q.trim());
     if (filters.type && filters.type !== 'all') params.set('type', filters.type);
@@ -129,6 +129,7 @@ export const discoveryApi = {
       response = await fetch(url, {
         headers: { Accept: 'application/json', ...authHeaders },
         credentials: 'same-origin',
+        signal: options?.signal,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Network failure';

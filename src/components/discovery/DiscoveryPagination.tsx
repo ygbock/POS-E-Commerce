@@ -6,6 +6,8 @@ interface DiscoveryPaginationProps {
   pageSize: number;
   currentOffset: number;
   onOffsetChange: (offset: number) => void;
+  /** When the API exposes page-sized results without a reliable total count. */
+  hasNext?: boolean;
   className?: string;
 }
 
@@ -14,12 +16,14 @@ export const DiscoveryPagination: React.FC<DiscoveryPaginationProps> = ({
   pageSize,
   currentOffset,
   onOffsetChange,
+  hasNext: hasNextOverride,
   className = '',
 }) => {
   const currentPage = Math.floor(currentOffset / pageSize) + 1;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const hasNext = hasNextOverride ?? currentPage < totalPages;
 
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1 && !hasNext) return null;
 
   const handlePrev = () => {
     onOffsetChange(Math.max(0, currentOffset - pageSize));
@@ -30,7 +34,6 @@ export const DiscoveryPagination: React.FC<DiscoveryPaginationProps> = ({
   };
 
   const hasPrev = currentOffset > 0;
-  const hasNext = currentPage < totalPages;
 
   return (
     <nav
@@ -38,9 +41,9 @@ export const DiscoveryPagination: React.FC<DiscoveryPaginationProps> = ({
       className={`flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs ${className}`}
     >
       <div className="text-slate-500 dark:text-slate-400 font-medium">
-        Page <span className="font-bold text-slate-800 dark:text-slate-200">{currentPage}</span> of{' '}
-        <span className="font-bold text-slate-800 dark:text-slate-200">{totalPages}</span>
-        <span className="hidden sm:inline"> ({totalItems} total items)</span>
+        Page <span className="font-bold text-slate-800 dark:text-slate-200">{currentPage}</span>
+        {hasNextOverride === undefined && (<> of <span className="font-bold text-slate-800 dark:text-slate-200">{totalPages}</span></>)}
+        {hasNextOverride !== undefined && (<span className="hidden sm:inline"> ({totalItems} results on this page)</span>)}
       </div>
 
       <div className="flex items-center gap-1.5">

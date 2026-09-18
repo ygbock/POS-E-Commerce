@@ -18,23 +18,20 @@ import type {
 } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import { buildDiscoveryPath } from '../../router/DiscoveryRouter';
-import {
-  DiscoverySearchBar,
-  DiscoveryLocationSelector,
-  DiscoveryTabs,
-  DiscoveryFilters,
-  DiscoverySort,
-  BusinessCard,
-  ProductDiscoveryCard,
-  ServiceCard,
-  DiscoveryEmptyState,
-  DiscoveryLoadingState,
-  DiscoveryErrorState,
-  DiscoveryRateLimitState,
-  DiscoveryPagination,
-  DiscoveryResultCount,
-  type DiscoveryFilterState,
-} from './index';
+import { DiscoverySearchBar } from './DiscoverySearchBar';
+import { DiscoveryLocationSelector } from './DiscoveryLocationSelector';
+import { DiscoveryTabs } from './DiscoveryTabs';
+import { DiscoveryFilters, type DiscoveryFilterState } from './DiscoveryFilters';
+import { DiscoverySort } from './DiscoverySort';
+import { BusinessCard } from './BusinessCard';
+import { ProductDiscoveryCard } from './ProductDiscoveryCard';
+import { ServiceCard } from './ServiceCard';
+import { DiscoveryEmptyState } from './DiscoveryEmptyState';
+import { DiscoveryLoadingState } from './DiscoveryLoadingState';
+import { DiscoveryErrorState } from './DiscoveryErrorState';
+import { DiscoveryRateLimitState } from './DiscoveryRateLimitState';
+import { DiscoveryPagination } from './DiscoveryPagination';
+import { DiscoveryResultCount } from './DiscoveryResultCount';
 
 // ---------------------------------------------------------------------------
 // Page size constant — must match discoveryApi limit semantics
@@ -245,7 +242,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
         openNow: params.openNow || undefined,
         limit: PAGE_SIZE,
         offset,
-      });
+      }, { signal: controller.signal });
 
       if (controller.signal.aborted) return;
 
@@ -405,11 +402,11 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
 
   const totalForActiveType =
     activeType === 'businesses'
-      ? businessesState.total
+      ? businessesState.data.length
       : activeType === 'products'
-      ? productsState.total
+      ? productsState.data.length
       : activeType === 'services'
-      ? servicesState.total
+      ? servicesState.data.length
       : counts.businesses + counts.products + counts.services;
 
   const currentOffset = (page - 1) * PAGE_SIZE;
@@ -468,6 +465,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
             pageSize={PAGE_SIZE}
             currentOffset={currentOffset}
             onOffsetChange={handlePageChange}
+            hasNext={sectionState.data.length === PAGE_SIZE}
             className="mt-6"
           />
         )}
@@ -862,6 +860,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
 
             <DiscoveryFilters
               filters={filters}
+              supportedFilters={{ nearMe: true, openNow: true, availableToday: false, delivery: false, pickup: false, categoryId: false, minRating: false }}
               onChange={(newFilters) => {
                 handleFilterChange(newFilters);
                 setMobileFiltersOpen(false);
