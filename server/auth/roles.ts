@@ -39,7 +39,7 @@ export const ROLES = {
 export const PERMISSIONS = {
   PRODUCTS_VIEW:'products.view', PRODUCTS_CREATE:'products.create', PRODUCTS_UPDATE:'products.update', PRODUCTS_DELETE:'products.delete',
   INVENTORY_VIEW:'inventory.view', INVENTORY_ADJUST:'inventory.adjust', INVENTORY_TRANSFER:'inventory.transfer', INVENTORY_RECEIVE:'inventory.receive',
-  ORDERS_VIEW:'orders.view', ORDERS_CREATE:'orders.create', ORDERS_CANCEL:'orders.cancel', ORDERS_FULFILL:'orders.fulfill', ORDERS_PAYMENT_CONFIRM:'orders.payment_confirm', ORDERS_REFUND:'orders.refund',
+  ORDERS_VIEW:'orders.view', ORDERS_CREATE:'orders.create', ORDERS_CANCEL:'orders.cancel', ORDERS_FULFILL:'orders.fulfill', ORDERS_PAYMENT_CONFIRM:'orders.payment_confirm', ORDERS_PAYMENT_VOID:'orders.payment_void', ORDERS_REFUND:'orders.refund',
   PURCHASES_VIEW:'purchases.view', PURCHASES_CREATE:'purchases.create', PURCHASES_APPROVE:'purchases.approve',
   CUSTOMERS_VIEW:'customers.view', CUSTOMERS_CREATE:'customers.create', CUSTOMERS_UPDATE:'customers.update',
   REPORTS_VIEW:'reports.view', USERS_VIEW:'users.view', USERS_CREATE:'users.create', USERS_UPDATE:'users.update', USERS_DELETE:'users.delete',
@@ -64,7 +64,7 @@ const tenantAdminPermissions = [
   PERMISSIONS.ORDERS_CREATE,
   PERMISSIONS.ORDERS_CANCEL,
   PERMISSIONS.ORDERS_FULFILL,
-  PERMISSIONS.ORDERS_PAYMENT_CONFIRM,
+  PERMISSIONS.ORDERS_PAYMENT_CONFIRM, PERMISSIONS.ORDERS_PAYMENT_VOID,
   PERMISSIONS.ORDERS_REFUND,
   PERMISSIONS.PURCHASES_VIEW,
   PERMISSIONS.PURCHASES_CREATE,
