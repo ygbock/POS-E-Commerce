@@ -645,6 +645,22 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
     }
   });
 
+  // POST /api/storefront/orders/:id/refund
+  router.post('/orders/:id/refund', requireAuth(), requirePermission(PERMISSIONS.ORDERS_REFUND), requireTenantAccess(), async (req: Request, res: Response) => {
+    try {
+      const organizationId = req.auth!.organizationId;
+      const order = await orders.refundOrder(
+        organizationId,
+        req.params.id,
+        req.auth!.userId,
+        req.body?.reason ? String(req.body.reason) : undefined,
+      );
+      res.json({ success: true, data: order });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
   // POST /api/storefront/orders/:id/payment/confirm
   router.post('/orders/:id/payment/confirm', requireAuth(), requirePermission(PERMISSIONS.ORDERS_PAYMENT_CONFIRM), requireTenantAccess(), async (req: Request, res: Response) => {
     try {
