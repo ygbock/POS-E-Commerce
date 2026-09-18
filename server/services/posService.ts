@@ -806,11 +806,13 @@ export class PosService {
           });
         }
 
-        const allRemainingReturned = originalItems.every((oi) => {
-          const originalQty = parseQtyToScaled(String(oi.quantity));
-          const alreadyReturned = returnedQuantitiesScaled[oi.variant_id] || 0n;
-          const requestedQty = requestedQuantitiesScaled[oi.variant_id] || 0n;
-          return alreadyReturned + requestedQty >= originalQty;
+        const allRemainingReturned = [...new Set(originalItems.map((oi) => oi.variant_id))].every((variantId) => {
+          const originalQty = originalItems
+            .filter((oi) => oi.variant_id === variantId)
+            .reduce((sum, oi) => sum + parseQtyToScaled(String(oi.quantity)), 0n);
+          const alreadyReturned = returnedQuantitiesScaled[variantId] || 0n;
+          const requestedQty = requestedQuantitiesScaled[variantId] || 0n;
+          return alreadyReturned + requestedQty === originalQty;
         });
 
         const priorRefundedCents = prevReturns.reduce(
