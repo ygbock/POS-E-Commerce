@@ -108,7 +108,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         phone: phone.trim() || undefined,
         whatsapp: whatsapp.trim() || undefined,
         email: email.trim() || undefined,
-        businessMode: 'DISCOVERY_ONLY',
+        businessMode: 'DISCOVERY_AND_STORE',
       });
 
       // 2. Assign Categories if any
