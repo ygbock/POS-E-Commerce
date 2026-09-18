@@ -73,7 +73,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
     setError(null);
     try {
       // Search for businesses owned or list businesses
-      const list = await discoveryApi.getMyBusinesses();
+      const list = await discoveryApi.getBusinesses({ limit: 20 });
       setBusinesses(list || []);
 
       if (list && list.length > 0) {

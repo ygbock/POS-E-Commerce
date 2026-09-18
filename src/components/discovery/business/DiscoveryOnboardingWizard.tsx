@@ -40,8 +40,8 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
   // Location Step
   const [branchName, setBranchName] = useState('Main Store / Office');
   const [streetAddress, setStreetAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [district, setDistrict] = useState('');
+  const [city, setCity] = useState('Freetown');
+  const [district, setDistrict] = useState('Western Area Urban');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
@@ -103,12 +103,12 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       const newBusiness = await discoveryApi.createBusiness({
         name: name.trim(),
         slug: generatedSlug,
-        businessType: businessType,
-        shortDescription: shortDescription.trim() || undefined,
+        business_type: businessType,
+        short_description: shortDescription.trim() || undefined,
         phone: phone.trim() || undefined,
         whatsapp: whatsapp.trim() || undefined,
         email: email.trim() || undefined,
-        businessMode: 'DISCOVERY_ONLY',
+        business_mode: 'DISCOVERY_ONLY',
       });
 
       // 2. Assign Categories if any
@@ -122,15 +122,15 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         const lngNum = longitude ? Number(longitude) : undefined;
         await discoveryApi.createLocation(newBusiness.id, {
           name: branchName.trim(),
-          locationType: 'STORE',
-          addressLine1: streetAddress.trim() || undefined,
-          city: city.trim() || '',
+          location_type: 'STORE',
+          address_line_1: streetAddress.trim() || undefined,
+          city: city.trim() || 'Freetown',
           district: district.trim() || undefined,
           country: 'Sierra Leone',
           latitude: latNum,
           longitude: lngNum,
-          isPrimary: true,
-          isActive: true,
+          is_primary: true,
+          is_active: true,
         });
       }
 
@@ -193,7 +193,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g.  Solar & Electricals"
+              placeholder="e.g. Freetown Solar & Electricals"
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
           </div>
@@ -352,7 +352,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                placeholder=""
+                placeholder="Freetown"
                 className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               />
             </div>
@@ -405,7 +405,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
               className="px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all active:scale-95"
             >
               {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              <span>{submitting ? 'Creating Listing...' : 'Submit Discovery Listing'}</span>
+              <span>{submitting ? 'Creating Listing...' : 'Publish Discovery Listing'}</span>
             </button>
           )}
         </div>
