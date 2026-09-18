@@ -8,6 +8,7 @@
 export type DiscoveryListingStatus =
   | 'DRAFT'
   | 'SUBMITTED'
+  | 'UNDER_REVIEW'
   | 'APPROVED'
   | 'PUBLISHED'
   | 'PAUSED'
@@ -18,7 +19,8 @@ export type DiscoveryVerificationStatus =
   | 'UNVERIFIED'
   | 'PENDING'
   | 'VERIFIED'
-  | 'REJECTED';
+  | 'REJECTED'
+  | 'SUSPENDED';
 
 export type DiscoveryBusinessMode =
   | 'DISCOVERY_ONLY'
