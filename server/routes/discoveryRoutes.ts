@@ -4,6 +4,7 @@ import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requireTenantAccess } from '../middleware/auth.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
+import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
@@ -87,8 +88,12 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     try {
       if (!req.auth!.organizationId) return res.status(422).json({success:false,error:{code:'TENANT_REQUIRED',message:'An active organization is required to enable store mode.'}});
       if (!(await owned(req, req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Business conversion forbidden.'}});
-      const data = await businessService.update(req.params.id, { businessMode: 'DISCOVERY_AND_STORE', organizationId: req.auth!.organizationId }, actor(req));
-      res.json({success:true,data});
+      const business = await repo.findById(req.params.id);
+      if (!business) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
+      if (business.organization_id && business.organization_id !== req.auth!.organizationId) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Business is already bound to another organization.'}});
+      const provisioned = await new DiscoveryStoreProvisioningService(db).provisionForDiscoveryBusiness(business.id, req.auth!.organizationId, business.slug, business.name);
+      const data = await repo.findById(business.id);
+      res.json({success:true,data,store:{provisioned:true,tenantSlug:provisioned.tenantSlug,organizationId:provisioned.organizationId}});
     } catch (err) { next(err); }
   });
 
