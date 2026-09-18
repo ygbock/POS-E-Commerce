@@ -812,4 +812,135 @@ export class OrderService {
       return updated.rows[0] as OrderRecord;
     });
   }
+  /**
+   * Fully refund a completed storefront/POS order and return all sold stock.
+   * Partial refunds intentionally remain outside this transition until a
+   * dedicated allocation model exists.
+   */
+  async refundOrder(
+    organizationId: string,
+    orderId: string,
+    actor = 'System',
+    reason = 'Order refund'
+  ): Promise<OrderRecord> {
+    return this.db.withTransaction(async (tx) => {
+      const orderRes = await tx.query<any>(
+        `SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
+        [orderId, organizationId]
+      );
+      if (orderRes.rows.length === 0) throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
+
+      const order = orderRes.rows[0];
+      if (order.status === 'Refunded' || order.payment_status === 'Refunded') {
+        return order as OrderRecord;
+      }
+      if (order.status === 'Cancelled') {
+        throw new DomainError('INVALID_ORDER_STATE', 'A cancelled order cannot be refunded.');
+      }
+      if (!['Completed', 'Delivered'].includes(order.status)) {
+        throw new DomainError('INVALID_ORDER_STATE', 'Only delivered or completed orders can be refunded.');
+      }
+      if (order.payment_status !== 'Paid' && order.payment_status !== 'Partially Refunded') {
+        throw new DomainError('INVALID_PAYMENT_STATE', 'Only paid orders can be refunded.');
+      }
+
+      const paymentRes = await tx.query<any>(
+        `SELECT * FROM payments
+         WHERE order_id = $1 AND organization_id = $2
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [orderId, organizationId]
+      );
+      const payment = paymentRes.rows[0];
+      if (!payment) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+
+      const existingReturn = await tx.query<any>(
+        `SELECT id FROM pos_returns
+         WHERE order_id = $1 AND organization_id = $2
+         LIMIT 1
+         FOR UPDATE`,
+        [orderId, organizationId]
+      );
+      if (existingReturn.rows.length > 0) {
+        throw new DomainError('ALREADY_REFUNDED', 'A refund record already exists for this order.');
+      }
+
+      const itemsRes = await tx.query<any>(
+        `SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at ASC, id ASC`,
+        [orderId]
+      );
+      if (itemsRes.rows.length === 0) {
+        throw new DomainError('ORDER_ITEMS_NOT_FOUND', 'Order contains no refundable items.');
+      }
+
+      const returnId = `ret_${crypto.randomUUID()}`;
+      await tx.query(
+        `INSERT INTO pos_returns
+         (id, organization_id, order_id, refund_amount, refund_method, performed_by, reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [returnId, organizationId, orderId, order.total_amount, payment.payment_method, actor, reason]
+      );
+
+      for (const item of itemsRes.rows) {
+        const qty = parseExactQuantity(String(item.quantity), 'quantity');
+        await tx.query(
+          `INSERT INTO pos_return_items
+           (id, return_id, variant_id, quantity, refund_amount)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [`retitem_${crypto.randomUUID()}`, returnId, item.variant_id, qty, item.total_amount]
+        );
+
+        await this.inventoryRepo.recordMovement({
+          id: `mov_refund_${crypto.randomUUID()}`,
+          organization_id: organizationId,
+          location_id: order.location_id,
+          variant_id: item.variant_id,
+          movement_type: 'SALE_RETURN',
+          quantity_change: qty,
+          unit_cost: String(item.cost_price || '0.00'),
+          reference_type: 'pos_returns',
+          reference_id: returnId,
+          reason,
+          performed_by: actor,
+          notes: `Refund for order ${order.order_number}`,
+          idempotency_key: `refund:${orderId}:${item.variant_id}`,
+        }, tx);
+      }
+
+      await tx.query(
+        `UPDATE payments SET status = 'Refunded', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2`,
+        [payment.id, organizationId]
+      );
+
+      const updated = await tx.query<any>(
+        `UPDATE orders
+         SET payment_status = 'Refunded', status = 'Refunded', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2
+         RETURNING *`,
+        [orderId, organizationId]
+      );
+
+      await this.auditRepo.recordEvent({
+        organization_id: organizationId,
+        actor_name: actor,
+        actor_role: 'System',
+        action: 'order.refund',
+        entity_type: 'orders',
+        entity_id: orderId,
+        location_id: order.location_id,
+        metadata: {
+          return_id: returnId,
+          refund_amount: String(order.total_amount),
+          payment_method: payment.payment_method,
+          reason,
+        },
+        severity: 'Info',
+      }, tx);
+
+      return updated.rows[0] as OrderRecord;
+    });
+  }
+
 }
