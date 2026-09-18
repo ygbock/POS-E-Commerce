@@ -200,6 +200,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         lng: longitude ?? undefined,
         radiusKm,
         openNow: filters.openNow,
+        categoryId: filters.categoryId,
+        sort,
         limit: 24,
       });
 
@@ -266,6 +268,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       if (nextQuery.trim()) sp.set('q', nextQuery.trim());
       if (nextType !== 'all') sp.set('type', nextType);
       if (selectedCity) sp.set('city', selectedCity);
+      if (selectedDistrict) sp.set('district', selectedDistrict);
+      if (filters.categoryId) sp.set('categoryId', filters.categoryId);
       if (radiusKm !== 25) sp.set('radiusKm', String(radiusKm));
       if (filters.openNow) sp.set('openNow', 'true');
       if (filters.categoryId) sp.set('categoryId', filters.categoryId);

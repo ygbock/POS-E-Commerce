@@ -98,6 +98,7 @@ function readUrlParams(): {
     lng: lngVal ? Number(lngVal) : null,
     radiusKm: radiusVal ? Math.max(1, Math.min(500, Number(radiusVal))) : 25,
     openNow: sp.get('openNow') === 'true',
+    categoryId: sp.get('categoryId') || undefined,
     sort,
     page: pageVal ? Math.max(1, Number(pageVal)) : 1,
   };
@@ -118,6 +119,7 @@ function applyUrlUpdate(
     lng?: number | null;
     radiusKm?: number;
     openNow?: boolean;
+    categoryId?: string;
     sort?: DiscoverySortOption;
     page?: number;
   }>,
@@ -136,6 +138,7 @@ function applyUrlUpdate(
     lng: merged.lng ?? undefined,
     radiusKm: merged.radiusKm,
     openNow: merged.openNow || undefined,
+    categoryId: merged.categoryId,
     sort: merged.sort !== 'relevance' ? merged.sort : undefined,
     page: merged.page && merged.page > 1 ? merged.page : undefined,
   });
@@ -170,7 +173,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
   // -------------------------------------------------------------------------
   const [urlState, setUrlState] = useState(readUrlParams);
 
-  const { q, type: activeType, city, district, region, lat, lng, radiusKm, openNow, sort, page } = urlState;
+  const { q, type: activeType, city, district, region, lat, lng, radiusKm, openNow, categoryId, sort, page } = urlState;
 
   // Derived filter state for DiscoveryFilters
   const [filters, setFilters] = useState<DiscoveryFilterState>({
@@ -240,6 +243,8 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
         lng: params.lng ?? undefined,
         radiusKm: params.radiusKm,
         openNow: params.openNow || undefined,
+        categoryId: params.categoryId,
+        sort: params.sort,
         limit: PAGE_SIZE,
         offset,
       }, { signal: controller.signal });
@@ -357,6 +362,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
     setFilters(newFilters);
     navigateTo({
       openNow: newFilters.openNow,
+      categoryId,
       page: 1,
     });
   };
@@ -374,6 +380,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
     const cleared: DiscoveryFilterState = {};
     setFilters(cleared);
     navigateTo({
+      categoryId: undefined,
       city: undefined,
       district: undefined,
       region: undefined,
@@ -398,7 +405,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
   // Derived helpers
   // -------------------------------------------------------------------------
   const hasLocation = (lat != null && lng != null) || Boolean(city);
-  const activeFilterCount = [openNow].filter(Boolean).length + (city ? 1 : 0);
+  const activeFilterCount = [openNow, categoryId].filter(Boolean).length + (city ? 1 : 0);
 
   const totalForActiveType =
     activeType === 'businesses'

@@ -25,8 +25,8 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
 
   const businessUrl = `/discover/business/${encodeURIComponent(business.slug || business.id)}`;
   const storeUrl =
-    business.business_mode === 'DISCOVERY_AND_STORE'
-      ? `/store/${encodeURIComponent(business.tenant_slug || business.slug || business.id)}`
+    business.business_mode === 'DISCOVERY_AND_STORE' && business.tenant_slug
+      ? `/store/${encodeURIComponent(business.tenant_slug)}`
       : null;
 
   return (

@@ -383,6 +383,8 @@ export interface DiscoverySearchFilters {
   lng?: number;
   radiusKm?: number;
   openNow?: boolean;
+  categoryId?: string;
+  sort?: DiscoverySortOption;
   limit?: number;
   offset?: number;
 }

@@ -117,6 +117,8 @@ export const discoveryApi = {
     if (filters.lng != null) params.set('lng', String(filters.lng));
     if (filters.radiusKm != null) params.set('radiusKm', String(filters.radiusKm));
     if (filters.openNow !== undefined) params.set('openNow', String(filters.openNow));
+    if (filters.categoryId?.trim()) params.set('categoryId', filters.categoryId.trim());
+    if (filters.sort) params.set('sort', filters.sort);
     if (filters.limit != null) params.set('limit', String(filters.limit));
     if (filters.offset != null) params.set('offset', String(filters.offset));
 
