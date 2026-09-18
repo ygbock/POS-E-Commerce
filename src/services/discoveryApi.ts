@@ -158,27 +158,11 @@ export const discoveryApi = {
   /**
    * List published businesses with optional location and category filters
    */
-  async getBusinesses(params: {
-    city?: string;
-    district?: string;
-    region?: string;
-    businessType?: string;
-    categoryId?: string;
-    limit?: number;
-    offset?: number;
-  } = {}): Promise<DiscoveryBusiness[]> {
-    const qs = new URLSearchParams();
-    if (params.city) qs.set('city', params.city);
-    if (params.district) qs.set('district', params.district);
-    if (params.region) qs.set('region', params.region);
-    if (params.businessType) qs.set('businessType', params.businessType);
-    if (params.categoryId) qs.set('categoryId', params.categoryId);
-    if (params.limit != null) qs.set('limit', String(params.limit));
-    if (params.offset != null) qs.set('offset', String(params.offset));
-
-    const url = `/api/discovery/businesses${qs.toString() ? `?${qs.toString()}` : ''}`;
-    return request<DiscoveryBusiness[]>(url);
+  async getBusinesses(params: { city?: string; district?: string; region?: string; businessType?: string; categoryId?: string; limit?: number; offset?: number } = {}): Promise<DiscoveryBusiness[]> {
+    const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); });
+    return request<DiscoveryBusiness[]>('/api/discovery/businesses' + (qs.toString() ? '?' + qs.toString() : ''));
   },
+  async getMyBusinesses(): Promise<DiscoveryBusiness[]> { return request<DiscoveryBusiness[]>('/api/discovery/businesses/mine'); },
 
   /**
    * Get full public business profile by slug (or public id)
@@ -449,18 +433,12 @@ export const discoveryApi = {
   /**
    * Business owner analytics
    */
-  async getBusinessAnalytics(businessId: string, days = 30): Promise<{ periodDays: number; data: DiscoveryAnalyticsSummary[] }> {
-    const authHeaders = authClient.getAuthHeaders();
-    const url = `/api/discovery/businesses/${encodeURIComponent(businessId)}/analytics?days=${days}`;
-    const res = await fetch(url, { headers: { Accept: 'application/json', ...authHeaders } });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      throw new DiscoveryApiError(body?.error?.message || 'Failed to load analytics', body?.error?.code, res.status);
-    }
-    return {
-      periodDays: body.periodDays || days,
-      data: Array.isArray(body.data) ? body.data : [],
-    };
+  async getBusinessAnalytics(businessId: string, days = 30): Promise<{ periodDays: number; data: DiscoveryAnalyticsSummary; events: Array<{event_type:string;count:number;unique_sessions:number}> }> {
+    return request<{ periodDays: number; data: DiscoveryAnalyticsSummary; events: Array<{event_type:string;count:number;unique_sessions:number}> }>('/api/discovery/businesses/' + encodeURIComponent(businessId) + '/analytics?days=' + days);
+  },
+  async getBusinessServiceRequests(businessId: string, status = ''): Promise<DiscoveryServiceRequest[]> {
+    const qs = status ? '?status=' + encodeURIComponent(status) : '';
+    return request<DiscoveryServiceRequest[]>('/api/discovery/businesses/' + encodeURIComponent(businessId) + '/service-requests' + qs);
   },
 
   // ---------------------------------------------------------------------------
