@@ -1,24 +1,16 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  Sparkles,
   ArrowRight,
-  MapPin,
   Store,
-  Layers,
-  Send,
-  X,
-  ChevronRight,
-  ExternalLink,
-  Tag,
   ShieldCheck,
   ShoppingBag,
   Wrench,
   Package,
-  Zap,
-  CheckCircle,
-  HelpCircle,
-  Clock,
+  MapPin,
   Compass,
+  Building2,
+  BriefcaseBusiness,
+  Search,
 } from 'lucide-react';
 import type {
   DiscoverySearchType,
@@ -538,6 +530,56 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           <ServiceRequestModule selectedCity={selectedCity} />
 
           {/* ---------------------------------------------------------------- */}
+          {/* 5. Explore Sierra Leone */}
+          <section aria-labelledby="explore-sierra-leone-heading" className="space-y-5">
+            <div>
+              <div className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Explore Local</span>
+              </div>
+              <h2 id="explore-sierra-leone-heading" className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">Explore Sierra Leone</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Browse businesses, products, and services by city.</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {['Freetown', 'Bo', 'Kenema', 'Makeni', 'Koidu', 'Waterloo'].map((city) => (
+                <a key={city} href={'/discover/search?city=' + encodeURIComponent(city)}
+                  className="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{city}</span>
+                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 block">Find local listings</span>
+                </a>
+              ))}
+            </div>
+          </section>
+
+          {/* 6. Merchant Acquisition */}
+          <section aria-labelledby="merchant-cta-heading" className="rounded-3xl border border-indigo-200/80 dark:border-indigo-900/70 bg-indigo-50/80 dark:bg-indigo-950/30 p-6 sm:p-8 lg:p-10">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-7">
+              <div className="max-w-2xl">
+                <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-2">
+                  <BriefcaseBusiness className="w-4 h-4" />
+                  <span>For Business Owners</span>
+                </div>
+                <h2 id="merchant-cta-heading" className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Get your business discovered on AbaCha</h2>
+                <p className="mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Create a public business listing, showcase your services, and connect customers to your AbaCha Store when you are ready to sell online.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+                <a href="/login?redirect=/discover/businesses/new"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+                  <Building2 className="w-4 h-4" /> Get Listed
+                </a>
+                <a href="/discover/search?type=businesses"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <Search className="w-4 h-4" /> Browse Businesses
+                </a>
+              </div>
+            </div>
+          </section>
+
           {/* 5. Trust & Quality Banner                                        */}
           {/* ---------------------------------------------------------------- */}
           <section className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
