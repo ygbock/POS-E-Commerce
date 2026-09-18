@@ -753,7 +753,7 @@ export class OrderService {
         [payment.id, organizationId, voidReference || null, JSON.stringify(payload)]);
       const updatedOrder = await tx.query<any>(`UPDATE orders SET payment_status='Failed', updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND organization_id=$2 RETURNING *`, [orderId, organizationId]);
       await this.auditRepo.recordEvent({ organization_id: organizationId, actor_name: actor, actor_role: 'System', action: 'storefront.payment_void', entity_type: 'orders', entity_id: orderId, metadata: { payment_id: payment.id, void_reference: voidReference || payment.reference }, severity: 'Info' }, tx);
-      return { order: updatedOrder.rows[0] as OrderRecord, payment: mapPaymentRow(updatedPayment.rows[0]) };
+      return { order: updatedOrder.rows[0] as OrderRecord, payment: updatedPayment.rows[0] as PaymentRecord };
     });
   }
 
@@ -955,6 +955,7 @@ export class OrderService {
       );
       const payment = paymentRes.rows[0];
       if (!payment) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+      const paymentAmountCents = this.localParseMoneyToCents(String(payment.amount));
       if (idempotencyKey) {
         const existingTx = await tx.query<any>(
           `SELECT * FROM payment_transactions
