@@ -49,11 +49,7 @@ export const DiscoveryStoreConversionModal: React.FC<DiscoveryStoreConversionMod
       });
 
       // Update business mode in local state
-      const updatedBusiness: DiscoveryBusiness = {
-        ...business,
-        name: storeName.trim() || business.name,
-        businessMode: 'DISCOVERY_AND_STORE',
-      };
+      const updatedBusiness: DiscoveryBusiness = { ...business, name: storeName.trim() || business.name, business_mode: 'DISCOVERY_AND_STORE' };
 
       onConverted(updatedBusiness);
       onClose();
