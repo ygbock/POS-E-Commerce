@@ -64,6 +64,29 @@ export function extractFingerprint(notes: string | null | undefined): string | n
   return match ? match[1] : null;
 }
 
+export function computeRefundRequestFingerprint(params: {
+  organization_id: string;
+  order_id: string;
+  return_items?: Array<{ variant_id: string; quantity: string }>;
+  refund_method?: string | null;
+  reason?: string | null;
+}): string {
+  const items = (params.return_items || [])
+    .map(item => ({
+      variant_id: item.variant_id,
+      quantity: parseExactQuantity(item.quantity, 'return quantity'),
+    }))
+    .sort((a, b) => a.variant_id.localeCompare(b.variant_id));
+  const canonical = JSON.stringify({
+    organization_id: params.organization_id,
+    order_id: params.order_id,
+    return_items: items,
+    refund_method: params.refund_method || null,
+    reason: params.reason || 'Order refund',
+  });
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
+
 export class OrderService {
   private db: DatabaseClient;
   private orderRepo: OrderRepository;
@@ -606,6 +629,15 @@ export class OrderService {
         throw new DomainError('VALIDATION_ERROR', 'Refund idempotency key must be a non-empty value no longer than 128 characters.');
       }
     }
+    const refundFingerprint = idempotencyKey
+      ? computeRefundRequestFingerprint({
+          organization_id: organizationId,
+          order_id: orderId,
+          return_items: returnItems,
+          refund_method: refundMethod,
+          reason,
+        })
+      : null;
 
     return this.db.withTransaction(async (tx) => {
       const orderRes = await tx.query<any>(
@@ -902,6 +934,10 @@ export class OrderService {
           if (existing.payment_id !== payment.id || existing.order_id !== orderId) {
             throw new DomainError('IDEMPOTENCY_CONFLICT', 'Refund idempotency key is already associated with a different payment or order.');
           }
+          const storedFingerprint = existing.metadata?.fingerprint || null;
+          if (storedFingerprint !== refundFingerprint) {
+            throw new DomainError('IDEMPOTENCY_CONFLICT', 'Refund idempotency key is already associated with different return parameters.');
+          }
           return order as OrderRecord;
         }
       }
@@ -1115,7 +1151,11 @@ export class OrderService {
         idempotency_key: idempotencyKey || null,
         source_type: 'pos_return',
         source_id: returnId,
-        metadata: { reason, order_number: order.order_number },
+        metadata: {
+          reason,
+          order_number: order.order_number,
+          fingerprint: refundFingerprint,
+        },
         performed_by: actor,
       }, tx);
 
