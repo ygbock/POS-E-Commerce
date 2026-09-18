@@ -243,14 +243,19 @@ export class ReservationService {
         tx
       );
 
-      // 2. Decrement on_hand and record sale movement
+      // 2. Decrement on_hand and record the source-specific sale movement.
+      // Storefront reservations must remain distinguishable from POS sales
+      // while both flows share the same inventory ledger.
+      const movementType = reservation.reference_type === 'orders'
+        ? 'ECOMMERCE_SALE'
+        : 'POS_SALE';
       await this.inventoryRepo.recordMovement(
         {
           id: generateInventoryId('mov_ful'),
           organization_id: organizationId,
           location_id: reservation.location_id,
           variant_id: reservation.variant_id,
-          movement_type: 'POS_SALE',
+          movement_type: movementType,
           quantity_change: negQty,
           reference_type: reservation.reference_type,
           reference_id: reservation.reference_id,
