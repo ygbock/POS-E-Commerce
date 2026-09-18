@@ -21,6 +21,10 @@ export * from './DiscoveryRateLimitState';
 export * from './DiscoveryPagination';
 export * from './DiscoveryResultCount';
 export * from './DiscoveryStateContainer';
+export * from './DiscoveryHeader';
+export * from './DiscoveryHero';
+export * from './DiscoveryCategoryExplorer';
+export * from './ServiceRequestModule';
 export * from './DiscoveryHome';
 export * from './DiscoverySearchResults';
 

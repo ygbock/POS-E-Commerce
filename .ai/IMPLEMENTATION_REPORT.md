@@ -1,11 +1,58 @@
 # Implementation Report
 
-## TASK: FRONT-002 — Discovery Home
+## TASK: FRONT-007 — Master UI/UX Redesign for AbaCha Discovery
 
 - **Status**: `IMPLEMENTED — READY FOR REVIEW`
-- **Date**: 2026-09-17
-- **Program**: `AbaCha Discovery Experience / FRONT-002`
+- **Date**: 2026-09-18
+- **Program**: `AbaCha Discovery Master Redesign / FRONT-007`
 - **Boundary**: `FRONTEND ONLY` (Zero backend/database modifications)
+
+---
+
+### Scope & Changes
+
+1. **Brand-Aligned Sticky Header (`src/components/discovery/DiscoveryHeader.tsx`)**:
+   - Built a sleek, responsive, backdrop-blurred navigation header featuring the AbaCha Discovery brand badge.
+   - Embedded a direct Location Selector dropdown, section quick navigation (`All`, `Businesses`, `Products`, `Services`), and merchant/storefront quick links.
+   - Built a responsive mobile navigation drawer with backdrop blur and touch targets.
+
+2. **Full-Featured Hero & Search Engine (`src/components/discovery/DiscoveryHero.tsx`)**:
+   - Centered the public landing message: *"Find businesses, products, and services near you"*.
+   - Added an integrated omni-search input supporting real-time keywords and popular search suggestion chips (*"Pharmacies"*, *"Auto Repair"*, *"Groceries"*, *"Restaurants"*, *"Plumbers"*, *"Hardware"*, *"Salons"*).
+   - Embedded scope-selector pills (`All`, `Businesses`, `Products`, `Services`) with active count badges and location context labels.
+
+3. **Dynamic Category Explorer (`src/components/discovery/DiscoveryCategoryExplorer.tsx`)**:
+   - Rendered dynamic category chips and cards directly from `discoveryApi.getCategories()`.
+   - Mapped category slugs and names to relevant Lucide icons (Dining, Groceries, Automotive, Health, Electronics, Construction, Services, Beauty, etc.) with active state indicators and accessible focus rings.
+
+4. **Dedicated Service Request & Quote Module (`src/components/discovery/ServiceRequestModule.tsx`)**:
+   - Created a modal-driven and in-canvas service request workflow where customers can submit custom quote requests to local businesses.
+   - Included fields for customer name, contact details, service description, budget range, and preferred schedule with live feedback and success confirmation states.
+
+5. **Refined Component Cards**:
+   - **`BusinessCard.tsx`**: High-contrast, clean card with verification badges, category tags, distance calculation, contact actions (Call, WhatsApp), and prominent **"Visit Store"** button enabled exclusively for `DISCOVERY_AND_STORE` mode merchants (hidden for `DISCOVERY_ONLY`).
+   - **`ProductDiscoveryCard.tsx`**: High-contrast card with merchant affiliation, currency formatting (SLE), availability indicators, and direct links to the parent merchant store.
+   - **`ServiceCard.tsx`**: Structured service cards with transparent pricing models (Fixed, Starting At, Hourly, Quote), duration estimates, and direct quote request triggers.
+
+6. **Overhauled Business Profile (`src/components/discovery/DiscoveryBusinessProfile.tsx`)**:
+   - Rich merchant profile featuring cover banner, verification badges, operation mode tags, and tabbed exploration (Overview, Products, Services, Locations & Hours, Reviews).
+   - Integrated quick actions for Calling, WhatsApp messaging, Directions, and **"Visit Online Store"** when backed by an AbaCha tenant storefront.
+   - Integrated `ServiceRequestModule` modal directly into the profile for direct customer quote inquiries.
+
+7. **Unified Landing Canvas (`src/components/discovery/DiscoveryHome.tsx`)**:
+   - Replaced fragmented layouts with the unified master Discovery canvas combining the Header, Hero, Category Explorer, Sections (Businesses, Products, Services), Trust & Quality Banner, and Footer.
+   - Robust, independent state handling for each section with skeleton loaders, empty states, error recovery, and rate-limit states.
+   - Full URL parameter synchronization (`q`, `type`, `city`, `radiusKm`, `categoryId`, `sort`) with history pushState and popstate support.
+
+---
+
+### Verification Results
+
+- `npm run lint` (`tsc --noEmit`): ✅ PASS (0 errors)
+- `npm run build` (Vite + esbuild): ✅ PASS (2511 modules transformed, clean production bundle)
+- `git status --short`: ✅ PASS (Frontend only; zero backend modifications)
+
+---
 
 ---
 

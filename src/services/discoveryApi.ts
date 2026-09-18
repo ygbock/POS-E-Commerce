@@ -241,11 +241,28 @@ export const discoveryApi = {
     preferredDate?: string;
     budgetFrom?: number;
     budgetTo?: number;
+    serviceId?: string;
+    businessId?: string;
   }): Promise<DiscoveryServiceRequest> {
     return request<DiscoveryServiceRequest>('/api/discovery/service-requests', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  /**
+   * Get business service requests (authenticated provider)
+   */
+  async getBusinessServiceRequests(businessId: string, status?: string): Promise<DiscoveryServiceRequest[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request<DiscoveryServiceRequest[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/service-requests${qs}`);
+  },
+
+  /**
+   * Get all businesses owned by currently authenticated user
+   */
+  async getMyBusinesses(): Promise<DiscoveryBusiness[]> {
+    return request<DiscoveryBusiness[]>('/api/discovery/businesses/my');
   },
 
   /**

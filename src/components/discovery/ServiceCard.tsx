@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wrench, Clock3, MapPin, Send } from 'lucide-react';
+import { Wrench, Clock3, MapPin, Send, User } from 'lucide-react';
 import type { DiscoveryService } from '../../types/discovery';
 import { VerificationBadge } from './VerificationBadge';
 
@@ -21,13 +21,13 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
   return (
     <article
-      className={`group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex flex-col justify-between shadow-xs hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-700 transition-all ${className}`}
+      className={`group rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex flex-col justify-between shadow-2xs hover:shadow-xl hover:border-slate-300 dark:hover:border-slate-700 transition-all ${className}`}
       aria-labelledby={`service-title-${service.id}`}
     >
       <div>
         {/* Header: Icon + Title + Provider */}
         <div className="flex items-start gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center shrink-0">
             <Wrench className="w-5 h-5" aria-hidden="true" />
           </div>
 
@@ -45,27 +45,27 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             </div>
 
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              Offered by <span className="font-semibold text-slate-700 dark:text-slate-300">{service.business_name}</span>
+              Offered by <a href={`/discover/business/${encodeURIComponent(service.business_slug || service.business_id)}`} className="font-semibold text-slate-700 dark:text-slate-300 hover:underline">{service.business_name}</a>
             </p>
           </div>
         </div>
 
         {/* Description */}
-        <p className="mt-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed">
-          {service.description || 'Professional service offered by this local business on the AbaCha discovery network.'}
+        <p className="mt-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed min-h-[2.75rem]">
+          {service.description || 'Professional service offered by this local verified business on the AbaCha discovery network.'}
         </p>
 
         {/* Meta badges: Area & Duration */}
         <div className="flex flex-wrap items-center gap-3 mt-4 text-xs text-slate-500 dark:text-slate-400">
           <span className="inline-flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
             <span className="truncate max-w-[150px]">
               {service.service_area_text || [service.city, service.district].filter(Boolean).join(', ') || 'Local area'}
             </span>
           </span>
 
           <span className="inline-flex items-center gap-1">
-            <Clock3 className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+            <Clock3 className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
             <span>{service.duration_minutes ? `${service.duration_minutes} min` : 'Flexible duration'}</span>
           </span>
         </div>
@@ -83,10 +83,10 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
         <button
           type="button"
           onClick={() => onRequestService && onRequestService(service)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95"
         >
           <Send className="w-3.5 h-3.5" aria-hidden="true" />
-          <span>Request Service</span>
+          <span>Request Quote</span>
         </button>
       </div>
     </article>

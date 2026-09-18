@@ -102,7 +102,6 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       // 1. Create Business Profile
       const newBusiness = await discoveryApi.createBusiness({
         name: name.trim(),
-        slug: generatedSlug,
         businessType: businessType,
         shortDescription: shortDescription.trim() || undefined,
         phone: phone.trim() || undefined,
@@ -122,15 +121,15 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         const lngNum = longitude ? Number(longitude) : undefined;
         await discoveryApi.createLocation(newBusiness.id, {
           name: branchName.trim(),
-          locationType: 'STORE',
-          addressLine1: streetAddress.trim() || undefined,
+          location_type: 'STORE',
+          address_line_1: streetAddress.trim() || undefined,
           city: city.trim() || undefined,
           district: district.trim() || undefined,
           country: 'Sierra Leone',
           latitude: latNum,
           longitude: lngNum,
-          isPrimary: true,
-          isActive: true,
+          is_primary: true,
+          is_active: true,
         });
       }
 
