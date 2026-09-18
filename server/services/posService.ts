@@ -723,6 +723,16 @@ export class PosService {
           throw new Error('PAYMENT_INVALID: Only paid sales can be returned.');
         }
 
+        const payment = await this.orderRepo.findPaymentByOrderId(order_id, organization_id, tx);
+        if (!payment) {
+          throw new Error('PAYMENT_INVALID: No payment record exists for this sale.');
+        }
+        const paymentAmountCents = parseMoneyToCents(payment.amount);
+        const orderTotalCents = parseMoneyToCents(order.total_amount);
+        if (paymentAmountCents !== orderTotalCents) {
+          throw new Error('PAYMENT_INVALID: Captured payment does not match the original sale total.');
+        }
+
         const fullOrder = await this.orderRepo.findOrderById(order_id, organization_id, tx);
         if (!fullOrder) {
           throw new Error(`SALE_NOT_FOUND: Original sale '${order_id}' was not found.`);
@@ -742,6 +752,7 @@ export class PosService {
         }
 
         let totalRefundCents = 0n;
+        const requestedQuantitiesScaled: Record<string, bigint> = {};
         const savedItems: PosReturnItemRecord[] = [];
         const returnId = `ret_${crypto.randomUUID()}`;
 
@@ -758,6 +769,8 @@ export class PosService {
           if (reqQtyScaled <= 0n) {
             throw new Error(`RETURN_INVALID: Return quantity must be greater than zero.`);
           }
+          requestedQuantitiesScaled[item.variant_id] =
+            (requestedQuantitiesScaled[item.variant_id] || 0n) + reqQtyScaled;
 
           const originalQtyScaled = matchingOriginalItems.reduce(
             (sum, oi) => sum + parseQtyToScaled(oi.quantity.toString()),
@@ -793,6 +806,35 @@ export class PosService {
           });
         }
 
+        const allRemainingReturned = originalItems.every((oi) => {
+          const originalQty = parseQtyToScaled(String(oi.quantity));
+          const alreadyReturned = returnedQuantitiesScaled[oi.variant_id] || 0n;
+          const requestedQty = requestedQuantitiesScaled[oi.variant_id] || 0n;
+          return alreadyReturned + requestedQty >= originalQty;
+        });
+
+        const priorRefundedCents = prevReturns.reduce(
+          (sum, ret) => sum + parseMoneyToCents(String(ret.refund_amount)),
+          0n
+        );
+        const remainingRefundCents = orderTotalCents - priorRefundedCents;
+        if (allRemainingReturned) {
+          const residual = remainingRefundCents - totalRefundCents;
+          if (residual < 0n) {
+            throw new Error('RETURN_INVALID: Calculated return exceeds the remaining refundable amount.');
+          }
+          if (residual > 0n && savedItems.length > 0) {
+            const last = savedItems[savedItems.length - 1];
+            const lineResidual = parseMoneyToCents(last.refund_amount) + residual;
+            last.refund_amount = formatCentsToMoneyString(lineResidual);
+            totalRefundCents += residual;
+          }
+        }
+
+        if (totalRefundCents <= 0n || totalRefundCents > remainingRefundCents) {
+          throw new Error('RETURN_INVALID: Refund amount exceeds the remaining refundable payment amount.');
+        }
+
         const refundAmountStr = formatCentsToMoneyString(totalRefundCents);
 
         const reasonWithFingerprint = currentFingerprint
@@ -813,27 +855,8 @@ export class PosService {
         // E. Save return records
         const saved = await this.posRepo.createReturn(returnRecord, savedItems, tx);
 
-        // F. Update order state if fully refunded
-        let totalReturnedQtyScaled = 0n;
-        let totalOriginalQtyScaled = 0n;
-
-        for (const oi of originalItems) {
-          totalOriginalQtyScaled += parseQtyToScaled(oi.quantity.toString());
-          const alreadyRet = returnedQuantitiesScaled[oi.variant_id] || 0n;
-          const reqRet = parseQtyToScaled(params.return_items.find((i) => i.variant_id === oi.variant_id)?.quantity || '0.0000');
-          totalReturnedQtyScaled += (alreadyRet + reqRet);
-        }
-
-        const orderTotalCents = parseMoneyToCents(order.total_amount);
-        const priorRefundedCents = prevReturns.reduce(
-          (sum, ret) => sum + parseMoneyToCents(String(ret.refund_amount)),
-          0n
-        );
-        if (priorRefundedCents + totalRefundCents > orderTotalCents) {
-          throw new Error('RETURN_INVALID: Cumulative refunds cannot exceed the original sale total.');
-        }
-
-        const paymentStatus = priorRefundedCents + totalRefundCents === orderTotalCents
+        // F. Reconcile order and payment state from the cumulative return ledger.
+        const paymentStatus = priorRefundedCents + totalRefundCents === orderTotalCents && allRemainingReturned
           ? 'Refunded'
           : 'Partially Refunded';
         const orderStatus = paymentStatus === 'Refunded' ? 'Refunded' : order.status;
