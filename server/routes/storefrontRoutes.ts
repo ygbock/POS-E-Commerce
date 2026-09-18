@@ -645,6 +645,23 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
     }
   });
 
+  // POST /api/storefront/orders/:id/payment/confirm
+  router.post('/orders/:id/payment/confirm', requireAuth(), requirePermission(PERMISSIONS.ORDERS_PAYMENT_CONFIRM), requireTenantAccess(), async (req: Request, res: Response) => {
+    try {
+      const organizationId = req.auth!.organizationId;
+      const result = await orders.confirmStorefrontPayment(
+        organizationId,
+        req.params.id,
+        req.body?.paymentReference ? String(req.body.paymentReference) : null,
+        req.body?.transactionPayload && typeof req.body.transactionPayload === 'object' ? req.body.transactionPayload : undefined,
+        req.auth!.userId,
+      );
+      res.json({ success: true, data: result });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
   // POST /api/storefront/orders/:id/fulfill
   router.post('/orders/:id/fulfill', requireAuth(), requirePermission(PERMISSIONS.ORDERS_FULFILL), requireTenantAccess(), async (req: Request, res: Response) => {
     try {
