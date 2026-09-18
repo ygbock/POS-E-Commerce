@@ -135,8 +135,8 @@ export const DiscoveryListingEditor: React.FC<DiscoveryListingEditorProps> = ({
       const patch: Partial<DiscoveryBusiness> = {
         name: formData.name.trim(),
         slug: formData.slug.trim() || undefined,
-        business_type: formData.businessType.trim() || null,
-        short_description: formData.shortDescription.trim() || null,
+        businessType: formData.businessType.trim() || null,
+        shortDescription: formData.shortDescription.trim() || null,
         description: formData.description.trim() || null,
         phone: formData.phone.trim() || null,
         whatsapp: formData.whatsapp.trim() || null,
@@ -144,8 +144,7 @@ export const DiscoveryListingEditor: React.FC<DiscoveryListingEditorProps> = ({
         website: formData.website.trim() || null,
         logo_url: formData.logoUrl.trim() || null,
         cover_image_url: formData.coverImageUrl.trim() || null,
-        business_mode: formData.businessMode as DiscoveryBusinessMode,
-        is_discoverable: formData.isDiscoverable,
+        businessMode: formData.businessMode as DiscoveryBusinessMode,
       };
 
       const updated = await discoveryApi.updateBusiness(business.id, patch);
