@@ -37,6 +37,10 @@ const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () =>
   );
 };
 
+const PublicDiscoveryShell: React.FC = () => (
+  <DiscoveryMarketplace />
+);
+
 const PublicStorefrontShell: React.FC = () => (
   <CommerceProvider>
     <StorefrontProvider>
@@ -45,11 +49,11 @@ const PublicStorefrontShell: React.FC = () => (
   </CommerceProvider>
 );
 
+const isPublicDiscoveryPath = (pathname: string) =>
+  pathname === '/' || pathname === '/discover' || pathname.startsWith('/discover/');
+
 const isPublicStorefrontPath = (pathname: string) =>
-  pathname === '/' ||
-  pathname.startsWith('/store/') ||
-  pathname === '/discover' ||
-  pathname.startsWith('/discover/');
+  pathname.startsWith('/store/');
 
 const MainLayout: React.FC = () => {
   const { currentRole } = useCommerce();
@@ -175,6 +179,16 @@ export default function App() {
   }, []);
 
   // Public storefront and Discovery routes must be previewable without an admin session.
+  if (!authLoading && !authUser && isPublicDiscoveryPath(window.location.pathname)) {
+    return (
+      <ErrorBoundary>
+        <ToastProvider>
+          <PublicDiscoveryShell />
+        </ToastProvider>
+      </ErrorBoundary>
+    );
+  }
+
   if (!authLoading && !authUser && isPublicStorefrontPath(window.location.pathname)) {
     return (
       <ErrorBoundary>
@@ -198,6 +212,18 @@ export default function App() {
 
   if (!authUser) {
     return <LoginPage onAuthenticated={setAuthUser} />;
+  }
+
+  // Discovery is the platform landing page. Authenticated users also start here;
+  // tenant storefronts are entered explicitly from a business listing.
+  if (isPublicDiscoveryPath(window.location.pathname)) {
+    return (
+      <ErrorBoundary>
+        <ToastProvider>
+          <PublicDiscoveryShell />
+        </ToastProvider>
+      </ErrorBoundary>
+    );
   }
 
   const handleLogout = async () => {
