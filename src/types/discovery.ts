@@ -353,9 +353,7 @@ export interface DiscoveryReport {
  * Aggregate discovery analytics summary
  */
 export interface DiscoveryAnalyticsSummary {
-  event_type: DiscoveryEventType;
-  count: number;
-  unique_sessions: number;
+  business_id: string; timeframe: string; impressions: number; profile_views: number; phone_clicks: number; whatsapp_clicks: number; direction_clicks: number; website_clicks: number; service_inquiries: number; store_visits: number; conversion_rate: number;
 }
 
 /**

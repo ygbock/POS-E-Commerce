@@ -55,6 +55,17 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     } catch (err) { next(err); }
   });
 
+  router.get('/businesses/mine', requireAuth(), async (req, res, next) => {
+    try {
+      const role = req.auth!.role; const values: unknown[] = []; let where = '';
+      if (role === 'super_admin') where = 'TRUE';
+      else if (['admin', 'manager'].includes(role) && req.auth!.organizationId) { values.push(req.auth!.organizationId); where = 'organization_id=$1'; }
+      else { values.push(req.auth!.userId); where = 'created_by_user_id=$1'; }
+      const r = await db.query('SELECT * FROM discovery_businesses WHERE ' + where + ' ORDER BY updated_at DESC, created_at DESC LIMIT 100', values);
+      res.json({ success: true, count: r.rows.length, data: r.rows });
+    } catch (err) { next(err); }
+  });
+
   router.get('/businesses/:slug', async (req, res, next) => {
     try {
       const business = await businessService.getBySlug(req.params.slug, true);
@@ -239,7 +250,22 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   router.post('/analytics/events', async(req,res,next)=>{try{const type=String(req.body?.eventType||'');if(!ANALYTICS_EVENTS.has(type))throw new Error('VALIDATION_ERROR:Unsupported analytics event.');const raw=`${req.ip}|${req.headers['user-agent']||''}`;const sessionHash=createHash('sha256').update(raw).digest('hex');await db.query(`INSERT INTO discovery_analytics_events(id,business_id,product_id,service_id,event_type,session_hash,actor_user_id,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[`evt_${randomUUID().replace(/-/g,'')}`,req.body?.businessId||null,req.body?.productId||null,req.body?.serviceId||null,type,sessionHash,req.auth?.userId||null,req.body?.metadata||{}]);res.status(202).json({success:true});}catch(err){next(err);}});
 
-  router.get('/businesses/:id/analytics', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id))&&req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Analytics access forbidden.'}});const days=Math.min(Math.max(Number(req.query.days||30),1),365);const r=await db.query(`SELECT event_type,COUNT(*)::int AS count,COUNT(DISTINCT session_hash)::int AS unique_sessions FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval GROUP BY event_type ORDER BY count DESC`,[req.params.id,String(days)]);res.json({success:true,periodDays:days,data:r.rows});}catch(err){next(err);}});
+  router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
+    const status=String(req.query.status||'');
+    const r=await db.query("SELECT DISTINCT r.* FROM discovery_service_requests r LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1 LEFT JOIN discovery_business_locations l ON l.business_id=$1 AND l.is_primary=TRUE AND l.is_active=TRUE WHERE (m.business_id=$1 OR (m.business_id IS NULL AND r.status IN ('OPEN','MATCHED') AND r.city IS NOT NULL AND l.city IS NOT NULL AND lower(r.city)=lower(l.city) AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=$1 AND s.is_active=TRUE))) AND ($2='' OR r.status=$2) ORDER BY r.created_at DESC LIMIT 100",[req.params.id,status]);
+    res.json({success:true,data:r.rows});
+  }catch(err){next(err);}});
+
+  router.get('/businesses/:id/analytics', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id))&&req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Analytics access forbidden.'}});
+    const days=Math.min(Math.max(Number(req.query.days||30),1),365);
+    const r=await db.query("SELECT event_type,COUNT(*)::int AS count,COUNT(DISTINCT session_hash)::int AS unique_sessions FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval GROUP BY event_type ORDER BY count DESC",[req.params.id,String(days)]);
+    const counts:Record<string,number>={}; for(const row of r.rows) counts[String(row.event_type)]=Number(row.count)||0;
+    const impressions=counts.IMPRESSION||0; const views=counts.VIEW||0; const conversions=(counts.CONTACT||0)+(counts.DIRECTION_CLICK||0)+(counts.SERVICE_REQUEST||0)+(counts.STORE_CLICK||0);
+    const summary={business_id:req.params.id,timeframe:String(days)+'d',impressions,profile_views:views,phone_clicks:counts.CONTACT||0,whatsapp_clicks:0,direction_clicks:counts.DIRECTION_CLICK||0,website_clicks:0,service_inquiries:counts.SERVICE_REQUEST||0,store_visits:counts.STORE_CLICK||0,conversion_rate:views>0?conversions/views:0};
+    res.json({success:true,periodDays:days,data:summary,events:r.rows});
+  }catch(err){next(err);}});
 
   router.get('/moderation/claims', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const r=await db.query(`SELECT c.*,b.name AS business_name FROM discovery_business_claims c JOIN discovery_businesses b ON b.id=c.business_id WHERE c.status='PENDING' ORDER BY c.created_at ASC LIMIT 100`);res.json({success:true,data:r.rows});}catch(err){next(err);}});
   router.post('/moderation/claims/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');const r=await db.query(`UPDATE discovery_business_claims SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,[status,req.auth!.userId,req.body?.reason||null,req.params.id]);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Claim not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
