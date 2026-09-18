@@ -45,6 +45,7 @@ import { MobileBottomNav } from './MobileBottomNav';
 import { MobileFilterDrawer } from './MobileFilterDrawer';
 import { DiscoveryHome } from '../discovery/DiscoveryHome';
 import { DiscoverySearchResults } from '../discovery/DiscoverySearchResults';
+import { DiscoveryBusinessProfile } from '../discovery/DiscoveryBusinessProfile';
 
 export interface StorefrontProps {
   onOpenAdmin?: () => void;
@@ -72,6 +73,14 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
     return (
       <div className={isDarkMode ? 'dark' : ''}>
         <DiscoverySearchResults onReturnToStore={goHome} />
+      </div>
+    );
+  }
+
+  if (route.name === 'discover-business') {
+    return (
+      <div className={isDarkMode ? 'dark' : ''}>
+        <DiscoveryBusinessProfile businessId={route.businessId} onBack={goHome} />
       </div>
     );
   }

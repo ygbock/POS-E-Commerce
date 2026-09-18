@@ -2,6 +2,7 @@
 import React from 'react';
 import { DiscoveryHome } from './DiscoveryHome';
 import { DiscoverySearchResults } from './DiscoverySearchResults';
+import { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
 import { useDiscoveryRoute } from '../../router/useDiscoveryRoute';
 
 /**
@@ -15,6 +16,10 @@ export const DiscoveryMarketplace: React.FC = () => {
 
   if (route.name === 'discover-search') {
     return <DiscoverySearchResults onReturnToStore={() => navigate('discover-home')} />;
+  }
+
+  if (route.name === 'discover-business') {
+    return <DiscoveryBusinessProfile businessId={route.businessId} onBack={() => navigate('discover-home')} />;
   }
 
   return <DiscoveryHome />;

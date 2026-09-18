@@ -23,3 +23,5 @@ export * from './DiscoveryResultCount';
 export * from './DiscoveryStateContainer';
 export * from './DiscoveryHome';
 export * from './DiscoverySearchResults';
+
+export { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
