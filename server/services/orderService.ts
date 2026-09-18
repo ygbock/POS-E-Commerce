@@ -813,15 +813,24 @@ export class OrderService {
     });
   }
   /**
-   * Fully refund a completed storefront/POS order and return all sold stock.
-   * Partial refunds intentionally remain outside this transition until a
-   * dedicated allocation model exists.
+   * Process a full or partial return/refund for a fulfilled order.
+   *
+   * The return ledger is authoritative for both POS and storefront sales:
+   * - every returned quantity is checked against sold minus previously returned;
+   * - inventory is restored exactly once per return item;
+   * - the refund amount is derived server-side from the original order item price;
+   * - payment/order state is reconciled from cumulative return amounts.
+   *
+   * When returnItems is omitted, the entire remaining quantity of every item is
+   * returned (backwards-compatible full refund behavior).
    */
   async refundOrder(
     organizationId: string,
     orderId: string,
     actor = 'System',
-    reason = 'Order refund'
+    reason = 'Order refund',
+    returnItems?: Array<{ variant_id: string; quantity: string }>,
+    refundMethod?: string
   ): Promise<OrderRecord> {
     return this.db.withTransaction(async (tx) => {
       const orderRes = await tx.query<any>(
@@ -831,17 +840,14 @@ export class OrderService {
       if (orderRes.rows.length === 0) throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
 
       const order = orderRes.rows[0];
-      if (order.status === 'Refunded' || order.payment_status === 'Refunded') {
-        return order as OrderRecord;
-      }
       if (order.status === 'Cancelled') {
         throw new DomainError('INVALID_ORDER_STATE', 'A cancelled order cannot be refunded.');
       }
-      if (!['Completed', 'Delivered'].includes(order.status)) {
-        throw new DomainError('INVALID_ORDER_STATE', 'Only delivered or completed orders can be refunded.');
+      if (!['Completed', 'Delivered', 'Refunded'].includes(order.status)) {
+        throw new DomainError('INVALID_ORDER_STATE', 'Only delivered or completed orders can be returned.');
       }
-      if (order.payment_status !== 'Paid' && order.payment_status !== 'Partially Refunded') {
-        throw new DomainError('INVALID_PAYMENT_STATE', 'Only paid orders can be refunded.');
+      if (!['Paid', 'Partially Refunded', 'Refunded'].includes(order.payment_status)) {
+        throw new DomainError('INVALID_PAYMENT_STATE', 'Only paid orders can be returned.');
       }
 
       const paymentRes = await tx.query<any>(
@@ -855,23 +861,186 @@ export class OrderService {
       const payment = paymentRes.rows[0];
       if (!payment) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
 
-      const existingReturn = await tx.query<any>(
-        `SELECT id FROM pos_returns
-         WHERE order_id = $1 AND organization_id = $2
-         LIMIT 1
-         FOR UPDATE`,
-        [orderId, organizationId]
-      );
-      if (existingReturn.rows.length > 0) {
-        throw new DomainError('ALREADY_REFUNDED', 'A refund record already exists for this order.');
-      }
-
       const itemsRes = await tx.query<any>(
-        `SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at ASC, id ASC`,
+        `SELECT * FROM order_items
+         WHERE order_id = $1
+         ORDER BY created_at ASC, id ASC`,
         [orderId]
       );
       if (itemsRes.rows.length === 0) {
         throw new DomainError('ORDER_ITEMS_NOT_FOUND', 'Order contains no refundable items.');
+      }
+
+      // The order row is locked above, so concurrent returns for this order
+      // serialize here. We still aggregate the immutable return ledger to
+      // enforce the sold-minus-returned invariant.
+      const returnedRes = await tx.query<any>(
+        `SELECT pri.variant_id, COALESCE(SUM(pri.quantity), 0)::text AS returned_quantity
+         FROM pos_return_items pri
+         JOIN pos_returns pr ON pr.id = pri.return_id
+         WHERE pr.order_id = $1 AND pr.organization_id = $2
+         GROUP BY pri.variant_id`,
+        [orderId, organizationId]
+      );
+
+      const returnedByVariant = new Map<string, bigint>();
+      for (const row of returnedRes.rows) {
+        returnedByVariant.set(row.variant_id, parseQtyToScaled(String(row.returned_quantity)));
+      }
+
+      const soldByVariant = new Map<string, {
+        quantityScaled: bigint;
+        totalCents: bigint;
+        costPrice: string;
+      }>();
+      for (const item of itemsRes.rows) {
+        const soldQty = parseQtyToScaled(String(item.quantity));
+        if (soldQty <= 0n) {
+          throw new DomainError('INVALID_ORDER_ITEM', `Order item '${item.id}' has an invalid quantity.`);
+        }
+        const existing = soldByVariant.get(item.variant_id);
+        const itemTotalCents = this.localParseMoneyToCents(String(item.total_amount));
+        if (existing) {
+          existing.quantityScaled += soldQty;
+          existing.totalCents += itemTotalCents;
+        } else {
+          soldByVariant.set(item.variant_id, {
+            quantityScaled: soldQty,
+            totalCents: itemTotalCents,
+            costPrice: String(item.cost_price || '0.00'),
+          });
+        }
+      }
+
+      const requested = new Map<string, string>();
+      if (returnItems === undefined) {
+        for (const [variantId, sold] of soldByVariant) {
+          const alreadyReturned = returnedByVariant.get(variantId) || 0n;
+          const remaining = sold.quantityScaled - alreadyReturned;
+          if (remaining > 0n) requested.set(variantId, formatScaledToQtyString(remaining));
+        }
+      } else {
+        if (!Array.isArray(returnItems) || returnItems.length === 0) {
+          throw new DomainError('VALIDATION_ERROR', 'returnItems must contain at least one item.');
+        }
+        for (const item of returnItems) {
+          if (!item || typeof item.variant_id !== 'string' || item.variant_id.trim() === '') {
+            throw new DomainError('VALIDATION_ERROR', 'Each return item must have a valid variant_id.');
+          }
+          let qty: string;
+          try {
+            qty = parseExactQuantity(item.quantity, 'return quantity');
+          } catch (err: any) {
+            throw new DomainError('VALIDATION_ERROR', err.message);
+          }
+          const qtyScaled = parseQtyToScaled(qty);
+          if (qtyScaled <= 0n) {
+            throw new DomainError('VALIDATION_ERROR', 'Return quantity must be greater than zero.');
+          }
+          if (requested.has(item.variant_id)) {
+            const combined = parseQtyToScaled(requested.get(item.variant_id)!) + qtyScaled;
+            requested.set(item.variant_id, formatScaledToQtyString(combined));
+          } else {
+            requested.set(item.variant_id, qty);
+          }
+        }
+      }
+
+      if (requested.size === 0) {
+        if (order.payment_status === 'Refunded' || order.status === 'Refunded') {
+          return order as OrderRecord;
+        }
+        throw new DomainError('NOTHING_TO_RETURN', 'No refundable quantity remains on this order.');
+      }
+
+      // First validate every requested quantity before writing any return rows.
+      for (const [variantId, qty] of requested) {
+        const sold = soldByVariant.get(variantId);
+        if (!sold) {
+          throw new DomainError('ORDER_ITEM_NOT_FOUND', `Variant '${variantId}' was not sold on this order.`);
+        }
+        const alreadyReturned = returnedByVariant.get(variantId) || 0n;
+        const requestedScaled = parseQtyToScaled(qty);
+        const remaining = sold.quantityScaled - alreadyReturned;
+        if (requestedScaled > remaining) {
+          throw new DomainError(
+            'RETURN_QUANTITY_EXCEEDED',
+            `Return quantity for variant '${variantId}' exceeds the remaining refundable quantity. Remaining: ${formatScaledToQtyString(remaining)}.`
+          );
+        }
+      }
+
+      const existingRefundRes = await tx.query<any>(
+        `SELECT COALESCE(SUM(refund_amount), 0)::text AS refunded_amount
+         FROM pos_returns
+         WHERE order_id = $1 AND organization_id = $2`,
+        [orderId, organizationId]
+      );
+      const alreadyRefundedCents = this.localParseMoneyToCents(String(existingRefundRes.rows[0]?.refunded_amount || '0.00'));
+      const orderTotalCents = this.localParseMoneyToCents(String(order.total_amount));
+      const remainingRefundCents = orderTotalCents - alreadyRefundedCents;
+      if (remainingRefundCents <= 0n) {
+        throw new DomainError('ALREADY_REFUNDED', 'The full order amount has already been refunded.');
+      }
+
+      const refundLines: Array<{
+        variantId: string;
+        quantity: string;
+        refundCents: bigint;
+        costPrice: string;
+      }> = [];
+
+      for (const [variantId, qty] of requested) {
+        const sold = soldByVariant.get(variantId)!;
+        const qtyScaled = parseQtyToScaled(qty);
+
+        // Line refund is proportional to the original line total. This keeps
+        // partial returns deterministic and independent of client-supplied
+        // prices. Full-order reconciliation below adds any shipping/rounding
+        // residual exactly once.
+        const refundCents = this.localDivideRoundHalfUp(
+          sold.totalCents * qtyScaled,
+          sold.quantityScaled
+        );
+        if (refundCents <= 0n) {
+          throw new DomainError('INVALID_REFUND_AMOUNT', `Return amount for variant '${variantId}' rounds to zero.`);
+        }
+        refundLines.push({
+          variantId,
+          quantity: qty,
+          refundCents,
+          costPrice: sold.costPrice,
+        });
+      }
+
+      let calculatedRefundCents = refundLines.reduce((sum, line) => sum + line.refundCents, 0n);
+      const allRemainingReturned = [...soldByVariant.entries()].every(([variantId, sold]) => {
+        const prior = returnedByVariant.get(variantId) || 0n;
+        const current = requested.has(variantId) ? parseQtyToScaled(requested.get(variantId)!) : 0n;
+        return prior + current === sold.quantityScaled;
+      });
+
+      // On the final return, reconcile the complete order amount exactly.
+      // This captures shipping and any line-level rounding remainder without
+      // ever allowing cumulative refunds to exceed the captured payment.
+      if (allRemainingReturned) {
+        const finalResidual = remainingRefundCents - calculatedRefundCents;
+        if (finalResidual < 0n) {
+          throw new DomainError('REFUND_AMOUNT_EXCEEDED', 'Calculated return amount exceeds the remaining refundable payment amount.');
+        }
+        if (finalResidual > 0n) {
+          refundLines[refundLines.length - 1].refundCents += finalResidual;
+          calculatedRefundCents += finalResidual;
+        }
+      }
+
+      if (calculatedRefundCents <= 0n || calculatedRefundCents > remainingRefundCents) {
+        throw new DomainError('REFUND_AMOUNT_EXCEEDED', 'Refund amount exceeds the remaining refundable payment amount.');
+      }
+
+      const effectiveRefundMethod = refundMethod?.trim() || String(payment.payment_method);
+      if (!effectiveRefundMethod || effectiveRefundMethod.length > 64) {
+        throw new DomainError('VALIDATION_ERROR', 'Refund method is invalid.');
       }
 
       const returnId = `ret_${crypto.randomUUID()}`;
@@ -879,61 +1048,97 @@ export class OrderService {
         `INSERT INTO pos_returns
          (id, organization_id, order_id, refund_amount, refund_method, performed_by, reason)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [returnId, organizationId, orderId, order.total_amount, payment.payment_method, actor, reason]
+        [
+          returnId,
+          organizationId,
+          orderId,
+          this.localFormatCentsToMoneyString(calculatedRefundCents),
+          effectiveRefundMethod,
+          actor,
+          reason,
+        ]
       );
 
-      for (const item of itemsRes.rows) {
-        const qty = parseExactQuantity(String(item.quantity), 'quantity');
+      for (const line of refundLines) {
+        const returnItemId = `retitem_${crypto.randomUUID()}`;
         await tx.query(
           `INSERT INTO pos_return_items
            (id, return_id, variant_id, quantity, refund_amount)
            VALUES ($1, $2, $3, $4, $5)`,
-          [`retitem_${crypto.randomUUID()}`, returnId, item.variant_id, qty, item.total_amount]
+          [
+            returnItemId,
+            returnId,
+            line.variantId,
+            line.quantity,
+            this.localFormatCentsToMoneyString(line.refundCents),
+          ]
         );
 
         await this.inventoryRepo.recordMovement({
           id: `mov_refund_${crypto.randomUUID()}`,
           organization_id: organizationId,
           location_id: order.location_id,
-          variant_id: item.variant_id,
+          variant_id: line.variantId,
           movement_type: 'SALE_RETURN',
-          quantity_change: qty,
-          unit_cost: String(item.cost_price || '0.00'),
+          quantity_change: line.quantity,
+          unit_cost: line.costPrice,
           reference_type: 'pos_returns',
           reference_id: returnId,
           reason,
           performed_by: actor,
-          notes: `Refund for order ${order.order_number}`,
-          idempotency_key: `refund:${orderId}:${item.variant_id}`,
+          notes: `Return for order ${order.order_number}`,
+          // Return-item identity makes each inventory reversal independently
+          // idempotent and avoids the old variant-only collision.
+          idempotency_key: `return:${returnItemId}`,
         }, tx);
       }
 
-      await tx.query(
-        `UPDATE payments SET status = 'Refunded', updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND organization_id = $2`,
-        [payment.id, organizationId]
-      );
+      const newRefundedCents = alreadyRefundedCents + calculatedRefundCents;
+      const isFullyRefunded = newRefundedCents === orderTotalCents && allRemainingReturned;
+      if (newRefundedCents > orderTotalCents) {
+        throw new DomainError('REFUND_AMOUNT_EXCEEDED', 'Cumulative refunds cannot exceed the original order total.');
+      }
+
+      if (isFullyRefunded) {
+        await tx.query(
+          `UPDATE payments
+           SET status = 'Refunded', updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1 AND organization_id = $2`,
+          [payment.id, organizationId]
+        );
+      }
 
       const updated = await tx.query<any>(
         `UPDATE orders
-         SET payment_status = 'Refunded', status = 'Refunded', updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND organization_id = $2
+         SET payment_status = $2, status = $3, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $4
          RETURNING *`,
-        [orderId, organizationId]
+        [
+          orderId,
+          isFullyRefunded ? 'Refunded' : 'Partially Refunded',
+          isFullyRefunded ? 'Refunded' : order.status,
+          organizationId,
+        ]
       );
 
       await this.auditRepo.recordEvent({
         organization_id: organizationId,
         actor_name: actor,
         actor_role: 'System',
-        action: 'order.refund',
+        action: isFullyRefunded ? 'order.refund' : 'order.return',
         entity_type: 'orders',
         entity_id: orderId,
         location_id: order.location_id,
         metadata: {
           return_id: returnId,
-          refund_amount: String(order.total_amount),
-          payment_method: payment.payment_method,
+          refund_amount: this.localFormatCentsToMoneyString(calculatedRefundCents),
+          cumulative_refunded_amount: this.localFormatCentsToMoneyString(newRefundedCents),
+          payment_method: effectiveRefundMethod,
+          return_items: refundLines.map(line => ({
+            variant_id: line.variantId,
+            quantity: line.quantity,
+            refund_amount: this.localFormatCentsToMoneyString(line.refundCents),
+          })),
           reason,
         },
         severity: 'Info',
