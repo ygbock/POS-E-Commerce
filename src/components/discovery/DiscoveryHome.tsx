@@ -310,9 +310,27 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   // 4. User Interaction Handlers
   // ---------------------------------------------------------------------------
 
+  const navigateToSearch = useCallback((nextType: DiscoverySearchType = activeType, nextQuery = query) => {
+    const sp = new URLSearchParams();
+    if (nextQuery.trim()) sp.set('q', nextQuery.trim());
+    if (nextType !== 'all') sp.set('type', nextType);
+    if (selectedCity) sp.set('city', selectedCity);
+    if (radiusKm !== 25) sp.set('radiusKm', String(radiusKm));
+    if (filters.openNow) sp.set('openNow', 'true');
+    if (sort !== 'relevance') sp.set('sort', sort);
+    const path = `/discover/search${sp.toString() ? `?${sp.toString()}` : ''}`;
+    if (window.location.pathname + window.location.search !== path) {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }, [activeType, query, selectedCity, radiusKm, filters.openNow, sort]);
+
   const handleSearchSubmit = (q: string) => {
-    setQuery(q);
-    syncToUrl({ q });
+    navigateToSearch(activeType, q);
+  };
+
+  const handleViewAllType = (type: DiscoverySearchType) => {
+    navigateToSearch(type, query);
   };
 
   const handleTypeChange = (type: DiscoverySearchType) => {
@@ -655,7 +673,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 href={`/discover/search?type=businesses${selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : ''}`}
                 onClick={(e) => {
                   e.preventDefault();
-                  handleTypeChange('businesses');
+                  handleViewAllType('businesses');
                 }}
                 className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
               >
@@ -712,7 +730,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 href={`/discover/search?type=products${selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : ''}`}
                 onClick={(e) => {
                   e.preventDefault();
-                  handleTypeChange('products');
+                  handleViewAllType('products');
                 }}
                 className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
               >
@@ -767,7 +785,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 href={`/discover/search?type=services${selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : ''}`}
                 onClick={(e) => {
                   e.preventDefault();
-                  handleTypeChange('services');
+                  handleViewAllType('services');
                 }}
                 className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
               >

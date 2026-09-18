@@ -132,6 +132,7 @@ export const discoveryApi = {
         signal: options?.signal,
       });
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
       const message = err instanceof Error ? err.message : 'Network failure';
       throw new DiscoveryApiError(
         'Unable to connect to discovery search. Please check your network connection.',
