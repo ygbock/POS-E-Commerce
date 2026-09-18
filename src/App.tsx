@@ -38,9 +38,10 @@ const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () =>
   );
 };
 
-const PublicDiscoveryShell: React.FC = () => (
-  <DiscoveryHome />
-);
+const PublicDiscoveryShell: React.FC = () =>
+  window.location.pathname === '/' || window.location.pathname === '/discover'
+    ? <DiscoveryHome />
+    : <DiscoveryMarketplace />;
 
 const PublicStorefrontShell: React.FC = () => (
   <CommerceProvider>
