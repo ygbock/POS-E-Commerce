@@ -24,6 +24,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
   };
 
   const businessUrl = `/discover/business/${encodeURIComponent(business.slug || business.id)}`;
+  const storeUrl = business.tenant_slug ? `/store/${encodeURIComponent(business.tenant_slug)}` : null;
 
   return (
     <article
@@ -127,6 +128,12 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
           <span>View Business</span>
           <ArrowUpRight className="w-3.5 h-3.5 opacity-70" aria-hidden="true" />
         </a>
+
+        {storeUrl && business.business_mode === 'DISCOVERY_AND_STORE' && (
+          <a href={storeUrl} className="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors" aria-label={`Visit ${business.name} store`}>
+            <Store className="w-3.5 h-3.5" aria-hidden="true" /><span>Visit Store</span>
+          </a>
+        )}
 
         {/* Quick Contact buttons if available */}
         {business.phone && (

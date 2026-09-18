@@ -91,6 +91,7 @@ export interface DiscoveryBusiness {
   id: string;
   public_id: string;
   organization_id?: string | null;
+  tenant_slug?: string | null;
   name: string;
   slug: string;
   business_type?: string | null;

@@ -6,7 +6,7 @@ export type DiscoveryListingStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'A
 export type DiscoveryVerificationStatus = 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED';
 
 export interface DiscoveryBusinessRecord {
-  id: string; public_id: string; organization_id: string | null; name: string; legal_name: string | null;
+  id: string; public_id: string; organization_id: string | null; tenant_slug?: string | null; name: string; legal_name: string | null;
   slug: string; business_type: string | null; short_description: string | null; description: string | null;
   phone: string | null; email: string | null; whatsapp: string | null; website: string | null;
   logo_url: string | null; cover_image_url: string | null; business_mode: DiscoveryBusinessMode;
@@ -80,7 +80,7 @@ export class DiscoveryBusinessRepository {
   }
   async findBySlug(slug: string, options?: { publicOnly?: boolean }, client?: DatabaseClient): Promise<DiscoveryBusinessRecord | null> {
     const sql = options?.publicOnly !== false
-      ? `SELECT b.* FROM discovery_businesses b LEFT JOIN organizations o ON o.id = b.organization_id
+      ? `SELECT b.*, o.slug AS tenant_slug FROM discovery_businesses b LEFT JOIN organizations o ON o.id = b.organization_id
          WHERE LOWER(b.slug) = LOWER($1) AND b.listing_status = 'PUBLISHED' AND b.is_discoverable = TRUE
            AND (b.organization_id IS NULL OR o.is_active = TRUE) LIMIT 1`
       : 'SELECT * FROM discovery_businesses WHERE LOWER(slug) = LOWER($1) LIMIT 1';
