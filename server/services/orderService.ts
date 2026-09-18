@@ -618,114 +618,141 @@ export class OrderService {
    * cannot confirm an arbitrary amount or cross tenant.
    */
   async confirmStorefrontPayment(
-    organizationId: string,
-    orderId: string,
-    paymentReference?: string | null,
-    transactionPayload?: Record<string, any>,
-    actor = 'System'
+    organizationId: string, orderId: string, paymentReference?: string | null,
+    transactionPayload?: Record<string, any>, actor = 'System'
   ): Promise<{ order: OrderRecord; payment: PaymentRecord }> {
-    if (idempotencyKey !== undefined) {
-      if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.length > 128) {
-        throw new DomainError('VALIDATION_ERROR', 'Refund idempotency key must be a non-empty value no longer than 128 characters.');
-      }
-    }
-    const refundFingerprint = idempotencyKey
-      ? computeRefundRequestFingerprint({
-          organization_id: organizationId,
-          order_id: orderId,
-          return_items: returnItems,
-          refund_method: refundMethod,
-          reason,
-        })
-      : null;
-
     return this.db.withTransaction(async (tx) => {
-      const orderRes = await tx.query<any>(
-        `SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
-        [orderId, organizationId]
-      );
-      if (orderRes.rows.length === 0) {
-        throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
-      }
+      const orderRes = await tx.query<any>(`SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`, [orderId, organizationId]);
+      if (!orderRes.rows[0]) throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
       const order = orderRes.rows[0];
-
-      if (order.status === 'Cancelled' || order.status === 'Refunded') {
-        throw new DomainError('INVALID_ORDER_STATE', 'A cancelled or refunded order cannot be payment-confirmed.');
-      }
-      if (order.status === 'Completed' || order.status === 'Delivered') {
-        throw new DomainError('INVALID_ORDER_STATE', 'A completed order cannot be payment-confirmed.');
-      }
-      if (order.payment_status === 'Paid') {
-        const existing = await tx.query<any>(
-          `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1`,
-          [orderId, organizationId]
-        );
-        if (!existing.rows[0]) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
-        return { order: order as OrderRecord, payment: mapPaymentRow(existing.rows[0]) };
-      }
-      if (!['Pending', 'Failed', 'Partial'].includes(order.payment_status)) {
-        throw new DomainError('INVALID_PAYMENT_STATE', `Order payment status '${order.payment_status}' cannot transition to Paid.`);
+      if (['Cancelled', 'Refunded', 'Completed', 'Delivered'].includes(String(order.status))) {
+        throw new DomainError('INVALID_ORDER_STATE', 'This order cannot be payment-confirmed.');
       }
 
       const paymentRes = await tx.query<any>(
         `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
         [orderId, organizationId]
       );
-      if (paymentRes.rows.length === 0) {
-        throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
-      }
+      if (!paymentRes.rows[0]) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
       const payment = paymentRes.rows[0];
+
+      if (order.payment_status === 'Paid' && payment.status === 'Completed') {
+        return { order: order as OrderRecord, payment: mapPaymentRow(payment) };
+      }
+      if (!['Pending', 'Failed'].includes(String(payment.status)) ||
+          !['Pending', 'Failed', 'Partial'].includes(String(order.payment_status))) {
+        throw new DomainError('INVALID_PAYMENT_STATE', `Payment status '${payment.status}' / order payment status '${order.payment_status}' cannot transition to Paid.`);
+      }
+
       const orderTotal = this.localParseMoneyToCents(String(order.total_amount));
       const paymentAmount = this.localParseMoneyToCents(String(payment.amount));
-      if (paymentAmount !== orderTotal) {
-        throw new DomainError('PAYMENT_AMOUNT_MISMATCH', 'Payment amount does not match the order total.');
+      if (paymentAmount !== orderTotal) throw new DomainError('PAYMENT_AMOUNT_MISMATCH', 'Payment amount does not match the order total.');
+
+      const payload = transactionPayload || payment.transaction_payload || {};
+      const updatedPayment = await tx.query<any>(
+        `UPDATE payments SET status = 'Completed', reference = COALESCE($3, reference),
+          transaction_payload = $4, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2 RETURNING *`,
+        [payment.id, organizationId, paymentReference || null, JSON.stringify(payload)]
+      );
+
+      const existingCharge = await tx.query<any>(
+        `SELECT id FROM payment_transactions
+         WHERE organization_id = $1 AND payment_id = $2 AND transaction_type = 'CHARGE' AND status = 'POSTED'
+         LIMIT 1`,
+        [organizationId, payment.id]
+      );
+      if (!existingCharge.rows[0]) {
+        await this.paymentTransactionRepo.create({
+          id: `pt_charge_${payment.id}_${crypto.randomUUID()}`,
+          organization_id: organizationId, payment_id: payment.id, order_id: orderId,
+          transaction_type: 'CHARGE', amount: String(payment.amount),
+          currency: String(payment.currency || 'SLE'), status: 'POSTED',
+          payment_method: String(payment.payment_method),
+          reference: paymentReference || payment.reference || null,
+          provider: payment.provider || 'AbaCha Storefront',
+          source_type: 'storefront_payment_confirmation', source_id: orderId,
+          metadata: payload, performed_by: actor,
+        }, tx);
       }
 
-      const updatedPayment = await tx.query<any>(
-        `UPDATE payments
-         SET status = 'Completed', reference = COALESCE($3, reference), transaction_payload = $4
-         WHERE id = $1 AND organization_id = $2
-         RETURNING *`,
-        [payment.id, organizationId, paymentReference || null, JSON.stringify(transactionPayload || payment.transaction_payload || {})]
-      );
-      await this.paymentTransactionRepo.create({
-        id: `pt_charge_${payment.id}_${crypto.randomUUID()}`,
-        organization_id: organizationId,
-        payment_id: payment.id,
-        order_id: orderId,
-        transaction_type: 'CHARGE',
-        amount: String(payment.amount),
-        currency: String(payment.currency || 'SLE'),
-        status: 'POSTED',
-        payment_method: String(payment.payment_method),
-        reference: paymentReference || payment.reference || null,
-        provider: payment.provider || 'AbaCha Storefront',
-        source_type: 'storefront_payment_confirmation',
-        source_id: orderId,
-        metadata: transactionPayload || {},
-        performed_by: actor,
-      }, tx);
-
       const updatedOrder = await tx.query<any>(
-        `UPDATE orders
-         SET payment_status = 'Paid', status = CASE WHEN status = 'Stock Reserved' THEN 'Payment Confirmed' ELSE status END,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND organization_id = $2
-         RETURNING *`,
+        `UPDATE orders SET payment_status = 'Paid',
+          status = CASE WHEN status = 'Stock Reserved' THEN 'Payment Confirmed' ELSE status END,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2 RETURNING *`,
         [orderId, organizationId]
       );
-
       await this.auditRepo.recordEvent({
-        organization_id: organizationId,
-        actor_name: actor,
-        actor_role: 'System',
-        action: 'storefront.payment_confirm',
-        entity_type: 'orders',
-        entity_id: orderId,
+        organization_id: organizationId, actor_name: actor, actor_role: 'System',
+        action: 'storefront.payment_confirm', entity_type: 'orders', entity_id: orderId,
         metadata: { payment_id: payment.id, payment_reference: paymentReference || payment.reference, amount: payment.amount },
         severity: 'Info',
       }, tx);
+      return { order: updatedOrder.rows[0] as OrderRecord, payment: mapPaymentRow(updatedPayment.rows[0]) };
+    });
+  }
 
+  async failStorefrontPayment(
+    organizationId: string, orderId: string, failureReference?: string | null,
+    transactionPayload?: Record<string, any>, actor = 'System'
+  ): Promise<{ order: OrderRecord; payment: PaymentRecord }> {
+    return this.db.withTransaction(async (tx) => {
+      const orderRes = await tx.query<any>(`SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`, [orderId, organizationId]);
+      if (!orderRes.rows[0]) throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
+      const order = orderRes.rows[0];
+      if (['Cancelled', 'Refunded', 'Completed', 'Delivered'].includes(String(order.status)) || order.payment_status === 'Paid') {
+        throw new DomainError('INVALID_PAYMENT_STATE', 'This order cannot accept a payment failure transition.');
+      }
+      const paymentRes = await tx.query<any>(`SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [orderId, organizationId]);
+      if (!paymentRes.rows[0]) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+      const payment = paymentRes.rows[0];
+      const payload = transactionPayload || {};
+      await tx.query(`UPDATE payments SET status='Failed', reference=COALESCE($3,reference), transaction_payload=$4, updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND organization_id=$2`,
+        [payment.id, organizationId, failureReference || null, JSON.stringify(payload)]);
+      await this.paymentTransactionRepo.create({
+        id: `pt_failed_${payment.id}_${crypto.randomUUID()}`, organization_id: organizationId, payment_id: payment.id, order_id: orderId,
+        transaction_type: 'CHARGE', amount: String(payment.amount), currency: String(payment.currency || 'SLE'),
+        status: 'FAILED', payment_method: String(payment.payment_method), reference: failureReference || payment.reference || null,
+        provider: payment.provider || 'AbaCha Storefront', source_type: 'storefront_payment_attempt', source_id: orderId,
+        metadata: payload, performed_by: actor,
+      }, tx);
+      const updatedOrder = await tx.query<any>(`UPDATE orders SET payment_status='Failed', updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND organization_id=$2 RETURNING *`, [orderId, organizationId]);
+      await this.auditRepo.recordEvent({ organization_id: organizationId, actor_name: actor, actor_role: 'System', action: 'storefront.payment_failed', entity_type: 'orders', entity_id: orderId, metadata: { payment_id: payment.id, failure_reference: failureReference || payment.reference }, severity: 'Warning' }, tx);
+      return { order: updatedOrder.rows[0] as OrderRecord, payment: mapPaymentRow({ ...payment, status: 'Failed', reference: failureReference || payment.reference, transaction_payload: payload }) };
+    });
+  }
+
+  async voidStorefrontPayment(
+    organizationId: string, orderId: string, voidReference?: string | null,
+    transactionPayload?: Record<string, any>, actor = 'System'
+  ): Promise<{ order: OrderRecord; payment: PaymentRecord }> {
+    return this.db.withTransaction(async (tx) => {
+      const orderRes = await tx.query<any>(`SELECT * FROM orders WHERE id=$1 AND organization_id=$2 FOR UPDATE`, [orderId, organizationId]);
+      if (!orderRes.rows[0]) throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
+      const order = orderRes.rows[0];
+      if (['Cancelled', 'Refunded', 'Completed', 'Delivered'].includes(String(order.status)) || order.payment_status !== 'Paid') {
+        throw new DomainError('INVALID_PAYMENT_STATE', 'Only a captured, unfulfilled payment can be voided.');
+      }
+      const paymentRes = await tx.query<any>(`SELECT * FROM payments WHERE order_id=$1 AND organization_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [orderId, organizationId]);
+      if (!paymentRes.rows[0]) throw new DomainError('PAYMENT_NOT_FOUND', 'No payment record exists for this order.');
+      const payment = paymentRes.rows[0];
+      const refunded = this.localParseMoneyToCents(await this.paymentTransactionRepo.getRefundedAmount(payment.id, organizationId, tx));
+      if (refunded > 0n) throw new DomainError('INVALID_PAYMENT_STATE', 'A refunded payment cannot be voided.');
+      const existingVoid = await tx.query<any>(`SELECT id FROM payment_transactions WHERE organization_id=$1 AND payment_id=$2 AND transaction_type='VOID' AND status='POSTED' LIMIT 1`, [organizationId, payment.id]);
+      if (existingVoid.rows[0]) return { order: order as OrderRecord, payment: mapPaymentRow({ ...payment, status: 'Voided' }) };
+      const payload = transactionPayload || payment.transaction_payload || {};
+      await this.paymentTransactionRepo.create({
+        id: `pt_void_${payment.id}_${crypto.randomUUID()}`, organization_id: organizationId, payment_id: payment.id, order_id: orderId,
+        transaction_type: 'VOID', amount: String(payment.amount), currency: String(payment.currency || 'SLE'), status: 'POSTED',
+        payment_method: String(payment.payment_method), reference: voidReference || payment.reference || null,
+        provider: payment.provider || 'AbaCha Storefront', source_type: 'storefront_payment_void', source_id: orderId,
+        metadata: payload, performed_by: actor,
+      }, tx);
+      const updatedPayment = await tx.query<any>(`UPDATE payments SET status='Voided', reference=COALESCE($3,reference), transaction_payload=$4, updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND organization_id=$2 RETURNING *`,
+        [payment.id, organizationId, voidReference || null, JSON.stringify(payload)]);
+      const updatedOrder = await tx.query<any>(`UPDATE orders SET payment_status='Failed', updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND organization_id=$2 RETURNING *`, [orderId, organizationId]);
+      await this.auditRepo.recordEvent({ organization_id: organizationId, actor_name: actor, actor_role: 'System', action: 'storefront.payment_void', entity_type: 'orders', entity_id: orderId, metadata: { payment_id: payment.id, void_reference: voidReference || payment.reference }, severity: 'Info' }, tx);
       return { order: updatedOrder.rows[0] as OrderRecord, payment: mapPaymentRow(updatedPayment.rows[0]) };
     });
   }
