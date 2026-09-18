@@ -709,15 +709,18 @@ export class PosService {
       return await this.db.withTransaction(async (tx) => {
         // B. Lock original order row for update to prevent concurrent return race conditions
         const orderRes = await tx.query<any>(
-          `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
-          [order_id]
+          `SELECT * FROM orders WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
+          [order_id, organization_id]
         );
         if (orderRes.rows.length === 0) {
           throw new Error(`SALE_NOT_FOUND: Original sale '${order_id}' was not found.`);
         }
         const order = orderRes.rows[0];
-        if (order.organization_id !== organization_id) {
-          throw new Error(`TENANT_ACCESS_DENIED: Access to sale is denied.`);
+        if (!["Completed", "Delivered"].includes(order.status)) {
+          throw new Error('RETURN_INVALID: Only completed or delivered sales can be returned.');
+        }
+        if (!['Paid', 'Partially Refunded'].includes(order.payment_status)) {
+          throw new Error('PAYMENT_INVALID: Only paid sales can be returned.');
         }
 
         const fullOrder = await this.orderRepo.findOrderById(order_id, organization_id, tx);
@@ -744,8 +747,8 @@ export class PosService {
 
         // D. Validate items being returned against original quantities
         for (const item of params.return_items) {
-          const originalItem = originalItems.find((oi) => oi.variant_id === item.variant_id);
-          if (!originalItem) {
+          const matchingOriginalItems = originalItems.filter((oi) => oi.variant_id === item.variant_id);
+          if (matchingOriginalItems.length === 0) {
             throw new Error(
               `RETURN_INVALID: Variant '${item.variant_id}' was not part of the original sale.`
             );
@@ -756,9 +759,13 @@ export class PosService {
             throw new Error(`RETURN_INVALID: Return quantity must be greater than zero.`);
           }
 
-          const originalQtyScaled = parseQtyToScaled(originalItem.quantity.toString());
+          const originalQtyScaled = matchingOriginalItems.reduce(
+            (sum, oi) => sum + parseQtyToScaled(oi.quantity.toString()),
+            0n
+          );
           const alreadyReturnedScaled = returnedQuantitiesScaled[item.variant_id] || 0n;
           const maxReturnableScaled = originalQtyScaled - alreadyReturnedScaled;
+          const originalItem = matchingOriginalItems[0];
 
           if (reqQtyScaled > maxReturnableScaled) {
             throw new Error(
@@ -767,19 +774,13 @@ export class PosService {
             );
           }
 
-          // Calculate refund amount for this line (pro-rated based on original unit price and discount)
-          const lineOriginalUnitCents = parseMoneyToCents(originalItem.unit_price.toString());
-          const lineOriginalDiscountCents = parseMoneyToCents(originalItem.discount_amount.toString());
-
-          // total original price and total original discount for this line
-          const totalOriginalPriceScaled = lineOriginalUnitCents * originalQtyScaled;
-          const totalOriginalDiscountScaled = lineOriginalDiscountCents * 10000n; // since discount_amount is scale 100
-
-          const netLineTotalScaled = totalOriginalPriceScaled - totalOriginalDiscountScaled;
-
-          // pro-rate: netLineTotalScaled * reqQtyScaled / originalQtyScaled
-          const lineRefundScaled = divideRoundHalfUp(netLineTotalScaled * reqQtyScaled, originalQtyScaled);
-          const itemRefundCents = divideRoundHalfUp(lineRefundScaled, 10000n);
+          // Refund from the immutable original line total, never from client-supplied pricing.
+          // This also preserves discounts/tax already materialized on the sale.
+          const lineOriginalTotalCents = parseMoneyToCents(originalItem.total_amount.toString());
+          const itemRefundCents = divideRoundHalfUp(
+            lineOriginalTotalCents * reqQtyScaled,
+            originalQtyScaled
+          );
 
           totalRefundCents += itemRefundCents;
 
@@ -823,13 +824,28 @@ export class PosService {
           totalReturnedQtyScaled += (alreadyRet + reqRet);
         }
 
-        const isFullyRefunded = totalReturnedQtyScaled >= totalOriginalQtyScaled;
-        const paymentStatus = isFullyRefunded ? 'Refunded' : 'Partially Refunded';
-        const orderStatus = isFullyRefunded ? 'Refunded' : order.status;
+        const orderTotalCents = parseMoneyToCents(order.total_amount);
+        const priorRefundedCents = prevReturns.reduce(
+          (sum, ret) => sum + parseMoneyToCents(String(ret.refund_amount)),
+          0n
+        );
+        if (priorRefundedCents + totalRefundCents > orderTotalCents) {
+          throw new Error('RETURN_INVALID: Cumulative refunds cannot exceed the original sale total.');
+        }
+
+        const paymentStatus = priorRefundedCents + totalRefundCents === orderTotalCents
+          ? 'Refunded'
+          : 'Partially Refunded';
+        const orderStatus = paymentStatus === 'Refunded' ? 'Refunded' : order.status;
 
         await tx.query(
-          `UPDATE orders SET payment_status = $1, status = $2, updated_at = NOW() WHERE id = $3`,
-          [paymentStatus, orderStatus, order_id]
+          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3`,
+          [paymentStatus === 'Refunded' ? 'Refunded' : 'Completed', payment.id, organization_id]
+        );
+
+        await tx.query(
+          `UPDATE orders SET payment_status = $1, status = $2, updated_at = NOW() WHERE id = $3 AND organization_id = $4`,
+          [paymentStatus, orderStatus, order_id, organization_id]
         );
 
         // G. Restock inventory through inventory domain (recordMovement with SALE_RETURN)
@@ -847,7 +863,7 @@ export class PosService {
               reference_id: returnId,
               performed_by,
               idempotency_key: `${returnId}_${ri.variant_id}`,
-              allowNegativeStock: true,
+              allowNegativeStock: false,
             },
             tx
           );
