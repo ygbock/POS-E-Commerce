@@ -892,6 +892,216 @@ async function runPosTests() {
     markFailed('Comprehensive Idempotency Conflict Scenarios', err);
   }
 
+  // Test 18: Duplicate variant lines are aggregated before return validation/restocking
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+
+    const sale = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [
+        { variant_id: 'var_apple', quantity: '1.0000' },
+        { variant_id: 'var_apple', quantity: '2.0000' },
+      ],
+      payment_method: 'Cash',
+      amount_paid: '30.00',
+    });
+
+    const before = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
+
+    const ret = await posService.processReturn({
+      organization_id: 'org_pos_a',
+      order_id: sale.order.id,
+      refund_method: 'Cash',
+      performed_by: 'manager_a',
+      reason: 'Duplicate-line full return',
+      return_items: [
+        { variant_id: 'var_apple', quantity: '1.0000' },
+        { variant_id: 'var_apple', quantity: '2.0000' },
+      ],
+    });
+
+    assert.strictEqual(ret.returnRecord.refund_amount, '30.00');
+    assert.strictEqual(ret.items.length, 1);
+    assert.strictEqual(ret.items[0].quantity, '3.0000');
+
+    const after = await invRepo.getBalance('loc_store_a', 'var_apple', 'org_pos_a');
+    assert.strictEqual(after?.on_hand, (Number(before?.on_hand) + 3).toFixed(4));
+
+    const movements = await db.query<any>(
+      `SELECT COUNT(*)::int AS count
+       FROM inventory_movements
+       WHERE organization_id = $1
+         AND reference_type = 'pos_returns'
+         AND reference_id = $2
+         AND variant_id = $3
+         AND movement_type = 'SALE_RETURN'`,
+      ['org_pos_a', ret.returnRecord.id, 'var_apple'],
+    );
+    assert.strictEqual(movements.rows[0].count, 1);
+
+    markPassed('Duplicate return-line aggregation and single restock movement');
+  } catch (err) {
+    markFailed('Duplicate return-line aggregation and single restock movement', err);
+  }
+
+  // Test 19: POS return idempotency replay and fingerprint conflict
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+    const key = `return_idem_${crypto.randomUUID()}`;
+
+    const sale = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_milk', quantity: '4.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '16.00',
+    });
+
+    const before = await invRepo.getBalance('loc_store_a', 'var_milk', 'org_pos_a');
+    const first = await posService.processReturn({
+      organization_id: 'org_pos_a',
+      order_id: sale.order.id,
+      refund_method: 'Cash',
+      performed_by: 'manager_a',
+      reason: 'Idempotent return',
+      return_items: [{ variant_id: 'var_milk', quantity: '1.0000' }],
+      idempotency_key: key,
+    });
+
+    const replay = await posService.processReturn({
+      organization_id: 'org_pos_a',
+      order_id: sale.order.id,
+      refund_method: 'Cash',
+      performed_by: 'manager_a',
+      reason: 'Different reason must not alter fingerprint',
+      return_items: [{ variant_id: 'var_milk', quantity: '1.0000' }],
+      idempotency_key: key,
+    });
+
+    assert.strictEqual(replay.returnRecord.id, first.returnRecord.id);
+    assert.strictEqual(replay.returnRecord.refund_amount, '4.00');
+
+    const after = await invRepo.getBalance('loc_store_a', 'var_milk', 'org_pos_a');
+    assert.strictEqual(after?.on_hand, (Number(before?.on_hand) + 1).toFixed(4));
+
+    const ledger = await db.query<any>(
+      `SELECT COUNT(*)::int AS count, COALESCE(SUM(amount), 0)::text AS amount
+       FROM payment_transactions
+       WHERE organization_id = $1
+         AND order_id = $2
+         AND transaction_type = 'REFUND'
+         AND status = 'POSTED'`,
+      ['org_pos_a', sale.order.id],
+    );
+    assert.strictEqual(ledger.rows[0].count, 1);
+    assert.strictEqual(ledger.rows[0].amount, '4.00');
+
+    await assert.rejects(
+      async () => {
+        await posService.processReturn({
+          organization_id: 'org_pos_a',
+          order_id: sale.order.id,
+          refund_method: 'Cash',
+          performed_by: 'manager_a',
+          reason: 'Conflicting request',
+          return_items: [{ variant_id: 'var_milk', quantity: '2.0000' }],
+          idempotency_key: key,
+        });
+      },
+      (err: any) => err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    markPassed('POS return idempotency replay and conflict protection');
+  } catch (err) {
+    markFailed('POS return idempotency replay and conflict protection', err);
+  }
+
+  // Test 20: Payment ledger is immutable and reconciles charges/refunds
+  try {
+    const sessions = await posRepo.listSessions({ orgId: 'org_pos_a' });
+    const openSession = sessions.find((s) => s.status === 'OPEN')!;
+
+    const sale = await posService.checkout({
+      organization_id: 'org_pos_a',
+      location_id: 'loc_store_a',
+      session_id: openSession.id,
+      cashier_name: 'cashier_a',
+      cart_items: [{ variant_id: 'var_apple', quantity: '2.0000' }],
+      payment_method: 'Cash',
+      amount_paid: '20.00',
+    });
+
+    const paymentId = sale.payment!.id;
+    const charge = await db.query<any>(
+      `SELECT amount, transaction_type, status
+       FROM payment_transactions
+       WHERE organization_id = $1 AND payment_id = $2
+       ORDER BY created_at ASC, id ASC`,
+      ['org_pos_a', paymentId],
+    );
+    assert.strictEqual(charge.rows.length, 1);
+    assert.strictEqual(charge.rows[0].transaction_type, 'CHARGE');
+    assert.strictEqual(charge.rows[0].amount, '20.00');
+    assert.strictEqual(charge.rows[0].status, 'POSTED');
+
+    await assert.rejects(
+      async () => {
+        await db.query(
+          `UPDATE payment_transactions
+           SET amount = 99.99
+           WHERE organization_id = $1 AND payment_id = $2`,
+          ['org_pos_a', paymentId],
+        );
+      },
+      (err: any) => err.message.includes('PAYMENT_TRANSACTION_IMMUTABLE')
+    );
+
+    await assert.rejects(
+      async () => {
+        await db.query(
+          `DELETE FROM payment_transactions
+           WHERE organization_id = $1 AND payment_id = $2`,
+          ['org_pos_a', paymentId],
+        );
+      },
+      (err: any) => err.message.includes('PAYMENT_TRANSACTION_IMMUTABLE')
+    );
+
+    const ret = await posService.processReturn({
+      organization_id: 'org_pos_a',
+      order_id: sale.order.id,
+      refund_method: 'Cash',
+      performed_by: 'manager_a',
+      reason: 'Ledger reconciliation',
+      return_items: [{ variant_id: 'var_apple', quantity: '1.0000' }],
+    });
+
+    const ledger = await db.query<any>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN transaction_type = 'CHARGE' AND status = 'POSTED' THEN amount ELSE 0 END), 0)::text AS captured,
+         COALESCE(SUM(CASE WHEN transaction_type = 'REFUND' AND status = 'POSTED' THEN amount ELSE 0 END), 0)::text AS refunded,
+         COUNT(*)::int AS rows
+       FROM payment_transactions
+       WHERE organization_id = $1 AND payment_id = $2`,
+      ['org_pos_a', paymentId],
+    );
+    assert.strictEqual(ledger.rows[0].captured, '20.00');
+    assert.strictEqual(ledger.rows[0].refunded, '10.00');
+    assert.strictEqual(ledger.rows[0].rows, 2);
+    assert.strictEqual(ret.returnRecord.refund_amount, '10.00');
+
+    markPassed('Immutable payment ledger and charge/refund reconciliation');
+  } catch (err) {
+    markFailed('Immutable payment ledger and charge/refund reconciliation', err);
+  }
+
   console.log('\n------------------------------------------------------');
   console.log(` POS TESTS RESULT: ${passed} PASSED, ${failed} FAILED`);
   console.log('------------------------------------------------------');
