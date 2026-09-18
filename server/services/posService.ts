@@ -777,27 +777,31 @@ export class PosService {
         const savedItems: PosReturnItemRecord[] = [];
         const returnId = `ret_${crypto.randomUUID()}`;
 
-        // D. Validate items being returned against original quantities
+        // D. Aggregate requested quantities before validation. This prevents duplicate
+        // variant lines in one request from bypassing the remaining-returnable check
+        // and ensures inventory is restored exactly once per variant.
         for (const item of params.return_items) {
-          const matchingOriginalItems = originalItems.filter((oi) => oi.variant_id === item.variant_id);
-          if (matchingOriginalItems.length === 0) {
-            throw new Error(
-              `RETURN_INVALID: Variant '${item.variant_id}' was not part of the original sale.`
-            );
-          }
-
           const reqQtyScaled = parseQtyToScaled(item.quantity);
           if (reqQtyScaled <= 0n) {
             throw new Error(`RETURN_INVALID: Return quantity must be greater than zero.`);
           }
           requestedQuantitiesScaled[item.variant_id] =
             (requestedQuantitiesScaled[item.variant_id] || 0n) + reqQtyScaled;
+        }
+
+        for (const [variantId, reqQtyScaled] of Object.entries(requestedQuantitiesScaled)) {
+          const matchingOriginalItems = originalItems.filter((oi) => oi.variant_id === variantId);
+          if (matchingOriginalItems.length === 0) {
+            throw new Error(
+              `RETURN_INVALID: Variant '${variantId}' was not part of the original sale.`
+            );
+          }
 
           const originalQtyScaled = matchingOriginalItems.reduce(
             (sum, oi) => sum + parseQtyToScaled(oi.quantity.toString()),
             0n
           );
-          const alreadyReturnedScaled = returnedQuantitiesScaled[item.variant_id] || 0n;
+          const alreadyReturnedScaled = returnedQuantitiesScaled[variantId] || 0n;
           const maxReturnableScaled = originalQtyScaled - alreadyReturnedScaled;
           const originalItem = matchingOriginalItems[0];
 
@@ -808,11 +812,14 @@ export class PosService {
             );
           }
 
-          // Refund from the immutable original line total, never from client-supplied pricing.
-          // This also preserves discounts/tax already materialized on the sale.
-          const lineOriginalTotalCents = parseMoneyToCents(originalItem.total_amount.toString());
+          // Sum immutable original line totals for duplicate variant lines, then
+          // prorate once across the aggregate original quantity.
+          const originalVariantTotalCents = matchingOriginalItems.reduce(
+            (sum, oi) => sum + parseMoneyToCents(oi.total_amount.toString()),
+            0n
+          );
           const itemRefundCents = divideRoundHalfUp(
-            lineOriginalTotalCents * reqQtyScaled,
+            originalVariantTotalCents * reqQtyScaled,
             originalQtyScaled
           );
 
@@ -821,7 +828,7 @@ export class PosService {
           savedItems.push({
             id: `ri_${crypto.randomUUID()}`,
             return_id: returnId,
-            variant_id: item.variant_id,
+            variant_id: variantId,
             quantity: formatScaledToQtyString(reqQtyScaled),
             refund_amount: formatCentsToMoneyString(itemRefundCents),
           });
