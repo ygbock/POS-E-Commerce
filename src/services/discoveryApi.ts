@@ -317,7 +317,7 @@ export const discoveryApi = {
   /**
    * Create a new discovery business listing
    */
-  async createBusiness(data: Partial<DiscoveryBusiness> & { organizationId?: string; submitImmediately?: boolean }): Promise<DiscoveryBusiness> {
+  async createBusiness(data: { name: string; legalName?: string | null; businessType?: string | null; shortDescription?: string | null; description?: string | null; phone?: string | null; email?: string | null; whatsapp?: string | null; website?: string | null; logoUrl?: string | null; coverImageUrl?: string | null; businessMode?: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE'; organizationId?: string | null; submitImmediately?: boolean }): Promise<DiscoveryBusiness> {
     return request<DiscoveryBusiness>('/api/discovery/businesses', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -327,7 +327,7 @@ export const discoveryApi = {
   /**
    * Update existing discovery business details
    */
-  async updateBusiness(id: string, patch: Partial<DiscoveryBusiness>): Promise<DiscoveryBusiness> {
+  async updateBusiness(id: string, patch: { name?: string; legalName?: string | null; businessType?: string | null; shortDescription?: string | null; description?: string | null; phone?: string | null; email?: string | null; whatsapp?: string | null; website?: string | null; logoUrl?: string | null; coverImageUrl?: string | null; businessMode?: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE'; organizationId?: string | null }): Promise<DiscoveryBusiness> {
     return request<DiscoveryBusiness>(`/api/discovery/businesses/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),

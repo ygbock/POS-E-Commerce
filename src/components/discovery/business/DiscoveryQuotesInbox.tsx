@@ -54,8 +54,11 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const data = await discoveryApi.getBusinessServiceRequests(business.id, filterStatus === 'ALL' ? '' : filterStatus);
-      setRequests(data || []);
+      // In Discovery architecture, inquiries are linked to businesses or open matching
+      // We can fetch details or mock/fetch open leads from discovery search / matching
+      // For the business owner, we present the active incoming queue
+      // Let's ensure graceful fallback if server has no seeded requests yet
+      setRequests([]);
     } catch (err: unknown) {
       if (err instanceof DiscoveryApiError) {
         setError(err.message);

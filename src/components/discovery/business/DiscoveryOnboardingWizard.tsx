@@ -103,12 +103,12 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       const newBusiness = await discoveryApi.createBusiness({
         name: name.trim(),
         slug: generatedSlug,
-        business_type: businessType,
-        short_description: shortDescription.trim() || undefined,
+        businessType: businessType,
+        shortDescription: shortDescription.trim() || undefined,
         phone: phone.trim() || undefined,
         whatsapp: whatsapp.trim() || undefined,
         email: email.trim() || undefined,
-        business_mode: 'DISCOVERY_ONLY',
+        businessMode: 'DISCOVERY_ONLY',
       });
 
       // 2. Assign Categories if any
@@ -122,15 +122,15 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         const lngNum = longitude ? Number(longitude) : undefined;
         await discoveryApi.createLocation(newBusiness.id, {
           name: branchName.trim(),
-          location_type: 'STORE',
-          address_line_1: streetAddress.trim() || undefined,
-          city: city.trim() || 'Freetown',
+          locationType: 'STORE',
+          addressLine1: streetAddress.trim() || undefined,
+          city: city.trim() || undefined,
           district: district.trim() || undefined,
           country: 'Sierra Leone',
           latitude: latNum,
           longitude: lngNum,
-          is_primary: true,
-          is_active: true,
+          isPrimary: true,
+          isActive: true,
         });
       }
 
