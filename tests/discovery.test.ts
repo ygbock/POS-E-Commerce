@@ -69,16 +69,19 @@ async function main() {
   assert.strictEqual(converted.slug, discoveryOnly.slug);
 
   // Store conversion must be transactional and require an active commerce location.
+  // Use a fresh discovery-only listing here: the earlier listing was intentionally
+  // bound to disc_test_org to prove tenant-bound ownership cannot be rebound.
   const provisioning = new DiscoveryStoreProvisioningService(db);
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_store_org','Store Conversion Org','DISC_STORE',TRUE)");
   await db.query("INSERT INTO locations (id,organization_id,code,name,type,is_active) VALUES ('disc_store_loc','disc_store_org','DISC-STORE','Discovery Store','Retail Store',TRUE)");
-  const provisionResult = await provisioning.provisionForDiscoveryBusiness(discoveryOnly.id, 'disc_store_org', discoveryOnly.slug, discoveryOnly.name);
-  assert.strictEqual(provisionResult.businessId, discoveryOnly.id);
+  const provisionableBusiness = await service.create({ name: 'Provisionable Discovery Listing', businessMode: 'DISCOVERY_ONLY' }, owner);
+  const provisionResult = await provisioning.provisionForDiscoveryBusiness(provisionableBusiness.id, 'disc_store_org', provisionableBusiness.slug, provisionableBusiness.name);
+  assert.strictEqual(provisionResult.businessId, provisionableBusiness.id);
   assert.strictEqual(provisionResult.organizationId, 'disc_store_org');
-  const provisioned = await repo.findById(discoveryOnly.id);
+  const provisioned = await repo.findById(provisionableBusiness.id);
   assert.strictEqual(provisioned?.business_mode, 'DISCOVERY_AND_STORE');
   assert.strictEqual(provisioned?.organization_id, 'disc_store_org');
-  assert.strictEqual(provisioned?.slug, discoveryOnly.slug);
+  assert.strictEqual(provisioned?.slug, provisionableBusiness.slug);
 
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_no_loc_org','No Location Org','DISC_NO_LOC',TRUE)");
   const noLocationBusiness = await service.create({ name: 'No Location Conversion', businessMode: 'DISCOVERY_ONLY' }, owner);
