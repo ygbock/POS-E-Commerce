@@ -44,10 +44,10 @@ async function main() {
   );
   assert.ok(fts.rows.some((row:any) => row.id === business.id), 'business full-text search must match');
 
-  const fuzzy = await db.query("SELECT discovery_search_similarity($1,$2) AS score", ['Freetown Mobile Hub', 'Freetown Moble Hub']);
+  const fuzzy = await db.query("SELECT similarity($1,$2) AS score", ['Freetown Mobile Hub', 'Freetown Moble Hub']);
   assert.ok(Number(fuzzy.rows[0]?.score) > 0.5, 'fuzzy search similarity must tolerate a typo');
 
-  const serviceFuzzy = await db.query("SELECT discovery_search_similarity($1,$2) AS score", ['Phone Screen Repair', 'Phone Screen Repiar']);
+  const serviceFuzzy = await db.query("SELECT similarity($1,$2) AS score", ['Phone Screen Repair', 'Phone Screen Repiar']);
   assert.ok(Number(serviceFuzzy.rows[0]?.score) > 0.5, 'service fuzzy similarity must tolerate a typo');
 
   const indexes = await db.query(
