@@ -20,6 +20,8 @@ async function main() {
 
   await service.submit(business.id, owner);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'SUBMITTED');
+  await service.review(business.id, owner);
+  assert.strictEqual((await repo.findById(business.id))?.listing_status, 'UNDER_REVIEW');
   await service.approve(business.id, owner);
   await service.publish(business.id, owner);
 
