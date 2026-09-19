@@ -54,6 +54,16 @@ async function main() {
   await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_typo',$1,'Main Branch','Freetown',TRUE,TRUE)",[typo.id]);
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](typo.id, actor);
 
+  const restaurant = await service.create({
+    name: 'Freetown Restaurant',
+    shortDescription: 'Local restaurant and takeaway',
+    businessMode: 'DISCOVERY_AND_STORE',
+    organizationId: 'disc_rank_org',
+  }, actor);
+  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_rest',$1,'Main Branch','Freetown',TRUE,TRUE)",[restaurant.id]);
+  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](restaurant.id, actor);
+  await db.query("INSERT INTO discovery_search_aliases (id,entity_type,entity_id,alias,normalized_alias) VALUES ('disc_rank_alias_rest','BUSINESS',$1,'Chop House','chop house')",[restaurant.id]);
+
   const hidden = await service.create({
     name: 'Mobile Hidden Listing',
     shortDescription: 'Should never appear publicly',
@@ -61,6 +71,8 @@ async function main() {
   }, actor);
 
   assert.ok(discoveryFuzzyScore('moble', 'Mobile') > 0.7, 'single-token typo should receive a meaningful fuzzy score');
+  assert.ok(discoveryFuzzyScore('mobil phone', 'Mobile Phones Freetown') > 0.8, 'multi-token typo search should retain strong token coverage');
+  assert.ok(discoveryFuzzyScore('restarant', 'Restaurant') > 0.7, 'common missing-letter typo should receive a meaningful fuzzy score');
   assert.ok(discoveryFuzzyScore('mobile', 'Mobile') > discoveryFuzzyScore('mobile', 'Moble'), 'exact spelling should outrank typo spelling');
 
   const ranked = rankDiscoveryFuzzy('moble', [
@@ -103,6 +115,20 @@ async function main() {
     assert.ok(fuzzyBusinesses.some((row:any) => row.id === exact.id), 'typo search should find the exact business candidate');
     assert.ok(fuzzyBusinesses.some((row:any) => row.id === typo.id), 'typo search should find the typo-compatible candidate');
     assert.ok(!fuzzyBusinesses.some((row:any) => row.id === hidden.id), 'unpublished listings must never leak through fuzzy search');
+
+    const multiTokenResponse = await requestJson(baseUrl, '/api/discovery/search?q=mobil%20phone&type=businesses&limit=10');
+    assert.strictEqual(multiTokenResponse.status, 200);
+    assert.ok(multiTokenResponse.body.data.businesses.some((row:any) => row.id === exact.id), 'multi-token typo search should recover the correctly spelled business');
+
+    const aliasResponse = await requestJson(baseUrl, '/api/discovery/search?q=chop%20house&type=businesses&limit=10');
+    assert.strictEqual(aliasResponse.status, 200);
+    assert.ok(aliasResponse.body.data.businesses.some((row:any) => row.id === restaurant.id), 'configured search aliases should recover the canonical business');
+
+    const repeatedOne = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&limit=1&offset=0');
+    const repeatedTwo = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&limit=1&offset=0');
+    assert.strictEqual(repeatedOne.status, 200);
+    assert.strictEqual(repeatedTwo.status, 200);
+    assert.strictEqual(repeatedOne.body.data.businesses[0]?.id, repeatedTwo.body.data.businesses[0]?.id, 'relevance pagination must be deterministic');
     const exactResponse = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&limit=10');
     assert.strictEqual(exactResponse.status, 200);
     assert.strictEqual(exactResponse.body.data.businesses[0].id, exact.id, 'exact spelling should outrank typo-compatible result');
