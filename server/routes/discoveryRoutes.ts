@@ -428,12 +428,12 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       let businessResults:any[]=[];
       let businessCount = 0;
       if (type !== 'products' && type !== 'services') {
-        const order = sort === 'rating' ? `${ratingExpr} DESC, b.name ASC`
-          : sort === 'review_count' ? `${reviewCountExpr} DESC, b.name ASC`
-          : sort === 'name_asc' ? 'b.name ASC'
-          : sort === 'newest' ? 'b.published_at DESC NULLS LAST, b.name ASC'
-          : sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, b.name ASC`
-          : `search_rank DESC, b.name ASC`;
+        const order = sort === 'rating' ? `${ratingExpr} DESC, b.name ASC, b.id ASC`
+          : sort === 'review_count' ? `${reviewCountExpr} DESC, b.name ASC, b.id ASC`
+          : sort === 'name_asc' ? 'b.name ASC, b.id ASC'
+          : sort === 'newest' ? 'b.published_at DESC NULLS LAST, b.name ASC, b.id ASC'
+          : sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, b.name ASC, b.id ASC`
+          : `search_rank DESC, b.name ASC, b.id ASC`;
         const r=await db.query(`
           SELECT b.id,b.public_id,b.name,b.slug,b.business_type,b.short_description,b.phone,b.whatsapp,b.website,
                  b.logo_url,b.cover_image_url,b.business_mode,o.slug AS tenant_slug,b.verification_status,
@@ -508,7 +508,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       let productResults:any[]=[];
       let productCount = 0;
       if(type !== 'businesses' && type !== 'services'){
-        const order=sort==='name_asc'?'p.name ASC':`search_rank DESC,p.name ASC`;
+        const order=sort==='name_asc'?'p.name ASC,p.id ASC':`search_rank DESC,p.name ASC`;
         const r=await db.query(`
           SELECT p.id AS product_id,p.name AS product_name,p.slug AS product_slug,p.short_description,p.description,p.images,
                  p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
@@ -574,7 +574,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       let serviceResults:any[]=[];
       let serviceCount = 0;
       if(type !== 'businesses' && type !== 'products'){
-        const order=sort==='name_asc'?'s.name ASC':`search_rank DESC,s.name ASC`;
+        const order=sort==='name_asc'?'s.name ASC,s.id ASC':`search_rank DESC,s.name ASC,s.id ASC`;
         const r=await db.query(`
           SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
                  b.verification_status,l.city,l.district,l.region,${serviceRank} AS search_rank,
