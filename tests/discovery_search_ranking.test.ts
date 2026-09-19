@@ -81,6 +81,22 @@ async function main() {
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
   try {
+    const suggestionResponse = await requestJson(baseUrl, '/api/discovery/search/suggestions?q=moble&limit=5');
+    assert.strictEqual(suggestionResponse.status, 200);
+    assert.ok(
+      suggestionResponse.body.data.some((row:any) => row.label === exact.name && row.type === 'business'),
+      'suggestions should recover the correctly spelled business for a typo query',
+    );
+    assert.ok(
+      suggestionResponse.body.data.some((row:any) => row.label === typo.name && row.type === 'business'),
+      'suggestions should include a typo-compatible business candidate',
+    );
+    assert.strictEqual(
+      suggestionResponse.body.data[0].label,
+      exact.name,
+      'suggestions should rank the corrected spelling ahead of the literal typo',
+    );
+
     const fuzzyResponse = await requestJson(baseUrl, '/api/discovery/search?q=moble&type=businesses&limit=10');
     assert.strictEqual(fuzzyResponse.status, 200);
     const fuzzyBusinesses = fuzzyResponse.body.data.businesses;
