@@ -238,17 +238,14 @@ export class DiscoveryBusinessService {
   }
 
   async review(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    this.assertModerator(actor);
     return this.transition(id, 'UNDER_REVIEW', actor, reason || 'Listing moved into moderation review.', client, true);
   }
 
   async approve(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    this.assertModerator(actor);
     return this.transition(id, 'APPROVED', actor, reason || 'Listing approved.', client, true);
   }
 
   async publish(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    this.assertModerator(actor);
     return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published.', client, true);
   }
 
@@ -257,7 +254,6 @@ export class DiscoveryBusinessService {
   }
 
   async suspend(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    this.assertModerator(actor);
     return this.transition(id, 'SUSPENDED', actor, reason || 'Listing suspended.', client, true);
   }
 
@@ -268,7 +264,7 @@ export class DiscoveryBusinessService {
   private async transition(id: string, toStatus: DiscoveryListingStatus, actor: { userId: string; role: string; organizationId?: string }, reason: string, client?: DatabaseClient, moderatorOnly = false): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    if (moderatorOnly) this.assertModerator(actor);
+    if (moderatorOnly) this.assertModerator(actor, existing);
     else this.assertCanManage(existing, actor);
     if (!TRANSITIONS[existing.listing_status].includes(toStatus)) {
       throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to ${toStatus}.`);
@@ -301,12 +297,19 @@ export class DiscoveryBusinessService {
 
   assertCanManage(business: DiscoveryBusinessRecord, actor: { userId: string; role: string; organizationId?: string }): void {
     if (actor.role === 'super_admin') return;
-    if (business.created_by_user_id === actor.userId) return;
+    // A creator may manage an unbound discovery-only listing, but once a business
+    // is tenant-bound, ownership is governed by the tenant boundary rather than
+    // the historical creator identity.
+    if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
     if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 
-  private assertModerator(actor: { role: string }): void {
-    if (!['super_admin', 'admin'].includes(actor.role)) throw new Error('PERMISSION_DENIED:Discovery moderation requires administrator authorization.');
+  private assertModerator(actor: { role: string; organizationId?: string }, business?: DiscoveryBusinessRecord): void {
+    if (actor.role === 'super_admin') return;
+    if (actor.role !== 'admin') throw new Error('PERMISSION_DENIED:Discovery moderation requires administrator authorization.');
+    if (!business?.organization_id || business.organization_id !== actor.organizationId) {
+      throw new Error('TENANT_ACCESS_DENIED:Administrators may moderate only businesses belonging to their organization.');
+    }
   }
 }
