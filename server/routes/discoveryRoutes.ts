@@ -5,7 +5,7 @@ import { requireAuth, requireTenantAccess } from '../middleware/auth.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
 import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
-import { discoveryFuzzyScore } from '../utils/discoverySearch.ts';
+import { discoveryFuzzyScore, normalizeDiscoverySearchText } from '../utils/discoverySearch.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
@@ -270,7 +270,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest','distance'].includes(req.query.sort) ? req.query.sort : 'relevance';
       const fuzzyEnabled = Boolean(q) && sort === 'relevance';
       const fuzzyCandidateLimit = fuzzyEnabled ? 500 : limit;
-      const fuzzyPrefix = q ? q.normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]+/gu, ' ').trim().split(/\\s+/)[0]?.slice(0, 3) : '';
+      const fuzzyPrefix = q ? normalizeDiscoverySearchText(q).split(' ')[0]?.slice(0, 3) : '';
 
       if ((lat != null && !Number.isFinite(lat)) || (lng != null && !Number.isFinite(lng))) {
         throw new Error('VALIDATION_ERROR:latitude and longitude must be valid numbers.');
