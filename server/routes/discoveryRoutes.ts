@@ -250,6 +250,51 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
           UNION ALL
 
+          SELECT sa.alias AS label, 'business' AS type
+          FROM discovery_search_aliases sa
+          JOIN discovery_businesses b ON b.id=sa.entity_id
+          WHERE sa.entity_type='BUSINESS'
+            AND sa.is_active=TRUE
+            AND b.listing_status='PUBLISHED'
+            AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS (
+              SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+            ))
+            AND lower(sa.normalized_alias) LIKE $1 || '%'
+
+          UNION ALL
+
+          SELECT sa.alias AS label, 'product' AS type
+          FROM discovery_search_aliases sa
+          JOIN products p ON p.id=sa.entity_id
+          JOIN discovery_businesses b ON b.organization_id=p.organization_id
+            AND b.listing_status='PUBLISHED'
+            AND b.is_discoverable=TRUE
+          WHERE sa.entity_type='PRODUCT'
+            AND sa.is_active=TRUE
+            AND p.status='active'
+            AND p.channels_ecommerce=TRUE
+            AND EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE)
+            AND lower(sa.normalized_alias) LIKE $1 || '%'
+
+          UNION ALL
+
+          SELECT sa.alias AS label, 'service' AS type
+          FROM discovery_search_aliases sa
+          JOIN discovery_services s ON s.id=sa.entity_id
+          JOIN discovery_businesses b ON b.id=s.business_id
+            AND b.listing_status='PUBLISHED'
+            AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS (
+              SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+            ))
+          WHERE sa.entity_type='SERVICE'
+            AND sa.is_active=TRUE
+            AND s.is_active=TRUE
+            AND lower(sa.normalized_alias) LIKE $1 || '%'
+
+          UNION ALL
+
           SELECT s.name AS label, 'service' AS type
           FROM discovery_services s
           JOIN discovery_businesses b
