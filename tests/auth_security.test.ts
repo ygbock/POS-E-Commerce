@@ -28,6 +28,29 @@ import { createApp } from '../server';
 let testPassedCount = 0;
 let testFailedCount = 0;
 
+async function fetchWithServerReadinessRetry(url: string, init?: RequestInit, attempts = 5): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (error: any) {
+      lastError = error;
+      const causeCode = error?.cause?.code;
+      const retryable = error?.name === 'TypeError' && (
+        !causeCode ||
+        causeCode === 'ECONNREFUSED' ||
+        causeCode === 'ECONNRESET' ||
+        causeCode === 'UND_ERR_SOCKET'
+      );
+      if (!retryable || attempt === attempts) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('HTTP request failed');
+}
+
 async function runTest(name: string, fn: () => Promise<void>) {
   try {
     process.stdout.write(`  [TEST] ${name}... `);
@@ -591,14 +614,14 @@ async function main() {
 
       try {
         // 1. Unauthenticated request to protected route (/api/auth/me) -> 401
-        const anonRes = await fetch(`${baseUrl}/api/auth/me`);
+        const anonRes = await fetchWithServerReadinessRetry(`${baseUrl}/api/auth/me`);
         assert.strictEqual(anonRes.status, 401, 'Unauthenticated request must return 401');
         const anonBody = await anonRes.json();
         assert.strictEqual(anonBody.success, false);
         assert.strictEqual(anonBody.error.code, 'UNAUTHORIZED');
 
         // 2. Malformed token -> 401
-        const malformedRes = await fetch(`${baseUrl}/api/auth/me`, {
+        const malformedRes = await fetchWithServerReadinessRetry(`${baseUrl}/api/auth/me`, {
           headers: { Authorization: 'Bearer totally.invalid.malformed.token' },
         });
         assert.strictEqual(malformedRes.status, 401, 'Malformed token must return 401');
@@ -611,7 +634,7 @@ async function main() {
           role: ROLES.VIEWER,
           expiresInSeconds: -60,
         });
-        const expRes = await fetch(`${baseUrl}/api/auth/me`, {
+        const expRes = await fetchWithServerReadinessRetry(`${baseUrl}/api/auth/me`, {
           headers: { Authorization: `Bearer ${expiredToken}` },
         });
         assert.strictEqual(expRes.status, 401, 'Expired token must return 401');
@@ -621,7 +644,7 @@ async function main() {
           { userId: 'usr_hacker', organizationId: 'org_default', role: ROLES.SUPER_ADMIN },
           'wrong-forged-secret-signature-key-123456!'
         );
-        const forgedRes = await fetch(`${baseUrl}/api/auth/me`, {
+        const forgedRes = await fetchWithServerReadinessRetry(`${baseUrl}/api/auth/me`, {
           headers: { Authorization: `Bearer ${forgedToken}` },
         });
         assert.strictEqual(forgedRes.status, 401, 'Forged signature token must return 401');
@@ -633,7 +656,7 @@ async function main() {
           organizationId: 'org_default',
           role: ROLES.STORE_MANAGER,
         });
-        const validRes = await fetch(`${baseUrl}/api/auth/me`, {
+        const validRes = await fetchWithServerReadinessRetry(`${baseUrl}/api/auth/me`, {
           headers: { Authorization: `Bearer ${validToken}` },
         });
         assert.strictEqual(validRes.status, 200, 'Valid token must return 200');
