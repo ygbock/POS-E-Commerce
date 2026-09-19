@@ -58,7 +58,6 @@ async function main() {
     name: 'Mobile Hidden Listing',
     shortDescription: 'Should never appear publicly',
     businessMode: 'DISCOVERY_ONLY',
-    organizationId: 'disc_rank_org',
   }, actor);
 
   assert.ok(discoveryFuzzyScore('moble', 'Mobile') > 0.7, 'single-token typo should receive a meaningful fuzzy score');
