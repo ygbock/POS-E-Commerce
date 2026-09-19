@@ -5,6 +5,7 @@ import { requireAuth, requireTenantAccess } from '../middleware/auth.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
 import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
+import { discoveryFuzzyScore } from '../utils/discoverySearch.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
@@ -267,6 +268,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const openNow = String(req.query.openNow || '').toLowerCase() === 'true';
       const categoryId = typeof req.query.categoryId === 'string' && req.query.categoryId.trim() ? req.query.categoryId.trim() : null;
       const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest','distance'].includes(req.query.sort) ? req.query.sort : 'relevance';
+      const fuzzyEnabled = Boolean(q) && sort === 'relevance';
+      const fuzzyCandidateLimit = fuzzyEnabled ? 500 : limit;
+      const fuzzyPrefix = q ? q.normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]+/gu, ' ').trim().split(/\\s+/)[0]?.slice(0, 3) : '';
 
       if ((lat != null && !Number.isFinite(lat)) || (lng != null && !Number.isFinite(lng))) {
         throw new Error('VALIDATION_ERROR:latitude and longitude must be valid numbers.');
@@ -309,6 +313,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             WHERE bcm.business_id=b.id
               AND bc.name ILIKE '%' || ${bQ} || '%'
           )
+          OR (${fuzzyEnabled} AND ${fuzzyPrefix ? `lower(b.name) LIKE ${bb(fuzzyPrefix)} || '%'` : 'FALSE'})
         )`);
       }
       if (categoryId) bConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${bb(categoryId)})`);
@@ -380,9 +385,18 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           ) c ON TRUE
           WHERE ${bConditions.join(' AND ')}
           ORDER BY ${order}
-          LIMIT ${bb(limit)} OFFSET ${bb(offset)}
+          LIMIT ${bb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? bb(0) : bb(offset)}
         `,businessParams);
         businessResults=r.rows;
+        if (fuzzyEnabled) {
+          const ranked = businessResults.map((row:any, index:number) => ({
+            row,
+            fuzzyScore: discoveryFuzzyScore(q, [row.name,row.business_type,row.short_description,row.category_name].filter(Boolean).join(' ')),
+            index,
+          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
+            .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.name).localeCompare(String(b.row.name)) || a.index-b.index);
+          businessResults = ranked.slice(offset, offset + limit).map((x:any) => ({...x.row, fuzzy_score: Number(x.fuzzyScore.toFixed(4))}));
+        }
       }
 
       const productParams:any[]=[];
@@ -402,6 +416,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           @@ plainto_tsquery('simple',${pQ})
         OR lower(p.name) LIKE '%' || lower(${pQ}) || '%'
         OR EXISTS(SELECT 1 FROM product_variants pv_search WHERE pv_search.product_id=p.id AND lower(coalesce(pv_search.sku,'')) LIKE '%' || lower(${pQ}) || '%')
+        OR (${fuzzyEnabled} AND ${fuzzyPrefix ? `lower(p.name) LIKE ${pb(fuzzyPrefix)} || '%'` : 'FALSE'})
       )`);
       if(categoryId) pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${pb(categoryId)})`);
       if(city) pConditions.push(`lower(l.city)=lower(${pb(city)})`);
@@ -433,9 +448,18 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           WHERE ${pConditions.join(' AND ')}
           GROUP BY p.id,v.id,b.id,l.id,ds.show_prices,ds.show_stock_status
           ORDER BY ${order}
-          LIMIT ${pb(limit)} OFFSET ${pb(offset)}
+          LIMIT ${pb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? pb(0) : pb(offset)}
         `,productParams);
         productResults=r.rows;
+        if (fuzzyEnabled) {
+          const ranked = productResults.map((row:any, index:number) => ({
+            row,
+            fuzzyScore: discoveryFuzzyScore(q, [row.product_name,row.product_slug,row.short_description,row.description,row.sku].filter(Boolean).join(' ')),
+            index,
+          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
+            .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.product_name).localeCompare(String(b.row.product_name)) || a.index-b.index);
+          productResults = ranked.slice(offset, offset + limit).map((x:any) => ({...x.row, fuzzy_score: Number(x.fuzzyScore.toFixed(4))}));
+        }
       }
 
       const serviceParams:any[]=[];
@@ -453,6 +477,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           @@ plainto_tsquery('simple',${sQ})
         OR lower(s.name) LIKE '%' || lower(${sQ}) || '%'
         OR lower(coalesce(s.service_type,'')) LIKE '%' || lower(${sQ}) || '%'
+        OR (${fuzzyEnabled} AND ${fuzzyPrefix ? `lower(s.name) LIKE ${sb(fuzzyPrefix)} || '%'` : 'FALSE'})
       )`);
       if(categoryId) sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${sb(categoryId)})`);
       if(city) sConditions.push(`lower(l.city)=lower(${sb(city)})`);
@@ -477,9 +502,36 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE
           WHERE ${sConditions.join(' AND ')}
           ORDER BY ${order}
-          LIMIT ${sb(limit)} OFFSET ${sb(offset)}
+          LIMIT ${sb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? sb(0) : sb(offset)}
         `,serviceParams);
         serviceResults=r.rows;
+        if (fuzzyEnabled) {
+          const ranked = serviceResults.map((row:any, index:number) => ({
+            row,
+            fuzzyScore: discoveryFuzzyScore(q, [row.name,row.service_type,row.description,row.service_area_text].filter(Boolean).join(' ')),
+            index,
+          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
+            .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.name).localeCompare(String(b.row.name)) || a.index-b.index);
+          serviceResults = ranked.slice(offset, offset + limit).map((x:any) => ({...x.row, fuzzy_score: Number(x.fuzzyScore.toFixed(4))}));
+        }
+      }
+
+      const businessCount = Number(businessResults[0]?.total_count || 0);
+      const productCount = Number(productResults[0]?.total_count || 0);
+      const serviceCount = Number(serviceResults[0]?.total_count || 0);
+      if (q) {
+        const analyticsMetadata = {
+          queryHash: createHash('sha256').update(q.normalize('NFKC').toLowerCase()).digest('hex'),
+          queryLength: q.length,
+          type,
+          zeroResults: businessCount + productCount + serviceCount === 0,
+          resultCounts: { businesses: businessCount, products: productCount, services: serviceCount },
+          filters: { city, district, region, categoryId, openNow, radiusKm: radius, sort },
+        };
+        void db.query(
+          `INSERT INTO discovery_analytics_events(id,event_type,session_hash,actor_user_id,metadata) VALUES($1,'SEARCH',$2,$3,$4)`,
+          [`evt_${randomUUID().replace(/-/g,'')}`, createHash('sha256').update(`${req.ip}|search|${req.headers['user-agent']||''}`).digest('hex'), req.auth?.userId || null, analyticsMetadata],
+        ).catch(() => undefined);
       }
 
       res.json({
@@ -487,9 +539,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         filters:{city,district,region,openNow,radiusKm:radius,categoryId,sort},
         data:{businesses:businessResults,products:productResults,services:serviceResults},
         counts:{
-          businesses:Number(businessResults[0]?.total_count||0),
-          products:Number(productResults[0]?.total_count||0),
-          services:Number(serviceResults[0]?.total_count||0)
+          businesses:businessCount,
+          products:productCount,
+          services:serviceCount
         }
       });
     }catch(err){next(err);}
