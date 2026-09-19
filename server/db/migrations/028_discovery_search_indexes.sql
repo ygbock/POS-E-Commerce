@@ -2,8 +2,6 @@
 -- Migration 028: Discovery PostgreSQL full-text, trigram and filter indexes.
 -- Forward-only. Never modify previously applied migrations.
 
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
 -- Business discovery search.
 CREATE INDEX IF NOT EXISTS idx_discovery_business_search_fts
   ON discovery_businesses
@@ -18,14 +16,6 @@ CREATE INDEX IF NOT EXISTS idx_discovery_business_search_fts
     )
   );
 
-CREATE INDEX IF NOT EXISTS idx_discovery_business_name_trgm
-  ON discovery_businesses
-  USING GIN (lower(name) gin_trgm_ops);
-
-CREATE INDEX IF NOT EXISTS idx_discovery_business_description_trgm
-  ON discovery_businesses
-  USING GIN (lower(coalesce(short_description,'') || ' ' || coalesce(description,'')) gin_trgm_ops);
-
 -- Product discovery search. Product visibility is still enforced by the API query.
 CREATE INDEX IF NOT EXISTS idx_products_discovery_search_fts
   ON products
@@ -38,14 +28,6 @@ CREATE INDEX IF NOT EXISTS idx_products_discovery_search_fts
       coalesce(slug,'')
     )
   );
-
-CREATE INDEX IF NOT EXISTS idx_products_discovery_name_trgm
-  ON products
-  USING GIN (lower(name) gin_trgm_ops);
-
-CREATE INDEX IF NOT EXISTS idx_product_variants_discovery_sku_trgm
-  ON product_variants
-  USING GIN (lower(coalesce(sku,'')) gin_trgm_ops);
 
 -- Service discovery search.
 CREATE INDEX IF NOT EXISTS idx_discovery_services_search_fts
@@ -60,15 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_discovery_services_search_fts
     )
   );
 
-CREATE INDEX IF NOT EXISTS idx_discovery_services_name_trgm
-  ON discovery_services
-  USING GIN (lower(name) gin_trgm_ops);
-
 -- Category-aware discovery filters.
-CREATE INDEX IF NOT EXISTS idx_discovery_category_name_trgm
-  ON discovery_business_categories
-  USING GIN (lower(name) gin_trgm_ops);
-
 CREATE INDEX IF NOT EXISTS idx_discovery_category_slug_lower
   ON discovery_business_categories(lower(slug));
 
