@@ -234,6 +234,69 @@ export class OrderService {
 
     try {
       return await this.db.withTransaction(async (tx) => {
+        // Claim the storefront checkout request before any order or inventory
+        // mutation. The claim, reservation, order, and payment all commit as
+        // one transaction, so a concurrent replay can never observe a
+        // successful checkout without its stock reservation.
+        const claimRes = await tx.query<any>(
+          `INSERT INTO checkout_idempotency
+             (id, organization_id, idempotency_key, request_fingerprint, status)
+           VALUES ($1, $2, $3, $4, 'PROCESSING')
+           ON CONFLICT (organization_id, idempotency_key)
+           DO NOTHING
+           RETURNING id`,
+          [
+            `chk_${crypto.randomUUID()}`,
+            organization_id,
+            idempotency_key,
+            currentFingerprint,
+          ],
+        );
+
+        if (claimRes.rows.length === 0) {
+          const existingClaimRes = await tx.query<any>(
+            `SELECT id, request_fingerprint, status, checkout_id
+             FROM checkout_idempotency
+             WHERE organization_id = $1 AND idempotency_key = $2
+             FOR UPDATE`,
+            [organization_id, idempotency_key],
+          );
+          const existingClaim = existingClaimRes.rows[0];
+          if (!existingClaim) {
+            throw new DomainError('IDEMPOTENCY_CONFLICT', 'Checkout idempotency claim could not be resolved.');
+          }
+          if (existingClaim.request_fingerprint !== currentFingerprint) {
+            throw new DomainError(
+              'IDEMPOTENCY_CONFLICT',
+              `An order with idempotency key '${idempotency_key}' already exists with different request parameters.`,
+            );
+          }
+          if (existingClaim.status !== 'COMPLETED' || !existingClaim.checkout_id) {
+            throw new DomainError(
+              'CHECKOUT_IN_PROGRESS',
+              'A checkout with this idempotency key is already being processed.',
+            );
+          }
+
+          const replayOrder = await this.orderRepo.findOrderById(
+            existingClaim.checkout_id,
+            organization_id,
+            tx,
+          );
+          if (!replayOrder) {
+            throw new DomainError('CHECKOUT_STATE_INVALID', 'Completed checkout claim has no corresponding order.');
+          }
+          const replayPayments = await tx.query<any>(
+            `SELECT * FROM payments WHERE order_id = $1 AND organization_id = $2`,
+            [existingClaim.checkout_id, organization_id],
+          );
+          return {
+            order: replayOrder.order,
+            items: replayOrder.items,
+            payments: replayPayments.rows,
+          };
+        }
+
         // A. Location Validation
         let fulfillmentLocId = params.location_id;
         if (fulfillmentLocId) {
@@ -511,6 +574,16 @@ export class OrderService {
             },
             severity: 'Info',
           }, tx);
+
+          await tx.query(
+            `UPDATE checkout_idempotency
+             SET status = 'COMPLETED',
+                 checkout_id = $3,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE organization_id = $1
+               AND idempotency_key = $2`,
+            [organization_id, idempotency_key, orderId],
+          );
 
           await tx.query('RELEASE SAVEPOINT storefront_idempotency_insert');
 
