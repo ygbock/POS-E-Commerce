@@ -284,6 +284,42 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     } catch (err) { next(err); }
   });
 
+  router.get('/businesses/:id/search-aliases', requireAuth(), async (req,res,next)=>{try{
+    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias access forbidden.'}});
+    const r=await db.query("SELECT id,entity_type,entity_id,alias,created_at,updated_at FROM discovery_search_aliases WHERE entity_type='BUSINESS' AND entity_id=$1 AND is_active=TRUE ORDER BY alias",[req.params.id]);
+    res.json({success:true,data:r.rows});
+  }catch(err){next(err);}});
+
+  router.post('/businesses/:id/search-aliases', requireAuth(), async (req,res,next)=>{try{
+    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias management forbidden.'}});
+    const entityType=String(req.body?.entityType||'BUSINESS').toUpperCase();
+    const alias=String(req.body?.alias||'').trim().slice(0,180);
+    if(!['BUSINESS','PRODUCT','SERVICE'].includes(entityType))throw new Error('VALIDATION_ERROR:entityType must be BUSINESS, PRODUCT or SERVICE.');
+    if(!alias)throw new Error('VALIDATION_ERROR:alias is required.');
+    const normalizedAlias=normalizeDiscoverySearchText(alias);
+    if(!normalizedAlias)throw new Error('VALIDATION_ERROR:alias must contain searchable characters.');
+    let entityId=req.params.id;
+    if(entityType==='PRODUCT'){
+      const r=await db.query("SELECT p.id FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id WHERE p.id=$1 AND b.id=$2",[String(req.body?.entityId||''),req.params.id]);
+      if(!r.rows[0])throw new Error('NOT_FOUND:Product does not belong to this business.');
+      entityId=String(req.body.entityId);
+    } else if(entityType==='SERVICE'){
+      const r=await db.query("SELECT s.id FROM discovery_services s WHERE s.id=$1 AND s.business_id=$2",[String(req.body?.entityId||''),req.params.id]);
+      if(!r.rows[0])throw new Error('NOT_FOUND:Service does not belong to this business.');
+      entityId=String(req.body.entityId);
+    }
+    const id=`alias_${randomUUID().replace(/-/g,'')}`;
+    const r=await db.query("INSERT INTO discovery_search_aliases(id,entity_type,entity_id,alias,normalized_alias) VALUES($1,$2,$3,$4,$5) ON CONFLICT(entity_type,entity_id,normalized_alias) DO UPDATE SET alias=EXCLUDED.alias,is_active=TRUE,updated_at=CURRENT_TIMESTAMP RETURNING id,entity_type,entity_id,alias,created_at,updated_at",[id,entityType,entityId,alias,normalizedAlias]);
+    res.status(201).json({success:true,data:r.rows[0]});
+  }catch(err){next(err);}});
+
+  router.delete('/businesses/:id/search-aliases/:aliasId', requireAuth(), async (req,res,next)=>{try{
+    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias management forbidden.'}});
+    const r=await db.query("UPDATE discovery_search_aliases SET is_active=FALSE,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND ((entity_type='BUSINESS' AND entity_id=$2) OR entity_type IN ('PRODUCT','SERVICE') AND entity_id IN (SELECT p.id FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id WHERE b.id=$2 UNION SELECT s.id FROM discovery_services s WHERE s.business_id=$2)) RETURNING id",[req.params.aliasId,req.params.id]);
+    if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Search alias not found.'}});
+    res.json({success:true});
+  }catch(err){next(err);}});
+
   router.get('/search', async (req,res,next)=>{
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0,160) : '';
@@ -403,6 +439,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                  ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}
                  ${ratingExpr} AS rating,${reviewCountExpr} AS review_count,
                  ${businessRank} AS search_rank,
+                 COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='BUSINESS' AND sa.entity_id=b.id AND sa.is_active=TRUE),'') AS search_aliases,
                  COUNT(*) OVER() AS total_count
           FROM discovery_businesses b
           LEFT JOIN organizations o ON o.id=b.organization_id
@@ -427,7 +464,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         if (fuzzyEnabled) {
           const ranked = businessResults.map((row:any, index:number) => ({
             row,
-            fuzzyScore: discoveryFuzzyScore(q, [row.name,row.business_type,row.short_description,row.category_name].filter(Boolean).join(' ')),
+            fuzzyScore: discoveryFuzzyScore(q, [row.name,row.business_type,row.short_description,row.category_name,row.search_aliases].filter(Boolean).join(' ')),
             index,
           })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
             .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.name).localeCompare(String(b.row.name)) || a.index-b.index);
@@ -473,7 +510,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                  p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
                  l.city,l.district,l.region,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,
                  COALESCE(SUM(ib.available),0) AS available_stock,ds.show_prices,ds.show_stock_status,
-                 ${productRank} AS search_rank,COUNT(*) OVER() AS total_count
+                 ${productRank} AS search_rank,
+                 COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='PRODUCT' AND sa.entity_id=p.id AND sa.is_active=TRUE),'') AS search_aliases,
+                 COUNT(*) OVER() AS total_count
           FROM products p
           JOIN product_variants v ON v.product_id=p.id
           JOIN discovery_businesses b ON b.organization_id=p.organization_id
@@ -492,7 +531,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         if (fuzzyEnabled) {
           const ranked = productResults.map((row:any, index:number) => ({
             row,
-            fuzzyScore: discoveryFuzzyScore(q, [row.product_name,row.product_slug,row.short_description,row.description,row.sku].filter(Boolean).join(' ')),
+            fuzzyScore: discoveryFuzzyScore(q, [row.product_name,row.product_slug,row.short_description,row.description,row.sku,row.search_aliases].filter(Boolean).join(' ')),
             index,
           })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
             .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.product_name).localeCompare(String(b.row.product_name)) || a.index-b.index);
@@ -533,7 +572,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const order=sort==='name_asc'?'s.name ASC':`search_rank DESC,s.name ASC`;
         const r=await db.query(`
           SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
-                 b.verification_status,l.city,l.district,l.region,${serviceRank} AS search_rank
+                 b.verification_status,l.city,l.district,l.region,${serviceRank} AS search_rank,
+                 COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='SERVICE' AND sa.entity_id=s.id AND sa.is_active=TRUE),'') AS search_aliases
           FROM discovery_services s
           JOIN discovery_businesses b ON b.id=s.business_id
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
@@ -548,7 +588,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         if (fuzzyEnabled) {
           const ranked = serviceResults.map((row:any, index:number) => ({
             row,
-            fuzzyScore: discoveryFuzzyScore(q, [row.name,row.service_type,row.description,row.service_area_text].filter(Boolean).join(' ')),
+            fuzzyScore: discoveryFuzzyScore(q, [row.name,row.service_type,row.description,row.service_area_text,row.search_aliases].filter(Boolean).join(' ')),
             index,
           })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
             .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.name).localeCompare(String(b.row.name)) || a.index-b.index);
