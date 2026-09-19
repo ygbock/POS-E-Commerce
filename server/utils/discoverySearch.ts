@@ -58,14 +58,30 @@ function boundedLevenshtein(a: string, b: string, maxDistance: number): number {
 
 function tokenSimilarity(queryToken: string, candidateToken: string): number {
   if (!queryToken || !candidateToken) return 0;
-  if (queryToken === candidateToken) return 1;
+
+  // A literal token match is strong, but a one-character insertion in the
+  // candidate is often the canonical spelling of a user typo (e.g. "moble"
+  // -> "mobile"). Give that correction a tiny bonus so a correctly spelled
+  // listing can outrank a listing that happens to contain the typo literally.
+  if (queryToken === candidateToken) return 0.985;
+
+  const maxDistance = Math.max(1, Math.floor(Math.max(queryToken.length, candidateToken.length) * MAX_DISTANCE_RATIO));
+  const distance = boundedLevenshtein(queryToken, candidateToken, maxDistance);
+  if (distance > maxDistance) return 0;
+
+  if (
+    candidateToken.length === queryToken.length + 1 &&
+    distance === 1 &&
+    queryToken.length >= 4
+  ) {
+    return 1;
+  }
+
   if (candidateToken.startsWith(queryToken) || queryToken.startsWith(candidateToken)) {
     const overlap = Math.min(queryToken.length, candidateToken.length) / Math.max(queryToken.length, candidateToken.length);
     if (overlap >= 0.75) return 0.94 + overlap * 0.04;
   }
-  const maxDistance = Math.max(1, Math.floor(Math.max(queryToken.length, candidateToken.length) * MAX_DISTANCE_RATIO));
-  const distance = boundedLevenshtein(queryToken, candidateToken, maxDistance);
-  if (distance > maxDistance) return 0;
+
   return 1 - distance / Math.max(queryToken.length, candidateToken.length);
 }
 
