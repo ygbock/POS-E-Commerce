@@ -32,7 +32,7 @@
     "test:storefront-modernization": "tsx tests/storefront_modernization.test.ts",
     "test:audit": "tsx tests/audit_security_administration.test.ts",
     "test:discovery": "tsx tests/discovery.test.ts",
-    "test": "npm run test:db && npm run test:platform && npm run test:subscription-foundation && npm run test:subscription-limits && npm run test:platform-subscriptions && npm run test:tenant-provisioning && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api && npm run test:qa && npm run test:ux && npm run test:checkout && npm run test:offline-pos && npm run test:prod-gate && npm run test:operational && npm run test:storefront && npm run test:storefront-modernization && npm run test:storefront-api && npm run test:storefront-router && npm run test:storefront-catalog && npm run test:tenant-business-plane && npm run test:audit && npm run test:discovery",
+    "test": "npm run test:db && npm run test:platform && npm run test:subscription-foundation && npm run test:subscription-limits && npm run test:platform-subscriptions && npm run test:tenant-provisioning && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api && npm run test:qa && npm run test:ux && npm run test:checkout && npm run test:offline-pos && npm run test:prod-gate && npm run test:operational && npm run test:storefront && npm run test:storefront-modernization && npm run test:storefront-api && npm run test:storefront-router && npm run test:storefront-catalog && npm run test:tenant-business-plane && npm run test:audit && npm run test:discovery && npm run test:discovery-search",
     "test:coverage": "c8 --all --src server --lines 70 --branches 60 --functions 75 --statements 70 --reporter=text --reporter=html npm test",
     "test:storefront-router": "tsx tests/storefront_router.test.ts",
     "test:storefront-catalog": "tsx tests/storefront_catalog.test.ts",
@@ -41,7 +41,8 @@
     "test:subscription-foundation": "tsx tests/subscription_foundation.test.ts",
     "test:subscription-limits": "tsx tests/subscription_limits.test.ts",
     "test:tenant-provisioning": "tsx tests/tenant_provisioning.test.ts",
-    "test:platform-subscriptions": "tsx tests/platform_subscription_management.test.ts"
+    "test:platform-subscriptions": "tsx tests/platform_subscription_management.test.ts",
+    "test:discovery-search": "tsx tests/discovery_search.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
