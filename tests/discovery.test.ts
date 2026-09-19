@@ -3,6 +3,7 @@ import { createIsolatedTestClient, DatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
 import { DiscoveryBusinessRepository } from '../server/repositories/discoveryBusinessRepository';
 import { DiscoveryBusinessService } from '../server/services/discoveryBusinessService';
+import { DiscoveryStoreProvisioningService } from '../server/services/discoveryStoreProvisioningService';
 
 async function main() {
   const db: DatabaseClient = createIsolatedTestClient();
@@ -52,6 +53,28 @@ async function main() {
   assert.strictEqual(converted.business_mode, 'DISCOVERY_AND_STORE');
   assert.strictEqual(converted.organization_id, 'disc_test_org');
   assert.strictEqual(converted.slug, discoveryOnly.slug);
+
+  // Store conversion must be transactional and require an active commerce location.
+  const provisioning = new DiscoveryStoreProvisioningService(db);
+  await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_store_org','Store Conversion Org','DISC_STORE',TRUE)");
+  await db.query("INSERT INTO locations (id,organization_id,code,name,type,is_active) VALUES ('disc_store_loc','disc_store_org','DISC-STORE','Discovery Store','Retail Store',TRUE)");
+  const provisionResult = await provisioning.provisionForDiscoveryBusiness(discoveryOnly.id, 'disc_store_org', discoveryOnly.slug, discoveryOnly.name);
+  assert.strictEqual(provisionResult.businessId, discoveryOnly.id);
+  assert.strictEqual(provisionResult.organizationId, 'disc_store_org');
+  const provisioned = await repo.findById(discoveryOnly.id);
+  assert.strictEqual(provisioned?.business_mode, 'DISCOVERY_AND_STORE');
+  assert.strictEqual(provisioned?.organization_id, 'disc_store_org');
+  assert.strictEqual(provisioned?.slug, discoveryOnly.slug);
+
+  await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_no_loc_org','No Location Org','DISC_NO_LOC',TRUE)");
+  const noLocationBusiness = await service.create({ name: 'No Location Conversion', businessMode: 'DISCOVERY_ONLY' }, owner);
+  await assert.rejects(
+    () => provisioning.provisionForDiscoveryBusiness(noLocationBusiness.id, 'disc_no_loc_org', noLocationBusiness.slug, noLocationBusiness.name),
+    /STORE_NOT_READY:/,
+  );
+  const afterFailedProvision = await repo.findById(noLocationBusiness.id);
+  assert.strictEqual(afterFailedProvision?.business_mode, 'DISCOVERY_ONLY');
+  assert.strictEqual(afterFailedProvision?.organization_id, null);
 
   await db.query("UPDATE organizations SET is_active=FALSE WHERE id='disc_test_org'");
   assert.strictEqual(await service.getBySlug(business.slug, true), null);
