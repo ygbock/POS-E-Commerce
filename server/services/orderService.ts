@@ -538,9 +538,20 @@ export class OrderService {
           const saved = await this.orderRepo.createOrderWithItems(orderRecord, orderItems, paymentRecord, tx);
 
           // Create first-class reservations while the order is in "Stock Reserved".
-          // Reservation records provide the lifecycle required for cancellation,
-          // expiry and fulfillment; their balance updates occur in this transaction.
+          // The reservation idempotency key MUST be derived from the checkout
+          // idempotency key, not the newly generated order id. This makes the
+          // inventory reservation itself the database-level concurrency guard:
+          // if duplicate checkout attempts ever reach this point, they contend
+          // on the same reservation key and the reservation savepoint rolls back
+          // any losing balance mutation before the duplicate is replayed.
           for (const item of orderItems) {
+            const reservationScope = crypto
+              .createHash('sha256')
+              .update(`${fulfillmentLocId!}:${item.variant_id}`)
+              .digest('hex')
+              .slice(0, 16);
+            const checkoutReservationKey = `checkout:${idempotency_key}:${reservationScope}`;
+
             await this.reservationService.createReservation(
               organization_id,
               {
@@ -550,10 +561,10 @@ export class OrderService {
                 reference_type: 'orders',
                 reference_id: orderId,
                 notes: `Storefront order ${orderNumber}`,
-                idempotency_key: `${orderId}:reservation:${item.variant_id}`,
+                idempotency_key: checkoutReservationKey,
               },
               'Online Storefront',
-              `${orderId}:reservation:${item.variant_id}`,
+              checkoutReservationKey,
               tx
             );
           }
