@@ -215,30 +215,30 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         SELECT label, type
         FROM (
           SELECT b.name AS label, 'business' AS type,
-                 GREATEST(similarity(lower(b.name), lower($1)), 0) AS score
+                 GREATEST(0, 0) AS score
           FROM discovery_businesses b
           WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
-            AND (similarity(lower(b.name), lower($1)) >= 0.12
+            AND (0 >= 0.12
               OR lower(b.name) LIKE lower($1) || '%')
           UNION ALL
           SELECT p.name AS label, 'product' AS type,
-                 GREATEST(similarity(lower(p.name), lower($1)), 0) AS score
+                 GREATEST(0, 0) AS score
           FROM products p
           JOIN discovery_businesses b
             ON b.organization_id=p.organization_id
            AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
           WHERE p.status='active' AND p.channels_ecommerce=TRUE
-            AND (similarity(lower(p.name), lower($1)) >= 0.12
+            AND (0 >= 0.12
               OR lower(p.name) LIKE lower($1) || '%')
           UNION ALL
           SELECT s.name AS label, 'service' AS type,
-                 GREATEST(similarity(lower(s.name), lower($1)), 0) AS score
+                 GREATEST(0, 0) AS score
           FROM discovery_services s
           JOIN discovery_businesses b
             ON b.id=s.business_id
            AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
           WHERE s.is_active=TRUE
-            AND (similarity(lower(s.name), lower($1)) >= 0.12
+            AND (0 >= 0.12
               OR lower(s.name) LIKE lower($1) || '%')
         ) suggestions
         GROUP BY label, type
@@ -300,14 +300,14 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           to_tsvector('simple', coalesce(b.name,'') || ' ' || coalesce(b.legal_name,'') || ' ' ||
             coalesce(b.short_description,'') || ' ' || coalesce(b.description,'') || ' ' || coalesce(b.business_type,''))
             @@ plainto_tsquery('simple', ${bQ})
-          OR similarity(lower(b.name), lower(${bQ})) >= 0.18
-          OR similarity(lower(coalesce(b.short_description,'')), lower(${bQ})) >= 0.20
+          OR lower(b.name) LIKE '%' || lower(${bQ}) || '%'
+          OR lower(coalesce(b.short_description,'')) LIKE '%' || lower(${bQ}) || '%'
           OR EXISTS (
             SELECT 1
             FROM discovery_business_category_map bcm
             JOIN discovery_business_categories bc ON bc.id=bcm.category_id
             WHERE bcm.business_id=b.id
-              AND (bc.name ILIKE '%' || ${bQ} || '%' OR similarity(lower(bc.name), lower(${bQ})) >= 0.20)
+              AND bc.name ILIKE '%' || ${bQ} || '%'
           )
         )`);
       }
@@ -335,7 +335,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                 coalesce(b.short_description,'') || ' ' || coalesce(b.description,'') || ' ' || coalesce(b.business_type,'')),
               plainto_tsquery('simple', ${bQ})
             ) * 100
-            + similarity(lower(b.name), lower(${bQ})) * 40
+            + CASE WHEN lower(b.name)=lower(${bQ}) THEN 40 WHEN lower(b.name) LIKE lower(${bQ}) || '%' THEN 25 ELSE 0 END
             + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
             + ${ratingExpr} * 4
             + ln(1 + ${reviewCountExpr}) * 2
@@ -400,8 +400,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' ||
           coalesce(p.description,'') || ' ' || coalesce(p.slug,''))
           @@ plainto_tsquery('simple',${pQ})
-        OR similarity(lower(p.name),lower(${pQ})) >= 0.18
-        OR EXISTS(SELECT 1 FROM product_variants pv_search WHERE pv_search.product_id=p.id AND similarity(lower(coalesce(pv_search.sku,'')),lower(${pQ})) >= 0.18)
+        OR lower(p.name) LIKE '%' || lower(${pQ}) || '%'
+        OR EXISTS(SELECT 1 FROM product_variants pv_search WHERE pv_search.product_id=p.id AND lower(coalesce(pv_search.sku,'')) LIKE '%' || lower(${pQ}) || '%')
       )`);
       if(categoryId) pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${pb(categoryId)})`);
       if(city) pConditions.push(`lower(l.city)=lower(${pb(city)})`);
@@ -410,7 +410,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(distanceExpr) pConditions.push(`${distanceExpr.replaceAll('l.','l.')} <= ${pb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
       const productRank=pQ?`(
         ts_rank_cd(to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')),plainto_tsquery('simple',${pQ}))*100
-        + similarity(lower(p.name),lower(${pQ}))*40
+        + CASE WHEN lower(p.name)=lower(${pQ}) THEN 40 WHEN lower(p.name) LIKE lower(${pQ}) || '%' THEN 25 ELSE 0 END
         + CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END
       )`:`CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END`;
       let productResults:any[]=[];
@@ -451,8 +451,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' ||
           coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,''))
           @@ plainto_tsquery('simple',${sQ})
-        OR similarity(lower(s.name),lower(${sQ})) >= 0.18
-        OR similarity(lower(coalesce(s.service_type,'')),lower(${sQ})) >= 0.20
+        OR lower(s.name) LIKE '%' || lower(${sQ}) || '%'
+        OR lower(coalesce(s.service_type,'')) LIKE '%' || lower(${sQ}) || '%'
       )`);
       if(categoryId) sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${sb(categoryId)})`);
       if(city) sConditions.push(`lower(l.city)=lower(${sb(city)})`);
@@ -461,7 +461,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(distanceExpr) sConditions.push(`${distanceExpr} <= ${sb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
       const serviceRank=sQ?`(
         ts_rank_cd(to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')),plainto_tsquery('simple',${sQ}))*100
-        + similarity(lower(s.name),lower(${sQ}))*40
+        + CASE WHEN lower(s.name)=lower(${sQ}) THEN 40 WHEN lower(s.name) LIKE lower(${sQ}) || '%' THEN 25 ELSE 0 END
         + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
       )`:`CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END`;
       let serviceResults:any[]=[];
