@@ -56,8 +56,14 @@
 - `GET /api/discovery/moderation/reports`
 - `POST /api/discovery/moderation/reports/:id/decision`
 
+## Current hardening wave
+
+- Lifecycle tests cover the mandatory `SUBMITTED -> UNDER_REVIEW -> APPROVED -> PUBLISHED` moderation path and reject skipped transitions.
+- Store conversion is tested transactionally: an active commerce location is required, and a failed conversion leaves the Discovery business unbound and in `DISCOVERY_ONLY` mode.
+- The canonical business ID and slug are preserved during conversion.
+
 ## Data safety
 
 Discovery is additive and reuses the existing commerce model. No parallel product or inventory source of truth is introduced. Product discovery is derived from `products`, `product_variants`, `inventory_balances` and the canonical discovery business's `organization_id`.
 
-Previously applied migrations remain untouched. Discovery changes are implemented as forward migrations `020`, `021` and `022`.
+Previously applied migrations remain untouched. Discovery schema is implemented by forward migrations `020` and `022`; migration `021` is not present in the repository and should not be assumed in deployment documentation. Subsequent platform migrations `023+` are independent of Discovery.
