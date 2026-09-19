@@ -41,6 +41,7 @@ async function main() {
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_rank_org',
   }, actor);
+  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_exact',$1,'Main Branch','Freetown',TRUE,TRUE)",[exact.id]);
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await service[step](exact.id, actor);
 
   const typo = await service.create({
@@ -49,6 +50,7 @@ async function main() {
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_rank_org',
   }, actor);
+  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_typo',$1,'Main Branch','Freetown',TRUE,TRUE)",[typo.id]);
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await service[step](typo.id, actor);
 
   const hidden = await service.create({
@@ -85,7 +87,9 @@ async function main() {
     assert.ok(fuzzyBusinesses.some((row:any) => row.id === exact.id), 'typo search should find the exact business candidate');
     assert.ok(fuzzyBusinesses.some((row:any) => row.id === typo.id), 'typo search should find the typo-compatible candidate');
     assert.ok(!fuzzyBusinesses.some((row:any) => row.id === hidden.id), 'unpublished listings must never leak through fuzzy search');
-    assert.strictEqual(fuzzyBusinesses[0].id, exact.id, 'exact business match should outrank typo-compatible result');
+    const exactResponse = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&limit=10');
+    assert.strictEqual(exactResponse.status, 200);
+    assert.strictEqual(exactResponse.body.data.businesses[0].id, exact.id, 'exact spelling should outrank typo-compatible result');
 
     const queryHash = (await import('node:crypto')).createHash('sha256').update('moble').digest('hex');
     const event = await waitForSearchEvent(db, queryHash);
