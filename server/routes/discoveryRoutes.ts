@@ -5,7 +5,7 @@ import { requireAuth, requireTenantAccess } from '../middleware/auth.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
 import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
-import { discoveryFuzzyScore, normalizeDiscoverySearchText } from '../utils/discoverySearch.ts';
+import { discoveryFuzzyScore, normalizeDiscoverySearchText, rankDiscoveryFuzzy } from '../utils/discoverySearch.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
@@ -209,44 +209,78 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   router.get('/search/suggestions', async (req,res,next)=>{
     try {
-      const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0,160) : '';
       const limit = Math.min(Math.max(Number(req.query.limit || 8), 1), 20);
       if (q.length < 2) return res.json({ success: true, query: q, data: [] });
+
+      // Keep SQL candidate generation intentionally cheap and broad, then let the
+      // same application-level fuzzy scorer used by search rank the small pool.
+      // The two-character prefix improves typo recall (e.g. "phne" -> "phone",
+      // "moble" -> "mobile") without requiring pg_trgm in embedded PGlite.
+      const normalized = normalizeDiscoverySearchText(q);
+      const prefix = normalized.split(' ')[0]?.slice(0, 2) || normalized.slice(0, 2);
+      if (prefix.length < 2) return res.json({ success: true, query: q, data: [] });
+
       const result = await db.query(`
         SELECT label, type
         FROM (
-          SELECT b.name AS label, 'business' AS type,
-                 GREATEST(0, 0) AS score
+          SELECT b.name AS label, 'business' AS type
           FROM discovery_businesses b
-          WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
-            AND (0 >= 0.12
-              OR lower(b.name) LIKE lower($1) || '%')
+          WHERE b.listing_status='PUBLISHED'
+            AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS (
+              SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+            ))
+            AND lower(b.name) LIKE $1 || '%'
+
           UNION ALL
-          SELECT p.name AS label, 'product' AS type,
-                 GREATEST(0, 0) AS score
+
+          SELECT p.name AS label, 'product' AS type
           FROM products p
           JOIN discovery_businesses b
             ON b.organization_id=p.organization_id
-           AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
-          WHERE p.status='active' AND p.channels_ecommerce=TRUE
-            AND (0 >= 0.12
-              OR lower(p.name) LIKE lower($1) || '%')
+           AND b.listing_status='PUBLISHED'
+           AND b.is_discoverable=TRUE
+           AND EXISTS (
+             SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+           )
+          WHERE p.status='active'
+            AND p.channels_ecommerce=TRUE
+            AND lower(p.name) LIKE $1 || '%'
+
           UNION ALL
-          SELECT s.name AS label, 'service' AS type,
-                 GREATEST(0, 0) AS score
+
+          SELECT s.name AS label, 'service' AS type
           FROM discovery_services s
           JOIN discovery_businesses b
             ON b.id=s.business_id
-           AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+           AND b.listing_status='PUBLISHED'
+           AND b.is_discoverable=TRUE
+           AND (b.organization_id IS NULL OR EXISTS (
+             SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+           ))
           WHERE s.is_active=TRUE
-            AND (0 >= 0.12
-              OR lower(s.name) LIKE lower($1) || '%')
+            AND lower(s.name) LIKE $1 || '%'
         ) suggestions
         GROUP BY label, type
-        ORDER BY MAX(score) DESC, label ASC
-        LIMIT $2
-      `, [q, limit]);
-      res.json({ success:true, query:q, data:result.rows });
+        LIMIT 200
+      `, [prefix]);
+
+      const ranked = rankDiscoveryFuzzy(q, result.rows.map((row:any) => ({
+        id: `${row.type}:${row.label}`,
+        text: String(row.label),
+        label: row.label,
+        type: row.type,
+      })));
+
+      res.json({
+        success: true,
+        query: q,
+        data: ranked.slice(0, limit).map((entry:any) => ({
+          label: entry.item.label,
+          type: entry.item.type,
+        })),
+      });
     } catch (err) { next(err); }
   });
 
