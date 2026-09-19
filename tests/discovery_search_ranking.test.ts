@@ -1,5 +1,6 @@
 import assert from 'assert';
 import express from 'express';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createIsolatedTestClient, DatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
@@ -42,7 +43,7 @@ async function main() {
     organizationId: 'disc_rank_org',
   }, actor);
   await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_exact',$1,'Main Branch','Freetown',TRUE,TRUE)",[exact.id]);
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await service[step](exact.id, actor);
+  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](exact.id, actor);
 
   const typo = await service.create({
     name: 'Moble Phone Repairs',
@@ -51,7 +52,7 @@ async function main() {
     organizationId: 'disc_rank_org',
   }, actor);
   await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_typo',$1,'Main Branch','Freetown',TRUE,TRUE)",[typo.id]);
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await service[step](typo.id, actor);
+  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](typo.id, actor);
 
   const hidden = await service.create({
     name: 'Mobile Hidden Listing',
@@ -91,7 +92,7 @@ async function main() {
     assert.strictEqual(exactResponse.status, 200);
     assert.strictEqual(exactResponse.body.data.businesses[0].id, exact.id, 'exact spelling should outrank typo-compatible result');
 
-    const queryHash = (await import('node:crypto')).createHash('sha256').update('moble').digest('hex');
+    const queryHash = createHash('sha256').update('moble').digest('hex');
     const event = await waitForSearchEvent(db, queryHash);
     assert.ok(event, 'search analytics event should be recorded');
     assert.strictEqual(event.metadata.type, 'businesses');
