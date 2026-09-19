@@ -443,7 +443,10 @@ async function runStorefrontCheckoutIntegrityTests() {
 
       // Prove exactly one inventory reservation occurs (on_hand unchanged, reserved increases by 1.0000)
       const pgPostReservations = await db.query<any>(
-        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances
+         WHERE organization_id = 'org_store_alpha'
+           AND location_id = 'loc_alpha_wh'
+           AND variant_id = 'var_alpha_active_1'`
       );
       const pgPostOnHand = parseFloat(pgPostReservations.rows[0].on_hand);
       const pgPostReserved = parseFloat(pgPostReservations.rows[0].reserved || '0');
