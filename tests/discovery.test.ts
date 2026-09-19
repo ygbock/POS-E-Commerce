@@ -14,6 +14,7 @@ async function main() {
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const owner = { userId: 'disc-owner', role: 'admin', organizationId: 'disc_test_org' };
+  const otherTenantAdmin = { userId: 'disc-other-admin', role: 'admin', organizationId: 'disc_other_org' };
 
   const business = await service.create({ name: 'Discovery Test Shop', businessMode: 'DISCOVERY_AND_STORE', organizationId: 'disc_test_org', submitImmediately: false }, owner);
   assert.strictEqual(business.listing_status, 'DRAFT');
@@ -37,6 +38,19 @@ async function main() {
   // A tenant user may not rebind an existing discovery business to another tenant.
   await assert.rejects(
     () => service.update(business.id, { organizationId: 'disc_other_org' }, owner),
+    /TENANT_ACCESS_DENIED:/,
+  );
+
+  // Historical creator identity must not bypass the tenant boundary once bound.
+  const crossTenantPatch = { phone: '+232 76 999 999' };
+  await assert.rejects(
+    () => service.update(business.id, crossTenantPatch, { userId: business.created_by_user_id!, role: 'admin', organizationId: 'disc_other_org' }),
+    /PERMISSION_DENIED:/,
+  );
+
+  // Tenant administrators may moderate their own organization's listings, but not another tenant's.
+  await assert.rejects(
+    () => service.approve(business.id, otherTenantAdmin),
     /TENANT_ACCESS_DENIED:/,
   );
 
