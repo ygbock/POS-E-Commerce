@@ -204,47 +204,294 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   });
 
   // ------------------------------------------------------------------
-  // DISC-008/009/015: unified discovery search + product projection
+  // DISC-008/009/015: unified discovery search + indexed relevance
   // ------------------------------------------------------------------
-  router.get('/search', async (req,res,next)=>{
+  router.get('/search/suggestions', async (req,res,next)=>{
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      const limit = Math.min(Math.max(Number(req.query.limit || 8), 1), 20);
+      if (q.length < 2) return res.json({ success: true, query: q, data: [] });
+      const result = await db.query(`
+        SELECT label, type
+        FROM (
+          SELECT b.name AS label, 'business' AS type,
+                 GREATEST(similarity(lower(b.name), lower($1)), 0) AS score
+          FROM discovery_businesses b
+          WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND (similarity(lower(b.name), lower($1)) >= 0.12
+              OR lower(b.name) LIKE lower($1) || '%')
+          UNION ALL
+          SELECT p.name AS label, 'product' AS type,
+                 GREATEST(similarity(lower(p.name), lower($1)), 0) AS score
+          FROM products p
+          JOIN discovery_businesses b
+            ON b.organization_id=p.organization_id
+           AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+          WHERE p.status='active' AND p.channels_ecommerce=TRUE
+            AND (similarity(lower(p.name), lower($1)) >= 0.12
+              OR lower(p.name) LIKE lower($1) || '%')
+          UNION ALL
+          SELECT s.name AS label, 'service' AS type,
+                 GREATEST(similarity(lower(s.name), lower($1)), 0) AS score
+          FROM discovery_services s
+          JOIN discovery_businesses b
+            ON b.id=s.business_id
+           AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+          WHERE s.is_active=TRUE
+            AND (similarity(lower(s.name), lower($1)) >= 0.12
+              OR lower(s.name) LIKE lower($1) || '%')
+        ) suggestions
+        GROUP BY label, type
+        ORDER BY MAX(score) DESC, label ASC
+        LIMIT $2
+      `, [q, limit]);
+      res.json({ success:true, query:q, data:result.rows });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/search', async (req,res,next)=>{
+    try {
+      const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0,160) : '';
       const type = typeof req.query.type === 'string' ? req.query.type.toLowerCase() : 'all';
-      if (!['all','businesses','products','services'].includes(type)) throw new Error('VALIDATION_ERROR:type must be all, businesses, products or services.');
-      const city = typeof req.query.city === 'string' ? req.query.city.trim() : null;
-      const district = typeof req.query.district === 'string' ? req.query.district.trim() : null;
-      const region = typeof req.query.region === 'string' ? req.query.region.trim() : null;
+      if (!['all','businesses','products','services'].includes(type)) {
+        throw new Error('VALIDATION_ERROR:type must be all, businesses, products or services.');
+      }
+      const city = typeof req.query.city === 'string' ? req.query.city.trim().slice(0,128) : null;
+      const district = typeof req.query.district === 'string' ? req.query.district.trim().slice(0,128) : null;
+      const region = typeof req.query.region === 'string' ? req.query.region.trim().slice(0,128) : null;
       const lat = req.query.lat != null ? Number(req.query.lat) : null;
       const lng = req.query.lng != null ? Number(req.query.lng) : null;
-      const radius = req.query.radiusKm != null ? Math.min(Math.max(Number(req.query.radiusKm),0),500) : 25;
+      const radius = req.query.radiusKm != null ? Number(req.query.radiusKm) : 25;
       const limit = Math.min(Math.max(Number(req.query.limit || 20),1),100);
       const offset = Math.max(Number(req.query.offset || 0),0);
       const openNow = String(req.query.openNow || '').toLowerCase() === 'true';
       const categoryId = typeof req.query.categoryId === 'string' && req.query.categoryId.trim() ? req.query.categoryId.trim() : null;
-      const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest'].includes(req.query.sort) ? req.query.sort : 'relevance';
-      if ((lat != null && !Number.isFinite(lat)) || (lng != null && !Number.isFinite(lng))) throw new Error('VALIDATION_ERROR:latitude and longitude must be valid numbers.');
+      const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest','distance'].includes(req.query.sort) ? req.query.sort : 'relevance';
+
+      if ((lat != null && !Number.isFinite(lat)) || (lng != null && !Number.isFinite(lng))) {
+        throw new Error('VALIDATION_ERROR:latitude and longitude must be valid numbers.');
+      }
       if ((lat == null) !== (lng == null)) throw new Error('VALIDATION_ERROR:latitude and longitude must be supplied together.');
-      if (lat != null && lng != null && (lat < -90 || lat > 90 || lng < -180 || lng > 180)) throw new Error('VALIDATION_ERROR:latitude/longitude out of range.');
-      if (!Number.isFinite(radius)) throw new Error('VALIDATION_ERROR:radiusKm must be a valid number.');
-      const params:any[] = [];
-      const bind=(v:any)=>{params.push(v);return `${params.length}`;};
-      const text = q ? `%${q.replace(/[%_]/g,'') }%` : null;
-      const textParam = text ? bind(text) : null;
-      const nowDow = new Date().getUTCDay() === 0 ? 7 : new Date().getUTCDay();
-      const nowTime = new Date().toISOString().slice(11,19);
-      const distanceSql = lat != null && lng != null ? `6371 * acos(LEAST(1,GREATEST(-1,cos(radians(${lat}))*cos(radians(l.latitude))*cos(radians(l.longitude)-radians(${lng}))+sin(radians(${lat}))*sin(radians(l.latitude)))))` : null;
-      const baseBusiness = `FROM discovery_businesses b LEFT JOIN organizations o ON o.id=b.organization_id LEFT JOIN LATERAL (SELECT l.* FROM discovery_business_locations l WHERE l.business_id=b.id AND l.is_active=TRUE ORDER BY l.is_primary DESC,l.created_at ASC LIMIT 1) l ON TRUE LEFT JOIN LATERAL (SELECT c.name AS category_name,c.slug AS category_slug FROM discovery_business_category_map m JOIN discovery_business_categories c ON c.id=m.category_id WHERE m.business_id=b.id ORDER BY m.is_primary DESC LIMIT 1) c ON TRUE LEFT JOIN discovery_business_settings ds ON ds.business_id=b.id WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))`;
-      const businessWhere = [categoryId ? `EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${bind(categoryId)})` : null, distanceSql ? `${distanceSql} <= ${bind(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL` : null, text ? `(b.name ILIKE ${textParam} OR b.short_description ILIKE ${textParam})` : null, city ? `l.city ILIKE ${bind(city)}` : null, district ? `l.district ILIKE ${bind(district)}` : null, region ? `l.region ILIKE ${bind(region)}` : null, openNow ? `EXISTS(SELECT 1 FROM discovery_business_hours h WHERE h.location_id=l.id AND h.day_of_week=${bind(nowDow)} AND h.is_closed=FALSE AND h.opens_at<=${bind(nowTime)}::time AND h.closes_at>=${bind(nowTime)}::time)` : null].filter(Boolean).join(' AND ');
-      const businessResults = type==='products' || type==='services' ? [] : (await db.query(`SELECT b.id,b.public_id,b.name,b.slug,b.business_type,b.short_description,b.phone,b.whatsapp,b.website,b.logo_url,b.cover_image_url,b.business_mode,o.slug AS tenant_slug,b.verification_status,l.name AS location_name,l.city,l.district,l.region,l.latitude,l.longitude,c.category_name,c.category_slug,${distanceSql ? `${distanceSql} AS distance_km,` : ''}(SELECT COALESCE(AVG(r.rating),0) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED') AS rating,(SELECT COUNT(*) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED') AS review_count,CASE WHEN ${q ? `b.name ILIKE ${textParam}` : 'FALSE'} THEN 30 ELSE 0 END + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END AS relevance,COUNT(*) OVER() AS total_count ${baseBusiness}${businessWhere ? ` AND ${businessWhere}`:''} ORDER BY ${sort === 'rating' ? 'rating DESC,b.name ASC' : sort === 'review_count' ? 'review_count DESC,b.name ASC' : sort === 'name_asc' ? 'b.name ASC' : sort === 'newest' ? 'b.published_at DESC NULLS LAST,b.name ASC' : 'relevance DESC,b.name ASC'} LIMIT ${bind(limit)} OFFSET ${bind(offset)}`, params)).rows;
+      if (lat != null && lng != null && (lat < -90 || lat > 90 || lng < -180 || lng > 180)) {
+        throw new Error('VALIDATION_ERROR:latitude/longitude out of range.');
+      }
+      if (!Number.isFinite(radius) || radius < 0 || radius > 500) throw new Error('VALIDATION_ERROR:radiusKm must be between 0 and 500.');
 
-      const productParams:any[]=[]; const pbind=(v:any)=>{productParams.push(v);return `$${productParams.length}`;};
-      const pText=q?`%${q.replace(/[%_]/g,'')}%`:null;
-      const productResults = type==='businesses' || type==='services' ? [] : (await db.query(`SELECT p.id AS product_id,p.name AS product_name,p.slug AS product_slug,p.short_description,p.description,p.images,p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,l.city,l.district,l.region,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,COALESCE(SUM(ib.available),0) AS available_stock,ds.show_prices,ds.show_stock_status,COUNT(*) OVER() AS total_count FROM products p JOIN product_variants v ON v.product_id=p.id JOIN discovery_businesses b ON b.organization_id=p.organization_id AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE LEFT JOIN discovery_business_settings ds ON ds.business_id=b.id LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE LEFT JOIN inventory_balances ib ON ib.variant_id=v.id WHERE p.status='active' AND p.channels_ecommerce=TRUE AND COALESCE(ds.show_products,TRUE)=TRUE ${pText?`AND (p.name ILIKE ${pbind(pText)} OR p.description ILIKE ${pbind(pText)} OR v.sku ILIKE ${pbind(pText)})`:''} ${city?`AND l.city ILIKE ${pbind(city)}`:''} ${district?`AND l.district ILIKE ${pbind(district)}`:''} ${region?`AND l.region ILIKE ${pbind(region)}`:''} ${categoryId?`AND EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${pbind(categoryId)})`:''} GROUP BY p.id,v.id,b.id,l.id,ds.show_prices,ds.show_stock_status ORDER BY CASE WHEN ${q?`p.name ILIKE ${pbind(pText)}`:'FALSE'} THEN 30 ELSE 0 END + CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END DESC,p.name ASC LIMIT ${pbind(limit)} OFFSET ${pbind(offset)}`, productParams)).rows;
+      const now = new Date();
+      const nowDow = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+      const nowTime = now.toISOString().slice(11,19);
+      const distanceExpr = lat != null && lng != null
+        ? `6371 * acos(LEAST(1,GREATEST(-1,
+            cos(radians(${lat}))*cos(radians(l.latitude))*cos(radians(l.longitude)-radians(${lng}))
+            + sin(radians(${lat}))*sin(radians(l.latitude))
+          )))`
+        : null;
 
-      const serviceParams:any[]=[]; const sbind=(v:any)=>{serviceParams.push(v);return `$${serviceParams.length}`;};
-      const sText=q?`%${q.replace(/[%_]/g,'')}%`:null;
-      const serviceResults = type==='businesses' || type==='products' ? [] : (await db.query(`SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,b.verification_status,l.city,l.district,l.region FROM discovery_services s JOIN discovery_businesses b ON b.id=s.business_id AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE WHERE s.is_active=TRUE ${categoryId?`AND EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${sbind(categoryId)})`:''} ${sText?`AND (s.name ILIKE ${sbind(sText)} OR s.description ILIKE ${sbind(sText)} OR s.service_type ILIKE ${sbind(sText)})`:''} ${city?`AND l.city ILIKE ${sbind(city)}`:''} ${district?`AND l.district ILIKE ${sbind(district)}`:''} ${region?`AND l.region ILIKE ${sbind(region)}`:''} ORDER BY CASE WHEN ${q?`s.name ILIKE ${sbind(sText)}`:'FALSE'} THEN 30 ELSE 0 END + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END DESC,s.name ASC LIMIT ${sbind(limit)} OFFSET ${sbind(offset)}`, serviceParams)).rows;
-      res.json({success:true,query:q,type,filters:{city,district,region,openNow,radiusKm:radius,categoryId,sort},data:{businesses:businessResults,products:productResults,services:serviceResults},counts:{businesses:Number(businessResults[0]?.total_count||0),products:Number(productResults[0]?.total_count||0),services:Number(serviceResults[0]?.total_count||0)}});
+      const businessParams:any[] = [];
+      const bb=(v:any)=>{businessParams.push(v);return `$${businessParams.length}`;};
+      const bQ = q ? bb(q) : null;
+      const bConditions:string[] = [
+        "b.listing_status='PUBLISHED'",
+        "b.is_discoverable=TRUE",
+        "(b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations bo WHERE bo.id=b.organization_id AND bo.is_active=TRUE))",
+      ];
+      if (bQ) {
+        bConditions.push(`(
+          to_tsvector('simple', coalesce(b.name,'') || ' ' || coalesce(b.legal_name,'') || ' ' ||
+            coalesce(b.short_description,'') || ' ' || coalesce(b.description,'') || ' ' || coalesce(b.business_type,''))
+            @@ plainto_tsquery('simple', ${bQ})
+          OR similarity(lower(b.name), lower(${bQ})) >= 0.18
+          OR similarity(lower(coalesce(b.short_description,'')), lower(${bQ})) >= 0.20
+          OR EXISTS (
+            SELECT 1
+            FROM discovery_business_category_map bcm
+            JOIN discovery_business_categories bc ON bc.id=bcm.category_id
+            WHERE bcm.business_id=b.id
+              AND (bc.name ILIKE '%' || ${bQ} || '%' OR similarity(lower(bc.name), lower(${bQ})) >= 0.20)
+          )
+        )`);
+      }
+      if (categoryId) bConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${bb(categoryId)})`);
+      if (city) bConditions.push(`lower(l.city)=lower(${bb(city)})`);
+      if (district) bConditions.push(`lower(l.district)=lower(${bb(district)})`);
+      if (region) bConditions.push(`lower(l.region)=lower(${bb(region)})`);
+      if (distanceExpr) {
+        bConditions.push(`${distanceExpr} <= ${bb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      }
+      if (openNow) {
+        bConditions.push(`EXISTS(
+          SELECT 1 FROM discovery_business_hours h
+          WHERE h.location_id=l.id AND h.day_of_week=${bb(nowDow)}
+            AND h.is_closed=FALSE AND h.opens_at<=${bb(nowTime)}::time AND h.closes_at>=${bb(nowTime)}::time
+        )`);
+      }
+
+      const ratingExpr = "(SELECT COALESCE(AVG(r.rating),0) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED')";
+      const reviewCountExpr = "(SELECT COUNT(*) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED')";
+      const businessRank = bQ
+        ? `(
+            ts_rank_cd(
+              to_tsvector('simple', coalesce(b.name,'') || ' ' || coalesce(b.legal_name,'') || ' ' ||
+                coalesce(b.short_description,'') || ' ' || coalesce(b.description,'') || ' ' || coalesce(b.business_type,'')),
+              plainto_tsquery('simple', ${bQ})
+            ) * 100
+            + similarity(lower(b.name), lower(${bQ})) * 40
+            + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
+            + ${ratingExpr} * 4
+            + ln(1 + ${reviewCountExpr}) * 2
+            ${distanceExpr ? `- LEAST(${distanceExpr},100) * 0.10` : ''}
+          )`
+        : `(
+            CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
+            + ${ratingExpr} * 4
+            + ln(1 + ${reviewCountExpr}) * 2
+          )`;
+
+      let businessResults:any[]=[];
+      if (type !== 'products' && type !== 'services') {
+        const order = sort === 'rating' ? `${ratingExpr} DESC, b.name ASC`
+          : sort === 'review_count' ? `${reviewCountExpr} DESC, b.name ASC`
+          : sort === 'name_asc' ? 'b.name ASC'
+          : sort === 'newest' ? 'b.published_at DESC NULLS LAST, b.name ASC'
+          : sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, b.name ASC`
+          : `search_rank DESC, b.name ASC`;
+        const r=await db.query(`
+          SELECT b.id,b.public_id,b.name,b.slug,b.business_type,b.short_description,b.phone,b.whatsapp,b.website,
+                 b.logo_url,b.cover_image_url,b.business_mode,o.slug AS tenant_slug,b.verification_status,
+                 l.name AS location_name,l.city,l.district,l.region,l.latitude,l.longitude,
+                 c.category_name,c.category_slug,
+                 ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}
+                 ${ratingExpr} AS rating,${reviewCountExpr} AS review_count,
+                 ${businessRank} AS search_rank,
+                 COUNT(*) OVER() AS total_count
+          FROM discovery_businesses b
+          LEFT JOIN organizations o ON o.id=b.organization_id
+          LEFT JOIN LATERAL (
+            SELECT l.* FROM discovery_business_locations l
+            WHERE l.business_id=b.id AND l.is_active=TRUE
+            ORDER BY l.is_primary DESC,l.created_at ASC LIMIT 1
+          ) l ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT c.name AS category_name,c.slug AS category_slug
+            FROM discovery_business_category_map m
+            JOIN discovery_business_categories c ON c.id=m.category_id
+            WHERE m.business_id=b.id
+            ORDER BY m.is_primary DESC LIMIT 1
+          ) c ON TRUE
+          WHERE ${bConditions.join(' AND ')}
+          ORDER BY ${order}
+          LIMIT ${bb(limit)} OFFSET ${bb(offset)}
+        `,businessParams);
+        businessResults=r.rows;
+      }
+
+      const productParams:any[]=[];
+      const pb=(v:any)=>{productParams.push(v);return `$${productParams.length}`;};
+      const pQ=q?pb(q):null;
+      const pConditions:string[]=[
+        "p.status='active'",
+        "p.channels_ecommerce=TRUE",
+        "b.listing_status='PUBLISHED'",
+        "b.is_discoverable=TRUE",
+        "o.is_active=TRUE",
+        "COALESCE(ds.show_products,TRUE)=TRUE"
+      ];
+      if(pQ) pConditions.push(`(
+        to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' ||
+          coalesce(p.description,'') || ' ' || coalesce(p.slug,''))
+          @@ plainto_tsquery('simple',${pQ})
+        OR similarity(lower(p.name),lower(${pQ})) >= 0.18
+        OR EXISTS(SELECT 1 FROM product_variants pv_search WHERE pv_search.product_id=p.id AND similarity(lower(coalesce(pv_search.sku,'')),lower(${pQ})) >= 0.18)
+      )`);
+      if(categoryId) pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${pb(categoryId)})`);
+      if(city) pConditions.push(`lower(l.city)=lower(${pb(city)})`);
+      if(district) pConditions.push(`lower(l.district)=lower(${pb(district)})`);
+      if(region) pConditions.push(`lower(l.region)=lower(${pb(region)})`);
+      if(distanceExpr) pConditions.push(`${distanceExpr.replaceAll('l.','l.')} <= ${pb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      const productRank=pQ?`(
+        ts_rank_cd(to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')),plainto_tsquery('simple',${pQ}))*100
+        + similarity(lower(p.name),lower(${pQ}))*40
+        + CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END
+      )`:`CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END`;
+      let productResults:any[]=[];
+      if(type !== 'businesses' && type !== 'services'){
+        const order=sort==='name_asc'?'p.name ASC':`search_rank DESC,p.name ASC`;
+        const r=await db.query(`
+          SELECT p.id AS product_id,p.name AS product_name,p.slug AS product_slug,p.short_description,p.description,p.images,
+                 p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
+                 l.city,l.district,l.region,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,
+                 COALESCE(SUM(ib.available),0) AS available_stock,ds.show_prices,ds.show_stock_status,
+                 ${productRank} AS search_rank,COUNT(*) OVER() AS total_count
+          FROM products p
+          JOIN product_variants v ON v.product_id=p.id
+          JOIN discovery_businesses b ON b.organization_id=p.organization_id
+            AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+          JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE
+          LEFT JOIN discovery_business_settings ds ON ds.business_id=b.id
+          LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE
+          LEFT JOIN inventory_balances ib ON ib.variant_id=v.id
+          WHERE ${pConditions.join(' AND ')}
+          GROUP BY p.id,v.id,b.id,l.id,ds.show_prices,ds.show_stock_status
+          ORDER BY ${order}
+          LIMIT ${pb(limit)} OFFSET ${pb(offset)}
+        `,productParams);
+        productResults=r.rows;
+      }
+
+      const serviceParams:any[]=[];
+      const sb=(v:any)=>{serviceParams.push(v);return `$${serviceParams.length}`;};
+      const sQ=q?sb(q):null;
+      const sConditions:string[]=[
+        "s.is_active=TRUE",
+        "b.listing_status='PUBLISHED'",
+        "b.is_discoverable=TRUE",
+        "o.is_active=TRUE"
+      ];
+      if(sQ) sConditions.push(`(
+        to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' ||
+          coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,''))
+          @@ plainto_tsquery('simple',${sQ})
+        OR similarity(lower(s.name),lower(${sQ})) >= 0.18
+        OR similarity(lower(coalesce(s.service_type,'')),lower(${sQ})) >= 0.20
+      )`);
+      if(categoryId) sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${sb(categoryId)})`);
+      if(city) sConditions.push(`lower(l.city)=lower(${sb(city)})`);
+      if(district) sConditions.push(`lower(l.district)=lower(${sb(district)})`);
+      if(region) sConditions.push(`lower(l.region)=lower(${sb(region)})`);
+      if(distanceExpr) sConditions.push(`${distanceExpr} <= ${sb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      const serviceRank=sQ?`(
+        ts_rank_cd(to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')),plainto_tsquery('simple',${sQ}))*100
+        + similarity(lower(s.name),lower(${sQ}))*40
+        + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
+      )`:`CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END`;
+      let serviceResults:any[]=[];
+      if(type !== 'businesses' && type !== 'products'){
+        const order=sort==='name_asc'?'s.name ASC':`search_rank DESC,s.name ASC`;
+        const r=await db.query(`
+          SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
+                 b.verification_status,l.city,l.district,l.region,${serviceRank} AS search_rank
+          FROM discovery_services s
+          JOIN discovery_businesses b ON b.id=s.business_id
+            AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+          JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE
+          LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE
+          WHERE ${sConditions.join(' AND ')}
+          ORDER BY ${order}
+          LIMIT ${sb(limit)} OFFSET ${sb(offset)}
+        `,serviceParams);
+        serviceResults=r.rows;
+      }
+
+      res.json({
+        success:true,query:q,type,
+        filters:{city,district,region,openNow,radiusKm:radius,categoryId,sort},
+        data:{businesses:businessResults,products:productResults,services:serviceResults},
+        counts:{
+          businesses:Number(businessResults[0]?.total_count||0),
+          products:Number(productResults[0]?.total_count||0),
+          services:Number(serviceResults[0]?.total_count||0)
+        }
+      });
     }catch(err){next(err);}
   });
 
