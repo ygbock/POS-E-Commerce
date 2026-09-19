@@ -120,6 +120,10 @@ async function main() {
     assert.strictEqual(multiTokenResponse.status, 200);
     assert.ok(multiTokenResponse.body.data.businesses.some((row:any) => row.id === exact.id), 'multi-token typo search should recover the correctly spelled business');
 
+    const aliasSuggestion = await requestJson(baseUrl, '/api/discovery/search/suggestions?q=chop&limit=5');
+    assert.strictEqual(aliasSuggestion.status, 200);
+    assert.ok(aliasSuggestion.body.data.some((row:any) => row.label === 'Chop House' && row.type === 'business'), 'search suggestions should include configured business aliases');
+
     const aliasResponse = await requestJson(baseUrl, '/api/discovery/search?q=chop%20house&type=businesses&limit=10');
     assert.strictEqual(aliasResponse.status, 200);
     assert.ok(aliasResponse.body.data.businesses.some((row:any) => row.id === restaurant.id), 'configured search aliases should recover the canonical business');
