@@ -374,10 +374,14 @@ async function runStorefrontCheckoutIntegrityTests() {
         fulfillmentMethod: 'Standard Delivery',
         paymentMethod: 'Credit Card',
         cart_items: [{ variant_id: 'var_alpha_active_1', quantity: '1.0000' }],
+        // Pin the checkout to the balance row measured below. The fixture has
+        // the same variant at multiple locations, so an unconstrained SELECT
+        // would make the reservation assertion depend on unspecified row order.
+        location_id: 'loc_alpha_wh',
       };
 
       const pgPreReservations = await db.query<any>(
-        `SELECT on_hand, reserved FROM inventory_balances WHERE variant_id = 'var_alpha_active_1'`
+        `SELECT on_hand, reserved FROM inventory_balances\n         WHERE organization_id = 'org_store_alpha'\n           AND location_id = 'loc_alpha_wh'\n           AND variant_id = 'var_alpha_active_1'`
       );
       const pgPreOnHand = parseFloat(pgPreReservations.rows[0].on_hand);
       const pgPreReserved = parseFloat(pgPreReservations.rows[0].reserved || '0');
