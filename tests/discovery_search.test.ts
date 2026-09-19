@@ -50,9 +50,9 @@ async function main() {
   assert.strictEqual(indexes.rows.length, 3, 'discovery search FTS indexes must be installed');
 
   const aliasIndexes = await db.query(
-    "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname IN ('uq_discovery_search_alias_entity','idx_discovery_search_alias_lookup','idx_discovery_search_alias_entity') ORDER BY indexname",
+    "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname IN ('uq_discovery_search_alias_entity','idx_discovery_search_alias_lookup','idx_discovery_search_alias_entity','idx_discovery_search_alias_fts','idx_discovery_search_alias_prefix') ORDER BY indexname",
   );
-  assert.strictEqual(aliasIndexes.rows.length, 3, 'discovery search alias indexes must be installed');
+  assert.strictEqual(aliasIndexes.rows.length, 5, 'discovery search alias indexes must be installed');
   await db.query("INSERT INTO discovery_search_aliases (id,entity_type,entity_id,alias,normalized_alias) VALUES ('disc_search_alias',$1,$2,$3,$4)", ['BUSINESS', business.id, 'cell phones', 'cell phones']);
   const alias = await db.query("SELECT alias FROM discovery_search_aliases WHERE entity_type='BUSINESS' AND entity_id=$1 AND is_active=TRUE", [business.id]);
   assert.strictEqual(alias.rows[0]?.alias, 'cell phones', 'search aliases must persist normalized discovery vocabulary');
