@@ -328,6 +328,31 @@ async function runStorefrontCheckoutIntegrityTests() {
       assert.strictEqual(postOnHand, preOnHand, 'Checkout reservation must not decrement on_hand.');
       assert.strictEqual(postReserved - preReserved, 1.0000, 'Exactly 1.0000 stock must be reserved.');
 
+      // The inventory ledger must also contain exactly one reservation for the
+      // checkout idempotency key. This protects against a duplicate balance
+      // update even if multiple requests reach the reservation layer.
+      const dbReservationRows = await db.query<any>(
+        `SELECT ir.id, ir.quantity::text AS quantity
+         FROM inventory_reservations ir
+         JOIN orders o ON o.id = ir.reference_id AND ir.reference_type = 'orders'
+         WHERE o.organization_id = $1
+           AND o.idempotency_key = $2
+           AND ir.location_id = $3
+           AND ir.variant_id = $4
+           AND ir.status = 'ACTIVE'`,
+        ['org_store_alpha', concurrencyKey, 'loc_alpha_wh', 'var_alpha_active_1']
+      );
+      assert.strictEqual(
+        dbReservationRows.rows.length,
+        1,
+        'Exactly one active stock reservation must exist for the checkout idempotency key.'
+      );
+      assert.strictEqual(
+        parseFloat(dbReservationRows.rows[0].quantity),
+        1.0000,
+        'The canonical checkout reservation quantity must be exactly 1.0000.'
+      );
+
       // 2f. Explicit Location Fingerprinting Regression
       const locFingerprintKey = crypto.randomUUID();
       const payloadLocA = {
