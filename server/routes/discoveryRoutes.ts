@@ -353,6 +353,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           )`;
 
       let businessResults:any[]=[];
+      let businessCount = 0;
       if (type !== 'products' && type !== 'services') {
         const order = sort === 'rating' ? `${ratingExpr} DESC, b.name ASC`
           : sort === 'review_count' ? `${reviewCountExpr} DESC, b.name ASC`
@@ -388,6 +389,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           LIMIT ${bb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? bb(0) : bb(offset)}
         `,businessParams);
         businessResults=r.rows;
+        businessCount = Number(r.rows[0]?.total_count || 0);
         if (fuzzyEnabled) {
           const ranked = businessResults.map((row:any, index:number) => ({
             row,
@@ -429,6 +431,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         + CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END
       )`:`CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END`;
       let productResults:any[]=[];
+      let productCount = 0;
       if(type !== 'businesses' && type !== 'services'){
         const order=sort==='name_asc'?'p.name ASC':`search_rank DESC,p.name ASC`;
         const r=await db.query(`
@@ -451,6 +454,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           LIMIT ${pb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? pb(0) : pb(offset)}
         `,productParams);
         productResults=r.rows;
+        productCount = Number(r.rows[0]?.total_count || 0);
         if (fuzzyEnabled) {
           const ranked = productResults.map((row:any, index:number) => ({
             row,
@@ -490,6 +494,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
       )`:`CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END`;
       let serviceResults:any[]=[];
+      let serviceCount = 0;
       if(type !== 'businesses' && type !== 'products'){
         const order=sort==='name_asc'?'s.name ASC':`search_rank DESC,s.name ASC`;
         const r=await db.query(`
@@ -505,6 +510,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           LIMIT ${sb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? sb(0) : sb(offset)}
         `,serviceParams);
         serviceResults=r.rows;
+        serviceCount = Number(r.rows[0]?.total_count || 0);
         if (fuzzyEnabled) {
           const ranked = serviceResults.map((row:any, index:number) => ({
             row,
@@ -516,9 +522,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         }
       }
 
-      const businessCount = Number(businessResults[0]?.total_count || 0);
-      const productCount = Number(productResults[0]?.total_count || 0);
-      const serviceCount = Number(serviceResults[0]?.total_count || 0);
       if (q) {
         const analyticsMetadata = {
           queryHash: createHash('sha256').update(q.normalize('NFKC').toLowerCase()).digest('hex'),
