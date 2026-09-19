@@ -278,8 +278,30 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-014: analytics + moderation endpoints
   // ------------------------------------------------------------------
-  router.post('/analytics/events', async(req,res,next)=>{try{const type=String(req.body?.eventType||'');if(!ANALYTICS_EVENTS.has(type))throw new Error('VALIDATION_ERROR:Unsupported analytics event.');const raw=`${req.ip}|${req.headers['user-agent']||''}`;const sessionHash=createHash('sha256').update(raw).digest('hex');await db.query(`INSERT INTO discovery_analytics_events(id,business_id,product_id,service_id,event_type,session_hash,actor_user_id,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[`evt_${randomUUID().replace(/-/g,'')}`,req.body?.businessId||null,req.body?.productId||null,req.body?.serviceId||null,type,sessionHash,req.auth?.userId||null,req.body?.metadata||{}]);res.status(202).json({success:true});}catch(err){next(err);}});
-
+  router.post('/analytics/events', async(req,res,next)=>{try{
+    const type=String(req.body?.eventType||'');
+    if(!ANALYTICS_EVENTS.has(type))throw new Error('VALIDATION_ERROR:Unsupported analytics event.');
+    const businessId=req.body?.businessId?String(req.body.businessId):null;
+    const productId=req.body?.productId?String(req.body.productId):null;
+    const serviceId=req.body?.serviceId?String(req.body.serviceId):null;
+    const metadata=req.body?.metadata??{};
+    if(metadata===null||typeof metadata!=='object'||Array.isArray(metadata))throw new Error('VALIDATION_ERROR:metadata must be an object.');
+    if(Buffer.byteLength(JSON.stringify(metadata),'utf8')>8192)throw new Error('VALIDATION_ERROR:metadata exceeds 8192 bytes.');
+    if(type!=='SEARCH'&&!businessId)throw new Error('VALIDATION_ERROR:businessId is required for this analytics event.');
+    if(businessId&&!(await businessService.getPublicProfile(businessId)))throw new Error('NOT_FOUND:Discovery business not found.');
+    if(serviceId){
+      const s=await db.query(`SELECT s.id FROM discovery_services s JOIN discovery_businesses b ON b.id=s.business_id WHERE s.id=$1 AND s.is_active=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))`,[serviceId]);
+      if(!s.rows[0])throw new Error('NOT_FOUND:Discovery service not found.');
+      if(businessId){const belongs=await db.query('SELECT 1 FROM discovery_services WHERE id=$1 AND business_id=$2',[serviceId,businessId]);if(!belongs.rows[0])throw new Error('VALIDATION_ERROR:serviceId does not belong to businessId.');}
+    }
+    if((type==='SERVICE_VIEW'||type==='SERVICE_REQUEST')&&!serviceId)throw new Error('VALIDATION_ERROR:serviceId is required for this analytics event.');
+    if(type==='PRODUCT_VIEW'&&!productId)throw new Error('VALIDATION_ERROR:productId is required for PRODUCT_VIEW.');
+    const raw=`${req.ip}|${req.headers['user-agent']||''}`;
+    const sessionHash=createHash('sha256').update(raw).digest('hex');
+    await db.query(`INSERT INTO discovery_analytics_events(id,business_id,product_id,service_id,event_type,session_hash,actor_user_id,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[`evt_${randomUUID().replace(/-/g,'')}`,businessId,productId,serviceId,type,sessionHash,req.auth?.userId||null,metadata]);
+    res.status(202).json({success:true});
+  }catch(err){next(err);}});
+  
   router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
     const status=String(req.query.status||'');
@@ -301,7 +323,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/moderation/claims/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');const r=await db.query(`UPDATE discovery_business_claims c SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP FROM discovery_businesses b WHERE c.id=$4 AND c.business_id=b.id AND ($5=TRUE OR b.organization_id=$6) RETURNING c.*`,[status,req.auth!.userId,req.body?.reason||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Claim not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
   router.get('/moderation/reports', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const isSuper=req.auth!.role==='super_admin';const r=await db.query(`SELECT r.*,b.name AS business_name,s.name AS service_name FROM discovery_reports r LEFT JOIN discovery_businesses b ON b.id=r.business_id LEFT JOIN discovery_services s ON s.id=r.service_id LEFT JOIN discovery_businesses sb ON sb.id=s.business_id WHERE ($1='' OR r.status=$1) AND ($2=TRUE OR COALESCE(b.organization_id,sb.organization_id)=$3) ORDER BY r.created_at ASC LIMIT 200`,[String(req.query.status||''),isSuper,req.auth!.organizationId||'']);res.json({success:true,data:r.rows});}catch(err){next(err);}});
-  router.post('/moderation/reports/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['RESOLVED','DISMISSED','UNDER_REVIEW'].includes(status))throw new Error('VALIDATION_ERROR:invalid report status.');const r=await db.query(`UPDATE discovery_reports r SET status=$1,resolved_by_user_id=$2,resolved_at=CASE WHEN $1 IN ('RESOLVED','DISMISSED') THEN CURRENT_TIMESTAMP ELSE NULL END,resolution_note=$3 FROM discovery_businesses b LEFT JOIN discovery_services s ON s.id=r.service_id LEFT JOIN discovery_businesses sb ON sb.id=s.business_id WHERE r.id=$4 AND (r.business_id=b.id OR r.business_id IS NULL) AND ($5=TRUE OR COALESCE(b.organization_id,sb.organization_id)=$6) RETURNING r.*`,[status,req.auth!.userId,req.body?.note||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Report not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  router.post('/moderation/reports/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['RESOLVED','DISMISSED','UNDER_REVIEW'].includes(status))throw new Error('VALIDATION_ERROR:invalid report status.');const r=await db.query(`UPDATE discovery_reports r SET status=$1,resolved_by_user_id=$2,resolved_at=CASE WHEN $1 IN ('RESOLVED','DISMISSED') THEN CURRENT_TIMESTAMP ELSE NULL END,resolution_note=$3 WHERE r.id=$4 AND ($5=TRUE OR EXISTS (SELECT 1 FROM discovery_businesses bx WHERE bx.id=r.business_id AND bx.organization_id=$6) OR EXISTS (SELECT 1 FROM discovery_services sx JOIN discovery_businesses sbx ON sbx.id=sx.business_id WHERE sx.id=r.service_id AND sbx.organization_id=$6)) RETURNING r.*`,[status,req.auth!.userId,req.body?.note||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Report not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
   router.use((err:any,_req:Request,res:Response,next:NextFunction)=>res.headersSent?next(err):fail(res,err));
   return router;
