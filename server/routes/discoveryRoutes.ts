@@ -5,7 +5,7 @@ import { requireAuth, requireTenantAccess } from '../middleware/auth.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
 import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
-import { discoveryFuzzyScore, normalizeDiscoverySearchText, rankDiscoveryFuzzy } from '../utils/discoverySearch.ts';
+import { discoveryFuzzyScore, discoverySearchTokens, normalizeDiscoverySearchText, rankDiscoveryFuzzy } from '../utils/discoverySearch.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
@@ -340,7 +340,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest','distance'].includes(req.query.sort) ? req.query.sort : 'relevance';
       const fuzzyEnabled = Boolean(q) && sort === 'relevance';
       const fuzzyCandidateLimit = fuzzyEnabled ? 500 : limit;
-      const fuzzyPrefix = q ? normalizeDiscoverySearchText(q).split(' ')[0]?.slice(0, 3) : '';
+      const searchTokens = q ? [...new Set(discoverySearchTokens(q))].slice(0, 8) : [];
+      const searchPrefixes = [...new Set(searchTokens.filter((token) => token.length >= 2).map((token) => token.slice(0, 3)))].slice(0, 8);
+      const normalizedQuery = q ? normalizeDiscoverySearchText(q) : '';
 
       if ((lat != null && !Number.isFinite(lat)) || (lng != null && !Number.isFinite(lng))) {
         throw new Error('VALIDATION_ERROR:latitude and longitude must be valid numbers.');
@@ -383,7 +385,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             WHERE bcm.business_id=b.id
               AND bc.name ILIKE '%' || ${bQ} || '%'
           )
-          OR (${fuzzyEnabled} AND ${fuzzyPrefix ? `lower(b.name) LIKE ${bb(fuzzyPrefix)} || '%'` : 'FALSE'})
+          OR (${fuzzyEnabled} AND ${searchPrefixes.length ? searchPrefixes.map((prefix) => `lower(coalesce(b.name,'') || ' ' || coalesce(b.legal_name,'') || ' ' || coalesce(b.short_description,'') || ' ' || coalesce(b.description,'') || ' ' || coalesce(b.business_type,'')) LIKE '%' || ${bb(prefix)} || '%'`).join(' OR ') : 'FALSE'})
         )`);
       }
       if (categoryId) bConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${bb(categoryId)})`);
@@ -489,7 +491,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           @@ plainto_tsquery('simple',${pQ})
         OR lower(p.name) LIKE '%' || lower(${pQ}) || '%'
         OR EXISTS(SELECT 1 FROM product_variants pv_search WHERE pv_search.product_id=p.id AND lower(coalesce(pv_search.sku,'')) LIKE '%' || lower(${pQ}) || '%')
-        OR (${fuzzyEnabled} AND ${fuzzyPrefix ? `lower(p.name) LIKE ${pb(fuzzyPrefix)} || '%'` : 'FALSE'})
+        OR (${fuzzyEnabled} AND ${searchPrefixes.length ? searchPrefixes.map((prefix) => `lower(coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')) LIKE '%' || ${pb(prefix)} || '%'`).join(' OR ') : 'FALSE'})
       )`);
       if(categoryId) pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${pb(categoryId)})`);
       if(city) pConditions.push(`lower(l.city)=lower(${pb(city)})`);
@@ -554,7 +556,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           @@ plainto_tsquery('simple',${sQ})
         OR lower(s.name) LIKE '%' || lower(${sQ}) || '%'
         OR lower(coalesce(s.service_type,'')) LIKE '%' || lower(${sQ}) || '%'
-        OR (${fuzzyEnabled} AND ${fuzzyPrefix ? `lower(s.name) LIKE ${sb(fuzzyPrefix)} || '%'` : 'FALSE'})
+        OR (${fuzzyEnabled} AND ${searchPrefixes.length ? searchPrefixes.map((prefix) => `lower(coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')) LIKE '%' || ${sb(prefix)} || '%'`).join(' OR ') : 'FALSE'})
       )`);
       if(categoryId) sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${sb(categoryId)})`);
       if(city) sConditions.push(`lower(l.city)=lower(${sb(city)})`);
