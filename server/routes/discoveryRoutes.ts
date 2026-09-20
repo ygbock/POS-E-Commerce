@@ -489,7 +489,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           OR (${fuzzyEnabled} AND EXISTS (SELECT 1 FROM discovery_search_aliases sa WHERE sa.entity_type='BUSINESS' AND sa.entity_id=b.id AND sa.is_active=TRUE AND (sa.normalized_alias LIKE '%' || ${bb(normalizedQuery)} || '%' OR ${searchPrefixes.length ? searchPrefixes.map((prefix) => `sa.normalized_alias LIKE '%' || ${bb(prefix)} || '%'`).join(' OR ') : 'FALSE'})))
         )`);
       }
-      if (categoryId) bConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${bb(categoryId)})`);
+      if (categoryId) bConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id=b.id AND bcm.category_id=${bb(categoryId)} AND c.is_active=TRUE)`);
       if (city) bConditions.push(`lower(l.city)=lower(${bb(city)})`);
       if (district) bConditions.push(`lower(l.district)=lower(${bb(district)})`);
       if (region) bConditions.push(`lower(l.region)=lower(${bb(region)})`);
@@ -595,7 +595,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         OR (${fuzzyEnabled} AND ${searchPrefixes.length ? searchPrefixes.map((prefix) => `lower(coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')) LIKE '%' || ${pb(prefix)} || '%'`).join(' OR ') : 'FALSE'})
         OR (${fuzzyEnabled} AND EXISTS (SELECT 1 FROM discovery_search_aliases sa WHERE sa.entity_type='PRODUCT' AND sa.entity_id=p.id AND sa.is_active=TRUE AND (sa.normalized_alias LIKE '%' || ${pb(normalizedQuery)} || '%' OR ${searchPrefixes.length ? searchPrefixes.map((prefix) => `sa.normalized_alias LIKE '%' || ${pb(prefix)} || '%'`).join(' OR ') : 'FALSE'})))
       )`);
-      if(categoryId) pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${pb(categoryId)})`);
+      if(categoryId) pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id=b.id AND bcm.category_id=${pb(categoryId)} AND c.is_active=TRUE)`);
       if(city) pConditions.push(`lower(l.city)=lower(${pb(city)})`);
       if(district) pConditions.push(`lower(l.district)=lower(${pb(district)})`);
       if(region) pConditions.push(`lower(l.region)=lower(${pb(region)})`);
@@ -661,7 +661,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         OR (${fuzzyEnabled} AND ${searchPrefixes.length ? searchPrefixes.map((prefix) => `lower(coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')) LIKE '%' || ${sb(prefix)} || '%'`).join(' OR ') : 'FALSE'})
         OR (${fuzzyEnabled} AND EXISTS (SELECT 1 FROM discovery_search_aliases sa WHERE sa.entity_type='SERVICE' AND sa.entity_id=s.id AND sa.is_active=TRUE AND (sa.normalized_alias LIKE '%' || ${sb(normalizedQuery)} || '%' OR ${searchPrefixes.length ? searchPrefixes.map((prefix) => `sa.normalized_alias LIKE '%' || ${sb(prefix)} || '%'`).join(' OR ') : 'FALSE'})))
       )`);
-      if(categoryId) sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id=b.id AND bcm.category_id=${sb(categoryId)})`);
+      if(categoryId) sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id=b.id AND bcm.category_id=${sb(categoryId)} AND c.is_active=TRUE)`);
       if(city) sConditions.push(`lower(l.city)=lower(${sb(city)})`);
       if(district) sConditions.push(`lower(l.district)=lower(${sb(district)})`);
       if(region) sConditions.push(`lower(l.region)=lower(${sb(region)})`);
