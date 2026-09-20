@@ -681,11 +681,199 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses/:id/services', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};if(!String(x.name||'').trim())throw new Error('VALIDATION_ERROR:name is required.');if(x.bookingMode&&!SERVICE_BOOKING_MODES.has(x.bookingMode))throw new Error('VALIDATION_ERROR:invalid bookingMode.');const slug=String(x.slug||x.name).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,180)||`service-${randomUUID().slice(0,8)}`;const r=await db.query(`INSERT INTO discovery_services(id,business_id,name,slug,description,service_type,price_from,price_to,currency,duration_minutes,service_area_text,booking_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[`svc_${randomUUID().replace(/-/g,'')}`,req.params.id,String(x.name).trim(),slug,x.description||null,x.serviceType||null,x.priceFrom??null,x.priceTo??null,x.currency||'SLE',x.durationMinutes??null,x.serviceAreaText||null,x.bookingMode||'REQUEST']);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
   router.patch('/businesses/:id/services/:serviceId', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};const allowed:Record<string,string>={name:'name',description:'description',serviceType:'service_type',priceFrom:'price_from',priceTo:'price_to',currency:'currency',durationMinutes:'duration_minutes',serviceAreaText:'service_area_text',bookingMode:'booking_mode',isActive:'is_active'};const entries=Object.entries(x).filter(([k])=>allowed[k]);if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'}});const vals=entries.map(([,v])=>v);const set=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');vals.push(req.params.id,req.params.serviceId);const r=await db.query(`UPDATE discovery_services SET ${set},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${vals.length-1} AND id=$${vals.length} RETURNING *`,vals);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
-  router.post('/service-requests', async(req,res,next)=>{try{const x=req.body||{};if(!String(x.customerName||'').trim()||!String(x.description||'').trim())throw new Error('VALIDATION_ERROR:customerName and description are required.');if((x.latitude==null)!==(x.longitude==null))throw new Error('VALIDATION_ERROR:latitude and longitude must be supplied together.');const r=await db.query(`INSERT INTO discovery_service_requests(id,customer_user_id,customer_name,customer_phone,customer_email,description,city,district,region,latitude,longitude,preferred_date,budget_from,budget_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[`req_${randomUUID().replace(/-/g,'')}`,req.auth?.userId||null,String(x.customerName).trim(),x.customerPhone||null,x.customerEmail||null,String(x.description).trim(),x.city||null,x.district||null,x.region||null,x.latitude??null,x.longitude??null,x.preferredDate||null,x.budgetFrom??null,x.budgetTo??null]);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  // ------------------------------------------------------------------
+  // DISC-010: service-request lifecycle
+  // ------------------------------------------------------------------
+  const REQUEST_TRANSITIONS: Record<string, string[]> = {
+    OPEN: ['MATCHED', 'CANCELLED', 'CLOSED'],
+    MATCHED: ['QUOTED', 'CANCELLED', 'CLOSED'],
+    QUOTED: ['ACCEPTED', 'CANCELLED', 'CLOSED'],
+    ACCEPTED: ['CLOSED'],
+    CANCELLED: [],
+    CLOSED: [],
+  };
 
-  router.get('/service-requests/:id', requireAuth(), async(req,res,next)=>{try{const r=await db.query(`SELECT r.*,json_agg(json_build_object('businessId',m.business_id,'businessName',b.name,'score',m.match_score)) FILTER(WHERE m.business_id IS NOT NULL) AS matches FROM discovery_service_requests r LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id LEFT JOIN discovery_businesses b ON b.id=m.business_id WHERE r.id=$1 AND (r.customer_user_id=$2 OR $2='super_admin') GROUP BY r.id`,[req.params.id,req.auth!.userId]);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});const quotes=await db.query(`SELECT q.*,b.name AS business_name,s.name AS service_name FROM discovery_service_quotes q JOIN discovery_businesses b ON b.id=q.business_id LEFT JOIN discovery_services s ON s.id=q.service_id WHERE q.request_id=$1 ORDER BY q.created_at DESC`,[req.params.id]);res.json({success:true,data:{...r.rows[0],quotes:quotes.rows}});}catch(err){next(err);}});
+  const recordRequestEvent = async (requestId: string, fromStatus: string | null, toStatus: string, actorUserId: string | null, note?: string | null) => {
+    await db.query(
+      `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+       VALUES($1,$2,$3,$4,$5,$6)`,
+      [`req_evt_${randomUUID().replace(/-/g,'')}`, requestId, fromStatus, toStatus, actorUserId, note || null],
+    );
+  };
 
-  router.post('/service-requests/:id/quotes', requireAuth(), async(req,res,next)=>{try{const x=req.body||{};if(!x.businessId||x.amount==null)throw new Error('VALIDATION_ERROR:businessId and amount are required.');const b=await repo.findById(String(x.businessId));if(!b||!(await owned(req,b.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Only the business owner may quote.'}});const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND status IN (\'OPEN\',\'MATCHED\',\'QUOTED\')',[req.params.id]);if(!request.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Open service request not found.'}});const r=await db.query(`INSERT INTO discovery_service_quotes(id,request_id,business_id,service_id,amount,currency,message,estimated_duration_minutes,valid_until) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[`quote_${randomUUID().replace(/-/g,'')}`,req.params.id,x.businessId,x.serviceId||null,x.amount,x.currency||'SLE',x.message||null,x.estimatedDurationMinutes||null,x.validUntil||null]);await db.query(`INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,1) ON CONFLICT(request_id,business_id) DO NOTHING`,[req.params.id,x.businessId]);await db.query(`UPDATE discovery_service_requests SET status='QUOTED',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,[req.params.id]);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  const transitionRequest = async (requestId: string, toStatus: string, actorUserId: string, note?: string | null) => {
+    const current = await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 FOR UPDATE', [requestId]);
+    if (!current.rows[0]) throw new Error('NOT_FOUND:Service request not found.');
+    const fromStatus = String(current.rows[0].status);
+    if (!(REQUEST_TRANSITIONS[fromStatus] || []).includes(toStatus)) {
+      throw new Error(`INVALID_STATE_TRANSITION:Cannot move service request from ${fromStatus} to ${toStatus}.`);
+    }
+    const updated = await db.query(
+      `UPDATE discovery_service_requests SET status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,
+      [toStatus, requestId],
+    );
+    await recordRequestEvent(requestId, fromStatus, toStatus, actorUserId, note);
+    return updated.rows[0];
+  };
+
+  router.post('/service-requests', requireAuth(), async(req,res,next)=>{try{
+    const x=req.body||{};
+    const customerName=String(x.customerName||'').trim();
+    const description=String(x.description||'').trim();
+    if(!customerName||!description)throw new Error('VALIDATION_ERROR:customerName and description are required.');
+    if((x.latitude==null)!==(x.longitude==null))throw new Error('VALIDATION_ERROR:latitude and longitude must be supplied together.');
+    if(x.budgetFrom!=null&&(!Number.isFinite(Number(x.budgetFrom))||Number(x.budgetFrom)<0))throw new Error('VALIDATION_ERROR:budgetFrom must be a non-negative number.');
+    if(x.budgetTo!=null&&(!Number.isFinite(Number(x.budgetTo))||Number(x.budgetTo)<0))throw new Error('VALIDATION_ERROR:budgetTo must be a non-negative number.');
+    if(x.budgetFrom!=null&&x.budgetTo!=null&&Number(x.budgetTo)<Number(x.budgetFrom))throw new Error('VALIDATION_ERROR:budgetTo must be greater than or equal to budgetFrom.');
+    const requestId=`req_${randomUUID().replace(/-/g,'')}`;
+    const r=await db.query(
+      `INSERT INTO discovery_service_requests(id,customer_user_id,customer_name,customer_phone,customer_email,description,city,district,region,latitude,longitude,preferred_date,budget_from,budget_to)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [requestId,req.auth!.userId,customerName,x.customerPhone||null,x.customerEmail||null,description,x.city||null,x.district||null,x.region||null,x.latitude??null,x.longitude??null,x.preferredDate||null,x.budgetFrom??null,x.budgetTo??null],
+    );
+    await recordRequestEvent(requestId,null,'OPEN',req.auth!.userId,'Request created.');
+    res.status(201).json({success:true,data:r.rows[0]});
+  }catch(err){next(err);} });
+
+  router.get('/service-requests/:id', requireAuth(), async(req,res,next)=>{try{
+    const r=await db.query(
+      `SELECT r.*,COALESCE(json_agg(json_build_object('businessId',m.business_id,'businessName',b.name,'score',m.match_score))
+        FILTER(WHERE m.business_id IS NOT NULL),'[]'::json) AS matches
+       FROM discovery_service_requests r
+       LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id
+       LEFT JOIN discovery_businesses b ON b.id=m.business_id
+       WHERE r.id=$1 AND r.customer_user_id=$2
+       GROUP BY r.id`,
+      [req.params.id,req.auth!.userId],
+    );
+    if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
+    const quotes=await db.query(
+      `SELECT q.*,b.name AS business_name,s.name AS service_name
+       FROM discovery_service_quotes q JOIN discovery_businesses b ON b.id=q.business_id
+       LEFT JOIN discovery_services s ON s.id=q.service_id
+       WHERE q.request_id=$1 ORDER BY q.created_at DESC`,
+      [req.params.id],
+    );
+    const events=await db.query(
+      `SELECT id,from_status,to_status,actor_user_id,note,created_at
+       FROM discovery_service_request_events WHERE request_id=$1 ORDER BY created_at ASC`,
+      [req.params.id],
+    );
+    res.json({success:true,data:{...r.rows[0],quotes:quotes.rows,events:events.rows}});
+  }catch(err){next(err);} });
+
+  router.post('/service-requests/:id/cancel', requireAuth(), async(req,res,next)=>{try{
+    const current=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.auth!.userId]);
+    if(!current.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
+    const data=await transitionRequest(req.params.id,'CANCELLED',req.auth!.userId,req.body?.reason||'Cancelled by customer.');
+    res.json({success:true,data});
+  }catch(err){next(err);} });
+
+  router.post('/service-requests/:id/close', requireAuth(), async(req,res,next)=>{try{
+    const current=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1',[req.params.id]);
+    if(!current.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
+    const isCustomer=current.rows[0].customer_user_id===req.auth!.userId;
+    let isProvider=false;
+    if(!isCustomer&&req.body?.businessId){
+      const ownedMatch=await db.query(
+        `SELECT 1 FROM discovery_service_request_matches m
+         WHERE m.request_id=$1 AND m.business_id=$2`,
+        [req.params.id,String(req.body.businessId)],
+      );
+      isProvider=ownedMatch.rows.length>0 && await owned(req,String(req.body.businessId));
+    }
+    if(!isCustomer&&!isProvider&&req.auth!.role!=='super_admin')throw new Error('PERMISSION_DENIED:Only the customer, matched provider, or platform administrator may close the request.');
+    const data=await transitionRequest(req.params.id,'CLOSED',req.auth!.userId,req.body?.reason||'Request closed.');
+    res.json({success:true,data});
+  }catch(err){next(err);} });
+
+  router.post('/service-requests/:id/match', requireAuth(), async(req,res,next)=>{try{
+    const businessId=String(req.body?.businessId||'');
+    if(!businessId)throw new Error('VALIDATION_ERROR:businessId is required.');
+    const b=await repo.findById(businessId);
+    if(!b||!(await owned(req,businessId)))throw new Error('TENANT_ACCESS_DENIED:Only the business owner may match a service request.');
+    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1',[req.params.id]);
+    if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
+    if(!['OPEN','MATCHED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:Only OPEN or MATCHED requests may be matched.');
+    const service=await db.query('SELECT 1 FROM discovery_services WHERE business_id=$1 AND is_active=TRUE LIMIT 1',[businessId]);
+    if(!service.rows[0])throw new Error('VALIDATION_ERROR:Business must have an active discovery service.');
+    await db.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,$3) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId,Number(req.body?.matchScore??1)]);
+    let data=request.rows[0];
+    if(request.rows[0].status==='OPEN') data=await transitionRequest(req.params.id,'MATCHED',req.auth!.userId,'Business matched to request.');
+    res.json({success:true,data});
+  }catch(err){next(err);} });
+
+  router.post('/service-requests/:id/quotes', requireAuth(), async(req,res,next)=>{try{
+    const x=req.body||{};
+    const businessId=String(x.businessId||'');
+    if(!businessId||x.amount==null)throw new Error('VALIDATION_ERROR:businessId and amount are required.');
+    const b=await repo.findById(businessId);
+    if(!b||!(await owned(req,businessId)))throw new Error('TENANT_ACCESS_DENIED:Only the business owner may quote.');
+    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1',[req.params.id]);
+    if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
+    if(!['OPEN','MATCHED','QUOTED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:This request cannot receive a quote.');
+    const serviceId=x.serviceId?String(x.serviceId):null;
+    if(serviceId){
+      const s=await db.query('SELECT 1 FROM discovery_services WHERE id=$1 AND business_id=$2 AND is_active=TRUE',[serviceId,businessId]);
+      if(!s.rows[0])throw new Error('NOT_FOUND:Service does not belong to the quoting business.');
+    }
+    const amount=Number(x.amount);
+    if(!Number.isFinite(amount)||amount<0)throw new Error('VALIDATION_ERROR:amount must be a non-negative number.');
+    const quoteId=`quote_${randomUUID().replace(/-/g,'')}`;
+    const r=await db.query(
+      `INSERT INTO discovery_service_quotes(id,request_id,business_id,service_id,amount,currency,message,estimated_duration_minutes,valid_until)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [quoteId,req.params.id,businessId,serviceId,amount,x.currency||'SLE',x.message||null,x.estimatedDurationMinutes||null,x.validUntil||null],
+    );
+    await db.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,1) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId]);
+    if(request.rows[0].status==='OPEN'||request.rows[0].status==='MATCHED'){
+      await db.query('UPDATE discovery_service_requests SET status=\'QUOTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
+      await recordRequestEvent(req.params.id,String(request.rows[0].status),'QUOTED',req.auth!.userId,'Quote submitted.');
+    }
+    res.status(201).json({success:true,data:r.rows[0]});
+  }catch(err){next(err);} });
+
+  router.post('/service-requests/:id/quotes/:quoteId/accept', requireAuth(), async(req,res,next)=>{try{
+    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.auth!.userId]);
+    if(!request.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
+    if(request.rows[0].status!=='QUOTED')throw new Error('INVALID_STATE_TRANSITION:Only QUOTED requests can accept a quote.');
+    const quote=await db.query('SELECT q.*,b.name AS business_name FROM discovery_service_quotes q JOIN discovery_businesses b ON b.id=q.business_id WHERE q.id=$1 AND q.request_id=$2',[req.params.quoteId,req.params.id]);
+    if(!quote.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Quote not found.'}});
+    if(quote.rows[0].status!=='SUBMITTED')throw new Error('INVALID_STATE_TRANSITION:Quote is no longer available.');
+    if(quote.rows[0].valid_until && new Date(String(quote.rows[0].valid_until)) < new Date())throw new Error('CONFLICT:Quote has expired.');
+    await db.query('UPDATE discovery_service_quotes SET status=\'ACCEPTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.quoteId]);
+    await db.query('UPDATE discovery_service_quotes SET status=\'DECLINED\',updated_at=CURRENT_TIMESTAMP WHERE request_id=$1 AND id<>$2 AND status=\'SUBMITTED\'',[req.params.id,req.params.quoteId]);
+    const data=await transitionRequest(req.params.id,'ACCEPTED',req.auth!.userId,'Quote accepted by customer.');
+    res.json({success:true,data,quote:{...quote.rows[0],status:'ACCEPTED'}});
+  }catch(err){next(err);} });
+
+  router.post('/service-requests/:id/quotes/:quoteId/decline', requireAuth(), async(req,res,next)=>{try{
+    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.auth!.userId]);
+    if(!request.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
+    const quote=await db.query('SELECT * FROM discovery_service_quotes WHERE id=$1 AND request_id=$2',[req.params.quoteId,req.params.id]);
+    if(!quote.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Quote not found.'}});
+    if(quote.rows[0].status!=='SUBMITTED')throw new Error('INVALID_STATE_TRANSITION:Quote is no longer available.');
+    await db.query('UPDATE discovery_service_quotes SET status=\'DECLINED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.quoteId]);
+    const remaining=await db.query("SELECT 1 FROM discovery_service_quotes WHERE request_id=$1 AND status='SUBMITTED' LIMIT 1",[req.params.id]);
+    if(!remaining.rows[0]&&request.rows[0].status==='QUOTED'){
+      await transitionRequest(req.params.id,'MATCHED',req.auth!.userId,'All submitted quotes declined; request returned to matched.');
+    }
+    res.json({success:true,data:{id:req.params.quoteId,status:'DECLINED'}});
+  }catch(err){next(err);} });
+
+  router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
+    const status=String(req.query.status||'');
+    const r=await db.query(
+      `SELECT DISTINCT r.*,m.match_score
+       FROM discovery_service_requests r
+       JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1
+       WHERE ($2='' OR r.status=$2)
+       ORDER BY r.created_at DESC LIMIT 100`,
+      [req.params.id,status],
+    );
+    res.json({success:true,data:r.rows});
+  }catch(err){next(err);} });
 
   // ------------------------------------------------------------------
   // DISC-012: verification, claims, reviews and abuse reports
