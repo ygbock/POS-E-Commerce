@@ -25,7 +25,7 @@ export type DiscoveryCustomerRoute =
     }
   | { name: 'discover-business'; businessId: string }
   | { name: 'discover-service'; serviceId: string }
-  | { name: 'discover-request-service' };
+  | { name: 'discover-request-service' }\n  | { name: 'discover-my-requests' };
 
 export type DiscoveryBusinessRoute =
   | { name: 'business-discovery-overview' }
@@ -160,7 +160,7 @@ export function buildDiscoveryPath(route: DiscoveryRoute): string {
     }
     case 'discover-business': return `/discover/business/${encodeURIComponent(route.businessId)}`;
     case 'discover-service': return `/discover/service/${encodeURIComponent(route.serviceId)}`;
-    case 'discover-request-service': return '/discover/request-service';
+    case 'discover-request-service': return '/discover/request-service';\n    case 'discover-my-requests': return '/discover/my-requests';
     case 'business-discovery-overview': return '/business/discovery';
     case 'business-discovery-listing': return '/business/discovery/listing';
     case 'business-discovery-locations': return '/business/discovery/locations';
