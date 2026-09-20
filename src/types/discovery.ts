@@ -293,7 +293,7 @@ export interface DiscoveryServiceRequest {
   preferred_date?: string | null;
   budget_from?: number | string | null;
   budget_to?: number | string | null;
-  status: 'OPEN' | 'MATCHED' | 'QUOTED' | 'ACCEPTED' | 'CANCELLED';
+  status: 'OPEN' | 'MATCHED' | 'QUOTED' | 'ACCEPTED' | 'CANCELLED' | 'CLOSED';
   created_at?: string;
   updated_at?: string;
   matches?: Array<{ businessId: string; businessName: string; score: number }>;
@@ -316,6 +316,8 @@ export interface DiscoveryServiceQuote {
   business_name?: string;
   service_name?: string;
   created_at?: string;
+  updated_at?: string;
+  status: 'SUBMITTED' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'WITHDRAWN';
 }
 
 /**
