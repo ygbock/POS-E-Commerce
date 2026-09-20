@@ -658,6 +658,9 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             <a href="/discover/my-requests" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
               My Requests
             </a>
+            <a href="/discover/saved" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+              Saved Businesses
+            </a>
             <a href="/login" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
               Merchant Login
             </a>
