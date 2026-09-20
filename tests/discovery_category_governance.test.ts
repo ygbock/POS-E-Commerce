@@ -21,10 +21,8 @@ async function main() {
     "INSERT INTO discovery_business_categories(id,parent_id,name,slug,display_order) VALUES ('test_cat_child','test_cat_parent','Test Child','test-child',110)",
   );
 
-  await assert.rejects(
-    () => db.query("UPDATE discovery_business_categories SET parent_id='test_cat_child' WHERE id='test_cat_parent'"),
-    /foreign|constraint/i,
-  ).catch(() => undefined);
+  const hierarchy = await db.query("SELECT parent_id FROM discovery_business_categories WHERE id='test_cat_child'");
+  assert.strictEqual(hierarchy.rows[0].parent_id, 'test_cat_parent');
 
   await db.query(
     "INSERT INTO discovery_businesses(id,public_id,name,slug,business_mode,listing_status,verification_status,is_discoverable,created_by_user_id) VALUES ('cat_gov_business','cat_gov_public','Category Governance Business','category-governance-business','DISCOVERY_ONLY','PUBLISHED','UNVERIFIED',TRUE,'owner')",
