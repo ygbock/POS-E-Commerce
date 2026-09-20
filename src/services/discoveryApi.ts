@@ -251,7 +251,7 @@ export const discoveryApi = {
   async getMyContactInquiries(status?: DiscoveryContactInquiry['status']): Promise<DiscoveryContactInquiry[]> {
     const qs = status ? `?status=${encodeURIComponent(status)}` : '';
     return request<DiscoveryContactInquiry[]>(`/api/discovery/contact-inquiries${qs}`);
-  }
+  },
 
   async createContactInquiry(businessId: string, data: {
     customerName: string;
@@ -264,19 +264,19 @@ export const discoveryApi = {
       method: 'POST',
       body: JSON.stringify(data),
     });
-  }
+  },
 
   async getBusinessContactInquiries(businessId: string, status?: DiscoveryContactInquiry['status']): Promise<DiscoveryContactInquiry[]> {
     const qs = status ? `?status=${encodeURIComponent(status)}` : '';
     return request<DiscoveryContactInquiry[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/contact-inquiries${qs}`);
-  }
+  },
 
   async updateContactInquiry(businessId: string, inquiryId: string, status: 'READ' | 'RESPONDED' | 'CLOSED', merchantNote?: string): Promise<DiscoveryContactInquiry> {
     return request<DiscoveryContactInquiry>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/contact-inquiries/${encodeURIComponent(inquiryId)}/decision`, {
       method: 'POST',
       body: JSON.stringify({ status, merchantNote }),
     });
-  }
+  },
 
   /**
    * Submit a customer service request
