@@ -18,6 +18,7 @@ import type {
   DiscoveryServiceRequest,
   DiscoveryServiceQuote,
   DiscoveryBusinessClaim,
+  DiscoveryVerificationApplication,
   DiscoveryReport,
   DiscoveryAnalyticsSummary,
   DiscoverySearchFilters,
@@ -498,6 +499,17 @@ export const discoveryApi = {
     });
   },
 
+  async getVerification(businessId: string): Promise<{ businessId: string; verificationStatus: DiscoveryBusiness['verification_status']; applications: DiscoveryVerificationApplication[] }> {
+    return request<{ businessId: string; verificationStatus: DiscoveryBusiness['verification_status']; applications: DiscoveryVerificationApplication[] }>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/verification`);
+  },
+
+  async submitVerification(businessId: string, evidence: Record<string, unknown>): Promise<DiscoveryVerificationApplication> {
+    return request<DiscoveryVerificationApplication>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/verification`, {
+      method: 'POST',
+      body: JSON.stringify({ evidence }),
+    });
+  },
+
   /**
    * Submit business ownership claim
    */
@@ -560,6 +572,28 @@ export const discoveryApi = {
     return request<DiscoveryBusiness>(`/api/discovery/businesses/${encodeURIComponent(id)}/suspend`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
+    });
+  },
+
+  async getModerationVerification(): Promise<DiscoveryVerificationApplication[]> {
+    return request<DiscoveryVerificationApplication[]>('/api/discovery/moderation/verification');
+  },
+
+  async decideVerification(id: string, status: 'APPROVED' | 'REJECTED', reason?: string): Promise<DiscoveryVerificationApplication> {
+    return request<DiscoveryVerificationApplication>(`/api/discovery/moderation/verification/${encodeURIComponent(id)}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ status, reason }),
+    });
+  },
+
+  async getModerationReviews(status = 'PENDING'): Promise<DiscoveryReview[]> {
+    return request<DiscoveryReview[]>(`/api/discovery/moderation/reviews?status=${encodeURIComponent(status)}`);
+  },
+
+  async decideReview(id: string, status: 'PUBLISHED' | 'REJECTED' | 'HIDDEN', reason?: string): Promise<DiscoveryReview> {
+    return request<DiscoveryReview>(`/api/discovery/moderation/reviews/${encodeURIComponent(id)}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ status, reason }),
     });
   },
 
