@@ -285,6 +285,7 @@ export type DiscoveryContactInquiryStatus = 'OPEN' | 'READ' | 'RESPONDED' | 'CLO
 export interface DiscoveryContactInquiry {
   id: string;
   business_id: string;
+  business_name?: string;
   customer_user_id?: string | null;
   customer_name: string;
   customer_email?: string | null;
