@@ -178,6 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       'subscriptions': ReceiptText,
       'support': Users,
       'security': ShieldAlert,
+      'discovery-moderation': Sparkles,
     };
     return [
       {
