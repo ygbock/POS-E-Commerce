@@ -42,7 +42,8 @@
     "test:subscription-limits": "tsx tests/subscription_limits.test.ts",
     "test:tenant-provisioning": "tsx tests/tenant_provisioning.test.ts",
     "test:platform-subscriptions": "tsx tests/platform_subscription_management.test.ts",
-    "test:discovery-search": "tsx tests/discovery_search.test.ts && tsx tests/discovery_search_ranking.test.ts"
+    "test:discovery-search": "tsx tests/discovery_search.test.ts && tsx tests/discovery_search_ranking.test.ts",
+    "test:discovery-trust": "tsx tests/discovery_trust_workflow.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
