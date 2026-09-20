@@ -98,7 +98,7 @@ export class DiscoveryBusinessRepository {
     const clauses = [`b.listing_status = 'PUBLISHED'`, `b.is_discoverable = TRUE`, `(b.organization_id IS NULL OR o.is_active = TRUE)`];
     const params: any[] = [];
     const add = (sql: string, value: any) => { params.push(value); clauses.push(sql.replace('$X', `$${params.length}`)); };
-    if (filter.categoryId) add('EXISTS (SELECT 1 FROM discovery_business_category_map bcm WHERE bcm.business_id = b.id AND bcm.category_id = $X)', filter.categoryId);
+    if (filter.categoryId) add('EXISTS (SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id = b.id AND bcm.category_id = $X AND c.is_active = TRUE)', filter.categoryId);
     if (filter.city) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.city) = LOWER($X))', filter.city);
     if (filter.district) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.district) = LOWER($X))', filter.district);
     if (filter.region) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.region) = LOWER($X))', filter.region);
