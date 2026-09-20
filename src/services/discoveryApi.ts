@@ -23,6 +23,7 @@ import type {
   DiscoverySearchFilters,
   DiscoverySearchResponse,
   DiscoveryPublicBusinessProfile,
+  DiscoverySearchAlias,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
