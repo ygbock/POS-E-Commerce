@@ -258,13 +258,13 @@ export const discoveryApi = {
       method: 'POST',
       body: JSON.stringify({ response }),
     });
-  }
+  },
 
   async deleteReviewResponse(businessId: string, reviewId: string) {
     return request(`/api/discovery/businesses/${encodeURIComponent(businessId)}/reviews/${encodeURIComponent(reviewId)}/response`, {
       method: 'DELETE',
     });
-  }
+  },
 
   async createContactInquiry(businessId: string, data: {
     customerName: string;
