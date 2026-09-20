@@ -140,8 +140,8 @@ Remaining:
 - Review management UX.
 - Verification presentation and workflows.
 - Claim UX.
-- Service-request lifecycle UX. **BACKEND API + INTEGRITY IMPLEMENTED**
-- Merchant Discovery management workspace.
+- Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
+- Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
 - Platform Discovery moderation workspace.
 - Category governance.
 
