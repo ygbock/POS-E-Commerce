@@ -26,6 +26,7 @@ import type {
   DiscoveryPublicBusinessProfile,
   DiscoverySearchAlias,
   DiscoveryMerchantTrustCenter,
+  DiscoveryFavoriteBusiness,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
@@ -183,6 +184,22 @@ export const discoveryApi = {
 
     const url = `/api/discovery/businesses${qs.toString() ? `?${qs.toString()}` : ''}`;
     return request<DiscoveryBusiness[]>(url);
+  },
+
+  async getMyFavoriteBusinesses(): Promise<DiscoveryFavoriteBusiness[]> {
+    return request<DiscoveryFavoriteBusiness[]>('/api/discovery/favorites');
+  },
+
+  async getBusinessFavorite(businessId: string): Promise<{ businessId: string; isFavorite: boolean }> {
+    return request<{ businessId: string; isFavorite: boolean }>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/favorite`);
+  },
+
+  async addBusinessFavorite(businessId: string): Promise<{ businessId: string; isFavorite: boolean }> {
+    return request<{ businessId: string; isFavorite: boolean }>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/favorite`, { method: 'POST' });
+  },
+
+  async removeBusinessFavorite(businessId: string): Promise<{ businessId: string; isFavorite: boolean }> {
+    return request<{ businessId: string; isFavorite: boolean }>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/favorite`, { method: 'DELETE' });
   },
 
   /**
