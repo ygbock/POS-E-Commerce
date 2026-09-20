@@ -253,6 +253,27 @@ export const discoveryApi = {
     });
   },
 
+  async cancelServiceRequest(id: string, reason?: string): Promise<DiscoveryServiceRequest> {
+    return request<DiscoveryServiceRequest>(`/api/discovery/service-requests/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async closeServiceRequest(id: string, reason?: string, businessId?: string): Promise<DiscoveryServiceRequest> {
+    return request<DiscoveryServiceRequest>(`/api/discovery/service-requests/${encodeURIComponent(id)}/close`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, businessId }),
+    });
+  },
+
+  async matchServiceRequest(requestId: string, businessId: string, matchScore = 1): Promise<DiscoveryServiceRequest> {
+    return request<DiscoveryServiceRequest>(`/api/discovery/service-requests/${encodeURIComponent(requestId)}/match`, {
+      method: 'POST',
+      body: JSON.stringify({ businessId, matchScore }),
+    });
+  },
+
   /**
    * Get business service requests (authenticated provider)
    */
@@ -290,6 +311,20 @@ export const discoveryApi = {
     return request<DiscoveryServiceQuote>(`/api/discovery/service-requests/${encodeURIComponent(requestId)}/quotes`, {
       method: 'POST',
       body: JSON.stringify(quote),
+    });
+  },
+
+  async acceptServiceQuote(requestId: string, quoteId: string): Promise<DiscoveryServiceRequest> {
+    return request<DiscoveryServiceRequest>(`/api/discovery/service-requests/${encodeURIComponent(requestId)}/quotes/${encodeURIComponent(quoteId)}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  async declineServiceQuote(requestId: string, quoteId: string): Promise<{ id: string; status: string }> {
+    return request<{ id: string; status: string }>(`/api/discovery/service-requests/${encodeURIComponent(requestId)}/quotes/${encodeURIComponent(quoteId)}/decline`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
 
