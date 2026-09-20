@@ -245,6 +245,8 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
     }
   });
 
+  router.use('/discovery/moderation', createPlatformDiscoveryModerationRouter(db));
+
   // ------------------------------------------------------------------
   // DISCOVERY SEARCH GOVERNANCE
   // ------------------------------------------------------------------
