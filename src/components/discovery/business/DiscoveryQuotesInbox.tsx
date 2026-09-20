@@ -69,7 +69,7 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
 
   useEffect(() => {
     void fetchRequests();
-  }, [business.id]);
+  }, [business.id, filterStatus]);
 
   const handleOpenQuoteModal = (req: DiscoveryServiceRequest) => {
     setActiveRequest(req);
@@ -137,7 +137,7 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
 
         {/* Filter Tabs */}
         <div className="flex items-center gap-2">
-          {['ALL', 'OPEN', 'QUOTED', 'ACCEPTED'].map((st) => (
+          {['ALL', 'MATCHED', 'QUOTED', 'ACCEPTED', 'CLOSED'].map((st) => (
             <button
               key={st}
               type="button"
@@ -230,14 +230,32 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
               </div>
 
               <div className="shrink-0 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleOpenQuoteModal(req)}
-                  className="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Send Quote</span>
-                </button>
+                {req.status === 'MATCHED' && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuoteModal(req)}
+                    className="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Quote</span>
+                  </button>
+                )}
+                {req.status === 'ACCEPTED' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await discoveryApi.closeServiceRequest(req.id, 'Provider completed the service engagement.', business.id);
+                        await fetchRequests();
+                      } catch (err: unknown) {
+                        setError(err instanceof DiscoveryApiError ? err.message : 'Unable to close the request.');
+                      }
+                    }}
+                    className="px-5 py-2.5 rounded-2xl border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-bold"
+                  >
+                    Mark Closed
+                  </button>
+                )}
               </div>
             </div>
           ))}
