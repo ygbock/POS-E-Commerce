@@ -740,6 +740,19 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(201).json({success:true,data});
   }catch(err){next(err);} });
 
+  router.get('/service-requests', requireAuth(), async(req,res,next)=>{try{
+    const status=String(req.query.status||'');
+    const r=await db.query(
+      `SELECT id,customer_name,customer_phone,customer_email,description,city,district,region,preferred_date,budget_from,budget_to,status,created_at,updated_at
+       FROM discovery_service_requests
+       WHERE customer_user_id=$1 AND ($2='' OR status=$2)
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 100`,
+      [req.auth!.userId,status],
+    );
+    res.json({success:true,data:r.rows});
+  }catch(err){next(err);} });
+
   router.get('/service-requests/:id', requireAuth(), async(req,res,next)=>{try{
     const r=await db.query(
       `SELECT r.*,COALESCE(json_agg(json_build_object('businessId',m.business_id,'businessName',b.name,'score',m.match_score))
