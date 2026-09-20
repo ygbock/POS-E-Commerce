@@ -248,6 +248,11 @@ export const discoveryApi = {
     };
   },
 
+  async getMyContactInquiries(status?: DiscoveryContactInquiry['status']): Promise<DiscoveryContactInquiry[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request<DiscoveryContactInquiry[]>(`/api/discovery/contact-inquiries${qs}`);
+  }
+
   async createContactInquiry(businessId: string, data: {
     customerName: string;
     customerEmail?: string;
