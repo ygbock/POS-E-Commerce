@@ -249,6 +249,148 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
   router.use('/discovery/moderation', createPlatformDiscoveryModerationRouter(db));
 
   // ------------------------------------------------------------------
+  // DISCOVERY CATEGORY GOVERNANCE
+  // ------------------------------------------------------------------
+  router.get('/discovery/categories', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await db.query(
+        `SELECT c.id,c.parent_id,c.name,c.slug,c.description,c.icon_name,c.display_order,c.is_active,c.is_system,
+                COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE)::int AS published_business_count
+         FROM discovery_business_categories c
+         LEFT JOIN discovery_business_category_map bcm ON bcm.category_id=c.id
+         LEFT JOIN discovery_businesses b ON b.id=bcm.business_id
+         GROUP BY c.id
+         ORDER BY c.parent_id NULLS FIRST,c.display_order,c.name,c.id`,
+      );
+      res.json({ success: true, data: result.rows });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/discovery/categories', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+      const slug = typeof req.body?.slug === 'string' ? req.body.slug.trim().toLowerCase() : '';
+      const description = req.body?.description == null ? null : String(req.body.description).trim().slice(0, 2000) || null;
+      const iconName = req.body?.iconName == null ? null : String(req.body.iconName).trim().slice(0, 128) || null;
+      const parentId = req.body?.parentId == null || req.body.parentId === '' ? null : String(req.body.parentId).trim();
+      const displayOrder = Number(req.body?.displayOrder ?? 0);
+
+      if (!name || name.length > 255) return badRequest(res, 'INVALID_CATEGORY_NAME', 'Category name must be between 1 and 255 characters.');
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 255) return badRequest(res, 'INVALID_CATEGORY_SLUG', 'Category slug must contain lowercase letters, numbers and hyphens only.');
+      if (!Number.isInteger(displayOrder)) return badRequest(res, 'INVALID_DISPLAY_ORDER', 'Display order must be an integer.');
+
+      if (parentId) {
+        const parent = await db.query('SELECT id,is_active FROM discovery_business_categories WHERE id=$1', [parentId]);
+        if (!parent.rows[0]) return res.status(404).json({ success:false,error:{code:'PARENT_CATEGORY_NOT_FOUND',message:'Parent category not found.'} });
+        if (!parent.rows[0].is_active) return badRequest(res, 'INACTIVE_PARENT_CATEGORY', 'An inactive category cannot be used as a parent.');
+      }
+
+      const id = 'disc_cat_' + randomUUID().replace(/-/g, '');
+      const result = await db.withTransaction(async (tx) => {
+        const inserted = await tx.query(
+          `INSERT INTO discovery_business_categories(id,parent_id,name,slug,description,icon_name,display_order,is_active,is_system)
+           VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE) RETURNING *`,
+          [id,parentId,name,slug,description,iconName,displayOrder],
+        );
+        await tx.query(
+          `INSERT INTO discovery_category_events(id,category_id,event_type,actor_user_id,to_state,reason)
+           VALUES($1,$2,'CREATED',$3,$4,$5)`,
+          ['cat_evt_' + randomUUID().replace(/-/g,''),id,req.auth!.userId,inserted.rows[0], 'Category created by platform discovery governance.'],
+        );
+        return inserted.rows[0];
+      });
+      res.status(201).json({ success:true,data:result });
+    } catch (err: any) {
+      if (String(err?.code) === '23505') return badRequest(res, 'CATEGORY_SLUG_EXISTS', 'A category with this slug already exists.');
+      next(err);
+    }
+  });
+
+  router.patch('/discovery/categories/:id', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return badRequest(res, 'CATEGORY_ID_REQUIRED', 'Category ID is required.');
+
+      const result = await db.withTransaction(async (tx) => {
+        const current = await tx.query('SELECT * FROM discovery_business_categories WHERE id=$1 FOR UPDATE', [id]);
+        if (!current.rows[0]) throw new Error('NOT_FOUND:Category not found.');
+        const row = current.rows[0];
+
+        const name = req.body?.name === undefined ? row.name : String(req.body.name).trim();
+        const slug = req.body?.slug === undefined ? row.slug : String(req.body.slug).trim().toLowerCase();
+        const description = req.body?.description === undefined ? row.description : (req.body.description == null ? null : String(req.body.description).trim().slice(0,2000) || null);
+        const iconName = req.body?.iconName === undefined ? row.icon_name : (req.body.iconName == null ? null : String(req.body.iconName).trim().slice(0,128) || null);
+        const parentId = req.body?.parentId === undefined ? row.parent_id : (req.body.parentId == null || req.body.parentId === '' ? null : String(req.body.parentId).trim());
+        const displayOrder = req.body?.displayOrder === undefined ? row.display_order : Number(req.body.displayOrder);
+        const isActive = req.body?.isActive === undefined ? row.is_active : req.body.isActive;
+
+        if (!name || name.length > 255) throw new Error('VALIDATION_ERROR:Category name must be between 1 and 255 characters.');
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 255) throw new Error('VALIDATION_ERROR:Category slug must contain lowercase letters, numbers and hyphens only.');
+        if (!Number.isInteger(displayOrder)) throw new Error('VALIDATION_ERROR:Display order must be an integer.');
+        if (typeof isActive !== 'boolean') throw new Error('VALIDATION_ERROR:isActive must be boolean.');
+
+        if (parentId === id) throw new Error('VALIDATION_ERROR:A category cannot be its own parent.');
+        if (parentId) {
+          const parent = await tx.query('SELECT id,is_active FROM discovery_business_categories WHERE id=$1', [parentId]);
+          if (!parent.rows[0]) throw new Error('NOT_FOUND:Parent category not found.');
+          if (!parent.rows[0].is_active) throw new Error('VALIDATION_ERROR:An inactive category cannot be used as a parent.');
+          let cursor = parentId;
+          for (let i = 0; i < 20 && cursor; i += 1) {
+            const p = await tx.query('SELECT parent_id FROM discovery_business_categories WHERE id=$1', [cursor]);
+            cursor = p.rows[0]?.parent_id || null;
+            if (cursor === id) throw new Error('VALIDATION_ERROR:Category hierarchy cannot contain a cycle.');
+          }
+        }
+
+        if (row.is_active && !isActive) {
+          const usage = await tx.query(
+            `SELECT COUNT(DISTINCT bcm.business_id)::int AS count
+             FROM discovery_business_category_map bcm
+             JOIN discovery_businesses b ON b.id=bcm.business_id
+             WHERE bcm.category_id=$1 AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE`,
+            [id],
+          );
+          if (Number(usage.rows[0]?.count || 0) > 0) {
+            throw new Error('CONFLICT:Category cannot be deactivated while published discoverable businesses use it.');
+          }
+        }
+
+        const updated = await tx.query(
+          `UPDATE discovery_business_categories
+           SET parent_id=$1,name=$2,slug=$3,description=$4,icon_name=$5,display_order=$6,is_active=$7,updated_at=CURRENT_TIMESTAMP
+           WHERE id=$8 RETURNING *`,
+          [parentId,name,slug,description,iconName,displayOrder,isActive,id],
+        );
+        await tx.query(
+          `INSERT INTO discovery_category_events(id,category_id,event_type,actor_user_id,from_state,to_state,reason)
+           VALUES($1,$2,$3,$4,$5,$6,$7)`,
+          ['cat_evt_' + randomUUID().replace(/-/g,''),id,'UPDATED',req.auth!.userId,row,updated.rows[0],'Category updated by platform discovery governance.'],
+        );
+        return updated.rows[0];
+      });
+
+      res.json({ success:true,data:result });
+    } catch (err: any) {
+      const raw=String(err?.message||'Category update failed.');
+      if(raw.startsWith('NOT_FOUND:')) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:raw.slice(10)}});
+      if(raw.startsWith('CONFLICT:')) return res.status(409).json({success:false,error:{code:'CONFLICT',message:raw.slice(9)}});
+      if(raw.startsWith('VALIDATION_ERROR:')) return badRequest(res,'VALIDATION_ERROR',raw.slice(17));
+      if(String(err?.code)==='23505') return badRequest(res,'CATEGORY_SLUG_EXISTS','A category with this slug already exists.');
+      next(err);
+    }
+  });
+
+  router.get('/discovery/categories/:id/events', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const r=await db.query(
+        'SELECT id,category_id,event_type,actor_user_id,from_state,to_state,reason,created_at FROM discovery_category_events WHERE category_id=$1 ORDER BY created_at DESC LIMIT 100',
+        [req.params.id],
+      );
+      res.json({success:true,data:r.rows});
+    } catch(err){next(err);}
+  });
+
+  // ------------------------------------------------------------------
   // DISCOVERY SEARCH GOVERNANCE
   // ------------------------------------------------------------------
   router.get('/discovery/search-aliases', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (req: Request, res: Response, next: NextFunction) => {
