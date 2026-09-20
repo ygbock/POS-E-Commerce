@@ -1056,6 +1056,84 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:{businessId:req.params.id,verificationStatus:b.verification_status,applications:applications.rows}});
   }catch(err){next(err);}});
 
+  router.get('/businesses/:id/trust', requireAuth(), async(req,res,next)=>{try{
+    const b=await repo.findById(req.params.id);
+    if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
+    if(!(await owned(req,req.params.id)) && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
+
+    const [applications, claims, reviewSummary, reports, events] = await Promise.all([
+      db.query(
+        `SELECT id,business_id,status,created_at,updated_at,reviewed_at,review_reason
+         FROM discovery_verification_applications
+         WHERE business_id=$1
+         ORDER BY created_at DESC LIMIT 20`,
+        [req.params.id],
+      ),
+      db.query(
+        `SELECT id,status,created_at,reviewed_at,review_reason,
+                CASE WHEN claimant_user_id=$2 THEN TRUE ELSE FALSE END AS submitted_by_current_user
+         FROM discovery_business_claims
+         WHERE business_id=$1
+         ORDER BY created_at DESC LIMIT 20`,
+        [req.params.id, req.auth!.userId],
+      ),
+      db.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status='PUBLISHED')::int AS published_count,
+           COUNT(*) FILTER (WHERE status='PENDING')::int AS pending_count,
+           COUNT(*) FILTER (WHERE status='REJECTED')::int AS rejected_count,
+           COUNT(*) FILTER (WHERE status='HIDDEN')::int AS hidden_count,
+           COALESCE(ROUND(AVG(rating) FILTER (WHERE status='PUBLISHED'),2),0) AS published_rating
+         FROM discovery_reviews WHERE business_id=$1`,
+        [req.params.id],
+      ),
+      db.query(
+        `SELECT id,reason_code,status,resolution_note,created_at,resolved_at,
+                CASE WHEN service_id IS NULL THEN 'BUSINESS' ELSE 'SERVICE' END AS target_type
+         FROM discovery_reports
+         WHERE business_id=$1
+         ORDER BY created_at DESC LIMIT 50`,
+        [req.params.id],
+      ),
+      db.query(
+        `SELECT id,entity_type,event_type,from_status,to_status,reason,created_at
+         FROM discovery_trust_events
+         WHERE business_id=$1
+         ORDER BY created_at DESC LIMIT 100`,
+        [req.params.id],
+      ),
+    ]);
+
+    const verificationStatus=String(b.verification_status);
+    const requiredActions:string[]=[];
+    if(verificationStatus==='UNVERIFIED') requiredActions.push('Submit verification evidence.');
+    if(verificationStatus==='REJECTED') requiredActions.push('Review the rejection reason and resubmit verification evidence.');
+    if(verificationStatus==='SUSPENDED') requiredActions.push('Contact platform support regarding the suspended verification status.');
+    if(verificationStatus==='PENDING') requiredActions.push('Wait for platform verification review.');
+
+    res.json({success:true,data:{
+      businessId:req.params.id,
+      businessName:b.name,
+      verificationStatus,
+      listingStatus:b.listing_status,
+      businessMode:b.business_mode,
+      trustCenter:{
+        verification:{status:verificationStatus,applications:applications.rows},
+        claims:claims.rows,
+        reviews:{
+          publishedCount:Number(reviewSummary.rows[0]?.published_count||0),
+          pendingCount:Number(reviewSummary.rows[0]?.pending_count||0),
+          rejectedCount:Number(reviewSummary.rows[0]?.rejected_count||0),
+          hiddenCount:Number(reviewSummary.rows[0]?.hidden_count||0),
+          publishedRating:Number(reviewSummary.rows[0]?.published_rating||0),
+        },
+        reports:reports.rows,
+        timeline:events.rows,
+        requiredActions,
+      },
+    }});
+  }catch(err){next(err);}});
+
   router.post('/businesses/:id/verification', requireAuth(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
