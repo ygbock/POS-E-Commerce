@@ -418,3 +418,12 @@ export interface DiscoveryPublicBusinessProfile {
   recentReviews: DiscoveryReview[];
   activeServices: DiscoveryService[];
 }
+
+export interface DiscoverySearchAlias {
+  id: string;
+  entity_type: 'BUSINESS' | 'PRODUCT' | 'SERVICE';
+  entity_id: string;
+  alias: string;
+  created_at?: string;
+  updated_at?: string;
+}
