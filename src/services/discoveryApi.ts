@@ -507,6 +507,13 @@ export const discoveryApi = {
     });
   },
 
+  async verifyLocation(businessId: string, locationId: string): Promise<DiscoveryLocation> {
+    return request<DiscoveryLocation>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/locations/${encodeURIComponent(locationId)}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
   async updateHours(businessId: string, locationId: string, hours: Array<{ dayOfWeek: number; isClosed: boolean; opensAt?: string | null; closesAt?: string | null }>): Promise<DiscoveryBusinessHours[]> {
     return request<DiscoveryBusinessHours[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/locations/${encodeURIComponent(locationId)}/hours`, {
       method: 'PUT',
