@@ -67,3 +67,16 @@
 Discovery is additive and reuses the existing commerce model. No parallel product or inventory source of truth is introduced. Product discovery is derived from `products`, `product_variants`, `inventory_balances` and the canonical discovery business's `organization_id`.
 
 Previously applied migrations remain untouched. Discovery schema is implemented by forward migrations `020` and `022`; migration `021` is not present in the repository and should not be assumed in deployment documentation. Subsequent platform migrations `023+` are independent of Discovery.
+
+
+## Trust workflow hardening — 2026-09-20
+
+- Verification applications are persisted with evidence, reviewer, decision reason and lifecycle status.
+- Verification decisions update the canonical business verification status transactionally.
+- Claim submission and moderation decisions emit trust audit events.
+- New customer reviews enter PENDING moderation status.
+- Review moderation decisions have dedicated history and trust audit records.
+- Report decisions have dedicated status history and trust audit records.
+- Verification/review/report moderation is tenant-scoped for tenant administrators and platform-wide for super administrators.
+- Evidence payloads are bounded to prevent unbounded moderation metadata.
+- Dedicated platform moderation UI remains a follow-up surface; the server-authoritative moderation APIs and merchant verification UI are implemented.
