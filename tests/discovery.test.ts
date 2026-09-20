@@ -34,6 +34,16 @@ async function main() {
   const publicProfile = await service.getPublicProfile(business.id);
   assert.ok(publicProfile);
   assert.ok(publicProfile?.settings);
+  // Category governance: only active taxonomy entries participate in public filters.
+  await db.query("INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES ($1,'disc_cat_retail',TRUE)", [business.id]);
+  const retailMatches = await repo.listPublished({ categoryId: 'disc_cat_retail' });
+  assert.ok(retailMatches.some((row) => row.id === business.id));
+
+  await db.query("UPDATE discovery_business_categories SET is_active=FALSE WHERE id='disc_cat_retail'");
+  const inactiveRetailMatches = await repo.listPublished({ categoryId: 'disc_cat_retail' });
+  assert.ok(!inactiveRetailMatches.some((row) => row.id === business.id));
+  await db.query("UPDATE discovery_business_categories SET is_active=TRUE WHERE id='disc_cat_retail'");
+
 
   // A tenant user may not rebind an existing discovery business to another tenant.
   await assert.rejects(
