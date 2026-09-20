@@ -536,6 +536,24 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const categoryId = typeof req.query.categoryId === 'string' && req.query.categoryId.trim() ? req.query.categoryId.trim() : null;
       const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest','distance'].includes(req.query.sort) ? req.query.sort : 'relevance';
       const searchId = `search_${randomUUID().replace(/-/g,'')}`;
+      const rankingRow = (await db.query<any>('SELECT * FROM discovery_search_ranking_config WHERE id=\'default\'')).rows[0];
+      const ranking = rankingRow?.is_active ? rankingRow : {
+        text_match_weight: 100, exact_match_weight: 40, prefix_match_weight: 25, verified_weight: 20,
+        rating_weight: 4, review_count_weight: 2, fuzzy_match_weight: 35, distance_penalty_weight: 0.10,
+        availability_weight: 10,
+      };
+      const weight = (value: any, fallback: number) => Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : fallback;
+      const rankingWeights = {
+        text: weight(ranking.text_match_weight, 100),
+        exact: weight(ranking.exact_match_weight, 40),
+        prefix: weight(ranking.prefix_match_weight, 25),
+        verified: weight(ranking.verified_weight, 20),
+        rating: weight(ranking.rating_weight, 4),
+        reviewCount: weight(ranking.review_count_weight, 2),
+        fuzzy: weight(ranking.fuzzy_match_weight, 35),
+        distancePenalty: weight(ranking.distance_penalty_weight, 0.10),
+        availability: weight(ranking.availability_weight, 10),
+      };
       const fuzzyEnabled = Boolean(q) && sort === 'relevance';
       const fuzzyCandidateLimit = fuzzyEnabled ? 500 : limit;
       const searchTokens = q ? [...new Set(discoverySearchTokens(q))].slice(0, 8) : [];
@@ -611,16 +629,16 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                 coalesce(b.short_description,'') || ' ' || coalesce(b.description,'') || ' ' || coalesce(b.business_type,'')),
               plainto_tsquery('simple', ${bQ})
             ) * 100
-            + CASE WHEN lower(b.name)=lower(${bQ}) THEN 40 WHEN lower(b.name) LIKE lower(${bQ}) || '%' THEN 25 ELSE 0 END
-            + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
-            + ${ratingExpr} * 4
-            + ln(1 + ${reviewCountExpr}) * 2
-            ${distanceExpr ? `- LEAST(${distanceExpr},100) * 0.10` : ''}
+            + CASE WHEN lower(b.name)=lower(${bQ}) THEN ${rankingWeights.exact} WHEN lower(b.name) LIKE lower(${bQ}) || '%' THEN ${rankingWeights.prefix} ELSE 0 END
+            + CASE WHEN b.verification_status='VERIFIED' THEN ${rankingWeights.verified} ELSE 0 END
+            + ${ratingExpr} * ${rankingWeights.rating}
+            + ln(1 + ${reviewCountExpr}) * ${rankingWeights.reviewCount}
+            ${distanceExpr ? `- LEAST(${distanceExpr},100) * ${rankingWeights.distancePenalty}` : ''}
           )`
         : `(
             CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
-            + ${ratingExpr} * 4
-            + ln(1 + ${reviewCountExpr}) * 2
+            + ${ratingExpr} * ${rankingWeights.rating}
+            + ln(1 + ${reviewCountExpr}) * ${rankingWeights.reviewCount}
           )`;
 
       let businessResults:any[]=[];
@@ -667,7 +685,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             row,
             fuzzyScore: discoveryFuzzyScore(q, [row.name,row.business_type,row.short_description,row.category_name,row.search_aliases].filter(Boolean).join(' ')),
             index,
-          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
+          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * rankingWeights.fuzzy}))
             .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.name).localeCompare(String(b.row.name)) || a.index-b.index);
           businessResults = ranked.slice(offset, offset + limit).map((x:any) => ({...x.row, fuzzy_score: Number(x.fuzzyScore.toFixed(4))}));
         }
@@ -699,10 +717,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(region) pConditions.push(`lower(l.region)=lower(${pb(region)})`);
       if(distanceExpr) pConditions.push(`${distanceExpr} <= GREATEST(${pb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
       const productRank=pQ?`(
-        ts_rank_cd(to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')),plainto_tsquery('simple',${pQ}))*100
-        + CASE WHEN lower(p.name)=lower(${pQ}) THEN 40 WHEN lower(p.name) LIKE lower(${pQ}) || '%' THEN 25 ELSE 0 END
-        + CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END
-      )`:`CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN 10 ELSE 0 END`;
+        ts_rank_cd(to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')),plainto_tsquery('simple',${pQ}))*${rankingWeights.text}
+        + CASE WHEN lower(p.name)=lower(${pQ}) THEN ${rankingWeights.exact} WHEN lower(p.name) LIKE lower(${pQ}) || '%' THEN ${rankingWeights.prefix} ELSE 0 END
+        + CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN ${rankingWeights.availability} ELSE 0 END
+      )`:`CASE WHEN COALESCE(SUM(ib.available),0)>0 THEN ${rankingWeights.availability} ELSE 0 END`;
       let productResults:any[]=[];
       let productCount = 0;
       if(type !== 'businesses' && type !== 'services'){
@@ -766,9 +784,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(region) sConditions.push(`lower(l.region)=lower(${sb(region)})`);
       if(distanceExpr) sConditions.push(`${distanceExpr} <= GREATEST(${sb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
       const serviceRank=sQ?`(
-        ts_rank_cd(to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')),plainto_tsquery('simple',${sQ}))*100
-        + CASE WHEN lower(s.name)=lower(${sQ}) THEN 40 WHEN lower(s.name) LIKE lower(${sQ}) || '%' THEN 25 ELSE 0 END
-        + CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
+        ts_rank_cd(to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')),plainto_tsquery('simple',${sQ}))*${rankingWeights.text}
+        + CASE WHEN lower(s.name)=lower(${sQ}) THEN ${rankingWeights.exact} WHEN lower(s.name) LIKE lower(${sQ}) || '%' THEN ${rankingWeights.prefix} ELSE 0 END
+        + CASE WHEN b.verification_status='VERIFIED' THEN ${rankingWeights.verified} ELSE 0 END
       )`:`CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END`;
       let serviceResults:any[]=[];
       let serviceCount = 0;
