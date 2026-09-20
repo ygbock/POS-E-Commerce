@@ -45,7 +45,8 @@
     "test:discovery-search": "tsx tests/discovery_search.test.ts && tsx tests/discovery_search_ranking.test.ts",
     "test:discovery-trust": "tsx tests/discovery_trust_workflow.test.ts",
     "test:discovery-merchant-trust": "tsx tests/discovery_merchant_trust.test.ts",
-    "test:discovery-favorites": "tsx tests/discovery_customer_favorites.test.ts"
+    "test:discovery-favorites": "tsx tests/discovery_customer_favorites.test.ts",
+    "test:discovery-contact": "tsx tests/discovery_contact_inquiries.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
