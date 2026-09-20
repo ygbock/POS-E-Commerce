@@ -29,6 +29,7 @@ import type {
   DiscoveryFavoriteBusiness,
   DiscoveryContactInquiry,
   DiscoverySearchAttributionEvent,
+  DiscoverySearchRankingConfig,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
@@ -161,6 +162,18 @@ export const discoveryApi = {
       throw new DiscoveryApiError(message, errorObj?.code || 'SEARCH_ERROR', status, body);
     }
     return body as DiscoverySearchResponse;
+  },
+
+  async getPlatformSearchRankingConfig(): Promise<DiscoverySearchRankingConfig> {
+    return request<DiscoverySearchRankingConfig>('/api/platform/discovery/search-ranking');
+  },
+
+  async updatePlatformSearchRankingConfig(updates: Partial<Omit<DiscoverySearchRankingConfig, 'id' | 'updated_by_user_id' | 'updated_at'>>): Promise<DiscoverySearchRankingConfig> {
+    return request<DiscoverySearchRankingConfig>('/api/platform/discovery/search-ranking', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
   },
 
   /**
