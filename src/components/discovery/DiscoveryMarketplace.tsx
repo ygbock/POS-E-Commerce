@@ -3,6 +3,7 @@ import { DiscoveryHome } from './DiscoveryHome';
 import { DiscoverySearchResults } from './DiscoverySearchResults';
 import { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
 import { DiscoveryServiceRequestPage } from './DiscoveryServiceRequestPage';
+import { DiscoveryServiceRequestsPage } from './DiscoveryServiceRequestsPage';
 import { DiscoveryBusinessContainer } from './business/DiscoveryBusinessContainer';
 import { useDiscoveryRoute } from '../../router/useDiscoveryRoute';
 import { Store, Compass, LayoutDashboard } from 'lucide-react';
@@ -63,6 +64,12 @@ export const DiscoveryMarketplace: React.FC = () => {
             )
           }
         />
+      );
+    }
+
+    if (route.name === 'discover-my-requests') {
+      return (
+        <DiscoveryServiceRequestsPage onBack={() => navigate('discover-home')} />
       );
     }
 
