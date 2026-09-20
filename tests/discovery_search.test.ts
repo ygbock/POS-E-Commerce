@@ -49,6 +49,16 @@ async function main() {
   );
   assert.strictEqual(indexes.rows.length, 3, 'discovery search FTS indexes must be installed');
 
+  const attributionColumns = await db.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_name='discovery_analytics_events' AND column_name IN ('search_id','result_position','entity_type','entity_id','attribution_source') ORDER BY column_name",
+  );
+  assert.strictEqual(attributionColumns.rows.length, 5, 'search attribution columns must be installed');
+
+  const rankingConfig = await db.query("SELECT id,text_match_weight,exact_match_weight,prefix_match_weight,verified_weight,rating_weight,review_count_weight,fuzzy_match_weight,distance_penalty_weight,availability_weight,is_active FROM discovery_search_ranking_config WHERE id='default'");
+  assert.strictEqual(rankingConfig.rows.length, 1, 'default search ranking configuration must be installed');
+  assert.strictEqual(Number(rankingConfig.rows[0].text_match_weight), 100);
+  assert.strictEqual(Number(rankingConfig.rows[0].fuzzy_match_weight), 35);
+
   const aliasIndexes = await db.query(
     "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname IN ('uq_discovery_search_alias_entity','idx_discovery_search_alias_lookup','idx_discovery_search_alias_entity','idx_discovery_search_alias_fts','idx_discovery_search_alias_prefix') ORDER BY indexname",
   );
