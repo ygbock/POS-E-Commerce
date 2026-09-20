@@ -2,7 +2,7 @@ import type { Role } from '../../types';
 import { isPlatformRole } from './platformAccess';
 
 export interface PlatformNavItem {
-  id: 'platform-dashboard' | 'tenants' | 'subscriptions' | 'support' | 'security';
+  id: 'platform-dashboard' | 'tenants' | 'subscriptions' | 'support' | 'security' | 'discovery-moderation';
   label: string;
 }
 
@@ -27,6 +27,7 @@ export function getPlatformNavigation(role: Role | string): PlatformNavItem[] {
         { id: 'tenants', label: 'Tenant Organizations' },
         { id: 'subscriptions', label: 'Plans & Subscriptions' },
         { id: 'security', label: 'Security & Audit Logs' },
+        { id: 'discovery-moderation', label: 'Discovery Trust & Moderation' },
       ];
     case 'System Owner':
     default:
