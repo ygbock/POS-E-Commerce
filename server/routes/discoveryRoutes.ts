@@ -833,10 +833,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         filters: { city, district, region, categoryId, openNow, radiusKm: radius, sort },
         searchId,
       };
-      void db.query(
+      await db.query(
         `INSERT INTO discovery_analytics_events(id,event_type,session_hash,actor_user_id,search_id,metadata) VALUES($1,'SEARCH',$2,$3,$4,$5)`,
         [`evt_${randomUUID().replace(/-/g,'')}`, createHash('sha256').update(`${req.ip}|search|${req.headers['user-agent']||''}`).digest('hex'), req.auth?.userId || null, searchId, analyticsMetadata],
-      ).catch(() => undefined);
+      );
 
       res.json({
         success:true,query:q,type,searchId,
