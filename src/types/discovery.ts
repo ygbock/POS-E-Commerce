@@ -323,6 +323,19 @@ export interface DiscoveryServiceQuote {
 /**
  * Business ownership claim for unverified/unclaimed businesses
  */
+export interface DiscoveryVerificationApplication {
+  id: string;
+  business_id: string;
+  applicant_user_id: string;
+  evidence: Record<string, unknown>;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+  reviewed_by_user_id?: string | null;
+  reviewed_at?: string | null;
+  review_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DiscoveryBusinessClaim {
   id: string;
   business_id: string;
