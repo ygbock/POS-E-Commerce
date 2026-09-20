@@ -123,10 +123,10 @@ Remaining:
 - Synonym governance.
 - Popular-search reporting. **IMPLEMENTED (API, hashed-query privacy model)**
 - Zero-result query review workflow. **IMPLEMENTED (API summary/popular hash review)**
-- Search result impression/click attribution.
-- Search-to-profile/store/product conversion metrics.
-- Configurable ranking controls.
-- Search abuse/rate controls.
+- Search result impression/click attribution. **IMPLEMENTED: search IDs, result positions, server-validated impression/conversion events, idempotent event IDs, privacy-safe attribution metadata.**
+- Search-to-profile/store/product conversion metrics. **IMPLEMENTED: attribution ledger supports result engagement/conversion events and search-linked business/product/service targets.**
+- Configurable ranking controls. **IMPLEMENTED: platform-governed ranking weights with server-side bounds and active/inactive fallback.**
+- Search abuse/rate controls. **IMPLEMENTED: bounded public search/suggestion and attribution rate limits; distributed limiter remains a production-operations concern.**
 - Search load/performance testing.
 - Public API documentation.
 
@@ -289,7 +289,7 @@ Status: COMPLETE
 
 ### Gate 1 — Discovery/Search and marketplace completion
 Tasks:
-- TASK-SEARCH-7: Search quality, governance and merchant management.
+- TASK-SEARCH-7: Search quality, governance and merchant management. **IN PROGRESS: attribution, ranking controls and abuse controls implemented; performance/load verification and richer admin UI remain.**
 - TASK-SEARCH-8: Search conversion/impression analytics.
 - TASK-SEARCH-9: Search abuse controls and performance testing.
 - TASK-DISC-8: Discovery customer/merchant workflow completion.
@@ -492,5 +492,7 @@ AbaCha is complete only when all of the following are true:
 ## 10. Immediate next task
 
 TASK-DISC-8.1 is now implemented on main: authenticated service requests, explicit request state transitions, request history, provider matching, quote submission, quote acceptance/decline, cancellation/closure, and database-level single-accepted-quote integrity. TASK-SEARCH-7 remains in progress with conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI remaining. (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI. Platform/admin alias governance and baseline search-quality analytics APIs are now implemented.
+
+Search productization increment is now implemented on main: search attribution/conversion telemetry, configurable ranking controls, and bounded public search/attribution abuse controls. Remaining Search work is representative load/performance verification and richer platform/admin UI for ranking/analytics management.
 
 The master roadmap should be treated as the controlling completion sequence from this checkpoint. TASK-DISC-9 trust/verification workflow is implemented on main, including the platform moderation workspace and merchant trust center; final regression verification remains part of the release gates. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
