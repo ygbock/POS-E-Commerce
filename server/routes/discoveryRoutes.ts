@@ -21,6 +21,60 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     organizationId: req.auth!.organizationId,
   });
 
+  const normalizeLocation = (input: any) => {
+    const x = input || {};
+    const locationType = String(x.locationType || 'STORE').trim().toUpperCase();
+    const allowedTypes = new Set(['STORE','OFFICE','BRANCH','WAREHOUSE','HOME_BASED','MOBILE','SERVICE_AREA','KIOSK','OTHER']);
+    if (!allowedTypes.has(locationType)) throw new Error('VALIDATION_ERROR:invalid locationType.');
+
+    const name = String(x.name || '').trim().replace(/\s+/g, ' ');
+    if (!name) throw new Error('VALIDATION_ERROR:name is required.');
+    if (name.length > 255) throw new Error('VALIDATION_ERROR:name exceeds 255 characters.');
+
+    const lat = x.latitude == null || x.latitude === '' ? null : Number(x.latitude);
+    const lng = x.longitude == null || x.longitude === '' ? null : Number(x.longitude);
+    if ((lat == null) !== (lng == null)) throw new Error('VALIDATION_ERROR:latitude and longitude must be provided together.');
+    if (lat != null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) throw new Error('VALIDATION_ERROR:latitude must be between -90 and 90.');
+    if (lng != null && (!Number.isFinite(lng) || lng < -180 || lng > 180)) throw new Error('VALIDATION_ERROR:longitude must be between -180 and 180.');
+
+    const radius = x.serviceRadiusKm == null || x.serviceRadiusKm === '' ? null : Number(x.serviceRadiusKm);
+    if (radius != null && (!Number.isFinite(radius) || radius < 0 || radius > 500)) throw new Error('VALIDATION_ERROR:serviceRadiusKm must be between 0 and 500.');
+    if (locationType === 'SERVICE_AREA' && (radius == null || radius <= 0)) {
+      throw new Error('VALIDATION_ERROR:service-area locations require a positive serviceRadiusKm.');
+    }
+
+    const text = (value: any, max: number) => {
+      if (value == null || value === '') return null;
+      const v = String(value).trim().replace(/\s+/g, ' ');
+      if (v.length > max) throw new Error(`VALIDATION_ERROR:location field exceeds ${max} characters.`);
+      return v || null;
+    };
+
+    const addressLine1 = text(x.addressLine1, 255);
+    const city = text(x.city, 128);
+    const district = text(x.district, 128);
+    const region = text(x.region, 128);
+    const addressScore = addressLine1 && city && district && region ? 100 : city && region ? 75 : city ? 50 : 0;
+    const quality = lat != null && lng != null && addressLine1 && city
+      ? 'HIGH'
+      : (lat != null && lng != null) || (city && region) ? 'MEDIUM' : 'LOW';
+
+    return {
+      name, locationType, addressLine1, addressLine2: text(x.addressLine2, 255),
+      city, district, region, country: text(x.country, 128) || 'Sierra Leone',
+      postalCode: text(x.postalCode, 32), latitude: lat, longitude: lng,
+      serviceRadiusKm: radius, phone: text(x.phone, 64),
+      isPrimary: Boolean(x.isPrimary), isActive: x.isActive !== false,
+      locationQualityStatus: x.locationQualityStatus && ['LOW','MEDIUM','HIGH','VERIFIED'].includes(String(x.locationQualityStatus).toUpperCase())
+        ? String(x.locationQualityStatus).toUpperCase() : quality,
+      locationSource: x.locationSource && ['MANUAL','GPS','GEOCODED','IMPORTED','VERIFIED'].includes(String(x.locationSource).toUpperCase())
+        ? String(x.locationSource).toUpperCase() : (lat != null && lng != null ? 'GPS' : 'MANUAL'),
+      addressCompletenessScore: addressScore,
+      coordinateAccuracyM: x.coordinateAccuracyM == null || x.coordinateAccuracyM === '' ? null : Number(x.coordinateAccuracyM),
+      qualityNotes: text(x.qualityNotes, 1000),
+    };
+  };
+
   const fail = (res: Response, err: any) => {
     const raw = String(err?.message || 'Discovery request failed.');
     const code = raw.split(':')[0];
@@ -200,33 +254,69 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if (!(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Location management forbidden.' } });
       const b = await repo.findById(req.params.id);
       if (!b || b.listing_status === 'ARCHIVED') throw new Error('DISCOVERY_ARCHIVED:Archived businesses cannot add locations.');
-      const x = req.body || {};
-      if (!String(x.name || '').trim()) throw new Error('VALIDATION_ERROR:name is required.');
-      if ((x.latitude == null) !== (x.longitude == null)) throw new Error('VALIDATION_ERROR:latitude and longitude must be provided together.');
+      const x = normalizeLocation(req.body);
       const id = `loc_${randomUUID().replace(/-/g, '')}`;
-      if (x.isPrimary) await db.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1', [req.params.id]);
-      const result = await db.query(`INSERT INTO discovery_business_locations (id,business_id,name,location_type,address_line_1,address_line_2,city,district,region,country,postal_code,latitude,longitude,service_radius_km,phone,is_primary,is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,TRUE) RETURNING *`, [
-        id, req.params.id, String(x.name).trim(), x.locationType || 'STORE', x.addressLine1 || null, x.addressLine2 || null, x.city || null, x.district || null, x.region || null, x.country || 'Sierra Leone', x.postalCode || null, x.latitude ?? null, x.longitude ?? null, x.serviceRadiusKm ?? null, x.phone || null, Boolean(x.isPrimary),
-      ]);
-      res.status(201).json({ success: true, data: result.rows[0] });
+      const data = await db.withTransaction(async (tx) => {
+        if (x.isPrimary) await tx.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1', [req.params.id]);
+        const result = await tx.query(`INSERT INTO discovery_business_locations
+          (id,business_id,name,location_type,address_line_1,address_line_2,city,district,region,country,postal_code,
+           latitude,longitude,service_radius_km,phone,is_primary,is_active,location_quality_status,location_source,
+           address_completeness_score,coordinate_accuracy_m,quality_notes)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+          [id,req.params.id,x.name,x.locationType,x.addressLine1,x.addressLine2,x.city,x.district,x.region,x.country,x.postalCode,
+           x.latitude,x.longitude,x.serviceRadiusKm,x.phone,x.isPrimary,x.isActive,x.locationQualityStatus,x.locationSource,
+           x.addressCompletenessScore,x.coordinateAccuracyM,x.qualityNotes]);
+        return result.rows[0];
+      });
+      res.status(201).json({ success: true, data });
     } catch (err) { next(err); }
   });
 
   router.patch('/businesses/:id/locations/:locationId', requireAuth(), async (req, res, next) => {
     try {
       if (!(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Location management forbidden.' } });
-      const x = req.body || {};
-      if (x.isPrimary) await db.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1', [req.params.id]);
-      const allowed: Record<string,string> = { name:'name', locationType:'location_type', addressLine1:'address_line_1', addressLine2:'address_line_2', city:'city', district:'district', region:'region', country:'country', postalCode:'postal_code', latitude:'latitude', longitude:'longitude', serviceRadiusKm:'service_radius_km', phone:'phone', isPrimary:'is_primary', isActive:'is_active' };
-      const fields = Object.entries(x).filter(([k]) => allowed[k]).map(([k,v],i) => ({ column: allowed[k], value:v, idx:i+1 }));
-      if (!fields.length) return res.status(422).json({ success:false,error:{code:'VALIDATION_ERROR',message:'No editable location fields supplied.'} });
-      const set = fields.map(f => `${f.column} = $${f.idx}`).join(', ');
-      const values = fields.map(f => f.value);
-      values.push(req.params.id, req.params.locationId);
-      const result = await db.query(`UPDATE discovery_business_locations SET ${set}, updated_at=CURRENT_TIMESTAMP WHERE business_id=$${values.length-1} AND id=$${values.length} RETURNING *`, values);
-      if (!result.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
-      res.json({success:true,data:result.rows[0]});
+      const existing = await db.query('SELECT * FROM discovery_business_locations WHERE id=$1 AND business_id=$2', [req.params.locationId, req.params.id]);
+      if (!existing.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
+      const merged = { ...existing.rows[0], ...req.body, locationType: req.body?.locationType ?? existing.rows[0].location_type,
+        addressLine1: req.body?.addressLine1 ?? existing.rows[0].address_line_1, addressLine2: req.body?.addressLine2 ?? existing.rows[0].address_line_2,
+        city: req.body?.city ?? existing.rows[0].city, district: req.body?.district ?? existing.rows[0].district,
+        region: req.body?.region ?? existing.rows[0].region, country: req.body?.country ?? existing.rows[0].country,
+        postalCode: req.body?.postalCode ?? existing.rows[0].postal_code, latitude: req.body?.latitude ?? existing.rows[0].latitude,
+        longitude: req.body?.longitude ?? existing.rows[0].longitude, serviceRadiusKm: req.body?.serviceRadiusKm ?? existing.rows[0].service_radius_km,
+        phone: req.body?.phone ?? existing.rows[0].phone, name: req.body?.name ?? existing.rows[0].name,
+        isPrimary: req.body?.isPrimary ?? existing.rows[0].is_primary, isActive: req.body?.isActive ?? existing.rows[0].is_active,
+        locationSource: req.body?.locationSource ?? existing.rows[0].location_source, coordinateAccuracyM: req.body?.coordinateAccuracyM ?? existing.rows[0].coordinate_accuracy_m,
+        qualityNotes: req.body?.qualityNotes ?? existing.rows[0].quality_notes };
+      const x = normalizeLocation(merged);
+      const result = await db.withTransaction(async (tx) => {
+        if (x.isPrimary) await tx.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1 AND id <> $2', [req.params.id, req.params.locationId]);
+        const r = await tx.query(`UPDATE discovery_business_locations SET
+          name=$1,location_type=$2,address_line_1=$3,address_line_2=$4,city=$5,district=$6,region=$7,country=$8,postal_code=$9,
+          latitude=$10,longitude=$11,service_radius_km=$12,phone=$13,is_primary=$14,is_active=$15,
+          location_quality_status=$16,location_source=$17,address_completeness_score=$18,coordinate_accuracy_m=$19,quality_notes=$20,
+          location_verified_at=CASE WHEN $16='VERIFIED' THEN COALESCE(location_verified_at,CURRENT_TIMESTAMP) ELSE NULL END,
+          updated_at=CURRENT_TIMESTAMP
+          WHERE business_id=$21 AND id=$22 RETURNING *`,
+          [x.name,x.locationType,x.addressLine1,x.addressLine2,x.city,x.district,x.region,x.country,x.postalCode,x.latitude,x.longitude,
+           x.serviceRadiusKm,x.phone,x.isPrimary,x.isActive,x.locationQualityStatus,x.locationSource,x.addressCompletenessScore,x.coordinateAccuracyM,x.qualityNotes,
+           req.params.id,req.params.locationId]);
+        return r.rows[0];
+      });
+      if (!result) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
+      res.json({success:true,data:result});
     } catch (err) { next(err); }
+  });
+
+  router.post('/businesses/:id/locations/:locationId/verify', requireAuth(), async (req,res,next)=>{
+    try {
+      if (!(await owned(req, req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Location verification forbidden.'}});
+      const r=await db.query(`UPDATE discovery_business_locations
+        SET location_quality_status='VERIFIED',location_source='VERIFIED',location_verified_at=CURRENT_TIMESTAMP,
+            location_verified_by_user_id=$1,updated_at=CURRENT_TIMESTAMP
+        WHERE business_id=$2 AND id=$3 RETURNING *`,[req.auth!.userId,req.params.id,req.params.locationId]);
+      if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
+      res.json({success:true,data:r.rows[0]});
+    }catch(err){next(err);}
   });
 
   router.put('/businesses/:id/locations/:locationId/hours', requireAuth(), async (req, res, next) => {
@@ -494,7 +584,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if (district) bConditions.push(`lower(l.district)=lower(${bb(district)})`);
       if (region) bConditions.push(`lower(l.region)=lower(${bb(region)})`);
       if (distanceExpr) {
-        bConditions.push(`${distanceExpr} <= ${bb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+        bConditions.push(`${distanceExpr} <= GREATEST(${bb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
       }
       if (openNow) {
         bConditions.push(`EXISTS(
@@ -537,7 +627,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const r=await db.query(`
           SELECT b.id,b.public_id,b.name,b.slug,b.business_type,b.short_description,b.phone,b.whatsapp,b.website,
                  b.logo_url,b.cover_image_url,b.business_mode,o.slug AS tenant_slug,b.verification_status,
-                 l.name AS location_name,l.city,l.district,l.region,l.latitude,l.longitude,
+                 l.name AS location_name,l.city,l.district,l.region,l.latitude,l.longitude,l.service_radius_km,l.location_quality_status,l.location_source,
                  c.category_name,c.category_slug,
                  ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}
                  ${ratingExpr} AS rating,${reviewCountExpr} AS review_count,
@@ -599,7 +689,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(city) pConditions.push(`lower(l.city)=lower(${pb(city)})`);
       if(district) pConditions.push(`lower(l.district)=lower(${pb(district)})`);
       if(region) pConditions.push(`lower(l.region)=lower(${pb(region)})`);
-      if(distanceExpr) pConditions.push(`${distanceExpr.replaceAll('l.','l.')} <= ${pb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      if(distanceExpr) pConditions.push(`${distanceExpr} <= GREATEST(${pb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
       const productRank=pQ?`(
         ts_rank_cd(to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')),plainto_tsquery('simple',${pQ}))*100
         + CASE WHEN lower(p.name)=lower(${pQ}) THEN 40 WHEN lower(p.name) LIKE lower(${pQ}) || '%' THEN 25 ELSE 0 END
@@ -612,7 +702,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const r=await db.query(`
           SELECT p.id AS product_id,p.name AS product_name,p.slug AS product_slug,p.short_description,p.description,p.images,
                  p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
-                 l.city,l.district,l.region,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,
+                 l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,
                  COALESCE(SUM(ib.available),0) AS available_stock,ds.show_prices,ds.show_stock_status,
                  ${productRank} AS search_rank,
                  COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='PRODUCT' AND sa.entity_id=p.id AND sa.is_active=TRUE),'') AS search_aliases,
@@ -665,7 +755,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(city) sConditions.push(`lower(l.city)=lower(${sb(city)})`);
       if(district) sConditions.push(`lower(l.district)=lower(${sb(district)})`);
       if(region) sConditions.push(`lower(l.region)=lower(${sb(region)})`);
-      if(distanceExpr) sConditions.push(`${distanceExpr} <= ${sb(radius)} AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      if(distanceExpr) sConditions.push(`${distanceExpr} <= GREATEST(${sb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
       const serviceRank=sQ?`(
         ts_rank_cd(to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')),plainto_tsquery('simple',${sQ}))*100
         + CASE WHEN lower(s.name)=lower(${sQ}) THEN 40 WHEN lower(s.name) LIKE lower(${sQ}) || '%' THEN 25 ELSE 0 END
@@ -677,7 +767,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const order=sort==='name_asc'?'s.name ASC,s.id ASC':`search_rank DESC,s.name ASC,s.id ASC`;
         const r=await db.query(`
           SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
-                 b.verification_status,l.city,l.district,l.region,${serviceRank} AS search_rank,
+                 b.verification_status,l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,${serviceRank} AS search_rank,
                  COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='SERVICE' AND sa.entity_id=s.id AND sa.is_active=TRUE),'') AS search_aliases
           FROM discovery_services s
           JOIN discovery_businesses b ON b.id=s.business_id
