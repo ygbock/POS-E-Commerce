@@ -80,3 +80,13 @@ Previously applied migrations remain untouched. Discovery schema is implemented 
 - Verification/review/report moderation is tenant-scoped for tenant administrators and platform-wide for super administrators.
 - Evidence payloads are bounded to prevent unbounded moderation metadata.
 - Dedicated platform moderation UI remains a follow-up surface; the server-authoritative moderation APIs and merchant verification UI are implemented.
+
+
+## Merchant trust center — 2026-09-20
+
+- Added authenticated merchant endpoint: `GET /api/discovery/businesses/:id/trust`.
+- The endpoint is protected by the existing server-authoritative `owned()` boundary and permits platform super admins for support/administration.
+- The response is a privacy-safe merchant projection: verification application history, ownership-claim status, review moderation aggregates, reports affecting the business, trust timeline, and required actions.
+- Reporter identities, report descriptions, moderation actor identities, private trust metadata, and claimant contact details are not exposed through the merchant projection.
+- Added `DiscoveryTrustCenter` merchant workspace with verification resubmission entry point, platform decision reasons, claim history, review moderation visibility, report status, trust timeline, and explicit merchant-vs-platform responsibility guidance.
+- Added regression coverage for the trust-center projection and privacy boundaries.
