@@ -107,6 +107,9 @@ export function parseDiscoveryPath(pathname = window.location.pathname, search =
     if (second === 'saved') {
       return { name: 'discover-saved' };
     }
+    if (second === 'my-inquiries') {
+      return { name: 'discover-my-inquiries' };
+    }
     return { name: 'discover-home' };
   }
 
