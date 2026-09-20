@@ -55,9 +55,12 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const district = text(x.district, 128);
     const region = text(x.region, 128);
     const addressScore = addressLine1 && city && district && region ? 100 : city && region ? 75 : city ? 50 : 0;
+    const coordinateAccuracyM = x.coordinateAccuracyM == null || x.coordinateAccuracyM === '' ? null : Number(x.coordinateAccuracyM);
     const quality = lat != null && lng != null && addressLine1 && city
       ? 'HIGH'
       : (lat != null && lng != null) || (city && region) ? 'MEDIUM' : 'LOW';
+
+    if (coordinateAccuracyM != null && (!Number.isFinite(coordinateAccuracyM) || coordinateAccuracyM < 0)) throw new Error('VALIDATION_ERROR:coordinateAccuracyM must be a non-negative number.');
 
     return {
       name, locationType, addressLine1, addressLine2: text(x.addressLine2, 255),
@@ -70,7 +73,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       locationSource: x.locationSource && ['MANUAL','GPS','GEOCODED','IMPORTED','VERIFIED'].includes(String(x.locationSource).toUpperCase())
         ? String(x.locationSource).toUpperCase() : (lat != null && lng != null ? 'GPS' : 'MANUAL'),
       addressCompletenessScore: addressScore,
-      coordinateAccuracyM: x.coordinateAccuracyM == null || x.coordinateAccuracyM === '' ? null : Number(x.coordinateAccuracyM),
+      coordinateAccuracyM,
       qualityNotes: text(x.qualityNotes, 1000),
     };
   };
