@@ -693,27 +693,25 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     CLOSED: [],
   };
 
-  const recordRequestEvent = async (requestId: string, fromStatus: string | null, toStatus: string, actorUserId: string | null, note?: string | null) => {
-    await db.query(
-      `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
-       VALUES($1,$2,$3,$4,$5,$6)`,
-      [`req_evt_${randomUUID().replace(/-/g,'')}`, requestId, fromStatus, toStatus, actorUserId, note || null],
-    );
-  };
-
   const transitionRequest = async (requestId: string, toStatus: string, actorUserId: string, note?: string | null) => {
-    const current = await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 FOR UPDATE', [requestId]);
-    if (!current.rows[0]) throw new Error('NOT_FOUND:Service request not found.');
-    const fromStatus = String(current.rows[0].status);
-    if (!(REQUEST_TRANSITIONS[fromStatus] || []).includes(toStatus)) {
-      throw new Error(`INVALID_STATE_TRANSITION:Cannot move service request from ${fromStatus} to ${toStatus}.`);
-    }
-    const updated = await db.query(
-      `UPDATE discovery_service_requests SET status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,
-      [toStatus, requestId],
-    );
-    await recordRequestEvent(requestId, fromStatus, toStatus, actorUserId, note);
-    return updated.rows[0];
+    return db.withTransaction(async (tx) => {
+      const current = await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 FOR UPDATE', [requestId]);
+      if (!current.rows[0]) throw new Error('NOT_FOUND:Service request not found.');
+      const fromStatus = String(current.rows[0].status);
+      if (!(REQUEST_TRANSITIONS[fromStatus] || []).includes(toStatus)) {
+        throw new Error(`INVALID_STATE_TRANSITION:Cannot move service request from ${fromStatus} to ${toStatus}.`);
+      }
+      const updated = await tx.query(
+        `UPDATE discovery_service_requests SET status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,
+        [toStatus, requestId],
+      );
+      await tx.query(
+        `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [`req_evt_${randomUUID().replace(/-/g,'')}`, requestId, fromStatus, toStatus, actorUserId, note || null],
+      );
+      return updated.rows[0];
+    });
   };
 
   router.post('/service-requests', requireAuth(), async(req,res,next)=>{try{
