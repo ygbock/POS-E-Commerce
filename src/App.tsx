@@ -19,6 +19,7 @@ import { CustomerManagementView } from './components/crm/CustomerManagementView'
 import { AuditLogsView } from './components/admin/AuditLogsView';
 import { PlatformDashboard } from './components/platform/PlatformDashboard.tsx';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
+import { PlatformDiscoveryModerationView } from './components/platform/PlatformDiscoveryModerationView';
 import { TenantManagementView } from './components/platform/TenantManagementView';
 import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
 import { UserManagementView } from './components/admin/UserManagementView';
@@ -71,7 +72,7 @@ const MainLayout: React.FC = () => {
 
   // Enforce strict boundary between platform control plane and tenant operations
   React.useEffect(() => {
-    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support'];
+    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support', 'discovery-moderation'];
     if (isPlatform) {
       if (!platformTabs.includes(activeTab) && activeTab !== 'security') {
         setActiveTab('platform-dashboard');
@@ -132,6 +133,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'subscriptions' && <SubscriptionsManagementView />}
             {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'security' && <AuditLogsView />}
+            {activeTab === 'discovery-moderation' && <PlatformDiscoveryModerationView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
             {(activeTab === 'discovery' || activeTab === 'discovery-admin') && <DiscoveryMarketplace />}
             {activeTab === 'users' && <UserManagementView />}
