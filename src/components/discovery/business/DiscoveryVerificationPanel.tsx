@@ -46,13 +46,10 @@ export const DiscoveryVerificationPanel: React.FC<DiscoveryVerificationPanelProp
         throw new Error('Please provide supporting details or registration number for verification.');
       }
 
-      await discoveryApi.createClaim(business.id, {
-        claimantName: business.name,
-        evidence: {
-          claimType,
-          note: evidenceNote.trim(),
-          documentUrl: documentUrl.trim() || undefined,
-        },
+      await discoveryApi.submitVerification(business.id, {
+        claimType,
+        note: evidenceNote.trim(),
+        documentUrl: documentUrl.trim() || undefined,
       });
 
       setSuccess('Verification request submitted successfully. Our compliance team will review your business credentials.');
@@ -127,7 +124,7 @@ export const DiscoveryVerificationPanel: React.FC<DiscoveryVerificationPanelProp
                   Unlock Verified Status for Your Business
                 </h3>
                 <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1 leading-relaxed">
-                  Submit proof of commercial registration, tax identification, or physical storefront lease to get the official verified seal.
+                  Submit business registration, licensing, tax, identity, or location evidence for review by an authorized moderator.
                 </p>
               </div>
             </div>
@@ -176,7 +173,7 @@ export const DiscoveryVerificationPanel: React.FC<DiscoveryVerificationPanelProp
                 onChange={(e) => setClaimType(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               >
-                <option value="BUSINESS_REGISTRATION">Corporate Affairs Commission (CAC) Registration</option>
+                <option value="BUSINESS_REGISTRATION">Business Registration Certificate</option>
                 <option value="LOCAL_COUNCIL_LICENSE">City / Local Council Commercial License</option>
                 <option value="TIN_CERTIFICATE">NRA / Taxpayer Identification Number (TIN)</option>
                 <option value="UTILITY_BILL">Commercial Storefront Utility / Lease Document</option>
