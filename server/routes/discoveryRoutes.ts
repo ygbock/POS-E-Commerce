@@ -730,6 +730,89 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   });
 
   // ------------------------------------------------------------------
+  // DISC-013: customer-to-business contact inquiries
+  // ------------------------------------------------------------------
+  router.post('/businesses/:id/contact-inquiries', async (req,res,next)=>{try{
+    const business=await repo.findById(req.params.id);
+    if(!business || business.listing_status!=='PUBLISHED' || !business.is_discoverable) {
+      return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
+    }
+    if(business.organization_id){
+      const org=await db.query('SELECT is_active FROM organizations WHERE id=$1',[business.organization_id]);
+      if(!org.rows[0]?.is_active) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
+    }
+    const x=req.body||{};
+    const customerName=String(x.customerName||'').trim();
+    const message=String(x.message||'').trim();
+    const subject=x.subject==null?'':String(x.subject).trim();
+    const customerEmail=x.customerEmail==null?'':String(x.customerEmail).trim();
+    const customerPhone=x.customerPhone==null?'':String(x.customerPhone).trim();
+    if(!customerName||customerName.length>160) throw new Error('VALIDATION_ERROR:customerName is required and must be at most 160 characters.');
+    if(!message||message.length>10000) throw new Error('VALIDATION_ERROR:message is required and must be at most 10000 characters.');
+    if(subject.length>180) throw new Error('VALIDATION_ERROR:subject must be at most 180 characters.');
+    if(customerEmail.length>320) throw new Error('VALIDATION_ERROR:customerEmail must be at most 320 characters.');
+    if(customerPhone.length>64) throw new Error('VALIDATION_ERROR:customerPhone must be at most 64 characters.');
+    if(req.auth?.userId){
+      const recent=await db.query(
+        `SELECT COUNT(*)::int AS count FROM discovery_contact_inquiries
+         WHERE business_id=$1 AND customer_user_id=$2 AND created_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour'`,
+        [req.params.id,req.auth.userId],
+      );
+      if(Number(recent.rows[0]?.count||0)>=10) throw new Error('CONFLICT:Contact inquiry rate limit reached. Please try again later.');
+    }
+    const id=`inq_${randomUUID().replace(/-/g,'')}`;
+    const r=await db.query(
+      `INSERT INTO discovery_contact_inquiries(id,business_id,customer_user_id,customer_name,customer_email,customer_phone,subject,message)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,business_id,customer_name,subject,status,created_at`,
+      [id,req.params.id,req.auth?.userId||null,customerName,customerEmail||null,customerPhone||null,subject||null,message],
+    );
+    void db.query(
+      `INSERT INTO discovery_analytics_events(id,event_type,session_hash,actor_user_id,business_id,metadata)
+       VALUES($1,'CONTACT',$2,$3,$4,$5)`,
+      [`evt_${randomUUID().replace(/-/g,'')}`,createHash('sha256').update(`${req.ip}|contact|${req.headers['user-agent']||''}`).digest('hex'),req.auth?.userId||null,req.params.id,{channel:'INQUIRY'}],
+    ).catch(()=>undefined);
+    res.status(201).json({success:true,data:r.rows[0]});
+  }catch(err){next(err);}});
+
+  router.get('/businesses/:id/contact-inquiries', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Contact inquiry access forbidden.'}});
+    const status=String(req.query.status||'');
+    if(status && !['OPEN','READ','RESPONDED','CLOSED'].includes(status)) throw new Error('VALIDATION_ERROR:invalid contact inquiry status.');
+    const r=await db.query(
+      `SELECT id,business_id,customer_user_id,customer_name,customer_email,customer_phone,subject,message,status,merchant_note,responded_at,closed_at,created_at,updated_at
+       FROM discovery_contact_inquiries
+       WHERE business_id=$1 AND ($2='' OR status=$2)
+       ORDER BY CASE status WHEN 'OPEN' THEN 0 WHEN 'READ' THEN 1 WHEN 'RESPONDED' THEN 2 ELSE 3 END, created_at DESC
+       LIMIT 100`,
+      [req.params.id,status],
+    );
+    res.json({success:true,data:r.rows});
+  }catch(err){next(err);}});
+
+  router.post('/businesses/:id/contact-inquiries/:inquiryId/decision', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Contact inquiry access forbidden.'}});
+    const status=String(req.body?.status||'');
+    if(!['READ','RESPONDED','CLOSED'].includes(status)) throw new Error('VALIDATION_ERROR:status must be READ, RESPONDED, or CLOSED.');
+    const note=req.body?.merchantNote==null?'':String(req.body.merchantNote).trim();
+    if(note.length>5000) throw new Error('VALIDATION_ERROR:merchantNote must be at most 5000 characters.');
+    const data=await db.withTransaction(async(tx)=>{
+      const current=await tx.query('SELECT * FROM discovery_contact_inquiries WHERE id=$1 AND business_id=$2 FOR UPDATE',[req.params.inquiryId,req.params.id]);
+      if(!current.rows[0]) throw new Error('NOT_FOUND:Contact inquiry not found.');
+      const updates:string[]=['status=$1','updated_at=CURRENT_TIMESTAMP'];
+      const values:any[]=[status];
+      if(note) { updates.push(`merchant_note=${values.length+1}`); values.push(note); }
+      if(status==='RESPONDED') updates.push('responded_at=COALESCE(responded_at,CURRENT_TIMESTAMP)');
+      if(status==='CLOSED') updates.push('closed_at=COALESCE(closed_at,CURRENT_TIMESTAMP)');
+      values.push(req.params.inquiryId,req.params.id);
+      const idPos=values.length-1;
+      const businessPos=values.length;
+      const r=await tx.query(`UPDATE discovery_contact_inquiries SET ${updates.join(',')} WHERE id=${idPos} AND business_id=${businessPos} RETURNING *`,values);
+      return r.rows[0];
+    });
+    res.json({success:true,data});
+  }catch(err){next(err);}});
+
+  // ------------------------------------------------------------------
   // DISC-010: services + request/quote marketplace
   // ------------------------------------------------------------------
   router.get('/businesses/:id/services', async (req,res,next)=>{try{const r=await db.query(`SELECT * FROM discovery_services WHERE business_id=$1 AND is_active=TRUE ORDER BY name`,[req.params.id]);res.json({success:true,data:r.rows});}catch(err){next(err);}});
