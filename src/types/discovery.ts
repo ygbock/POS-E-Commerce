@@ -103,6 +103,9 @@ export interface DiscoveryFavoriteBusiness extends DiscoveryBusiness {
 
 export interface DiscoveryBusiness {
   id: string;
+  searchId?: string;
+  resultPosition?: number;
+  attributionEntityType?: 'BUSINESS';
   public_id: string;
   organization_id?: string | null;
   tenant_slug?: string | null;
@@ -221,6 +224,9 @@ export interface DiscoveryCategory {
  */
 export interface DiscoveryProduct {
   product_id: string;
+  searchId?: string;
+  resultPosition?: number;
+  attributionEntityType?: 'PRODUCT';
   product_name: string;
   product_slug: string;
   short_description?: string | null;
@@ -248,6 +254,9 @@ export interface DiscoveryProduct {
  */
 export interface DiscoveryService {
   id: string;
+  searchId?: string;
+  resultPosition?: number;
+  attributionEntityType?: 'SERVICE';
   business_id: string;
   name: string;
   slug: string;
@@ -502,8 +511,19 @@ export interface DiscoverySearchFilters {
   offset?: number;
 }
 
+export interface DiscoverySearchAttributionEvent {
+  eventId: string;
+  searchId: string;
+  eventType: 'IMPRESSION' | 'VIEW' | 'CONTACT' | 'DIRECTION_CLICK' | 'STORE_CLICK' | 'PRODUCT_VIEW' | 'SERVICE_VIEW' | 'SERVICE_REQUEST' | 'ORDER_CLICK';
+  entityType: 'BUSINESS' | 'PRODUCT' | 'SERVICE';
+  entityId: string;
+  resultPosition?: number;
+  source?: string;
+}
+
 export interface DiscoverySearchResponse {
   success: boolean;
+  searchId: string;
   query: string;
   type: DiscoverySearchType;
   filters: {
