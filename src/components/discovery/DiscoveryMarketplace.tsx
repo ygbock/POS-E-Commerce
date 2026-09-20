@@ -4,6 +4,7 @@ import { DiscoverySearchResults } from './DiscoverySearchResults';
 import { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
 import { DiscoveryServiceRequestPage } from './DiscoveryServiceRequestPage';
 import { DiscoveryServiceRequestsPage } from './DiscoveryServiceRequestsPage';
+import { DiscoverySavedBusinessesPage } from './DiscoverySavedBusinessesPage';
 import { DiscoveryBusinessContainer } from './business/DiscoveryBusinessContainer';
 import { useDiscoveryRoute } from '../../router/useDiscoveryRoute';
 import { Store, Compass, LayoutDashboard } from 'lucide-react';
@@ -63,6 +64,15 @@ export const DiscoveryMarketplace: React.FC = () => {
                 encodeURIComponent(service.name)
             )
           }
+        />
+      );
+    }
+
+    if (route.name === 'discover-saved') {
+      return (
+        <DiscoverySavedBusinessesPage
+          onBack={() => navigate('discover-home')}
+          onOpenBusiness={(businessId) => navigate('/discover/business/' + encodeURIComponent(businessId))}
         />
       );
     }
