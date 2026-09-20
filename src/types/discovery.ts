@@ -336,6 +336,62 @@ export interface DiscoveryVerificationApplication {
   updated_at: string;
 }
 
+export interface DiscoveryMerchantTrustCenter {
+  businessId: string;
+  businessName: string;
+  verificationStatus: DiscoveryVerificationStatus;
+  listingStatus: DiscoveryListingStatus;
+  businessMode: DiscoveryBusinessMode;
+  trustCenter: {
+    verification: {
+      status: DiscoveryVerificationStatus;
+      applications: Array<{
+        id: string;
+        business_id: string;
+        status: DiscoveryVerificationApplication['status'];
+        created_at: string;
+        updated_at: string;
+        reviewed_at?: string | null;
+        review_reason?: string | null;
+      }>;
+    };
+    claims: Array<{
+      id: string;
+      status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+      created_at: string;
+      reviewed_at?: string | null;
+      review_reason?: string | null;
+      submitted_by_current_user: boolean;
+    }>;
+    reviews: {
+      publishedCount: number;
+      pendingCount: number;
+      rejectedCount: number;
+      hiddenCount: number;
+      publishedRating: number;
+    };
+    reports: Array<{
+      id: string;
+      reason_code: string;
+      status: 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED' | 'DISMISSED';
+      resolution_note?: string | null;
+      created_at: string;
+      resolved_at?: string | null;
+      target_type: 'BUSINESS' | 'SERVICE';
+    }>;
+    timeline: Array<{
+      id: string;
+      entity_type: 'BUSINESS' | 'CLAIM' | 'VERIFICATION' | 'REVIEW' | 'REPORT';
+      event_type: string;
+      from_status?: string | null;
+      to_status?: string | null;
+      reason?: string | null;
+      created_at: string;
+    }>;
+    requiredActions: string[];
+  };
+}
+
 export interface DiscoveryBusinessClaim {
   id: string;
   business_id: string;
