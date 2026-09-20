@@ -11,3 +11,4 @@ export * from './DiscoveryAnalyticsPanel';
 export * from './DiscoveryStoreConversionModal';
 export * from './DiscoveryOnboardingWizard';
 export * from './DiscoveryBusinessContainer';
+export * from './DiscoveryTrustCenter';
