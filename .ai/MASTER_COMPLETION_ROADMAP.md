@@ -149,7 +149,7 @@ Remaining:
 - Claim UX.
 - Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
 - Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
-- Platform Discovery moderation workspace.
+- Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
 - Category governance.
 
 ### G3 — Merchant operating system completion
