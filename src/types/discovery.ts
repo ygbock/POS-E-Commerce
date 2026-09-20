@@ -34,10 +34,16 @@ export type DiscoveryBookingMode =
 export type DiscoveryLocationType =
   | 'STORE'
   | 'OFFICE'
+  | 'BRANCH'
   | 'WAREHOUSE'
+  | 'HOME_BASED'
+  | 'MOBILE'
   | 'SERVICE_AREA'
   | 'KIOSK'
   | 'OTHER';
+
+export type DiscoveryLocationQualityStatus = 'LOW' | 'MEDIUM' | 'HIGH' | 'VERIFIED';
+export type DiscoveryLocationSource = 'MANUAL' | 'GPS' | 'GEOCODED' | 'IMPORTED' | 'VERIFIED';
 
 export type DiscoveryEventType =
   | 'SEARCH'
@@ -143,6 +149,14 @@ export interface DiscoveryLocation {
   city?: string | null;
   district?: string | null;
   region?: string | null;
+  service_radius_km?: number | string | null;
+  location_quality_status?: DiscoveryLocationQualityStatus;
+  location_source?: DiscoveryLocationSource;
+  address_completeness_score?: number;
+  coordinate_accuracy_m?: number | string | null;
+  location_verified_at?: string | null;
+  location_verified_by_user_id?: string | null;
+  quality_notes?: string | null;
   country: string;
   postal_code?: string | null;
   latitude?: number | null;
