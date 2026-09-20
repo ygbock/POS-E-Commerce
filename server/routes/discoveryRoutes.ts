@@ -628,7 +628,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
               to_tsvector('simple', coalesce(b.name,'') || ' ' || coalesce(b.legal_name,'') || ' ' ||
                 coalesce(b.short_description,'') || ' ' || coalesce(b.description,'') || ' ' || coalesce(b.business_type,'')),
               plainto_tsquery('simple', ${bQ})
-            ) * 100
+            ) * ${rankingWeights.text}
             + CASE WHEN lower(b.name)=lower(${bQ}) THEN ${rankingWeights.exact} WHEN lower(b.name) LIKE lower(${bQ}) || '%' THEN ${rankingWeights.prefix} ELSE 0 END
             + CASE WHEN b.verification_status='VERIFIED' THEN ${rankingWeights.verified} ELSE 0 END
             + ${ratingExpr} * ${rankingWeights.rating}
@@ -636,7 +636,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             ${distanceExpr ? `- LEAST(${distanceExpr},100) * ${rankingWeights.distancePenalty}` : ''}
           )`
         : `(
-            CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END
+            CASE WHEN b.verification_status='VERIFIED' THEN ${rankingWeights.verified} ELSE 0 END
             + ${ratingExpr} * ${rankingWeights.rating}
             + ln(1 + ${reviewCountExpr}) * ${rankingWeights.reviewCount}
           )`;
@@ -787,7 +787,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         ts_rank_cd(to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')),plainto_tsquery('simple',${sQ}))*${rankingWeights.text}
         + CASE WHEN lower(s.name)=lower(${sQ}) THEN ${rankingWeights.exact} WHEN lower(s.name) LIKE lower(${sQ}) || '%' THEN ${rankingWeights.prefix} ELSE 0 END
         + CASE WHEN b.verification_status='VERIFIED' THEN ${rankingWeights.verified} ELSE 0 END
-      )`:`CASE WHEN b.verification_status='VERIFIED' THEN 20 ELSE 0 END`;
+      )`:`CASE WHEN b.verification_status='VERIFIED' THEN ${rankingWeights.verified} ELSE 0 END`;
       let serviceResults:any[]=[];
       let serviceCount = 0;
       if(type !== 'businesses' && type !== 'products'){
