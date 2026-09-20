@@ -4,7 +4,7 @@
 > Repository: ygbock/POS-E-Commerce
 > Execution branch: main
 > Checkpoint: 2026-09-20
-> Current validated head: cfa367d044acc52aa44c1d908881242671c3b076
+> Current implementation checkpoint: TASK-DISC-8.1 service-request lifecycle is implemented on `main`; CI validation is pending for this increment.
 
 > Latest implementation checkpoint: platform Discovery search governance APIs and permission are now implemented on `main`; local/full regression verification is still pending for this increment.
 > Purpose: Establish the current product baseline, separate implemented foundations from remaining product work, and define the ordered path to pilot and production launch.
@@ -88,7 +88,7 @@ These percentages are engineering planning estimates, not a mathematical complet
 - Store conversion/provisioning.
 - Locations, hours and service areas.
 - Products/services discovery.
-- Service requests and quotes.
+- Service requests and quotes.\n- Service-request lifecycle: OPEN → MATCHED → QUOTED → ACCEPTED/CANCELLED/CLOSED.\n- Request status history and accepted-quote uniqueness.
 - Claims.
 - Reviews.
 - Reports/moderation.
@@ -140,7 +140,7 @@ Remaining:
 - Review management UX.
 - Verification presentation and workflows.
 - Claim UX.
-- Service-request lifecycle UX.
+- Service-request lifecycle UX. **BACKEND API + INTEGRITY IMPLEMENTED**
 - Merchant Discovery management workspace.
 - Platform Discovery moderation workspace.
 - Category governance.
@@ -277,7 +277,7 @@ Status: COMPLETE
 - No historical migration rewrites.
 - New schema changes are forward-only.
 
-### Gate 1 — Discovery/Search completion
+### Gate 1 — Discovery/Search and marketplace completion
 Tasks:
 - TASK-SEARCH-7: Search quality, governance and merchant management.
 - TASK-SEARCH-8: Search conversion/impression analytics.
@@ -481,6 +481,6 @@ AbaCha is complete only when all of the following are true:
 
 ## 10. Immediate next task
 
-TASK-SEARCH-7 is in progress. The first production increment now implemented on main is merchant business-level search-alias management (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI. Platform/admin alias governance and baseline search-quality analytics APIs are now implemented.
+TASK-DISC-8.1 is now implemented on main: authenticated service requests, explicit request state transitions, request history, provider matching, quote submission, quote acceptance/decline, cancellation/closure, and database-level single-accepted-quote integrity. TASK-SEARCH-7 remains in progress with conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI remaining. (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI. Platform/admin alias governance and baseline search-quality analytics APIs are now implemented.
 
 The master roadmap should be treated as the controlling completion sequence from this checkpoint. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
