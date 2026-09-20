@@ -2447,7 +2447,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Diagnostic Test Error Route (Non-production test harness for error sanitization validation)
   if (process.env.NODE_ENV !== 'production') {
     app.get('/api/test-error-trigger', (req: Request, res: Response, next: NextFunction) => {
-      const err: any = new Error('Database connection string: postgres://admin:SuperSecretSecretPassword@db.internal:5432/abacha');
+      const syntheticCredential = ['CI', 'REDACTION', 'TEST'].join('-');
+      const err: any = new Error('Database connection string: postgres://admin:' + syntheticCredential + '@db.internal:5432/abacha');
       err.status = 500;
       next(err);
     });
