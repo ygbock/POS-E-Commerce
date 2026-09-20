@@ -37,3 +37,6 @@ export * from './business';
 
 export { DiscoveryServiceRequestsPage } from './DiscoveryServiceRequestsPage';
 export { DiscoverySavedBusinessesPage } from './DiscoverySavedBusinessesPage';
+
+export { DiscoveryMyContactInquiriesPage } from './DiscoveryMyContactInquiriesPage';
+export { DiscoveryContactInbox } from './business/DiscoveryContactInbox';
