@@ -754,7 +754,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             row,
             fuzzyScore: discoveryFuzzyScore(q, [row.product_name,row.product_slug,row.short_description,row.description,row.sku,row.search_aliases].filter(Boolean).join(' ')),
             index,
-          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
+          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * rankingWeights.fuzzy}))
             .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.product_name).localeCompare(String(b.row.product_name)) || a.index-b.index);
           productResults = ranked.slice(offset, offset + limit).map((x:any) => ({...x.row, fuzzy_score: Number(x.fuzzyScore.toFixed(4))}));
         }
@@ -813,7 +813,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             row,
             fuzzyScore: discoveryFuzzyScore(q, [row.name,row.service_type,row.description,row.service_area_text,row.search_aliases].filter(Boolean).join(' ')),
             index,
-          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * 35}))
+          })).map((x:any) => ({...x, combinedRank: Number(x.row.search_rank || 0) + x.fuzzyScore * rankingWeights.fuzzy}))
             .sort((a:any,b:any) => b.combinedRank-a.combinedRank || b.fuzzyScore-a.fuzzyScore || String(a.row.name).localeCompare(String(b.row.name)) || a.index-b.index);
           serviceResults = ranked.slice(offset, offset + limit).map((x:any) => ({...x.row, fuzzy_score: Number(x.fuzzyScore.toFixed(4))}));
         }
