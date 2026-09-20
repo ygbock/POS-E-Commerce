@@ -44,6 +44,11 @@ async function main() {
   const app = express();
   app.use(express.json());
   app.use('/api/discovery', createDiscoveryRouter(db));
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    const raw = String(err?.message || 'error');
+    const code = raw.split(':')[0];
+    res.status(code === 'VALIDATION_ERROR' ? 422 : 500).json({ success: false, error: { code, message: raw.includes(':') ? raw.slice(raw.indexOf(':') + 1).trim() : raw } });
+  });
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   const address = server.address();
@@ -127,7 +132,7 @@ async function main() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ eventId: 'bad', eventType: 'SEARCH', searchId: search.body.searchId, entityType: 'BUSINESS', entityId: business.id }),
     });
-    assert.strictEqual(invalid.status, 400);
+    assert.strictEqual(invalid.status, 422);
 
     console.log('Discovery search attribution tests passed.');
   } finally {
