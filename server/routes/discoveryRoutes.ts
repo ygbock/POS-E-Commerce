@@ -812,6 +812,22 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data});
   }catch(err){next(err);}});
 
+  router.get('/contact-inquiries', requireAuth(), async(req,res,next)=>{try{
+    const status=String(req.query.status||'');
+    if(status && !['OPEN','READ','RESPONDED','CLOSED'].includes(status)) throw new Error('VALIDATION_ERROR:invalid contact inquiry status.');
+    const r=await db.query(
+      `SELECT i.id,i.business_id,b.name AS business_name,i.customer_name,i.customer_email,i.customer_phone,
+              i.subject,i.message,i.status,i.responded_at,i.closed_at,i.created_at,i.updated_at
+       FROM discovery_contact_inquiries i
+       JOIN discovery_businesses b ON b.id=i.business_id
+       WHERE i.customer_user_id=$1 AND ($2='' OR i.status=$2)
+       ORDER BY i.updated_at DESC,i.created_at DESC
+       LIMIT 100`,
+      [req.auth!.userId,status],
+    );
+    res.json({success:true,data:r.rows});
+  }catch(err){next(err);}});
+
   // ------------------------------------------------------------------
   // DISC-010: services + request/quote marketplace
   // ------------------------------------------------------------------
