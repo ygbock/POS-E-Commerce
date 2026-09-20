@@ -40,6 +40,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [gettingCoords, setGettingCoords] = useState<boolean>(false);
+  const [verifyingLocationId, setVerifyingLocationId] = useState<string | null>(null);
 
   // Form State
   const [locForm, setLocForm] = useState({
@@ -156,6 +157,9 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
 
     try {
       if (!locForm.name.trim()) throw new Error('Location branch name is required.');
+      if (locForm.locationType === 'SERVICE_AREA' && (!locForm.serviceRadiusKm || Number(locForm.serviceRadiusKm) <= 0)) {
+        throw new Error('Service-area locations require a positive service radius.');
+      }
 
       const latNum = locForm.latitude ? Number(locForm.latitude) : null;
       const lngNum = locForm.longitude ? Number(locForm.longitude) : null;
@@ -177,6 +181,8 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
         latitude: latNum ?? undefined,
         longitude: lngNum ?? undefined,
         serviceRadiusKm: locForm.serviceRadiusKm ? Number(locForm.serviceRadiusKm) : undefined,
+        locationSource: editingLocation?.location_source || (latNum != null ? 'GPS' : 'MANUAL'),
+        coordinateAccuracyM: editingLocation?.coordinate_accuracy_m ?? undefined,
         phone: locForm.phone.trim() || undefined,
         isPrimary: locForm.isPrimary,
         isActive: locForm.isActive,
@@ -316,6 +322,47 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                       GPS: {Number(loc.latitude).toFixed(4)}, {Number(loc.longitude).toFixed(4)}
                     </p>
                   )}
+                  {loc.latitude != null && loc.longitude != null && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        Location quality: {loc.location_quality_status || 'LOW'}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Source: {loc.location_source || 'MANUAL'}
+                      </span>
+                      <a
+                        href={`https://www.openstreetmap.org/?mlat=${loc.latitude}&mlon=${loc.longitude}#map=17/${loc.latitude}/${loc.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-indigo-600 hover:underline"
+                      >
+                        Verify on map
+                      </a>
+                      {loc.location_quality_status !== 'VERIFIED' && (
+                        <button
+                          type="button"
+                          disabled={verifyingLocationId === loc.id}
+                          onClick={async () => {
+                            setVerifyingLocationId(loc.id);
+                            setError(null);
+                            try {
+                              await discoveryApi.verifyLocation(business.id, loc.id);
+                              await fetchLocations();
+                              setSuccess('Location marked as verified.');
+                              setTimeout(() => setSuccess(null), 4000);
+                            } catch (err: unknown) {
+                              setError(err instanceof DiscoveryApiError ? err.message : 'Failed to verify location.');
+                            } finally {
+                              setVerifyingLocationId(null);
+                            }
+                          }}
+                          className="text-[10px] font-bold text-emerald-600 hover:underline disabled:opacity-50"
+                        >
+                          {verifyingLocationId === loc.id ? 'Verifying…' : 'Mark verified'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -398,6 +445,9 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                     <option value="STORE">Retail Storefront</option>
                     <option value="OFFICE">Office / Studio</option>
                     <option value="WAREHOUSE">Warehouse / Depot</option>
+                    <option value="BRANCH">Branch</option>
+                    <option value="HOME_BASED">Home Based</option>
+                    <option value="MOBILE">Mobile</option>
                     <option value="SERVICE_AREA">Service Area / Mobile</option>
                     <option value="KIOSK">Kiosk / Stall</option>
                     <option value="OTHER">Other</option>
@@ -514,6 +564,26 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                     />
                   </div>
                 </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Service Radius (km)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="500"
+                  step="0.5"
+                  value={locForm.serviceRadiusKm}
+                  onChange={(e) => setLocForm({ ...locForm, serviceRadiusKm: e.target.value })}
+                  disabled={locForm.locationType !== 'SERVICE_AREA' && !locForm.serviceRadiusKm}
+                  placeholder="15"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-xs"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Service-area businesses are eligible for discovery within this coverage radius. Physical locations can leave this empty.
+                </p>
+              </div>
+
               </div>
 
               {/* Toggles */}
