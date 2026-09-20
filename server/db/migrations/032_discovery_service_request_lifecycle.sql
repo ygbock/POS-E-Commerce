@@ -29,7 +29,3 @@ ALTER TABLE discovery_service_requests
 ALTER TABLE discovery_service_requests
   ADD CONSTRAINT ck_discovery_request_budget_range
   CHECK (budget_to IS NULL OR budget_to >= COALESCE(budget_from, 0));
-
-ALTER TABLE discovery_service_requests
-  ADD CONSTRAINT ck_discovery_request_preferred_date
-  CHECK (preferred_date IS NULL OR preferred_date >= CURRENT_DATE);
