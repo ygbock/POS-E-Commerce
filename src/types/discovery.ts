@@ -89,6 +89,11 @@ export type DiscoveryDataState =
 /**
  * Public and administrative business listing record
  */
+export interface DiscoveryFavoriteBusiness extends DiscoveryBusiness {
+  favorite_id: string;
+  favorited_at: string;
+}
+
 export interface DiscoveryBusiness {
   id: string;
   public_id: string;
