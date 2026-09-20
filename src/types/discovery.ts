@@ -511,6 +511,22 @@ export interface DiscoverySearchFilters {
   offset?: number;
 }
 
+export interface DiscoverySearchRankingConfig {
+  id: string;
+  text_match_weight: number | string;
+  exact_match_weight: number | string;
+  prefix_match_weight: number | string;
+  verified_weight: number | string;
+  rating_weight: number | string;
+  review_count_weight: number | string;
+  fuzzy_match_weight: number | string;
+  distance_penalty_weight: number | string;
+  availability_weight: number | string;
+  is_active: boolean;
+  updated_by_user_id?: string | null;
+  updated_at?: string;
+}
+
 export interface DiscoverySearchAttributionEvent {
   eventId: string;
   searchId: string;
