@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   X,
   User,
+  Heart,
 } from 'lucide-react';
 import type { DiscoveryLocation, DiscoveryService, DiscoveryReview, DiscoveryPublicBusinessProfile } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
@@ -47,6 +48,9 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error' | 'not_found'>('loading');
   const [error, setError] = useState('');
   const [showReviews, setShowReviews] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [favoriteMessage, setFavoriteMessage] = useState<string | null>(null);
 
   // Direct service quote modal
   const [activeServiceForModal, setActiveServiceForModal] = useState<DiscoveryService | null>(null);
@@ -90,10 +94,39 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
     };
   }, [businessId]);
 
+  useEffect(() => {
+    if (!profile?.business.id) return;
+    let mounted = true;
+    discoveryApi.getBusinessFavorite(profile.business.id)
+      .then((result) => { if (mounted) setIsFavorite(result.isFavorite); })
+      .catch(() => undefined);
+    return () => { mounted = false; };
+  }, [profile?.business.id]);
+
   const primary = useMemo(
     () => profile?.locations.find((l) => l.is_primary && l.is_active) || profile?.locations.find((l) => l.is_active) || profile?.locations[0],
     [profile]
   );
+
+  const toggleFavorite = async () => {
+    if (!profile || favoriteBusy) return;
+    setFavoriteBusy(true);
+    setFavoriteMessage(null);
+    try {
+      const result = isFavorite
+        ? await discoveryApi.removeBusinessFavorite(profile.business.id)
+        : await discoveryApi.addBusinessFavorite(profile.business.id);
+      setIsFavorite(result.isFavorite);
+    } catch (err: unknown) {
+      if (err instanceof DiscoveryApiError && err.status === 401) {
+        setFavoriteMessage('Sign in to save businesses to your favorites.');
+      } else {
+        setFavoriteMessage(err instanceof Error ? err.message : 'Unable to update saved status.');
+      }
+    } finally {
+      setFavoriteBusy(false);
+    }
+  };
 
   const handleBackClick = () => {
     if (onBack) {
@@ -276,6 +309,23 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0">
+                <button
+                  type="button"
+                  onClick={() => void toggleFavorite()}
+                  disabled={favoriteBusy}
+                  aria-pressed={isFavorite}
+                  aria-label={isFavorite ? 'Remove business from saved businesses' : 'Save business'}
+                  className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-colors ${
+                    isFavorite
+                      ? 'border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                  }`}
+                >
+                  <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />
+                  <span>{favoriteBusy ? 'Saving…' : isFavorite ? 'Saved' : 'Save'}</span>
+                </button>
+
+
                 {canCall && (
                   <a
                     href={`tel:${b.phone}`}
@@ -321,6 +371,10 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                   </a>
                 )}
               </div>
+            {favoriteMessage && (
+              <p role="status" className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">{favoriteMessage}</p>
+            )}
+
             </div>
 
             {/* Description */}
