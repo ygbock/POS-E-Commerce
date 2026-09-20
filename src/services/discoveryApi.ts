@@ -25,6 +25,7 @@ import type {
   DiscoverySearchResponse,
   DiscoveryPublicBusinessProfile,
   DiscoverySearchAlias,
+  DiscoveryMerchantTrustCenter,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
@@ -497,6 +498,10 @@ export const discoveryApi = {
       method: 'POST',
       body: JSON.stringify(review),
     });
+  },
+
+  async getMerchantTrustCenter(businessId: string): Promise<DiscoveryMerchantTrustCenter> {
+    return request<DiscoveryMerchantTrustCenter>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/trust`);
   },
 
   async getVerification(businessId: string): Promise<{ businessId: string; verificationStatus: DiscoveryBusiness['verification_status']; applications: DiscoveryVerificationApplication[] }> {
