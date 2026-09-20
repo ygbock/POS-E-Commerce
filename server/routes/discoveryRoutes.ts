@@ -735,6 +735,45 @@ export function createDiscoveryRouter(db: DatabaseClient) {
          VALUES($1,$2,NULL,'OPEN',$3,$4)`,
         [`req_evt_${randomUUID().replace(/-/g,'')}`,requestId,req.auth!.userId,'Request created.'],
       );
+
+      const matches = await tx.query(
+        `INSERT INTO discovery_service_request_matches(request_id,business_id,match_score)
+         SELECT $1,b.id,
+           CASE
+             WHEN $2::text IS NOT NULL AND EXISTS (
+               SELECT 1 FROM discovery_business_locations l
+               WHERE l.business_id=b.id AND l.is_active=TRUE AND lower(l.city)=lower($2)
+             ) THEN 1.000
+             WHEN $3::text IS NOT NULL AND EXISTS (
+               SELECT 1 FROM discovery_business_locations l
+               WHERE l.business_id=b.id AND l.is_active=TRUE AND lower(l.district)=lower($3)
+             ) THEN 0.900
+             WHEN $4::text IS NOT NULL AND EXISTS (
+               SELECT 1 FROM discovery_business_locations l
+               WHERE l.business_id=b.id AND l.is_active=TRUE AND lower(l.region)=lower($4)
+             ) THEN 0.800
+             ELSE 0.500
+           END
+         FROM discovery_businesses b
+         WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+           AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=b.id AND s.is_active=TRUE)
+           AND b.id <> ALL($5::text[])
+         ON CONFLICT(request_id,business_id) DO NOTHING
+         RETURNING business_id`,
+        [requestId,x.city||null,x.district||null,x.region||null,[req.auth!.userId]],
+      );
+      if (matches.rows.length > 0) {
+        await tx.query(
+          `UPDATE discovery_service_requests SET status='MATCHED',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,
+          [requestId],
+        );
+        await tx.query(
+          `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+           VALUES($1,$2,'OPEN','MATCHED',$3,$4)`,
+          [`req_evt_${randomUUID().replace(/-/g,'')}`,requestId,req.auth!.userId,`${matches.rows.length} provider match(es) found.`],
+        );
+        r.rows[0].status='MATCHED';
+      }
       return r.rows[0];
     });
     res.status(201).json({success:true,data});
