@@ -824,21 +824,19 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       productResults = attachSearchAttribution(productResults, 'PRODUCT');
       serviceResults = attachSearchAttribution(serviceResults, 'SERVICE');
 
-      if (q) {
-        const analyticsMetadata = {
-          queryHash: createHash('sha256').update(q.normalize('NFKC').toLowerCase()).digest('hex'),
-          queryLength: q.length,
-          type,
-          zeroResults: businessCount + productCount + serviceCount === 0,
-          resultCounts: { businesses: businessCount, products: productCount, services: serviceCount },
-          filters: { city, district, region, categoryId, openNow, radiusKm: radius, sort },
-          searchId,
-        };
-        void db.query(
-          `INSERT INTO discovery_analytics_events(id,event_type,session_hash,actor_user_id,search_id,metadata) VALUES($1,'SEARCH',$2,$3,$4,$5)`,
-          [`evt_${randomUUID().replace(/-/g,'')}`, createHash('sha256').update(`${req.ip}|search|${req.headers['user-agent']||''}`).digest('hex'), req.auth?.userId || null, searchId, analyticsMetadata],
-        ).catch(() => undefined);
-      }
+      const analyticsMetadata = {
+        queryHash: q ? createHash('sha256').update(q.normalize('NFKC').toLowerCase()).digest('hex') : null,
+        queryLength: q.length,
+        type,
+        zeroResults: businessCount + productCount + serviceCount === 0,
+        resultCounts: { businesses: businessCount, products: productCount, services: serviceCount },
+        filters: { city, district, region, categoryId, openNow, radiusKm: radius, sort },
+        searchId,
+      };
+      void db.query(
+        `INSERT INTO discovery_analytics_events(id,event_type,session_hash,actor_user_id,search_id,metadata) VALUES($1,'SEARCH',$2,$3,$4,$5)`,
+        [`evt_${randomUUID().replace(/-/g,'')}`, createHash('sha256').update(`${req.ip}|search|${req.headers['user-agent']||''}`).digest('hex'), req.auth?.userId || null, searchId, analyticsMetadata],
+      ).catch(() => undefined);
 
       res.json({
         success:true,query:q,type,searchId,
@@ -872,6 +870,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(!['BUSINESS','PRODUCT','SERVICE'].includes(entityType)||!entityId) throw new Error('VALIDATION_ERROR:entityType and entityId are required.');
       if(!/^evt_[a-f0-9]{32}$/.test(eventId)) throw new Error('VALIDATION_ERROR:eventId must be a generated attribution id.');
       if(position!=null&&(!Number.isInteger(position)||position<1||position>10000)) throw new Error('VALIDATION_ERROR:resultPosition must be a positive integer.');
+      const searchContext = await db.query("SELECT 1 FROM discovery_analytics_events WHERE search_id=$1 AND event_type='SEARCH' AND created_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours' LIMIT 1", [searchId]);
+      if(!searchContext.rows[0])return res.status(409).json({success:false,error:{code:'SEARCH_CONTEXT_EXPIRED',message:'The search context is no longer available for attribution.'}});
       let visible=false;
       if(entityType==='BUSINESS'){
         const r=await db.query("SELECT 1 FROM discovery_businesses b WHERE b.id=$1 AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))",[entityId]);
