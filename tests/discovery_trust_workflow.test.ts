@@ -15,6 +15,11 @@ async function main() {
   );
   assert.strictEqual(verification.rows[0].status, 'PENDING');
 
+  await assert.rejects(
+    () => db.query("INSERT INTO discovery_verification_applications (id,business_id,applicant_user_id,evidence) VALUES ('ver_2','trust_business','trust-owner',$1)", [{}]),
+    /unique|constraint|duplicate/i,
+  );
+
   await db.query(
     "INSERT INTO discovery_trust_events (id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES ('trust_evt_1','trust_business','VERIFICATION','ver_1','VERIFICATION_SUBMITTED','UNVERIFIED','PENDING','trust-owner',NULL,$1)",
     [{}],
@@ -56,11 +61,6 @@ async function main() {
 
   const trustEvents = await db.query("SELECT count(*)::int AS count FROM discovery_trust_events WHERE business_id='trust_business'");
   assert.strictEqual(Number(trustEvents.rows[0].count), 2);
-
-  await assert.rejects(
-    () => db.query("INSERT INTO discovery_verification_applications (id,business_id,applicant_user_id,evidence) VALUES ('ver_2','trust_business','trust-owner',$1)", [{}]),
-    /unique|constraint|duplicate/i,
-  );
 
   console.log('Discovery trust workflow tests passed.');
 }
