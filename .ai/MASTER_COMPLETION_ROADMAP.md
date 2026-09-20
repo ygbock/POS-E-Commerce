@@ -153,7 +153,7 @@ Remaining:
 - Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
 - Category governance.
 
-Next Discovery increment: Discovery governance and location UX (category governance and map/location UX). Customer contact inquiries and merchant review responses are implemented.
+Discovery governance increment implemented: platform-owned category taxonomy CRUD/audit, active-category enforcement in public discovery filters and merchant category assignment, and existing customer map/location/radius UX are now aligned with governed taxonomy. Customer contact inquiries and merchant review responses are implemented. Next location increment: location quality/provenance, map pin editing, service-area validation, and stronger geo-search tests.
 
 ### G3 — Merchant operating system completion
 Remaining/verification:
