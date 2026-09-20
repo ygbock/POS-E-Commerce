@@ -479,6 +479,6 @@ AbaCha is complete only when all of the following are true:
 
 ## 10. Immediate next task
 
-TASK-SEARCH-7 is the next implementation task.
+TASK-SEARCH-7 is in progress. The first production increment now implemented on main is merchant business-level search-alias management (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are platform/admin alias governance, search-quality analytics, conversion attribution, ranking controls, abuse controls and performance/load verification.
 
 The master roadmap should be treated as the controlling completion sequence from this checkpoint. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
