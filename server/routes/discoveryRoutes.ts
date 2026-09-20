@@ -123,10 +123,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       'INSERT INTO discovery_business_favorites(id,business_id,user_id) VALUES($1,$2,$3) ON CONFLICT(business_id,user_id) DO NOTHING',
       [`fav_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId],
     );
-    void db.query(
-      `INSERT INTO discovery_analytics_events(id,business_id,event_type,actor_user_id,metadata) VALUES($1,$2,'CONTACT',$3,$4)`,
-      [`evt_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,{action:'FAVORITE'}],
-    ).catch(()=>undefined);
     res.status(201).json({success:true,data:{businessId:req.params.id,isFavorite:true}});
   }catch(err){next(err);}});
 
