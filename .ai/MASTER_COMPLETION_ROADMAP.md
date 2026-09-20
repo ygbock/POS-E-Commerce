@@ -131,6 +131,13 @@ Remaining:
 - Public API documentation.
 
 ### G2 — Discovery marketplace completion
+Progress:
+- Trust/verification workflow: **IMPLEMENTED (API + merchant verification UI + moderation audit schema)**
+- Verification applications, decisions and status transitions are now server-authoritative.
+- New reviews enter moderation; review decisions are audited.
+- Report status transitions are audited.
+- Claim submission/decisions are audited.
+- Tenant-scoped verification/review/report moderation is enforced.
 Remaining:
 - Complete customer discovery experience across desktop/mobile.
 - Business profile completeness.
@@ -283,7 +290,7 @@ Tasks:
 - TASK-SEARCH-8: Search conversion/impression analytics.
 - TASK-SEARCH-9: Search abuse controls and performance testing.
 - TASK-DISC-8: Discovery customer/merchant workflow completion.
-- TASK-DISC-9: Discovery moderation/verification completion.
+- TASK-DISC-9: Discovery moderation/verification completion. **IMPLEMENTED (trust workflow/API + merchant verification UI; richer admin moderation UI remains)**
 
 Exit criteria:
 - Search acceptance suite green.
@@ -483,4 +490,4 @@ AbaCha is complete only when all of the following are true:
 
 TASK-DISC-8.1 is now implemented on main: authenticated service requests, explicit request state transitions, request history, provider matching, quote submission, quote acceptance/decline, cancellation/closure, and database-level single-accepted-quote integrity. TASK-SEARCH-7 remains in progress with conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI remaining. (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI. Platform/admin alias governance and baseline search-quality analytics APIs are now implemented.
 
-The master roadmap should be treated as the controlling completion sequence from this checkpoint. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
+The master roadmap should be treated as the controlling completion sequence from this checkpoint. TASK-DISC-9 trust/verification backend workflow is now implemented on main; remaining polish is the dedicated platform moderation UI and final regression verification. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
