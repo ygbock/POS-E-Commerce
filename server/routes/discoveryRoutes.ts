@@ -724,13 +724,20 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(x.budgetTo!=null&&(!Number.isFinite(Number(x.budgetTo))||Number(x.budgetTo)<0))throw new Error('VALIDATION_ERROR:budgetTo must be a non-negative number.');
     if(x.budgetFrom!=null&&x.budgetTo!=null&&Number(x.budgetTo)<Number(x.budgetFrom))throw new Error('VALIDATION_ERROR:budgetTo must be greater than or equal to budgetFrom.');
     const requestId=`req_${randomUUID().replace(/-/g,'')}`;
-    const r=await db.query(
-      `INSERT INTO discovery_service_requests(id,customer_user_id,customer_name,customer_phone,customer_email,description,city,district,region,latitude,longitude,preferred_date,budget_from,budget_to)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [requestId,req.auth!.userId,customerName,x.customerPhone||null,x.customerEmail||null,description,x.city||null,x.district||null,x.region||null,x.latitude??null,x.longitude??null,x.preferredDate||null,x.budgetFrom??null,x.budgetTo??null],
-    );
-    await recordRequestEvent(requestId,null,'OPEN',req.auth!.userId,'Request created.');
-    res.status(201).json({success:true,data:r.rows[0]});
+    const data=await db.withTransaction(async(tx)=>{
+      const r=await tx.query(
+        `INSERT INTO discovery_service_requests(id,customer_user_id,customer_name,customer_phone,customer_email,description,city,district,region,latitude,longitude,preferred_date,budget_from,budget_to)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [requestId,req.auth!.userId,customerName,x.customerPhone||null,x.customerEmail||null,description,x.city||null,x.district||null,x.region||null,x.latitude??null,x.longitude??null,x.preferredDate||null,x.budgetFrom??null,x.budgetTo??null],
+      );
+      await tx.query(
+        `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+         VALUES($1,$2,NULL,'OPEN',$3,$4)`,
+        [`req_evt_${randomUUID().replace(/-/g,'')}`,requestId,req.auth!.userId,'Request created.'],
+      );
+      return r.rows[0];
+    });
+    res.status(201).json({success:true,data});
   }catch(err){next(err);} });
 
   router.get('/service-requests/:id', requireAuth(), async(req,res,next)=>{try{
@@ -807,42 +814,62 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(!businessId||x.amount==null)throw new Error('VALIDATION_ERROR:businessId and amount are required.');
     const b=await repo.findById(businessId);
     if(!b||!(await owned(req,businessId)))throw new Error('TENANT_ACCESS_DENIED:Only the business owner may quote.');
-    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1',[req.params.id]);
-    if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
-    if(!['OPEN','MATCHED','QUOTED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:This request cannot receive a quote.');
     const serviceId=x.serviceId?String(x.serviceId):null;
+    const amount=Number(x.amount);
+    if(!Number.isFinite(amount)||amount<0)throw new Error('VALIDATION_ERROR:amount must be a non-negative number.');
     if(serviceId){
       const s=await db.query('SELECT 1 FROM discovery_services WHERE id=$1 AND business_id=$2 AND is_active=TRUE',[serviceId,businessId]);
       if(!s.rows[0])throw new Error('NOT_FOUND:Service does not belong to the quoting business.');
     }
-    const amount=Number(x.amount);
-    if(!Number.isFinite(amount)||amount<0)throw new Error('VALIDATION_ERROR:amount must be a non-negative number.');
     const quoteId=`quote_${randomUUID().replace(/-/g,'')}`;
-    const r=await db.query(
-      `INSERT INTO discovery_service_quotes(id,request_id,business_id,service_id,amount,currency,message,estimated_duration_minutes,valid_until)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [quoteId,req.params.id,businessId,serviceId,amount,x.currency||'SLE',x.message||null,x.estimatedDurationMinutes||null,x.validUntil||null],
-    );
-    await db.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,1) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId]);
-    if(request.rows[0].status==='OPEN'||request.rows[0].status==='MATCHED'){
-      await db.query('UPDATE discovery_service_requests SET status=\'QUOTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
-      await recordRequestEvent(req.params.id,String(request.rows[0].status),'QUOTED',req.auth!.userId,'Quote submitted.');
-    }
-    res.status(201).json({success:true,data:r.rows[0]});
+    const result=await db.withTransaction(async(tx)=>{
+      const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 FOR UPDATE',[req.params.id]);
+      if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
+      if(!['OPEN','MATCHED','QUOTED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:This request cannot receive a quote.');
+      const r=await tx.query(
+        `INSERT INTO discovery_service_quotes(id,request_id,business_id,service_id,amount,currency,message,estimated_duration_minutes,valid_until)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [quoteId,req.params.id,businessId,serviceId,amount,x.currency||'SLE',x.message||null,x.estimatedDurationMinutes||null,x.validUntil||null],
+      );
+      await tx.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,1) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId]);
+      if(request.rows[0].status==='OPEN'||request.rows[0].status==='MATCHED'){
+        await tx.query('UPDATE discovery_service_requests SET status=\'QUOTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
+        await tx.query(
+          `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+           VALUES($1,$2,$3,'QUOTED',$4,$5)`,
+          [`req_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,request.rows[0].status,req.auth!.userId,'Quote submitted.'],
+        );
+      }
+      return r.rows[0];
+    });
+    res.status(201).json({success:true,data:result});
   }catch(err){next(err);} });
 
   router.post('/service-requests/:id/quotes/:quoteId/accept', requireAuth(), async(req,res,next)=>{try{
-    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.auth!.userId]);
-    if(!request.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
-    if(request.rows[0].status!=='QUOTED')throw new Error('INVALID_STATE_TRANSITION:Only QUOTED requests can accept a quote.');
-    const quote=await db.query('SELECT q.*,b.name AS business_name FROM discovery_service_quotes q JOIN discovery_businesses b ON b.id=q.business_id WHERE q.id=$1 AND q.request_id=$2',[req.params.quoteId,req.params.id]);
-    if(!quote.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Quote not found.'}});
-    if(quote.rows[0].status!=='SUBMITTED')throw new Error('INVALID_STATE_TRANSITION:Quote is no longer available.');
-    if(quote.rows[0].valid_until && new Date(String(quote.rows[0].valid_until)) < new Date())throw new Error('CONFLICT:Quote has expired.');
-    await db.query('UPDATE discovery_service_quotes SET status=\'ACCEPTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.quoteId]);
-    await db.query('UPDATE discovery_service_quotes SET status=\'DECLINED\',updated_at=CURRENT_TIMESTAMP WHERE request_id=$1 AND id<>$2 AND status=\'SUBMITTED\'',[req.params.id,req.params.quoteId]);
-    const data=await transitionRequest(req.params.id,'ACCEPTED',req.auth!.userId,'Quote accepted by customer.');
-    res.json({success:true,data,quote:{...quote.rows[0],status:'ACCEPTED'}});
+    const result=await db.withTransaction(async(tx)=>{
+      const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2 FOR UPDATE',[req.params.id,req.auth!.userId]);
+      if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
+      if(request.rows[0].status!=='QUOTED')throw new Error('INVALID_STATE_TRANSITION:Only QUOTED requests can accept a quote.');
+      const quote=await tx.query(
+        `SELECT q.*,b.name AS business_name FROM discovery_service_quotes q
+         JOIN discovery_businesses b ON b.id=q.business_id
+         WHERE q.id=$1 AND q.request_id=$2 FOR UPDATE`,
+        [req.params.quoteId,req.params.id],
+      );
+      if(!quote.rows[0])throw new Error('NOT_FOUND:Quote not found.');
+      if(quote.rows[0].status!=='SUBMITTED')throw new Error('INVALID_STATE_TRANSITION:Quote is no longer available.');
+      if(quote.rows[0].valid_until && new Date(String(quote.rows[0].valid_until)) < new Date())throw new Error('CONFLICT:Quote has expired.');
+      await tx.query('UPDATE discovery_service_quotes SET status=\'ACCEPTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.quoteId]);
+      await tx.query('UPDATE discovery_service_quotes SET status=\'DECLINED\',updated_at=CURRENT_TIMESTAMP WHERE request_id=$1 AND id<>$2 AND status=\'SUBMITTED\'',[req.params.id,req.params.quoteId]);
+      await tx.query('UPDATE discovery_service_requests SET status=\'ACCEPTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
+      await tx.query(
+        `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+         VALUES($1,$2,'QUOTED','ACCEPTED',$3,$4)`,
+        [`req_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,'Quote accepted by customer.'],
+      );
+      return {request:{...request.rows[0],status:'ACCEPTED'},quote:{...quote.rows[0],status:'ACCEPTED'}};
+    });
+    res.json({success:true,data:result.request,quote:result.quote});
   }catch(err){next(err);} });
 
   router.post('/service-requests/:id/quotes/:quoteId/decline', requireAuth(), async(req,res,next)=>{try{
