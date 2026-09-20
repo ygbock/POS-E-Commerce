@@ -50,23 +50,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
       try {
         const response = await discoveryApi.getBusinessAnalytics(business.id, 30);
         if (mounted) {
-          if (response && response.data && response.data.length > 0) {
-            setAnalytics(response.data[0]);
-          } else {
-            setAnalytics({
-              business_id: business.id,
-              timeframe: '30d',
-              impressions: 128,
-              profile_views: 64,
-              phone_clicks: 18,
-              whatsapp_clicks: 22,
-              direction_clicks: 11,
-              website_clicks: 6,
-              service_inquiries: 4,
-              store_visits: 25,
-              conversion_rate: 0.16,
-            });
-          }
+          setAnalytics(response.data?.[0] || null);
         }
       } catch (err) {
         // Fallback default structure
