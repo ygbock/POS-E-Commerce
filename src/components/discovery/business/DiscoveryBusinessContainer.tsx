@@ -5,6 +5,7 @@ import {
   Clock,
   Wrench,
   FileText,
+  MessageSquare,
   Star,
   ShieldCheck,
   TrendingUp,
@@ -26,6 +27,7 @@ import { DiscoveryLocationsPanel } from './DiscoveryLocationsPanel';
 import { DiscoveryHoursEditor } from './DiscoveryHoursEditor';
 import { DiscoveryServicesManager } from './DiscoveryServicesManager';
 import { DiscoveryQuotesInbox } from './DiscoveryQuotesInbox';
+import { DiscoveryContactInbox } from './DiscoveryContactInbox';
 import { DiscoveryReviewsPanel } from './DiscoveryReviewsPanel';
 import { DiscoveryVerificationPanel } from './DiscoveryVerificationPanel';
 import { DiscoveryTrustCenter } from './DiscoveryTrustCenter';
@@ -48,6 +50,7 @@ const TABS = [
   { id: 'hours', label: 'Operating Hours', icon: Clock },
   { id: 'services', label: 'Services', icon: Wrench },
   { id: 'quotes', label: 'Quotes Inbox', icon: FileText },
+  { id: 'contacts', label: 'Contact Inbox', icon: MessageSquare },
   { id: 'reviews', label: 'Reviews', icon: Star },
   { id: 'verification', label: 'Verification', icon: ShieldCheck },
   { id: 'trust', label: 'Trust Center', icon: UserCheck },
@@ -280,6 +283,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
 
         {activeTab === 'quotes' && (
           <DiscoveryQuotesInbox business={selectedBusiness} />
+        )}
+
+        {activeTab === 'contacts' && (
+          <DiscoveryContactInbox business={selectedBusiness} />
         )}
 
         {activeTab === 'reviews' && (
