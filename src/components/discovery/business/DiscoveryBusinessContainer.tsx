@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertCircle,
   Sparkles,
+  UserCheck,
   ChevronDown,
   LayoutDashboard,
   ExternalLink,
@@ -27,6 +28,7 @@ import { DiscoveryServicesManager } from './DiscoveryServicesManager';
 import { DiscoveryQuotesInbox } from './DiscoveryQuotesInbox';
 import { DiscoveryReviewsPanel } from './DiscoveryReviewsPanel';
 import { DiscoveryVerificationPanel } from './DiscoveryVerificationPanel';
+import { DiscoveryTrustCenter } from './DiscoveryTrustCenter';
 import { DiscoveryAnalyticsPanel } from './DiscoveryAnalyticsPanel';
 import { DiscoverySettingsPanel } from './DiscoverySettingsPanel';
 import { DiscoverySearchAliasesPanel } from './DiscoverySearchAliasesPanel';
@@ -48,6 +50,7 @@ const TABS = [
   { id: 'quotes', label: 'Quotes Inbox', icon: FileText },
   { id: 'reviews', label: 'Reviews', icon: Star },
   { id: 'verification', label: 'Verification', icon: ShieldCheck },
+  { id: 'trust', label: 'Trust Center', icon: UserCheck },
   { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   { id: 'settings', label: 'Visibility Settings', icon: Sliders },
   { id: 'search', label: 'Search & Aliases', icon: Sparkles },
@@ -287,6 +290,13 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
           <DiscoveryVerificationPanel
             business={selectedBusiness}
             onUpdate={handleBusinessUpdated}
+          />
+        )}
+
+        {activeTab === 'trust' && (
+          <DiscoveryTrustCenter
+            business={selectedBusiness}
+            onNavigateToVerification={() => setActiveTab('verification')}
           />
         )}
 
