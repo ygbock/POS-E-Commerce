@@ -28,6 +28,7 @@ import type {
   DiscoveryMerchantTrustCenter,
   DiscoveryFavoriteBusiness,
   DiscoveryContactInquiry,
+  DiscoverySearchAttributionEvent,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
@@ -160,6 +161,27 @@ export const discoveryApi = {
       throw new DiscoveryApiError(message, errorObj?.code || 'SEARCH_ERROR', status, body);
     }
     return body as DiscoverySearchResponse;
+  },
+
+  /**
+   * Record server-validated search result impressions/click conversions.
+   * eventId makes retries idempotent without allowing the client to author target visibility.
+   */
+  async recordSearchAttribution(event: Omit<DiscoverySearchAttributionEvent, 'eventId'> & { eventId?: string }): Promise<{ accepted: number; results: Array<{ eventId: string; recorded: boolean }> }> {
+    const eventId = event.eventId || `evt_${crypto.randomUUID().replace(/-/g, '')}`;
+    return request<{ accepted: number; results: Array<{ eventId: string; recorded: boolean }> }>('/api/discovery/search/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...event, eventId }),
+    });
+  },
+
+  async recordSearchAttributionBatch(events: DiscoverySearchAttributionEvent[]): Promise<{ accepted: number; results: Array<{ eventId: string; recorded: boolean }> }> {
+    return request<{ accepted: number; results: Array<{ eventId: string; recorded: boolean }> }>('/api/discovery/search/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events }),
+    });
   },
 
   /**
