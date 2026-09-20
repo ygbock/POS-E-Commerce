@@ -757,10 +757,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
          FROM discovery_businesses b
          WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
            AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=b.id AND s.is_active=TRUE)
-           AND b.id <> ALL($5::text[])
+
          ON CONFLICT(request_id,business_id) DO NOTHING
          RETURNING business_id`,
-        [requestId,x.city||null,x.district||null,x.region||null,[req.auth!.userId]],
+        [requestId,x.city||null,x.district||null,x.region||null],
       );
       if (matches.rows.length > 0) {
         await tx.query(
