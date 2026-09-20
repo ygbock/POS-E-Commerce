@@ -1,0 +1,117 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'node:crypto';
+import { DatabaseClient } from '../db/client.ts';
+import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
+import { PERMISSIONS } from '../auth/roles.ts';
+
+const eventId = (prefix: string) => prefix + '_' + randomUUID().replace(/-/g, '');
+
+export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Router {
+  const router = Router();
+  const guard = [requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY)];
+
+  router.get('/verification', ...guard, async (_req, res, next) => {
+    try {
+      const r = await db.query(`SELECT v.*, b.name AS business_name, b.organization_id, b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.status='PENDING' ORDER BY v.created_at ASC LIMIT 200`);
+      res.json({ success: true, data: r.rows });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/verification/:id/decision', ...guard, async (req, res, next) => {
+    try {
+      const status = String(req.body?.status || '');
+      if (!['APPROVED', 'REJECTED'].includes(status)) return res.status(422).json({ success:false, error:{code:'INVALID_STATUS',message:'status must be APPROVED or REJECTED.'} });
+      const reason = String(req.body?.reason || '').trim().slice(0,2000) || null;
+      const result = await db.withTransaction(async (tx) => {
+        const current = await tx.query(`SELECT v.*, b.organization_id, b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.id=$1 AND v.status='PENDING' FOR UPDATE`, [req.params.id]);
+        if (!current.rows[0]) throw new Error('NOT_FOUND:Verification application not found.');
+        const row = current.rows[0];
+        const updated = await tx.query(`UPDATE discovery_verification_applications SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`, [status,req.auth!.userId,reason,req.params.id]);
+        await tx.query(`UPDATE discovery_businesses SET verification_status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2`, [status==='APPROVED'?'VERIFIED':'REJECTED',row.business_id]);
+        await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'VERIFICATION',$3,'VERIFICATION_DECIDED',$4,$5,$6,$7,$8)`, [eventId('trust'),row.business_id,req.params.id,row.verification_status,status==='APPROVED'?'VERIFIED':'REJECTED',req.auth!.userId,reason,{}]);
+        return updated.rows[0];
+      });
+      res.json({ success:true, data:result });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/claims', ...guard, async (_req, res, next) => {
+    try {
+      const r = await db.query(`SELECT c.*, b.name AS business_name FROM discovery_business_claims c JOIN discovery_businesses b ON b.id=c.business_id WHERE c.status='PENDING' ORDER BY c.created_at ASC LIMIT 200`);
+      res.json({ success:true, data:r.rows });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/claims/:id/decision', ...guard, async (req, res, next) => {
+    try {
+      const status=String(req.body?.status||'');
+      if (!['APPROVED','REJECTED'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'status must be APPROVED or REJECTED.'}});
+      const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
+      const result=await db.withTransaction(async(tx)=>{
+        const current=await tx.query(`SELECT * FROM discovery_business_claims WHERE id=$1 AND status='PENDING' FOR UPDATE`,[req.params.id]);
+        if(!current.rows[0]) throw new Error('NOT_FOUND:Claim not found.');
+        const row=current.rows[0];
+        const updated=await tx.query(`UPDATE discovery_business_claims SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,[status,req.auth!.userId,reason,req.params.id]);
+        await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'CLAIM',$3,'CLAIM_DECIDED','PENDING',$4,$5,$6,$7)`,[eventId('trust'),row.business_id,req.params.id,status,req.auth!.userId,reason,{}]);
+        return updated.rows[0];
+      });
+      res.json({success:true,data:result});
+    }catch(err){next(err);}
+  });
+
+  router.get('/reviews', ...guard, async (req, res, next) => {
+    try {
+      const status=String(req.query.status||'PENDING');
+      if(!['PENDING','PUBLISHED','REJECTED','HIDDEN'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Invalid review status.'}});
+      const r=await db.query(`SELECT r.*,b.name AS business_name,b.organization_id FROM discovery_reviews r JOIN discovery_businesses b ON b.id=r.business_id WHERE r.status=$1 ORDER BY r.created_at ASC LIMIT 200`,[status]);
+      res.json({success:true,data:r.rows});
+    }catch(err){next(err);}
+  });
+
+  router.post('/reviews/:id/decision', ...guard, async (req, res, next) => {
+    try {
+      const status=String(req.body?.status||'');
+      if(!['PUBLISHED','REJECTED','HIDDEN'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'status must be PUBLISHED, REJECTED or HIDDEN.'}});
+      const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
+      const result=await db.withTransaction(async(tx)=>{
+        const current=await tx.query(`SELECT r.* FROM discovery_reviews r WHERE r.id=$1 FOR UPDATE`,[req.params.id]);
+        if(!current.rows[0]) throw new Error('NOT_FOUND:Review not found.');
+        const row=current.rows[0];
+        const updated=await tx.query(`UPDATE discovery_reviews SET status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,[status,req.params.id]);
+        await tx.query(`INSERT INTO discovery_review_moderation_events(id,review_id,from_status,to_status,actor_user_id,reason) VALUES($1,$2,$3,$4,$5,$6)`,[eventId('rev_evt'),req.params.id,row.status,status,req.auth!.userId,reason]);
+        await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'REVIEW',$3,'REVIEW_DECIDED',$4,$5,$6,$7,$8)`,[eventId('trust'),row.business_id,req.params.id,row.status,status,req.auth!.userId,reason,{}]);
+        return updated.rows[0];
+      });
+      res.json({success:true,data:result});
+    }catch(err){next(err);}
+  });
+
+  router.get('/reports', ...guard, async (req, res, next) => {
+    try {
+      const status=String(req.query.status||'');
+      if(status&&!['PENDING','UNDER_REVIEW','RESOLVED','DISMISSED'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Invalid report status.'}});
+      const r=await db.query(`SELECT r.*,b.name AS business_name,s.name AS service_name FROM discovery_reports r LEFT JOIN discovery_businesses b ON b.id=r.business_id LEFT JOIN discovery_services s ON s.id=r.service_id LEFT JOIN discovery_businesses sb ON sb.id=s.business_id WHERE ($1='' OR r.status=$1) ORDER BY r.created_at ASC LIMIT 200`,[status]);
+      res.json({success:true,data:r.rows});
+    }catch(err){next(err);}
+  });
+
+  router.post('/reports/:id/decision', ...guard, async (req, res, next) => {
+    try {
+      const status=String(req.body?.status||'');
+      if(!['RESOLVED','DISMISSED','UNDER_REVIEW'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Invalid report status.'}});
+      const note=String(req.body?.note||'').trim().slice(0,2000)||null;
+      const result=await db.withTransaction(async(tx)=>{
+        const current=await tx.query(`SELECT * FROM discovery_reports WHERE id=$1 FOR UPDATE`,[req.params.id]);
+        if(!current.rows[0]) throw new Error('NOT_FOUND:Report not found.');
+        const row=current.rows[0];
+        const updated=await tx.query(`UPDATE discovery_reports SET status=$1,resolved_by_user_id=$2,resolved_at=CASE WHEN $1 IN ('RESOLVED','DISMISSED') THEN CURRENT_TIMESTAMP ELSE NULL END,resolution_note=$3 WHERE id=$4 RETURNING *`,[status,req.auth!.userId,status==='UNDER_REVIEW'?null:note,req.params.id]);
+        await tx.query(`INSERT INTO discovery_report_events(id,report_id,from_status,to_status,actor_user_id,note) VALUES($1,$2,$3,$4,$5,$6)`,[eventId('rep_evt'),req.params.id,row.status,status,req.auth!.userId,note]);
+        await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'REPORT',$3,'REPORT_DECIDED',$4,$5,$6,$7,$8)`,[eventId('trust'),row.business_id,req.params.id,row.status,status,req.auth!.userId,note,{}]);
+        return updated.rows[0];
+      });
+      res.json({success:true,data:result});
+    }catch(err){next(err);}
+  });
+
+  return router;
+}
