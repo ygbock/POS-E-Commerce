@@ -676,7 +676,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         "p.channels_ecommerce=TRUE",
         "b.listing_status='PUBLISHED'",
         "b.is_discoverable=TRUE",
-        "o.is_active=TRUE",
+        "(b.organization_id IS NULL OR o.is_active=TRUE)",
         "COALESCE(ds.show_products,TRUE)=TRUE"
       ];
       if(pQ) pConditions.push(`(
@@ -707,6 +707,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                  p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
                  l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,
                  COALESCE(SUM(ib.available),0) AS available_stock,ds.show_prices,ds.show_stock_status,
+                 ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}
                  ${productRank} AS search_rank,
                  COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='PRODUCT' AND sa.entity_id=p.id AND sa.is_active=TRUE),'') AS search_aliases,
                  COUNT(*) OVER() AS total_count
@@ -720,7 +721,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           LEFT JOIN inventory_balances ib ON ib.variant_id=v.id
           WHERE ${pConditions.join(' AND ')}
           GROUP BY p.id,v.id,b.id,l.id,ds.show_prices,ds.show_stock_status
-          ORDER BY ${order}
+          ORDER BY ${sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, p.name ASC, p.id ASC` : order}
           LIMIT ${pb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? pb(0) : pb(offset)}
         `,productParams);
         productResults=r.rows;
@@ -743,7 +744,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         "s.is_active=TRUE",
         "b.listing_status='PUBLISHED'",
         "b.is_discoverable=TRUE",
-        "o.is_active=TRUE"
+        "(b.organization_id IS NULL OR o.is_active=TRUE)"
       ];
       if(sQ) sConditions.push(`(
         to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' ||
@@ -770,15 +771,16 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const order=sort==='name_asc'?'s.name ASC,s.id ASC':`search_rank DESC,s.name ASC,s.id ASC`;
         const r=await db.query(`
           SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
-                 b.verification_status,l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,${serviceRank} AS search_rank,
+                 b.verification_status,l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,
+                 ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}${serviceRank} AS search_rank,
                  COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='SERVICE' AND sa.entity_id=s.id AND sa.is_active=TRUE),'') AS search_aliases
           FROM discovery_services s
           JOIN discovery_businesses b ON b.id=s.business_id
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
-          JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE
+          LEFT JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE
           LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE
           WHERE ${sConditions.join(' AND ')}
-          ORDER BY ${order}
+          ORDER BY ${sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, s.name ASC, s.id ASC` : order}
           LIMIT ${sb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? sb(0) : sb(offset)}
         `,serviceParams);
         serviceResults=r.rows;
