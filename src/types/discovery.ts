@@ -280,6 +280,25 @@ export interface DiscoveryReviewsResponse {
   data: DiscoveryReview[];
 }
 
+export type DiscoveryContactInquiryStatus = 'OPEN' | 'READ' | 'RESPONDED' | 'CLOSED';
+
+export interface DiscoveryContactInquiry {
+  id: string;
+  business_id: string;
+  customer_user_id?: string | null;
+  customer_name: string;
+  customer_email?: string | null;
+  customer_phone?: string | null;
+  subject?: string | null;
+  message: string;
+  status: DiscoveryContactInquiryStatus;
+  merchant_note?: string | null;
+  responded_at?: string | null;
+  closed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * Customer service quote request
  */
