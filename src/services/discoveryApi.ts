@@ -27,6 +27,7 @@ import type {
   DiscoverySearchAlias,
   DiscoveryMerchantTrustCenter,
   DiscoveryFavoriteBusiness,
+  DiscoveryContactInquiry,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
@@ -246,6 +247,31 @@ export const discoveryApi = {
       data: Array.isArray(body.data) ? body.data : [],
     };
   },
+
+  async createContactInquiry(businessId: string, data: {
+    customerName: string;
+    customerEmail?: string;
+    customerPhone?: string;
+    subject?: string;
+    message: string;
+  }): Promise<DiscoveryContactInquiry> {
+    return request<DiscoveryContactInquiry>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/contact-inquiries`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getBusinessContactInquiries(businessId: string, status?: DiscoveryContactInquiry['status']): Promise<DiscoveryContactInquiry[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request<DiscoveryContactInquiry[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/contact-inquiries${qs}`);
+  }
+
+  async updateContactInquiry(businessId: string, inquiryId: string, status: 'READ' | 'RESPONDED' | 'CLOSED', merchantNote?: string): Promise<DiscoveryContactInquiry> {
+    return request<DiscoveryContactInquiry>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/contact-inquiries/${encodeURIComponent(inquiryId)}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ status, merchantNote }),
+    });
+  }
 
   /**
    * Submit a customer service request
