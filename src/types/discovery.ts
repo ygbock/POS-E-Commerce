@@ -162,7 +162,6 @@ export interface DiscoveryLocation {
   postal_code?: string | null;
   latitude?: number | null;
   longitude?: number | null;
-  service_radius_km?: number | null;
   phone?: string | null;
   is_primary: boolean;
   is_active: boolean;
