@@ -797,14 +797,25 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(!businessId)throw new Error('VALIDATION_ERROR:businessId is required.');
     const b=await repo.findById(businessId);
     if(!b||!(await owned(req,businessId)))throw new Error('TENANT_ACCESS_DENIED:Only the business owner may match a service request.');
-    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1',[req.params.id]);
-    if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
-    if(!['OPEN','MATCHED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:Only OPEN or MATCHED requests may be matched.');
     const service=await db.query('SELECT 1 FROM discovery_services WHERE business_id=$1 AND is_active=TRUE LIMIT 1',[businessId]);
     if(!service.rows[0])throw new Error('VALIDATION_ERROR:Business must have an active discovery service.');
-    await db.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,$3) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId,Number(req.body?.matchScore??1)]);
-    let data=request.rows[0];
-    if(request.rows[0].status==='OPEN') data=await transitionRequest(req.params.id,'MATCHED',req.auth!.userId,'Business matched to request.');
+    const data=await db.withTransaction(async(tx)=>{
+      const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 FOR UPDATE',[req.params.id]);
+      if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
+      if(!['OPEN','MATCHED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:Only OPEN or MATCHED requests may be matched.');
+      await tx.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,$3) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId,Number(req.body?.matchScore??1)]);
+      if(request.rows[0].status==='OPEN'){
+        await tx.query('UPDATE discovery_service_requests SET status=\'MATCHED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
+        await tx.query(
+          `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+           VALUES($1,$2,'OPEN','MATCHED',$3,$4)`,
+          [`req_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,'Business matched to request.'],
+        );
+      }
+      return request.rows[0].status==='OPEN'
+        ? {...request.rows[0],status:'MATCHED'}
+        : request.rows[0];
+    });
     res.json({success:true,data});
   }catch(err){next(err);} });
 
@@ -873,17 +884,25 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);} });
 
   router.post('/service-requests/:id/quotes/:quoteId/decline', requireAuth(), async(req,res,next)=>{try{
-    const request=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.auth!.userId]);
-    if(!request.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
-    const quote=await db.query('SELECT * FROM discovery_service_quotes WHERE id=$1 AND request_id=$2',[req.params.quoteId,req.params.id]);
-    if(!quote.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Quote not found.'}});
-    if(quote.rows[0].status!=='SUBMITTED')throw new Error('INVALID_STATE_TRANSITION:Quote is no longer available.');
-    await db.query('UPDATE discovery_service_quotes SET status=\'DECLINED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.quoteId]);
-    const remaining=await db.query("SELECT 1 FROM discovery_service_quotes WHERE request_id=$1 AND status='SUBMITTED' LIMIT 1",[req.params.id]);
-    if(!remaining.rows[0]&&request.rows[0].status==='QUOTED'){
-      await transitionRequest(req.params.id,'MATCHED',req.auth!.userId,'All submitted quotes declined; request returned to matched.');
-    }
-    res.json({success:true,data:{id:req.params.quoteId,status:'DECLINED'}});
+    const result=await db.withTransaction(async(tx)=>{
+      const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2 FOR UPDATE',[req.params.id,req.auth!.userId]);
+      if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
+      const quote=await tx.query('SELECT * FROM discovery_service_quotes WHERE id=$1 AND request_id=$2 FOR UPDATE',[req.params.quoteId,req.params.id]);
+      if(!quote.rows[0])throw new Error('NOT_FOUND:Quote not found.');
+      if(quote.rows[0].status!=='SUBMITTED')throw new Error('INVALID_STATE_TRANSITION:Quote is no longer available.');
+      await tx.query('UPDATE discovery_service_quotes SET status=\'DECLINED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.quoteId]);
+      const remaining=await tx.query("SELECT 1 FROM discovery_service_quotes WHERE request_id=$1 AND status='SUBMITTED' LIMIT 1",[req.params.id]);
+      if(!remaining.rows[0]&&request.rows[0].status==='QUOTED'){
+        await tx.query('UPDATE discovery_service_requests SET status=\'MATCHED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
+        await tx.query(
+          `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
+           VALUES($1,$2,'QUOTED','MATCHED',$3,$4)`,
+          [`req_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,'All submitted quotes declined; request returned to matched.'],
+        );
+      }
+      return {id:req.params.quoteId,status:'DECLINED'};
+    });
+    res.json({success:true,data:result});
   }catch(err){next(err);} });
 
   router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
