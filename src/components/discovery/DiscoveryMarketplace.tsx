@@ -5,6 +5,7 @@ import { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
 import { DiscoveryServiceRequestPage } from './DiscoveryServiceRequestPage';
 import { DiscoveryServiceRequestsPage } from './DiscoveryServiceRequestsPage';
 import { DiscoverySavedBusinessesPage } from './DiscoverySavedBusinessesPage';
+import { DiscoveryMyContactInquiriesPage } from './DiscoveryMyContactInquiriesPage';
 import { DiscoveryBusinessContainer } from './business/DiscoveryBusinessContainer';
 import { useDiscoveryRoute } from '../../router/useDiscoveryRoute';
 import { Store, Compass, LayoutDashboard } from 'lucide-react';
@@ -81,6 +82,10 @@ export const DiscoveryMarketplace: React.FC = () => {
       return (
         <DiscoveryServiceRequestsPage onBack={() => navigate('discover-home')} />
       );
+    }
+
+    if (route.name === 'discover-my-inquiries') {
+      return <DiscoveryMyContactInquiriesPage onBack={() => navigate('discover-home')} />;
     }
 
     if (route.name === 'discover-request-service') {
