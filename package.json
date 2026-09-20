@@ -42,14 +42,15 @@
     "test:subscription-limits": "tsx tests/subscription_limits.test.ts",
     "test:tenant-provisioning": "tsx tests/tenant_provisioning.test.ts",
     "test:platform-subscriptions": "tsx tests/platform_subscription_management.test.ts",
-    "test:discovery-search": "tsx tests/discovery_search.test.ts && tsx tests/discovery_search_ranking.test.ts",
+    "test:discovery-search": "tsx tests/discovery_search.test.ts && tsx tests/discovery_search_ranking.test.ts && tsx tests/discovery_search_attribution.test.ts",
     "test:discovery-trust": "tsx tests/discovery_trust_workflow.test.ts",
     "test:discovery-merchant-trust": "tsx tests/discovery_merchant_trust.test.ts",
     "test:discovery-favorites": "tsx tests/discovery_customer_favorites.test.ts",
     "test:discovery-contact": "tsx tests/discovery_contact_inquiries.test.ts",
     "test:discovery-review-responses": "tsx tests/discovery_review_responses.test.ts",
     "test:discovery-category-governance": "tsx tests/discovery_category_governance.test.ts",
-    "test:discovery-location-quality": "tsx tests/discovery_location_quality.test.ts"
+    "test:discovery-location-quality": "tsx tests/discovery_location_quality.test.ts",
+    "test:discovery-search-attribution": "tsx tests/discovery_search_attribution.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
