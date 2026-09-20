@@ -145,7 +145,8 @@ Remaining:
 - Favorites/saved businesses.
 - Customer-to-business contact flows.
 - Review management UX.
-- Verification presentation and workflows.
+- Verification presentation and workflows. **MERCHANT TRUST CENTER IMPLEMENTED**
+- Merchant-facing trust center: verification history, ownership-claim status, review moderation visibility, sanitized reports, trust timeline, required actions and resubmission entry point. **IMPLEMENTED**
 - Claim UX.
 - Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
 - Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
@@ -490,4 +491,4 @@ AbaCha is complete only when all of the following are true:
 
 TASK-DISC-8.1 is now implemented on main: authenticated service requests, explicit request state transitions, request history, provider matching, quote submission, quote acceptance/decline, cancellation/closure, and database-level single-accepted-quote integrity. TASK-SEARCH-7 remains in progress with conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI remaining. (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI. Platform/admin alias governance and baseline search-quality analytics APIs are now implemented.
 
-The master roadmap should be treated as the controlling completion sequence from this checkpoint. TASK-DISC-9 trust/verification backend workflow is now implemented on main; remaining polish is the dedicated platform moderation UI and final regression verification. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
+The master roadmap should be treated as the controlling completion sequence from this checkpoint. TASK-DISC-9 trust/verification workflow is implemented on main, including the platform moderation workspace and merchant trust center; final regression verification remains part of the release gates. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
