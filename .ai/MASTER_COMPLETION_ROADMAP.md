@@ -153,7 +153,7 @@ Remaining:
 - Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
 - Category governance.
 
-Discovery governance increment implemented: platform-owned category taxonomy CRUD/audit, active-category enforcement in public discovery filters and merchant category assignment, and existing customer map/location/radius UX are now aligned with governed taxonomy. Customer contact inquiries and merchant review responses are implemented. Next location increment: location quality/provenance, map pin editing, service-area validation, and stronger geo-search tests.
+Discovery governance increment implemented: platform-owned category taxonomy CRUD/audit, active-category enforcement in public discovery filters and merchant category assignment, and existing customer map/location/radius UX are now aligned with governed taxonomy. Customer contact inquiries and merchant review responses are implemented. Location hardening increment is now implemented: location quality/provenance fields, server-side coordinate/radius/type validation, transactional primary-location handling, location verification, service-area-aware radius search, richer search location metadata, and geo/location constraint tests. Remaining map UX work is optional visual map rendering/drag-pin interaction.
 
 ### G3 — Merchant operating system completion
 Remaining/verification:
