@@ -143,7 +143,7 @@ Remaining:
 - Business profile completeness.
 - Map/location experience.
 - Favorites/saved businesses. **IMPLEMENTED: authenticated customer favorites API + saved-businesses workspace**
-- Customer-to-business contact flows. **EXISTING DIRECT PHONE/WHATSAPP/DIRECTIONS FLOWS; SERVER-TRACKED CONTACT INQUIRY REMAINS**
+- Customer-to-business contact flows. **IMPLEMENTED: server-tracked contact inquiries with customer submission, merchant inbox, status workflow, merchant notes, and contact analytics attribution**
 - Review management UX.
 - Verification presentation and workflows. **MERCHANT TRUST CENTER IMPLEMENTED**
 - Merchant-facing trust center: verification history, ownership-claim status, review moderation visibility, sanitized reports, trust timeline, required actions and resubmission entry point. **IMPLEMENTED**
@@ -153,7 +153,7 @@ Remaining:
 - Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
 - Category governance.
 
-Next Discovery increment: customer engagement completion (server-tracked contact inquiries, richer review management, category governance, and map/location UX).
+Next Discovery increment: customer engagement completion (richer review management, category governance, and map/location UX). Server-tracked contact inquiries are implemented.
 
 ### G3 — Merchant operating system completion
 Remaining/verification:
