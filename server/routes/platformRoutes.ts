@@ -10,6 +10,7 @@ import {
   TenantProvisioningError,
   TenantListStatusFilter,
 } from '../services/tenantProvisioningService.ts';
+import { createPlatformDiscoveryModerationRouter } from './platformDiscoveryModerationRoutes.ts';
 
 
 function badRequest(res: Response, code: string, message: string) {
