@@ -34,3 +34,5 @@ export { DiscoveryServiceRequestPage } from './DiscoveryServiceRequestPage';
 
 export * from './business';
 
+
+export { DiscoveryServiceRequestsPage } from './DiscoveryServiceRequestsPage';
