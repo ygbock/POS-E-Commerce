@@ -267,7 +267,8 @@ export interface DiscoveryReview {
   title?: string | null;
   body?: string | null;
   verified_purchase: boolean;
-  created_at: string;
+  created_at: string;  merchant_response?: string | null;
+  merchant_response_created_at?: string | null;
 }
 
 export interface DiscoveryReviewsSummary {
