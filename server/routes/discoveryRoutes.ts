@@ -84,6 +84,57 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     } catch (err) { next(err); }
   });
 
+  // ------------------------------------------------------------------
+  // DISC-011: authenticated customer favorites
+  // ------------------------------------------------------------------
+  router.get('/favorites', requireAuth(), async (req,res,next)=>{try{
+    const r=await db.query(
+      `SELECT f.id AS favorite_id,f.created_at AS favorited_at,b.*
+       FROM discovery_business_favorites f
+       JOIN discovery_businesses b ON b.id=f.business_id
+       WHERE f.user_id=$1
+         AND b.listing_status='PUBLISHED'
+         AND b.is_discoverable=TRUE
+         AND (b.organization_id IS NULL OR EXISTS (
+           SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+         ))
+       ORDER BY f.created_at DESC
+       LIMIT 100`,
+      [req.auth!.userId],
+    );
+    res.json({success:true,data:r.rows});
+  }catch(err){next(err);}});
+
+  router.get('/businesses/:id/favorite', requireAuth(), async (req,res,next)=>{try{
+    const b=await repo.findById(req.params.id);
+    if(!b || b.listing_status!=='PUBLISHED' || !b.is_discoverable) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
+    const r=await db.query('SELECT 1 FROM discovery_business_favorites WHERE business_id=$1 AND user_id=$2',[req.params.id,req.auth!.userId]);
+    res.json({success:true,data:{businessId:req.params.id,isFavorite:r.rows.length>0}});
+  }catch(err){next(err);}});
+
+  router.post('/businesses/:id/favorite', requireAuth(), async (req,res,next)=>{try{
+    const b=await repo.findById(req.params.id);
+    if(!b || b.listing_status!=='PUBLISHED' || !b.is_discoverable) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
+    if(b.organization_id){
+      const org=await db.query('SELECT is_active FROM organizations WHERE id=$1',[b.organization_id]);
+      if(!org.rows[0]?.is_active) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
+    }
+    await db.query(
+      'INSERT INTO discovery_business_favorites(id,business_id,user_id) VALUES($1,$2,$3) ON CONFLICT(business_id,user_id) DO NOTHING',
+      [`fav_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId],
+    );
+    void db.query(
+      `INSERT INTO discovery_analytics_events(id,business_id,event_type,actor_user_id,metadata) VALUES($1,$2,'CONTACT',$3,$4)`,
+      [`evt_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,{action:'FAVORITE'}],
+    ).catch(()=>undefined);
+    res.status(201).json({success:true,data:{businessId:req.params.id,isFavorite:true}});
+  }catch(err){next(err);}});
+
+  router.delete('/businesses/:id/favorite', requireAuth(), async (req,res,next)=>{try{
+    await db.query('DELETE FROM discovery_business_favorites WHERE business_id=$1 AND user_id=$2',[req.params.id,req.auth!.userId]);
+    res.json({success:true,data:{businessId:req.params.id,isFavorite:false}});
+  }catch(err){next(err);}});
+
   router.get('/businesses/:slug', async (req, res, next) => {
     try {
       const business = await businessService.getBySlug(req.params.slug, true);
