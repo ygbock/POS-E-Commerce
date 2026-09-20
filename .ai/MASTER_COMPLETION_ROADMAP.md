@@ -5,6 +5,8 @@
 > Execution branch: main
 > Checkpoint: 2026-09-20
 > Current validated head: cfa367d044acc52aa44c1d908881242671c3b076
+
+> Latest implementation checkpoint: platform Discovery search governance APIs and permission are now implemented on `main`; local/full regression verification is still pending for this increment.
 > Purpose: Establish the current product baseline, separate implemented foundations from remaining product work, and define the ordered path to pilot and production launch.
 
 ## 1. Executive assessment
@@ -117,10 +119,10 @@ Status: Next.
 
 Remaining:
 - Merchant alias-management UI.
-- Platform/admin alias governance.
+- Platform/admin alias governance. **IMPLEMENTED (API)**
 - Synonym governance.
-- Popular-search reporting.
-- Zero-result query review workflow.
+- Popular-search reporting. **IMPLEMENTED (API, hashed-query privacy model)**
+- Zero-result query review workflow. **IMPLEMENTED (API summary/popular hash review)**
 - Search result impression/click attribution.
 - Search-to-profile/store/product conversion metrics.
 - Configurable ranking controls.
@@ -479,6 +481,6 @@ AbaCha is complete only when all of the following are true:
 
 ## 10. Immediate next task
 
-TASK-SEARCH-7 is in progress. The first production increment now implemented on main is merchant business-level search-alias management (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are platform/admin alias governance, search-quality analytics, conversion attribution, ranking controls, abuse controls and performance/load verification.
+TASK-SEARCH-7 is in progress. The first production increment now implemented on main is merchant business-level search-alias management (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI. Platform/admin alias governance and baseline search-quality analytics APIs are now implemented.
 
 The master roadmap should be treated as the controlling completion sequence from this checkpoint. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
