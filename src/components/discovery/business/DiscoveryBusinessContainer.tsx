@@ -29,6 +29,7 @@ import { DiscoveryReviewsPanel } from './DiscoveryReviewsPanel';
 import { DiscoveryVerificationPanel } from './DiscoveryVerificationPanel';
 import { DiscoveryAnalyticsPanel } from './DiscoveryAnalyticsPanel';
 import { DiscoverySettingsPanel } from './DiscoverySettingsPanel';
+import { DiscoverySearchAliasesPanel } from './DiscoverySearchAliasesPanel';
 import { DiscoveryStoreConversionModal } from './DiscoveryStoreConversionModal';
 import { DiscoveryOnboardingWizard } from './DiscoveryOnboardingWizard';
 
@@ -49,6 +50,7 @@ const TABS = [
   { id: 'verification', label: 'Verification', icon: ShieldCheck },
   { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   { id: 'settings', label: 'Visibility Settings', icon: Sliders },
+  { id: 'search', label: 'Search & Aliases', icon: Sparkles },
 ];
 
 export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProps> = ({
@@ -294,6 +296,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
 
         {activeTab === 'settings' && (
           <DiscoverySettingsPanel business={selectedBusiness} />
+        )}
+
+        {activeTab === 'search' && (
+          <DiscoverySearchAliasesPanel business={selectedBusiness} />
         )}
       </div>
 
