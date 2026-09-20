@@ -1176,216 +1176,25 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/reports', async(req,res,next)=>{try{if(!req.body?.businessId&&!req.body?.serviceId)throw new Error('VALIDATION_ERROR:businessId or serviceId is required.');if(!String(req.body?.reasonCode||'').trim())throw new Error('VALIDATION_ERROR:reasonCode is required.');const r=await db.query(`INSERT INTO discovery_reports(id,business_id,service_id,reporter_user_id,reason_code,description) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,status,created_at`,[`report_${randomUUID().replace(/-/g,'')}`,req.body.businessId||null,req.body.serviceId||null,req.auth?.userId||null,String(req.body.reasonCode).trim(),req.body.description||null]);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
   router.get('/categories', async(req,res,next)=>{try{const r=await db.query(`SELECT c.id,c.parent_id,c.name,c.slug,c.description,c.icon_name,c.display_order,COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE) AS item_count FROM discovery_business_categories c LEFT JOIN discovery_business_category_map bcm ON bcm.category_id=c.id LEFT JOIN discovery_businesses b ON b.id=bcm.business_id WHERE c.is_active=TRUE GROUP BY c.id ORDER BY c.display_order,c.name`);res.json({success:true,data:r.rows.map((x:any)=>({...x,item_count:Number(x.item_count||0)}))});}catch(err){next(err);}});
-  router.put('/businesses/:id/categories', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});const ids=Array.isArray(req.body?.categoryIds)?Array.from(new Set(req.body.categoryIds.map(String).map((x:string)=>x.trim()).filter(Boolean))):[];if(!ids.length)throw new Error('VALIDATION_ERROR:categoryIds must contain at least one category.');if(ids.length>20)throw new Error('VALIDATION_ERROR:categoryIds cannot contain more than 20 categories.');const placeholders=ids.map((_,i)=>'for(let i=0;i<ids.length;i++)await db.query('INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1,$2,$3)',[req.params.id,ids[i],i===0]);await db.query('COMMIT');}catch(e){await db.query('ROLLBACK');throw e;}res.json({success:true,data:await repo.listCategories(req.params.id)});}catch(err){next(err);}});
-
-  // ------------------------------------------------------------------
-  // DISC-014: analytics + moderation endpoints
-  // ------------------------------------------------------------------
-  router.post('/analytics/events', async(req,res,next)=>{try{
-    const type=String(req.body?.eventType||'');
-    if(!ANALYTICS_EVENTS.has(type))throw new Error('VALIDATION_ERROR:Unsupported analytics event.');
-    const businessId=req.body?.businessId?String(req.body.businessId):null;
-    const productId=req.body?.productId?String(req.body.productId):null;
-    const serviceId=req.body?.serviceId?String(req.body.serviceId):null;
-    const metadata=req.body?.metadata??{};
-    if(metadata===null||typeof metadata!=='object'||Array.isArray(metadata))throw new Error('VALIDATION_ERROR:metadata must be an object.');
-    if(Buffer.byteLength(JSON.stringify(metadata),'utf8')>8192)throw new Error('VALIDATION_ERROR:metadata exceeds 8192 bytes.');
-    if(type!=='SEARCH'&&!businessId)throw new Error('VALIDATION_ERROR:businessId is required for this analytics event.');
-    if(businessId&&!(await businessService.getPublicProfile(businessId)))throw new Error('NOT_FOUND:Discovery business not found.');
-    if(serviceId){
-      const s=await db.query(`SELECT s.id FROM discovery_services s JOIN discovery_businesses b ON b.id=s.business_id WHERE s.id=$1 AND s.is_active=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))`,[serviceId]);
-      if(!s.rows[0])throw new Error('NOT_FOUND:Discovery service not found.');
-      if(businessId){const belongs=await db.query('SELECT 1 FROM discovery_services WHERE id=$1 AND business_id=$2',[serviceId,businessId]);if(!belongs.rows[0])throw new Error('VALIDATION_ERROR:serviceId does not belong to businessId.');}
+  router.put('/businesses/:id/categories', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});
+    const ids=Array.isArray(req.body?.categoryIds)?Array.from(new Set(req.body.categoryIds.map(String).map((x:string)=>x.trim()).filter(Boolean))):[];
+    if(!ids.length)throw new Error('VALIDATION_ERROR:categoryIds must contain at least one category.');
+    if(ids.length>20)throw new Error('VALIDATION_ERROR:categoryIds cannot contain more than 20 categories.');
+    const placeholders=ids.map((_,i)=>`$${i+1}`).join(',');
+    const activeCats=await db.query(`SELECT id FROM discovery_business_categories WHERE is_active=TRUE AND id IN (${placeholders})`,ids);
+    if(activeCats.rows.length!==ids.length)throw new Error('VALIDATION_ERROR:categoryIds may reference active categories only.');
+    await db.query('BEGIN');
+    try{
+      await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1',[req.params.id]);
+      for(let i=0;i<ids.length;i++)await db.query('INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1,$2,$3)',[req.params.id,ids[i],i===0]);
+      await db.query('COMMIT');
+    }catch(e){
+      await db.query('ROLLBACK');
+      throw e;
     }
-    if((type==='SERVICE_VIEW'||type==='SERVICE_REQUEST')&&!serviceId)throw new Error('VALIDATION_ERROR:serviceId is required for this analytics event.');
-    if(type==='PRODUCT_VIEW'&&!productId)throw new Error('VALIDATION_ERROR:productId is required for PRODUCT_VIEW.');
-    const raw=`${req.ip}|${req.headers['user-agent']||''}`;
-    const sessionHash=createHash('sha256').update(raw).digest('hex');
-    await db.query(`INSERT INTO discovery_analytics_events(id,business_id,product_id,service_id,event_type,session_hash,actor_user_id,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[`evt_${randomUUID().replace(/-/g,'')}`,businessId,productId,serviceId,type,sessionHash,req.auth?.userId||null,metadata]);
-    res.status(202).json({success:true});
+    res.json({success:true,data:await repo.listCategories(req.params.id)});
   }catch(err){next(err);}});
-  
-  router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
-    const status=String(req.query.status||'');
-    const r=await db.query("SELECT DISTINCT r.* FROM discovery_service_requests r LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1 LEFT JOIN discovery_business_locations l ON l.business_id=$1 AND l.is_primary=TRUE AND l.is_active=TRUE WHERE (m.business_id=$1 OR (m.business_id IS NULL AND r.status IN ('OPEN','MATCHED') AND r.city IS NOT NULL AND l.city IS NOT NULL AND lower(r.city)=lower(l.city) AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=$1 AND s.is_active=TRUE))) AND ($2='' OR r.status=$2) ORDER BY r.created_at DESC LIMIT 100",[req.params.id,status]);
-    res.json({success:true,data:r.rows});
-  }catch(err){next(err);}});
-
-  router.get('/businesses/:id/analytics', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))&&req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Analytics access forbidden.'}});
-    const days=Math.min(Math.max(Number(req.query.days||30),1),365);
-    const r=await db.query("SELECT event_type,COUNT(*)::int AS count,COUNT(DISTINCT session_hash)::int AS unique_sessions FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval GROUP BY event_type ORDER BY count DESC",[req.params.id,String(days)]);
-    const counts:Record<string,number>={}; for(const row of r.rows) counts[String(row.event_type)]=Number(row.count)||0;
-    const impressions=counts.IMPRESSION||0; const views=counts.VIEW||0; const conversions=(counts.CONTACT||0)+(counts.DIRECTION_CLICK||0)+(counts.SERVICE_REQUEST||0)+(counts.STORE_CLICK||0);
-    const summary={business_id:req.params.id,timeframe:String(days)+'d',impressions,profile_views:views,phone_clicks:counts.CONTACT||0,whatsapp_clicks:0,direction_clicks:counts.DIRECTION_CLICK||0,website_clicks:0,service_inquiries:counts.SERVICE_REQUEST||0,store_visits:counts.STORE_CLICK||0,conversion_rate:views>0?conversions/views:0};
-    res.json({success:true,periodDays:days,data:summary,events:r.rows});
-  }catch(err){next(err);}});
-
-  router.get('/businesses/:id/verification', requireAuth(), async(req,res,next)=>{try{
-    const b=await repo.findById(req.params.id);
-    if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    const canManage=await owned(req,req.params.id);
-    if(!canManage && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification access forbidden.'}});
-    const applications=await db.query(`SELECT * FROM discovery_verification_applications WHERE business_id=$1 ORDER BY created_at DESC LIMIT 20`,[req.params.id]);
-    res.json({success:true,data:{businessId:req.params.id,verificationStatus:b.verification_status,applications:applications.rows}});
-  }catch(err){next(err);}});
-
-  router.get('/businesses/:id/trust', requireAuth(), async(req,res,next)=>{try{
-    const b=await repo.findById(req.params.id);
-    if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    if(!(await owned(req,req.params.id)) && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
-
-    const [applications, claims, reviewSummary, reports, events] = await Promise.all([
-      db.query(
-        `SELECT id,business_id,status,created_at,updated_at,reviewed_at,review_reason
-         FROM discovery_verification_applications
-         WHERE business_id=$1
-         ORDER BY created_at DESC LIMIT 20`,
-        [req.params.id],
-      ),
-      db.query(
-        `SELECT id,status,created_at,reviewed_at,review_reason,
-                CASE WHEN claimant_user_id=$2 THEN TRUE ELSE FALSE END AS submitted_by_current_user
-         FROM discovery_business_claims
-         WHERE business_id=$1
-         ORDER BY created_at DESC LIMIT 20`,
-        [req.params.id, req.auth!.userId],
-      ),
-      db.query(
-        `SELECT
-           COUNT(*) FILTER (WHERE status='PUBLISHED')::int AS published_count,
-           COUNT(*) FILTER (WHERE status='PENDING')::int AS pending_count,
-           COUNT(*) FILTER (WHERE status='REJECTED')::int AS rejected_count,
-           COUNT(*) FILTER (WHERE status='HIDDEN')::int AS hidden_count,
-           COALESCE(ROUND(AVG(rating) FILTER (WHERE status='PUBLISHED'),2),0) AS published_rating
-         FROM discovery_reviews WHERE business_id=$1`,
-        [req.params.id],
-      ),
-      db.query(
-        `SELECT id,reason_code,status,resolution_note,created_at,resolved_at,
-                CASE WHEN service_id IS NULL THEN 'BUSINESS' ELSE 'SERVICE' END AS target_type
-         FROM discovery_reports
-         WHERE business_id=$1
-         ORDER BY created_at DESC LIMIT 50`,
-        [req.params.id],
-      ),
-      db.query(
-        `SELECT id,entity_type,event_type,from_status,to_status,reason,created_at
-         FROM discovery_trust_events
-         WHERE business_id=$1
-         ORDER BY created_at DESC LIMIT 100`,
-        [req.params.id],
-      ),
-    ]);
-
-    const verificationStatus=String(b.verification_status);
-    const requiredActions:string[]=[];
-    if(verificationStatus==='UNVERIFIED') requiredActions.push('Submit verification evidence.');
-    if(verificationStatus==='REJECTED') requiredActions.push('Review the rejection reason and resubmit verification evidence.');
-    if(verificationStatus==='SUSPENDED') requiredActions.push('Contact platform support regarding the suspended verification status.');
-    if(verificationStatus==='PENDING') requiredActions.push('Wait for platform verification review.');
-
-    res.json({success:true,data:{
-      businessId:req.params.id,
-      businessName:b.name,
-      verificationStatus,
-      listingStatus:b.listing_status,
-      businessMode:b.business_mode,
-      trustCenter:{
-        verification:{status:verificationStatus,applications:applications.rows},
-        claims:claims.rows,
-        reviews:{
-          publishedCount:Number(reviewSummary.rows[0]?.published_count||0),
-          pendingCount:Number(reviewSummary.rows[0]?.pending_count||0),
-          rejectedCount:Number(reviewSummary.rows[0]?.rejected_count||0),
-          hiddenCount:Number(reviewSummary.rows[0]?.hidden_count||0),
-          publishedRating:Number(reviewSummary.rows[0]?.published_rating||0),
-        },
-        reports:reports.rows,
-        timeline:events.rows,
-        requiredActions,
-      },
-    }});
-  }catch(err){next(err);}});
-
-  router.post('/businesses/:id/verification', requireAuth(), async(req,res,next)=>{try{
-    const b=await repo.findById(req.params.id);
-    if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification application forbidden.'}});
-    const evidence=req.body?.evidence??{};
-    if(evidence===null||typeof evidence!=='object'||Array.isArray(evidence))throw new Error('VALIDATION_ERROR:evidence must be an object.');
-    if(Buffer.byteLength(JSON.stringify(evidence),'utf8')>16384)throw new Error('VALIDATION_ERROR:evidence exceeds 16384 bytes.');
-    const result=await db.withTransaction(async(tx)=>{
-      await tx.query(`UPDATE discovery_verification_applications SET status='WITHDRAWN',updated_at=CURRENT_TIMESTAMP WHERE business_id=$1 AND status='PENDING'`,[req.params.id]);
-      const applicationId=`ver_${randomUUID().replace(/-/g,'')}`;
-      const r=await tx.query(`INSERT INTO discovery_verification_applications(id,business_id,applicant_user_id,evidence) VALUES($1,$2,$3,$4) RETURNING *`,[applicationId,req.params.id,req.auth!.userId,evidence]);
-      await tx.query(`UPDATE discovery_businesses SET verification_status='PENDING',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,[req.params.id]);
-      await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'VERIFICATION',$3,'VERIFICATION_SUBMITTED',$4,'PENDING',$5,$6,$7)`,[`trust_${randomUUID().replace(/-/g,'')}`,req.params.id,applicationId,b.verification_status,req.auth!.userId,null,{}]);
-      return r.rows[0];
-    });
-    res.status(201).json({success:true,data:result});
-  }catch(err){next(err);}});
-
-  router.get('/moderation/verification', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const isSuper=req.auth!.role==='super_admin';
-    const r=await db.query(`SELECT v.*,b.name AS business_name,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY v.created_at ASC LIMIT 100`,[isSuper,req.auth!.organizationId||'']);
-    res.json({success:true,data:r.rows});
-  }catch(err){next(err);}});
-
-  router.post('/moderation/verification/:id/decision', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const status=String(req.body?.status||'');
-    if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');
-    const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
-    const result=await db.withTransaction(async(tx)=>{
-      const current=await tx.query(`SELECT v.*,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.id=$1 AND v.status='PENDING' AND ($2=TRUE OR b.organization_id=$3) FOR UPDATE`,[req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);
-      if(!current.rows[0])throw new Error('NOT_FOUND:Verification application not found.');
-      const row=current.rows[0];
-      const v=await tx.query(`UPDATE discovery_verification_applications SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,[status,req.auth!.userId,reason,req.params.id]);
-      await tx.query(`UPDATE discovery_businesses SET verification_status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2`,[status==='APPROVED'?'VERIFIED':'REJECTED',row.business_id]);
-      await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'VERIFICATION',$3,'VERIFICATION_DECIDED',$4,$5,$6,$7,$8)`,[`trust_${randomUUID().replace(/-/g,'')}`,row.business_id,req.params.id,row.verification_status,status==='APPROVED'?'VERIFIED':'REJECTED',req.auth!.userId,reason,{}]);
-      return v.rows[0];
-    });
-    res.json({success:true,data:result});
-  }catch(err){next(err);}});
-
-  router.get('/moderation/claims', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const isSuper=req.auth!.role==='super_admin';const r=await db.query(`SELECT c.*,b.name AS business_name FROM discovery_business_claims c JOIN discovery_businesses b ON b.id=c.business_id WHERE c.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY c.created_at ASC LIMIT 100`,[isSuper,req.auth!.organizationId||'']);res.json({success:true,data:r.rows});}catch(err){next(err);}});
-  router.post('/moderation/claims/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');const r=await db.query(`UPDATE discovery_business_claims c SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP FROM discovery_businesses b WHERE c.id=$4 AND c.business_id=b.id AND ($5=TRUE OR b.organization_id=$6) RETURNING c.*`,[status,req.auth!.userId,req.body?.reason||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Claim not found.'}});await trustEvent(r.rows[0].business_id,'CLAIM',r.rows[0].id,'CLAIM_DECIDED',req.auth!.userId,'PENDING',status,req.body?.reason||null,{});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
-
-  router.get('/moderation/reviews', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const status=String(req.query.status||'PENDING');
-    const isSuper=req.auth!.role==='super_admin';
-    const r=await db.query(`SELECT r.*,b.name AS business_name,b.organization_id FROM discovery_reviews r JOIN discovery_businesses b ON b.id=r.business_id WHERE ($1='' OR r.status=$1) AND ($2=TRUE OR b.organization_id=$3) ORDER BY r.created_at ASC LIMIT 200`,[status,isSuper,req.auth!.organizationId||'']);
-    res.json({success:true,data:r.rows});
-  }catch(err){next(err);}});
-
-  router.post('/moderation/reviews/:id/decision', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const status=String(req.body?.status||'');
-    if(!['PUBLISHED','REJECTED','HIDDEN'].includes(status))throw new Error('VALIDATION_ERROR:status must be PUBLISHED, REJECTED or HIDDEN.');
-    const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
-    const result=await db.withTransaction(async(tx)=>{
-      const current=await tx.query(`SELECT r.*,b.organization_id FROM discovery_reviews r JOIN discovery_businesses b ON b.id=r.business_id WHERE r.id=$1 AND ($2=TRUE OR b.organization_id=$3) FOR UPDATE`,[req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);
-      if(!current.rows[0])throw new Error('NOT_FOUND:Review not found.');
-      const fromStatus=String(current.rows[0].status);
-      const updated=await tx.query(`UPDATE discovery_reviews SET status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,[status,req.params.id]);
-      await tx.query(`INSERT INTO discovery_review_moderation_events(id,review_id,from_status,to_status,actor_user_id,reason) VALUES($1,$2,$3,$4,$5,$6)`,[`rev_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,fromStatus,status,req.auth!.userId,reason]);
-      await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'REVIEW',$3,'REVIEW_DECIDED',$4,$5,$6,$7,$8)`,[`trust_${randomUUID().replace(/-/g,'')}`,current.rows[0].business_id,req.params.id,fromStatus,status,req.auth!.userId,reason,{}]);
-      return updated.rows[0];
-    });
-    res.json({success:true,data:result});
-  }catch(err){next(err);}});
-
-  router.get('/moderation/reports', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const isSuper=req.auth!.role==='super_admin';const r=await db.query(`SELECT r.*,b.name AS business_name,s.name AS service_name FROM discovery_reports r LEFT JOIN discovery_businesses b ON b.id=r.business_id LEFT JOIN discovery_services s ON s.id=r.service_id LEFT JOIN discovery_businesses sb ON sb.id=s.business_id WHERE ($1='' OR r.status=$1) AND ($2=TRUE OR COALESCE(b.organization_id,sb.organization_id)=$3) ORDER BY r.created_at ASC LIMIT 200`,[String(req.query.status||''),isSuper,req.auth!.organizationId||'']);res.json({success:true,data:r.rows});}catch(err){next(err);}});
-  router.post('/moderation/reports/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['RESOLVED','DISMISSED','UNDER_REVIEW'].includes(status))throw new Error('VALIDATION_ERROR:invalid report status.');const current=await db.query(`SELECT * FROM discovery_reports WHERE id=$1`,[req.params.id]);if(!current.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Report not found.'}});const fromStatus=String(current.rows[0].status);const r=await db.query(`UPDATE discovery_reports r SET status=$1,resolved_by_user_id=$2,resolved_at=CASE WHEN $1 IN ('RESOLVED','DISMISSED') THEN CURRENT_TIMESTAMP ELSE NULL END,resolution_note=$3 WHERE r.id=$4 AND ($5=TRUE OR EXISTS (SELECT 1 FROM discovery_businesses bx WHERE bx.id=r.business_id AND bx.organization_id=$6) OR EXISTS (SELECT 1 FROM discovery_services sx JOIN discovery_businesses sbx ON sbx.id=sx.business_id WHERE sx.id=r.service_id AND sbx.organization_id=$6)) RETURNING r.*`,[status,req.auth!.userId,req.body?.note||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Report not found.'}});await db.query(`INSERT INTO discovery_report_events(id,report_id,from_status,to_status,actor_user_id,note) VALUES($1,$2,$3,$4,$5,$6)`,[`rep_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,fromStatus,status,req.auth!.userId,req.body?.note||null]);await trustEvent(r.rows[0].business_id,'REPORT',r.rows[0].id,'REPORT_DECIDED',req.auth!.userId,fromStatus,status,req.body?.note||null,{});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
-
-  router.use((err:any,_req:Request,res:Response,next:NextFunction)=>res.headersSent?next(err):fail(res,err));
-  return router;
-}
-+(i+1)).join(',');const activeCats=await db.query('SELECT id FROM discovery_business_categories WHERE is_active=TRUE AND id IN ('+placeholders+')',ids);if(activeCats.rows.length!==ids.length)throw new Error('VALIDATION_ERROR:categoryIds may reference active categories only.');await db.query('BEGIN');try{await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1',[req.params.id]);for(let i=0;i<ids.length;i++)await db.query('INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1,$2,$3)',[req.params.id,ids[i],i===0]);await db.query('COMMIT');}catch(e){await db.query('ROLLBACK');throw e;}res.json({success:true,data:await repo.listCategories(req.params.id)});}catch(err){next(err);}});
 
   // ------------------------------------------------------------------
   // DISC-014: analytics + moderation endpoints
