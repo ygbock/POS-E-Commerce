@@ -468,6 +468,26 @@ export const discoveryApi = {
   },
 
   /**
+   * Search aliases managed by the business owner.
+   */
+  async getSearchAliases(businessId: string): Promise<DiscoverySearchAlias[]> {
+    return request<DiscoverySearchAlias[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/search-aliases`);
+  },
+
+  async createSearchAlias(businessId: string, data: { alias: string; entityType?: 'BUSINESS' | 'PRODUCT' | 'SERVICE'; entityId?: string }): Promise<DiscoverySearchAlias> {
+    return request<DiscoverySearchAlias>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/search-aliases`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteSearchAlias(businessId: string, aliasId: string): Promise<void> {
+    await request<unknown>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/search-aliases/${encodeURIComponent(aliasId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
    * Business owner analytics
    */
   async getBusinessAnalytics(businessId: string, days = 30): Promise<{ periodDays: number; data: DiscoveryAnalyticsSummary[] }> {
