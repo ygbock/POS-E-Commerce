@@ -37,6 +37,7 @@ export function getPlatformNavigation(role: Role | string): PlatformNavItem[] {
         { id: 'subscriptions', label: 'Plans & Subscriptions' },
         { id: 'support', label: 'Support & Tenant Operations' },
         { id: 'security', label: 'Security & Audit Logs' },
+        { id: 'discovery-moderation', label: 'Discovery Trust & Moderation' },
       ];
   }
 }
