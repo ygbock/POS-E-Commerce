@@ -68,7 +68,8 @@ export type DiscoverySortOption =
   | 'rating'
   | 'review_count'
   | 'name_asc'
-  | 'newest';
+  | 'newest'
+  | 'distance';
 
 export type DiscoveryAvailabilityStatus =
   | 'available'
