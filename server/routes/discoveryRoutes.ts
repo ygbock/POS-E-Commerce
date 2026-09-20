@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requireTenantAccess } from '../middleware/auth.ts';
+import { createRateLimiter } from '../middleware/rateLimiter.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
 import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
@@ -9,6 +10,9 @@ import { discoveryFuzzyScore, discoverySearchTokens, normalizeDiscoverySearchTex
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
+const SEARCH_ATTRIBUTION_EVENTS = new Set(['IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
+const discoverySearchRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 120, message: 'Too many discovery search requests. Please slow down and try again shortly.' });
+const discoveryAttributionRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 180, message: 'Too many discovery attribution events. Please slow down and try again shortly.' });
 
 export function createDiscoveryRouter(db: DatabaseClient) {
   const router = express.Router();
@@ -355,7 +359,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-008/009/015: unified discovery search + indexed relevance
   // ------------------------------------------------------------------
-  router.get('/search/suggestions', async (req,res,next)=>{
+  router.get('/search/suggestions', discoverySearchRateLimiter, async (req,res,next)=>{
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0,160) : '';
       const limit = Math.min(Math.max(Number(req.query.limit || 8), 1), 20);
@@ -513,7 +517,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true});
   }catch(err){next(err);}});
 
-  router.get('/search', async (req,res,next)=>{
+  router.get('/search', discoverySearchRateLimiter, async (req,res,next)=>{
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0,160) : '';
       const type = typeof req.query.type === 'string' ? req.query.type.toLowerCase() : 'all';
@@ -531,6 +535,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const openNow = String(req.query.openNow || '').toLowerCase() === 'true';
       const categoryId = typeof req.query.categoryId === 'string' && req.query.categoryId.trim() ? req.query.categoryId.trim() : null;
       const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest','distance'].includes(req.query.sort) ? req.query.sort : 'relevance';
+      const searchId = `search_${randomUUID().replace(/-/g,'')}`;
       const fuzzyEnabled = Boolean(q) && sort === 'relevance';
       const fuzzyCandidateLimit = fuzzyEnabled ? 500 : limit;
       const searchTokens = q ? [...new Set(discoverySearchTokens(q))].slice(0, 8) : [];
@@ -796,6 +801,11 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         }
       }
 
+      const attachSearchAttribution = (rows: any[], entityType: 'BUSINESS' | 'PRODUCT' | 'SERVICE') => rows.map((row, index) => ({ ...row, searchId, resultPosition: offset + index + 1, attributionEntityType: entityType }));
+      businessResults = attachSearchAttribution(businessResults, 'BUSINESS');
+      productResults = attachSearchAttribution(productResults, 'PRODUCT');
+      serviceResults = attachSearchAttribution(serviceResults, 'SERVICE');
+
       if (q) {
         const analyticsMetadata = {
           queryHash: createHash('sha256').update(q.normalize('NFKC').toLowerCase()).digest('hex'),
@@ -804,15 +814,16 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           zeroResults: businessCount + productCount + serviceCount === 0,
           resultCounts: { businesses: businessCount, products: productCount, services: serviceCount },
           filters: { city, district, region, categoryId, openNow, radiusKm: radius, sort },
+          searchId,
         };
         void db.query(
-          `INSERT INTO discovery_analytics_events(id,event_type,session_hash,actor_user_id,metadata) VALUES($1,'SEARCH',$2,$3,$4)`,
-          [`evt_${randomUUID().replace(/-/g,'')}`, createHash('sha256').update(`${req.ip}|search|${req.headers['user-agent']||''}`).digest('hex'), req.auth?.userId || null, analyticsMetadata],
+          `INSERT INTO discovery_analytics_events(id,event_type,session_hash,actor_user_id,search_id,metadata) VALUES($1,'SEARCH',$2,$3,$4,$5)`,
+          [`evt_${randomUUID().replace(/-/g,'')}`, createHash('sha256').update(`${req.ip}|search|${req.headers['user-agent']||''}`).digest('hex'), req.auth?.userId || null, searchId, analyticsMetadata],
         ).catch(() => undefined);
       }
 
       res.json({
-        success:true,query:q,type,
+        success:true,query:q,type,searchId,
         filters:{city,district,region,openNow,radiusKm:radius,categoryId,sort},
         data:{businesses:businessResults,products:productResults,services:serviceResults},
         counts:{
@@ -825,6 +836,45 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   });
 
 
+  // Public, idempotent attribution endpoint. Visibility and target ownership are checked server-side.
+  router.post('/search/events', discoveryAttributionRateLimiter, async (req,res,next)=>{try{
+    const input = Array.isArray(req.body?.events) ? req.body.events : [req.body];
+    if (!input.length || input.length > 25) throw new Error('VALIDATION_ERROR:attribution batch must contain between 1 and 25 events.');
+    const results:any[]=[];
+    for (const event of input) {
+      const eventType=String(event?.eventType||'').trim().toUpperCase();
+      const searchId=String(event?.searchId||'').trim();
+      const entityType=String(event?.entityType||'').trim().toUpperCase();
+      const entityId=String(event?.entityId||'').trim();
+      const eventId=String(event?.eventId||'').trim();
+      const position=event?.resultPosition==null?null:Number(event.resultPosition);
+      const source=String(event?.source||'search_results').trim().slice(0,32)||'search_results';
+      if(!SEARCH_ATTRIBUTION_EVENTS.has(eventType)) throw new Error('VALIDATION_ERROR:unsupported search attribution event.');
+      if(!/^search_[a-f0-9]{32}$/.test(searchId)) throw new Error('VALIDATION_ERROR:invalid searchId.');
+      if(!['BUSINESS','PRODUCT','SERVICE'].includes(entityType)||!entityId) throw new Error('VALIDATION_ERROR:entityType and entityId are required.');
+      if(!/^evt_[a-f0-9]{32}$/.test(eventId)) throw new Error('VALIDATION_ERROR:eventId must be a generated attribution id.');
+      if(position!=null&&(!Number.isInteger(position)||position<1||position>10000)) throw new Error('VALIDATION_ERROR:resultPosition must be a positive integer.');
+      let visible=false;
+      if(entityType==='BUSINESS'){
+        const r=await db.query("SELECT 1 FROM discovery_businesses b WHERE b.id=$1 AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))",[entityId]);
+        visible=Boolean(r.rows[0]);
+      }else if(entityType==='PRODUCT'){
+        const r=await db.query("SELECT 1 FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id WHERE p.id=$1 AND p.status='active' AND p.channels_ecommerce=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE)",[entityId]);
+        visible=Boolean(r.rows[0]);
+      }else{
+        const r=await db.query("SELECT 1 FROM discovery_services s JOIN discovery_businesses b ON b.id=s.business_id WHERE s.id=$1 AND s.is_active=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))",[entityId]);
+        visible=Boolean(r.rows[0]);
+      }
+      if(!visible)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Search target is not publicly discoverable.'}});
+      const metadata={searchId,resultPosition:position,entityType,entityId,attributionSource:source};
+      const businessId=entityType==='BUSINESS'?entityId:null;
+      const productId=entityType==='PRODUCT'?entityId:null;
+      const serviceId=entityType==='SERVICE'?entityId:null;
+      const insert=await db.query("INSERT INTO discovery_analytics_events(id,business_id,product_id,service_id,event_type,session_hash,actor_user_id,search_id,result_position,entity_type,entity_id,attribution_source,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(id) DO NOTHING",[eventId,businessId,productId,serviceId,eventType,createHash('sha256').update(`${req.ip}|attribution|${req.headers['user-agent']||''}`).digest('hex'),req.auth?.userId||null,searchId,position,entityType,entityId,source,metadata]);
+      results.push({eventId,recorded:insert.rowCount===1});
+    }
+    res.status(202).json({success:true,data:{accepted:results.length,results}});
+  }catch(err){next(err);}});
   router.post('/businesses/:id/reviews/:reviewId/response', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Review response forbidden.'}});
     const text=String(req.body?.response||'').trim();
