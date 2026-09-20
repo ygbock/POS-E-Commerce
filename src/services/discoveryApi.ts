@@ -292,6 +292,11 @@ export const discoveryApi = {
   /**
    * Get service request details including matches and quotes (authenticated)
    */
+  async getMyServiceRequests(status?: DiscoveryServiceRequest['status']): Promise<DiscoveryServiceRequest[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request<DiscoveryServiceRequest[]>(`/api/discovery/service-requests${qs}`);
+  },
+
   async getServiceRequest(id: string): Promise<DiscoveryServiceRequest> {
     return request<DiscoveryServiceRequest>(`/api/discovery/service-requests/${encodeURIComponent(id)}`);
   },
