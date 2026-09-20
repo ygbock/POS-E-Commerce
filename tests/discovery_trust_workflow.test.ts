@@ -7,7 +7,7 @@ async function main() {
   await runMigrations(db);
 
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('trust_org','Trust Test Org','TRUST_TEST',TRUE)");
-  await db.query("INSERT INTO discovery_businesses (id,public_id,organization_id,tenant_slug,name,slug,business_mode,listing_status,verification_status,is_discoverable,created_by_user_id) VALUES ('trust_business','trust_public','trust_org','trust-test','Trust Business','trust-business','DISCOVERY_AND_STORE','PUBLISHED','UNVERIFIED',TRUE,'trust-owner')");
+  await db.query("INSERT INTO discovery_businesses (id,public_id,organization_id,name,slug,business_mode,listing_status,verification_status,is_discoverable,created_by_user_id) VALUES ('trust_business','trust_public','trust_org','Trust Business','trust-business','DISCOVERY_AND_STORE','PUBLISHED','UNVERIFIED',TRUE,'trust-owner')");
   
   const verification = await db.query(
     "INSERT INTO discovery_verification_applications (id,business_id,applicant_user_id,evidence) VALUES ('ver_1','trust_business','trust-owner',$1) RETURNING *",
