@@ -25,6 +25,7 @@ import {
 import type { DiscoveryLocation, DiscoveryService, DiscoveryReview, DiscoveryPublicBusinessProfile } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import { VerificationBadge } from './VerificationBadge';
+import { VerificationStatusInfo } from './VerificationStatusInfo';
 import { DiscoveryRating } from './DiscoveryRating';
 import { DiscoveryLoadingState } from './DiscoveryLoadingState';
 import { ServiceCard } from './ServiceCard';
@@ -348,6 +349,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                     {b.name}
                   </h1>
                   <VerificationBadge status={b.verification_status} />
+                  <VerificationStatusInfo status={b.verification_status} />
                 </div>
 
                 <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
