@@ -734,7 +734,10 @@ async function runApiHardeningTests() {
       const bodyS4 = await resS4.json();
       assert.strictEqual(bodyS4.data.organizationId, 'org_api_alpha');
 
-      // --- SCENARIO 5: Bypass validation empty/missing organizationId at login ---
+      // --- SCENARIO 5: Tenant ID is optional when the account has one active organization ---
+      // Login resolves the authoritative organization server-side from the verified email.
+      // This is required for business-owner sign-in after registration and avoids asking
+      // merchants to know an internal tenant identifier.
       const resS5a = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -743,9 +746,10 @@ async function runApiHardeningTests() {
           password: 'AdminPass123!',
         }),
       });
-      assert.strictEqual(resS5a.status, 422);
+      assert.strictEqual(resS5a.status, 200);
       const bodyS5a = await resS5a.json();
-      assert.strictEqual(bodyS5a.error.code, 'VALIDATION_ERROR');
+      assert.strictEqual(bodyS5a.success, true);
+      assert.strictEqual(bodyS5a.data.user.organizationId, 'org_api_alpha');
 
       const resS5b = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
@@ -756,9 +760,10 @@ async function runApiHardeningTests() {
           organizationId: '',
         }),
       });
-      assert.strictEqual(resS5b.status, 422);
+      assert.strictEqual(resS5b.status, 200);
       const bodyS5b = await resS5b.json();
-      assert.strictEqual(bodyS5b.error.code, 'VALIDATION_ERROR');
+      assert.strictEqual(bodyS5b.success, true);
+      assert.strictEqual(bodyS5b.data.user.organizationId, 'org_api_alpha');
 
       // --- SCENARIO 6: Non-super-admin attempting to access another tenant's resources ---
       const resS6 = await fetch(`${baseUrl}/api/customers/cust_beta_1`, {
