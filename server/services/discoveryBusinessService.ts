@@ -202,7 +202,7 @@ export class DiscoveryBusinessService {
   async update(id: string, patch: DiscoveryBusinessUpdateInput, actor: { userId: string; role: string; organizationId?: string }, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    this.assertCanManage(existing, actor);
+    await this.assertCanManageScoped(existing, actor, client);
     if (existing.listing_status === 'ARCHIVED') throw new Error('DISCOVERY_ARCHIVED:Archived listings cannot be edited.');
 
     const nextMode = patch.businessMode ?? existing.business_mode;
@@ -301,7 +301,7 @@ export class DiscoveryBusinessService {
   async resubmit(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    this.assertCanManage(existing, actor);
+    await this.assertCanManageScoped(existing, actor, client);
     if (existing.listing_status !== 'REJECTED') {
       throw new Error('INVALID_STATE_TRANSITION:Only a rejected listing can be resubmitted.');
     }
@@ -322,7 +322,7 @@ export class DiscoveryBusinessService {
   async submit(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    this.assertCanManage(existing, actor);
+    await this.assertCanManageScoped(existing, actor, client);
     await this.assertListingReadyForSubmission(existing, client);
     return this.transition(id, 'SUBMITTED', actor, reason || 'Listing submitted for review.', client);
   }
@@ -370,7 +370,7 @@ export class DiscoveryBusinessService {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
     if (moderatorOnly) this.assertModerator(actor, existing);
-    else this.assertCanManage(existing, actor);
+    else await this.assertCanManageScoped(existing, actor, client);
     if (!TRANSITIONS[existing.listing_status].includes(toStatus)) {
       throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to ${toStatus}.`);
     }
@@ -400,11 +400,36 @@ export class DiscoveryBusinessService {
     return result.rows[0]?.is_active === true;
   }
 
+  async assertCanManageScoped(
+    business: DiscoveryBusinessRecord,
+    actor: { userId: string; role: string; organizationId?: string },
+    client?: DatabaseClient,
+  ): Promise<void> {
+    if (actor.role === 'super_admin') return;
+
+    // Membership is the authoritative business-scoped boundary for merchant users.
+    const membership = await (client || this.db).query<{ role: 'OWNER' | 'MANAGER' | 'STAFF' }>(
+      `SELECT role
+         FROM discovery_business_memberships
+        WHERE business_id=$1 AND user_id=$2 AND is_active=TRUE
+        LIMIT 1`,
+      [business.id, actor.userId],
+    );
+    const scopedRole = membership.rows[0]?.role;
+    if (scopedRole === 'OWNER' || scopedRole === 'MANAGER') return;
+    if (scopedRole === 'STAFF') {
+      throw new Error('PERMISSION_DENIED:Staff members cannot manage the business listing.');
+    }
+
+    // Backward-compatible authorization for platform/tenant administrators and
+    // legacy discovery-only creators that predate scoped memberships.
+    if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
+    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'business_owner'].includes(actor.role)) return;
+    throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
+  }
+
   assertCanManage(business: DiscoveryBusinessRecord, actor: { userId: string; role: string; organizationId?: string }): void {
     if (actor.role === 'super_admin') return;
-    // A creator may manage an unbound discovery-only listing, but once a business
-    // is tenant-bound, ownership is governed by the tenant boundary rather than
-    // the historical creator identity.
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
     if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'business_owner'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
