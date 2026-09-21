@@ -342,6 +342,9 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             syncToUrl({ type });
           }}
           selectedCity={selectedCity}
+          onCityChange={(city) => {
+            handleLocationChange({ city });
+          }}
           latitude={latitude}
           longitude={longitude}
           radiusKm={radiusKm}

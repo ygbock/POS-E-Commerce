@@ -21,6 +21,7 @@ interface DiscoveryHeroProps {
   activeType: DiscoverySearchType;
   onTypeChange: (type: DiscoverySearchType) => void;
   selectedCity?: string;
+  onCityChange: (city: string | undefined) => void;
   latitude?: number | null;
   longitude?: number | null;
   radiusKm?: number;
@@ -45,6 +46,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   activeType,
   onTypeChange,
   selectedCity,
+  onCityChange,
   latitude,
   longitude,
   radiusKm = 25,
@@ -58,32 +60,34 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
     ? `in ${selectedCity}`
     : 'across Sierra Leone';
 
-  const typeOptions: Array<{ id: DiscoverySearchType; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { id: 'all', label: 'All Results', icon: Compass },
-    { id: 'businesses', label: 'Businesses', icon: Store },
-    { id: 'products', label: 'Products', icon: Package },
-    { id: 'services', label: 'Services', icon: Wrench },
+  const cities = [
+    { id: 'all', label: 'All Sierra Leone' },
+    { id: 'Freetown', label: 'Freetown' },
+    { id: 'Bo', label: 'Bo' },
+    { id: 'Kenema', label: 'Kenema' },
+    { id: 'Makeni', label: 'Makeni' },
+    { id: 'Waterloo', label: 'Waterloo' },
   ];
 
   return (
-    <section className={`relative overflow-hidden bg-gradient-to-b from-indigo-900 via-slate-900 to-slate-900 text-white pt-10 pb-12 sm:pt-14 sm:pb-16 px-4 sm:px-6 lg:px-8 border-b border-slate-800 ${className}`}>
+    <section className={`relative overflow-hidden bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-950 text-white pt-12 pb-14 sm:pt-16 sm:pb-20 px-4 sm:px-6 lg:px-8 border-b border-slate-800 shadow-inner ${className}`}>
       {/* Background ambient lighting */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full overflow-hidden pointer-events-none opacity-25">
-        <div className="absolute -top-24 left-1/4 w-96 h-96 bg-indigo-500 rounded-full blur-3xl" />
-        <div className="absolute top-10 right-1/4 w-96 h-96 bg-emerald-500 rounded-full blur-3xl" />
+        <div className="absolute -top-24 left-1/4 w-[500px] h-[500px] bg-indigo-600/30 rounded-full blur-3xl" />
+        <div className="absolute top-10 right-1/4 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-3xl" />
       </div>
 
       <div className="relative max-w-4xl mx-auto text-center space-y-6 sm:space-y-8">
         {/* Location pill */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 text-xs font-semibold text-indigo-200 transition-colors">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 text-xs font-semibold text-indigo-200 transition-colors">
           <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
           <span>Showing verified listings {locationLabel}</span>
         </div>
 
         {/* Hero Headline */}
-        <div className="space-y-3">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight text-white leading-tight">
-            Find businesses, products, and services <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400">near you</span>
+        <div className="space-y-4">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight text-white leading-tight">
+            Find businesses, products, & services <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400">near you</span>
           </h1>
           <p className="max-w-2xl mx-auto text-sm sm:text-base text-slate-300 font-normal leading-relaxed">
             Search verified local merchants, browse real-time inventory, and request professional services across your community.
@@ -91,25 +95,24 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
         </div>
 
         {/* Central Search Container */}
-        <div className="max-w-3xl mx-auto space-y-3">
-          {/* Type Selector Tabs */}
-          <div className="flex items-center justify-center gap-1.5 sm:gap-2 p-1 max-w-md mx-auto rounded-2xl bg-black/30 backdrop-blur-md border border-white/10">
-            {typeOptions.map((opt) => {
-              const Icon = opt.icon;
-              const isSelected = activeType === opt.id;
+        <div className="max-w-3xl mx-auto space-y-4">
+          {/* Location Selector Tabs */}
+          <div className="flex items-center justify-start sm:justify-center gap-1.5 overflow-x-auto pb-2 sm:pb-0 px-2 max-w-2xl mx-auto scrollbar-none">
+            {cities.map((city) => {
+              const isSelected = (!selectedCity && city.id === 'all') || selectedCity === city.id;
               return (
                 <button
-                  key={opt.id}
+                  key={city.id}
                   type="button"
-                  onClick={() => onTypeChange(opt.id)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                  onClick={() => onCityChange(city.id === 'all' ? undefined : city.id)}
+                  className={`flex-shrink-0 flex items-center justify-center gap-1.5 py-1.5 px-3.5 rounded-full text-xs font-bold transition-all ${
                     isSelected
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-500/20'
+                      : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/5'
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{opt.label}</span>
+                  <MapPin className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-slate-400'}`} />
+                  <span>{city.label}</span>
                 </button>
               );
             })}
