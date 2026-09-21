@@ -36,6 +36,7 @@ import { DiscoverySettingsPanel } from './DiscoverySettingsPanel';
 import { DiscoverySearchAliasesPanel } from './DiscoverySearchAliasesPanel';
 import { DiscoveryStoreConversionModal } from './DiscoveryStoreConversionModal';
 import { DiscoveryOnboardingWizard } from './DiscoveryOnboardingWizard';
+import { DiscoveryListingManagementWorkspace } from './DiscoveryListingManagementWorkspace';
 
 interface DiscoveryBusinessContainerProps {
   initialBusinessId?: string;
