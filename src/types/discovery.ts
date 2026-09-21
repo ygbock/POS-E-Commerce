@@ -641,4 +641,5 @@ export interface DiscoveryBusinessTeamInvitation {
 export interface DiscoveryBusinessTeamWorkspace {
   members: DiscoveryBusinessTeamMember[];
   invitations: DiscoveryBusinessTeamInvitation[];
+  currentUserRole?: DiscoveryBusinessTeamRole | null;
 }
