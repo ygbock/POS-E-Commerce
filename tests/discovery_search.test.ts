@@ -20,23 +20,20 @@ async function main() {
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_search_org',
   }, actor);
-  await service.submit(business.id, actor);
-  await service.review(business.id, actor);
-  await service.approve(business.id, actor);
-  await service.publish(business.id, actor);
-
+  await db.query("UPDATE discovery_businesses SET description='A discovery search test business with complete public listing information.', phone='+232 76 000 000' WHERE id=$1",[business.id]);
+  await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_electronics',TRUE)",[business.id]);
   await db.query(
     "INSERT INTO discovery_business_locations (id,business_id,name,city,district,region,latitude,longitude,is_primary,is_active) VALUES ('disc_search_loc',$1,'Main Branch','Freetown','Western Area Urban','Western Area',8.4840,-13.2299,TRUE,TRUE)",
-    [business.id],
-  );
-  await db.query(
-    "INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_electronics',TRUE)",
     [business.id],
   );
   await db.query(
     "INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_search_service',$1,'Phone Screen Repair','phone-screen-repair','Mobile phone screen replacement and repair','Repair','REQUEST')",
     [business.id],
   );
+  await service.submit(business.id, actor);
+  await service.review(business.id, actor);
+  await service.approve(business.id, actor);
+  await service.publish(business.id, actor);
 
   const fts = await db.query(
     "SELECT id FROM discovery_businesses WHERE to_tsvector('simple',coalesce(name,'') || ' ' || coalesce(short_description,'')) @@ plainto_tsquery('simple',$1)",
