@@ -88,6 +88,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
   const [hoursSelectedLocId, setHoursSelectedLocId] = useState<string | undefined>(undefined);
 
+  const businessRole = ((selectedBusiness as DiscoveryBusiness & { membership_role?: BusinessRole })?.membership_role || 'OWNER') as BusinessRole;
+  const visibleTabs = TABS.filter((tab) => ROLE_TAB_ACCESS[businessRole].includes(tab.id));
+  const canManageStore = businessRole === 'OWNER';
+
   // Load Business list
   const loadBusinesses = async () => {
     setLoading(true);
@@ -154,10 +158,6 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
     setHoursSelectedLocId(locationId);
     setActiveTab('hours');
   };
-
-  const businessRole = ((selectedBusiness as DiscoveryBusiness & { membership_role?: BusinessRole })?.membership_role || 'OWNER') as BusinessRole;
-  const visibleTabs = TABS.filter((tab) => ROLE_TAB_ACCESS[businessRole].includes(tab.id));
-  const canManageStore = businessRole === 'OWNER';
 
   const handleViewPublicCard = () => {
     if (selectedBusiness && onNavigateCustomerDiscovery) {

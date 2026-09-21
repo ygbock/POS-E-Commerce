@@ -1,5 +1,29 @@
 # Implementation Report
 
+## TASK: BUG-001 — Resolve Block-Scoped Variable Hoisting Issue in DiscoveryBusinessContainer
+
+- **Status**: `IMPLEMENTED — READY FOR REVIEW`
+- **Date**: 2026-09-21
+- **Program**: `AbaCha Platform Quality Hardening / TS-BUG-001`
+- **Boundary**: `FRONTEND ONLY`
+
+---
+
+### Scope & Changes
+
+1. **Corrected Declaration Order in `DiscoveryBusinessContainer.tsx`**:
+   - Fixed the `TS2448` compilation/lint error where the block-scoped variable `businessRole` (and its dependent variables `visibleTabs` and `canManageStore`) was being referenced in a `useEffect` dependency array and hook body before it was actually declared.
+   - Relocated the definitions of `businessRole`, `visibleTabs`, and `canManageStore` to the top of the component body, directly following the state hook declarations.
+   - Cleaned up the duplicate declarations from their previous position near the bottom of the file.
+
+### Verification Results
+
+- `npm run lint` (`tsc --noEmit`): ✅ PASS (0 errors)
+- `npm run compile_applet` (Production Build): ✅ PASS (Compiled successfully)
+- `npm run test:discovery` & `npm run test:merchant-owner`: ✅ PASS (All test suites passing completely)
+
+---
+
 ## TASK: FRONT-007 — Master UI/UX Redesign for AbaCha Discovery
 
 - **Status**: `IMPLEMENTED — READY FOR REVIEW`
