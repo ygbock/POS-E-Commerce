@@ -131,7 +131,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   }, [initialBusinessId]);
 
   useEffect(() => {
-    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+    if (!ROLE_TAB_ACCESS[businessRole].includes(activeTab)) {
       setActiveTab('dashboard');
     }
   }, [activeTab, businessRole]);
