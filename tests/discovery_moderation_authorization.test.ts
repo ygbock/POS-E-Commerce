@@ -46,7 +46,7 @@ assert.throws(
 // They require an explicit moderation policy rather than inheriting tenant-admin power.
 for (const role of ['platform_admin', 'platform_support', 'platform_finance', 'system_owner']) {
   assert.throws(
-    () => assertModerator({ userId: `${role}-1` }, businessA),
+    () => assertModerator({ userId: `${role}-1`, role }, businessA),
     /PERMISSION_DENIED:Discovery moderation requires administrator authorization/,
   );
 }
