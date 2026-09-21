@@ -35,6 +35,7 @@ import {
   DiscoveryLoadingState,
   DiscoveryErrorState,
   DiscoveryRateLimitState,
+  DiscoveryMapPanel,
   type DiscoveryFilterState,
 } from './index';
 
@@ -253,7 +254,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       setProductsState({ status: errState, data: [], error: msg, errorCode: code, errorStatus: status });
       setServicesState({ status: errState, data: [], error: msg, errorCode: code, errorStatus: status });
     }
-  }, [query, activeType, selectedCity, selectedDistrict, latitude, longitude, radiusKm, filters.openNow]);
+  }, [query, activeType, selectedCity, selectedDistrict, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]);
 
   useEffect(() => {
     void fetchDiscoveryContent();
@@ -469,6 +470,29 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           )}
 
           {/* ---------------------------------------------------------------- */}
+
+          {/* ---------------------------------------------------------------- */}
+          {/* Section: Interactive Map & Location Discovery                     */}
+          {/* ---------------------------------------------------------------- */}
+          <section aria-labelledby="map-section-heading" className="space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+              <div>
+                <div className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Location Discovery</span>
+                </div>
+                <h2 id="map-section-heading" className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                  Find local businesses on the map
+                </h2>
+              </div>
+            </div>
+            <DiscoveryMapPanel
+              businesses={businessesState.data}
+              onSelectBusiness={(business) => window.location.assign('/discover/business/' + encodeURIComponent(business.slug))}
+            />
+          </section>
+
+
           {/* Section: Services Marketplace                                    */}
           {/* ---------------------------------------------------------------- */}
           {(activeType === 'all' || activeType === 'services') && (
