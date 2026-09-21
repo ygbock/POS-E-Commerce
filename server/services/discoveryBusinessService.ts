@@ -335,58 +335,10 @@ export class DiscoveryBusinessService {
     business: DiscoveryBusinessRecord,
     client?: DatabaseClient,
   ): Promise<void> {
-    const db = client || this.db;
     const readiness = await this.getListingReadiness(business.id, client);
-    const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
-    if (missing.length) {
+    if (!readiness.ready) {
+      const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
       throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
-    }
-    return;
-
-    /* legacy checks retained below for source compatibility */
-    const legacyMissing: string[] = [];
-
-    const contactPresent = Boolean(
-      business.phone?.trim() ||
-      business.whatsapp?.trim() ||
-      business.email?.trim(),
-    );
-    if (!contactPresent) missing.push('at least one contact method');
-
-    const categoryResult = await db.query(
-      `SELECT 1
-         FROM discovery_business_category_map bcm
-         JOIN discovery_business_categories c ON c.id = bcm.category_id
-        WHERE bcm.business_id = $1
-          AND c.is_active = TRUE
-        LIMIT 1`,
-      [business.id],
-    );
-    if (categoryResult.rows.length === 0) legacyMissing.push('at least one active category');
-
-    const locationResult = await db.query(
-      `SELECT 1
-         FROM discovery_business_locations
-        WHERE business_id = $1
-          AND is_active = TRUE
-        LIMIT 1`,
-      [business.id],
-    );
-    if (locationResult.rows.length === 0) legacyMissing.push('at least one active location');
-
-    if (business.business_mode === 'DISCOVERY_AND_STORE') {
-      if (!business.organization_id) legacyMissing.push('an active organization for store mode');
-      else {
-        const organization = await db.query(
-          'SELECT 1 FROM organizations WHERE id = $1 AND is_active = TRUE LIMIT 1',
-          [business.organization_id],
-        );
-        if (organization.rows.length === 0) legacyMissing.push('an active organization for store mode');
-      }
-    }
-
-    if (legacyMissing.length) {
-      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${legacyMissing.join(', ')}.`);
     }
   }
 
