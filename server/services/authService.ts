@@ -52,7 +52,7 @@ export class AuthService {
     const password = input.password;
 
     if (!name || name.length < 2) throw new Error('VALIDATION_ERROR: Full name is required.');
-    if (!/^\\S+@\\S+\\.\\S+$/.test(email)) throw new Error('VALIDATION_ERROR: A valid email address is required.');
+    if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('VALIDATION_ERROR: A valid email address is required.');
     if (!password || password.length < 12) throw new Error('VALIDATION_ERROR: Password must be at least 12 characters.');
     if (!businessName || businessName.length < 2) throw new Error('VALIDATION_ERROR: Business name is required.');
     if (!['DISCOVERY_ONLY', 'DISCOVERY_AND_STORE'].includes(input.businessMode)) {
