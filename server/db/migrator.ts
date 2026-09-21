@@ -22,22 +22,37 @@ export function loadMigrationFiles(migrationsDir?: string): MigrationFile[] {
     .filter((f) => f.endsWith('.sql'))
     .sort();
 
-  return files.map((file) => {
+  const migrations: MigrationFile[] = [];
+  const seenVersions = new Map<string, MigrationFile>();
+
+  for (const file of files) {
     const filePath = path.join(dir, file);
     const sql = fs.readFileSync(filePath, 'utf-8');
     const parts = file.replace('.sql', '').split('_');
     const version = parts[0];
     const name = parts.slice(1).join('_');
     const checksum = crypto.createHash('sha256').update(sql).digest('hex');
+    const migration: MigrationFile = { version, name, filePath, sql, checksum };
+    const existing = seenVersions.get(version);
 
-    return {
-      version,
-      name,
-      filePath,
-      sql,
-      checksum,
-    };
-  });
+    if (existing) {
+      if (existing.checksum === checksum) {
+        // A duplicate copy of the exact same migration can occur in a local
+        // checkout after a migration was moved/renamed. Treat it as one
+        // migration so schema_migrations never receives the same version twice.
+        continue;
+      }
+      throw new Error(
+        `[AbaCha DB Fatal] Duplicate migration version ${version}: ${existing.name} and ${name} have different contents. ` +
+        'Migration versions must be unique; rename the newer migration instead of reusing an applied version.'
+      );
+    }
+
+    seenVersions.set(version, migration);
+    migrations.push(migration);
+  }
+
+  return migrations;
 }
 
 export interface AppliedMigration {
