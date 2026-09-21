@@ -126,8 +126,8 @@ export class DiscoveryBusinessService {
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
       const slug = await this.uniqueSlug(name, undefined, tx);
-      const status: DiscoveryListingStatus = input.submitImmediately ? 'SUBMITTED' : 'DRAFT';
-      const verification: DiscoveryVerificationStatus = input.submitImmediately ? 'PENDING' : 'UNVERIFIED';
+      const status: DiscoveryListingStatus = 'DRAFT';
+      const verification: DiscoveryVerificationStatus = 'UNVERIFIED';
       const record = await this.repository.createBusiness({
         id: randomUUID(),
         public_id: `biz_${randomUUID().replace(/-/g, '')}`,
@@ -152,6 +152,17 @@ export class DiscoveryBusinessService {
       }, tx);
       await this.repository.getSettings(record.id, tx);
       await this.repository.addListingEvent({ businessId: record.id, fromStatus: null, toStatus: status, actorUserId: actor?.userId }, tx);
+      if (input.submitImmediately) {
+        const readiness = await this.getListingReadiness(record.id, tx);
+        if (!readiness.ready) {
+          const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
+          throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
+        }
+        const submitted = await this.repository.updateBusiness(record.id, { listing_status: 'SUBMITTED' }, tx);
+        if (!submitted) throw new Error('NOT_FOUND:Discovery business not found.');
+        await this.repository.addListingEvent({ businessId: record.id, fromStatus: 'DRAFT', toStatus: 'SUBMITTED', reason: 'Listing submitted during onboarding.', actorUserId: actor?.userId }, tx);
+        return submitted;
+      }
       return record;
     });
   }
