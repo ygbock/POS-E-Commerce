@@ -20,6 +20,16 @@ async function main() {
   assert.strictEqual(discovery.user.role, 'business_owner');
   assert.strictEqual(discovery.business.businessMode, 'DISCOVERY_ONLY');
 
+  // A business owner must be able to sign in later without knowing or supplying
+  // an organization ID. AuthService resolves the single active organization by email.
+  const signedIn = await auth.login({
+    email: 'merchant-owner@example.com',
+    password: 'MerchantOwner123!',
+  });
+  assert.strictEqual(signedIn.user.id, discovery.user.id);
+  assert.strictEqual(signedIn.user.role, 'business_owner');
+  assert.ok(signedIn.token);
+
   const row = await db.query(
     `SELECT b.organization_id,b.listing_status,m.role,u.role AS user_role
        FROM discovery_businesses b
