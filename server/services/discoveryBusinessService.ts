@@ -118,9 +118,9 @@ export class DiscoveryBusinessService {
   async create(input: DiscoveryBusinessCreateInput, actor?: { userId?: string; role?: string }, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const name = normalizeText(input.name, 255, 'name', true)!;
     const mode = this.validateMode(input);
-    if (mode === 'DISCOVERY_ONLY' && actor?.role !== 'super_admin' && actor?.role !== 'admin') {
-      throw new Error('PERMISSION_DENIED:Discovery-only business creation requires platform or administrator authorization.');
-    }
+    // Discovery-only listings are intentionally self-service: an authenticated user may create
+    // an unbound draft and submit it for platform moderation. Tenant-bound store mode still
+    // requires the caller's active organization through the route/service boundary.
     if (mode === 'DISCOVERY_AND_STORE' && !input.organizationId) throw new Error('TENANT_REQUIRED:organizationId is required.');
 
     const db = client || this.db;
@@ -234,7 +234,66 @@ export class DiscoveryBusinessService {
   }
 
   async submit(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    const existing = await this.repository.findById(id, client);
+    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+    this.assertCanManage(existing, actor);
+    await this.assertListingReadyForSubmission(existing, client);
     return this.transition(id, 'SUBMITTED', actor, reason || 'Listing submitted for review.', client);
+  }
+
+  /**
+   * Submission readiness is server-authoritative. The UI may show the same checklist,
+   * but a listing cannot enter moderation until its minimum public-discovery data exists.
+   */
+  private async assertListingReadyForSubmission(
+    business: DiscoveryBusinessRecord,
+    client?: DatabaseClient,
+  ): Promise<void> {
+    const db = client || this.db;
+    const missing: string[] = [];
+
+    const contactPresent = Boolean(
+      business.phone?.trim() ||
+      business.whatsapp?.trim() ||
+      business.email?.trim(),
+    );
+    if (!contactPresent) missing.push('at least one contact method');
+
+    const categoryResult = await db.query(
+      `SELECT 1
+         FROM discovery_business_category_map bcm
+         JOIN discovery_business_categories c ON c.id = bcm.category_id
+        WHERE bcm.business_id = $1
+          AND c.is_active = TRUE
+        LIMIT 1`,
+      [business.id],
+    );
+    if (categoryResult.rows.length === 0) missing.push('at least one active category');
+
+    const locationResult = await db.query(
+      `SELECT 1
+         FROM discovery_business_locations
+        WHERE business_id = $1
+          AND is_active = TRUE
+        LIMIT 1`,
+      [business.id],
+    );
+    if (locationResult.rows.length === 0) missing.push('at least one active location');
+
+    if (business.business_mode === 'DISCOVERY_AND_STORE') {
+      if (!business.organization_id) missing.push('an active organization for store mode');
+      else {
+        const organization = await db.query(
+          'SELECT 1 FROM organizations WHERE id = $1 AND is_active = TRUE LIMIT 1',
+          [business.organization_id],
+        );
+        if (organization.rows.length === 0) missing.push('an active organization for store mode');
+      }
+    }
+
+    if (missing.length) {
+      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
+    }
   }
 
   async review(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
