@@ -90,3 +90,9 @@ Previously applied migrations remain untouched. Discovery schema is implemented 
 - Reporter identities, report descriptions, moderation actor identities, private trust metadata, and claimant contact details are not exposed through the merchant projection.
 - Added `DiscoveryTrustCenter` merchant workspace with verification resubmission entry point, platform decision reasons, claim history, review moderation visibility, report status, trust timeline, and explicit merchant-vs-platform responsibility guidance.
 - Added regression coverage for the trust-center projection and privacy boundaries.
+
+
+## Customer ownership claim tracking
+- Added authenticated `GET /api/discovery/my-claims` returning only the caller's own ownership claims.
+- Added `DiscoveryMyClaimsPage` at `/discover/my-claims` with pending/approved/rejected status, submission/review timestamps, and platform decision notes.
+- Claimant privacy is preserved: the workspace never exposes other claimants or private moderation metadata.
