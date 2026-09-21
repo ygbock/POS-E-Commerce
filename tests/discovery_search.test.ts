@@ -9,6 +9,10 @@ async function main() {
   await runMigrations(db);
 
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_search_org','Search Test Org','DISC_SEARCH',TRUE)");
+  await db.query(
+    `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+     VALUES ('disc-search-owner','disc_search_org','disc-search-owner@test.local','Discovery Search Owner','hash','salt','admin',TRUE)`,
+  );
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
