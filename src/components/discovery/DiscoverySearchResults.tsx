@@ -81,7 +81,7 @@ function readUrlParams(): {
   const latVal = sp.get('lat');
   const lngVal = sp.get('lng');
   const rawSort = sp.get('sort') || 'relevance';
-  const validSorts: DiscoverySortOption[] = ['relevance', 'rating', 'review_count', 'name_asc', 'newest'];
+  const validSorts: DiscoverySortOption[] = ['relevance', 'rating', 'review_count', 'name_asc', 'newest', 'distance'];
   const sort: DiscoverySortOption = validSorts.includes(rawSort as DiscoverySortOption)
     ? (rawSort as DiscoverySortOption)
     : 'relevance';
