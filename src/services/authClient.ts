@@ -80,7 +80,7 @@ class AuthClient {
     password: string;
     businessName: string;
     businessMode: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE';
-  }): Promise<AuthUser> {
+  }): Promise<AuthUser & { business: { id: string; publicId: string; name: string; slug: string; businessMode: string; listingStatus: string } }> {
     const res = await fetch('/api/merchant/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -94,7 +94,7 @@ class AuthClient {
       localStorage.setItem(TOKEN_KEY, data.data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     }
-    return data.data.user;
+    return { ...data.data.user, business: data.data.business };
   }
 
   async login(email: string, password: string, organizationId?: string): Promise<AuthUser> {
