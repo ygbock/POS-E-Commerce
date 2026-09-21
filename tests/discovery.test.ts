@@ -20,6 +20,23 @@ async function main() {
   assert.strictEqual(business.listing_status, 'DRAFT');
   assert.ok(business.slug.startsWith('discovery-test-shop'));
 
+  // The submission gate is intentionally server-authoritative. Make this fixture
+  // complete before exercising the happy-path lifecycle.
+  await db.query(
+    "INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES ($1,'disc_cat_retail',TRUE)",
+    [business.id],
+  );
+  await db.query(
+    `INSERT INTO discovery_business_locations
+      (id,business_id,name,location_type,city,region,country,latitude,longitude,is_primary,is_active)
+      VALUES ('disc_main_loc', $1, 'Main Location', 'STORE', 'Freetown', 'Western Area', 'Sierra Leone', 8.4840, -13.2299, TRUE, TRUE)`,
+    [business.id],
+  );
+  await service.update(business.id, {
+    description: 'A discovery test retail business with complete public listing information.',
+    phone: '+232 76 000 000',
+  }, owner);
+
   await service.submit(business.id, owner);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'SUBMITTED');
   await service.review(business.id, owner);
@@ -87,11 +104,14 @@ async function main() {
   );
   await db.query(
     `INSERT INTO discovery_business_locations
-      (id,business_id,name,location_type,city,region,country,is_primary,is_active)
-      VALUES ('disc_self_loc', $1, 'Main Location', 'STORE', 'Freetown', 'Western Area', 'Sierra Leone', TRUE, TRUE)`,
+      (id,business_id,name,location_type,city,region,country,latitude,longitude,is_primary,is_active)
+      VALUES ('disc_self_loc', $1, 'Main Location', 'STORE', 'Freetown', 'Western Area', 'Sierra Leone', 8.4840, -13.2299, TRUE, TRUE)`,
     [selfService.id],
   );
-  await service.update(selfService.id, { phone: '+232 76 111111' }, selfServiceOwner);
+  await service.update(selfService.id, {
+    description: 'A self-service discovery listing with complete public information.',
+    phone: '+232 76 111111',
+  }, selfServiceOwner);
   const submittedSelfService = await service.submit(selfService.id, selfServiceOwner);
   assert.strictEqual(submittedSelfService.listing_status, 'SUBMITTED');
 
