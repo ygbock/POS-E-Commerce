@@ -249,7 +249,8 @@ export const discoveryApi = {
    * List all active discovery categories
    */
   async getCategories(): Promise<DiscoveryCategory[]> {
-    return request<DiscoveryCategory[]>('/api/discovery/categories');
+    const data = await request<DiscoveryCategory[] | null>('/api/discovery/categories');
+    return Array.isArray(data) ? data : [];
   },
 
   /**
