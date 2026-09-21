@@ -275,7 +275,7 @@ export class DiscoveryBusinessService {
   async getListingManagementWorkspace(id: string, actor: { userId: string; role: string; organizationId?: string }, client?: DatabaseClient): Promise<any> {
     const business = await this.repository.findById(id, client);
     if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
-    this.assertCanManage(business, actor);
+    await this.assertCanManageScoped(business, actor, client);
     const db = client || this.db;
     const [readiness, locations, categories, settings, events, verification] = await Promise.all([
       this.getListingReadiness(id, client),
