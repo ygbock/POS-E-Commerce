@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, MailPlus, RefreshCw, Shield, UserMinus, Users, X } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
-import type {
-  DiscoveryBusinessTeamRole,
-  DiscoveryBusinessTeamWorkspace,
-} from '../../../types/discovery';
+import type { DiscoveryBusinessTeamWorkspace } from '../../../types/discovery';
 
 interface Props {
   businessId: string;
