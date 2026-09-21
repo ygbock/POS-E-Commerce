@@ -597,7 +597,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 shrink-0">
-                <a href="/login?redirect=/discover/businesses/new"
+                <a href="/business/signup"
                   className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
                   <Building2 className="w-4 h-4" /> Get Listed
                 </a>

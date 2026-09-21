@@ -1,4 +1,5 @@
 import React, { FormEvent, useEffect, useState } from 'react';
+import { ArrowLeft, X } from 'lucide-react';
 import { authClient, AuthUser } from '../../services/authClient';
 
 interface LoginPageProps {
@@ -32,7 +33,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center px-4 py-8 relative">
+      {/* Floating Back Button */}
+      <div className="absolute top-4 left-4 z-10">
+        <a
+          href="/discover"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-semibold text-slate-300 hover:text-white transition"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to Marketplace</span>
+        </a>
+      </div>
+
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-white text-slate-950 flex items-center justify-center text-2xl font-black">A</div>
@@ -40,8 +52,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
           <p className="mt-2 text-sm text-slate-400">Unified Commerce Platform</p>
         </div>
 
-        <form onSubmit={submit} className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xl">
-          <div className="mb-6">
+        <form onSubmit={submit} className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xl relative">
+          <div className="absolute top-6 right-6">
+            <a
+              href="/discover"
+              className="text-slate-400 hover:text-slate-600 transition"
+              title="Close and return to marketplace"
+            >
+              <X className="w-5 h-5" />
+            </a>
+          </div>
+
+          <div className="mb-6 pr-6">
             <h2 className="text-xl font-bold text-slate-900">Sign in</h2>
             <p className="mt-1 text-sm text-slate-500">Use your authorized account to continue.</p>
           </div>
@@ -85,6 +107,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-600">
+            Are you a business owner?{' '}
+            <a href="/business/signup" className="font-bold text-slate-900 hover:underline">
+              Register your business listing here
+            </a>
+          </div>
         </form>
 
         <p className="mt-6 text-center text-xs text-slate-500">
