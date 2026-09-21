@@ -74,6 +74,29 @@ class AuthClient {
     return headers;
   }
 
+  async registerBusinessOwner(input: {
+    name: string;
+    email: string;
+    password: string;
+    businessName: string;
+    businessMode: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE';
+  }): Promise<AuthUser> {
+    const res = await fetch('/api/merchant/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to create business account.');
+    this.currentToken = data.data.token;
+    this.currentUser = data.data.user;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(TOKEN_KEY, data.data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
+    }
+    return data.data.user;
+  }
+
   async login(email: string, password: string, organizationId?: string): Promise<AuthUser> {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
