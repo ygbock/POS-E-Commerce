@@ -248,7 +248,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.patch('/businesses/:id', requireAuth(), async (req, res, next) => {
     try {
-      if (!(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business modification forbidden.' } });
+      if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business modification forbidden.' } });
       res.json({ success: true, data: await businessService.update(req.params.id, req.body, actor(req)) });
     } catch (err) { next(err); }
   });
@@ -1480,7 +1480,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/businesses/:id/verification', requireAuth(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    const canManage=await owned(req,req.params.id);
+    const canManage=await owned(req,req.params.id,'business.verification.manage');
     if(!canManage && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification access forbidden.'}});
     const applications=await db.query(`SELECT * FROM discovery_verification_applications WHERE business_id=$1 ORDER BY created_at DESC LIMIT 20`,[req.params.id]);
     res.json({success:true,data:{businessId:req.params.id,verificationStatus:b.verification_status,applications:applications.rows}});
@@ -1567,7 +1567,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses/:id/verification', requireAuth(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification application forbidden.'}});
+    if(!(await owned(req,req.params.id,'business.verification.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification application forbidden.'}});
     const evidence=req.body?.evidence??{};
     if(evidence===null||typeof evidence!=='object'||Array.isArray(evidence))throw new Error('VALIDATION_ERROR:evidence must be an object.');
     if(Buffer.byteLength(JSON.stringify(evidence),'utf8')>16384)throw new Error('VALIDATION_ERROR:evidence exceeds 16384 bytes.');
