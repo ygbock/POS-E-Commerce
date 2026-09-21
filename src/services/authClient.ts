@@ -101,6 +101,8 @@ class AuthClient {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // organizationId is optional. The server resolves the account's active organization
+      // from the authenticated email when the user has a single organization.
       body: JSON.stringify(organizationId ? { email, password, organizationId } : { email, password }),
     });
 
