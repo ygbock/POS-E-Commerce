@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { AuthService } from '../services/authService.ts';
 import { requireAuth } from '../middleware/auth.ts';
+import { AuditRepository } from '../repositories/auditRepository.ts';
 
 export function createMerchantRouter(db: DatabaseClient, authService: AuthService) {
   const router = express.Router();
@@ -22,6 +23,13 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
   };
 
   const normalizeEmail = (value: unknown) => String(value || '').trim().toLowerCase();
+  const audit = new AuditRepository(db);
+  const recordBusinessAudit = async (req: Request, action: string, businessId: string, metadata: Record<string, any> = {}, severity: 'Info'|'Low'|'Medium'|'High'|'Critical' = 'Medium', result: 'SUCCESS'|'FAILED'|'DENIED' = 'SUCCESS', beforeState?: any, afterState?: any) => {
+    if (!req.auth) return;
+    try {
+      await audit.recordEvent({ organization_id: req.auth.organizationId, actor_id: req.auth.userId, actor_name: req.auth.email || req.auth.userId, actor_role: req.auth.role, action, entity_type: 'DISCOVERY_BUSINESS', entity_id: businessId, before_state: beforeState, after_state: afterState, metadata, severity, result });
+    } catch (error) { console.warn('[Audit] Discovery business event failed:', error); }
+  };
 
   const requireTeamManager = async (req: Request, businessId: string, minimum: 'MANAGER' | 'OWNER' = 'MANAGER') => {
     const membership = await db.query(
@@ -176,6 +184,8 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         [invitationId, req.params.id, email, role, req.auth!.userId],
       );
 
+      await recordBusinessAudit(req, 'BUSINESS_TEAM_INVITATION_CREATED', req.params.id, { invitationId, invitedEmail: email, role }, 'Medium', 'SUCCESS');
+
       res.status(201).json({
         success: true,
         data: {
@@ -203,6 +213,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         [req.params.invitationId, req.params.id],
       );
       if (!result.rows[0]) throw new Error('NOT_FOUND:Pending invitation not found.');
+      await recordBusinessAudit(req, 'BUSINESS_TEAM_INVITATION_REVOKED', req.params.id, { invitationId: req.params.invitationId }, 'Medium');
       res.json({ success: true, data: result.rows[0] });
     } catch (err) {
       fail(res, err);
@@ -223,6 +234,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         [role, req.params.id, req.params.userId],
       );
       if (!result.rows[0]) throw new Error('NOT_FOUND:Active non-owner team member not found.');
+      await recordBusinessAudit(req, 'BUSINESS_TEAM_MEMBER_ROLE_CHANGED', req.params.id, { targetUserId: req.params.userId, newRole: role }, 'High');
       res.json({ success: true, data: result.rows[0] });
     } catch (err) {
       fail(res, err);
@@ -243,6 +255,8 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
       if (actorRole === 'MANAGER' && targetRole !== 'STAFF') {
         throw new Error('PERMISSION_DENIED:Managers may deactivate staff members only.');
       }
+
+      await recordBusinessAudit(req, 'BUSINESS_TEAM_MEMBER_DEACTIVATED', req.params.id, { targetUserId: req.params.userId, targetRole }, 'High');
 
       await db.query(
         `UPDATE discovery_business_memberships
@@ -304,6 +318,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         throw err;
       }
 
+      await recordBusinessAudit(req, 'BUSINESS_TEAM_INVITATION_ACCEPTED', row.business_id, { invitationId: row.id, role: row.role }, 'Medium');
       res.json({ success: true, data: { businessId: row.business_id, role: row.role, status: 'ACCEPTED' } });
     } catch (err) {
       fail(res, err);
@@ -341,6 +356,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         await db.query('ROLLBACK');
         throw err;
       }
+      await recordBusinessAudit(req, 'DISCOVERY_BUSINESS_CREATED', businessId, { businessMode }, 'Info');
       res.status(201).json({ success: true, data: { id: businessId, publicId, name, slug, businessMode, listingStatus: 'DRAFT' } });
     } catch (err) {
       next(err);
