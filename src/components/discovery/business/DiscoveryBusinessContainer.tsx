@@ -71,6 +71,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   const [selectedBusiness, setSelectedBusiness] = useState<DiscoveryBusiness | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [requestedBusinessMissing, setRequestedBusinessMissing] = useState(false);
 
   // Modals & sub-flows
   const [isStoreConversionOpen, setIsStoreConversionOpen] = useState<boolean>(false);
@@ -89,11 +90,19 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
       if (list && list.length > 0) {
         if (initialBusinessId) {
           const found = list.find((b) => b.id === initialBusinessId || b.slug === initialBusinessId);
-          setSelectedBusiness(found || list[0]);
+          if (!found) {
+            setSelectedBusiness(null);
+            setRequestedBusinessMissing(true);
+          } else {
+            setRequestedBusinessMissing(false);
+            setSelectedBusiness(found);
+          }
         } else {
+          setRequestedBusinessMissing(false);
           setSelectedBusiness(list[0]);
         }
       } else {
+        setRequestedBusinessMissing(Boolean(initialBusinessId));
         setSelectedBusiness(null);
       }
     } catch (err: unknown) {
@@ -152,6 +161,25 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
           onSuccess={handleBusinessCreated}
           onCancel={businesses.length > 0 ? () => setIsOnboardingOpen(false) : undefined}
         />
+      </div>
+    );
+  }
+
+  if (requestedBusinessMissing) {
+    return (
+      <div className="mx-auto my-16 max-w-lg rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm dark:border-red-900 dark:bg-slate-900">
+        <AlertCircle className="mx-auto mb-4 h-10 w-10 text-red-500" />
+        <h3 className="text-base font-bold text-slate-900 dark:text-white">Business unavailable</h3>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          This business does not belong to your merchant workspace, no longer exists, or you do not have permission to manage it.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.assign('/business')}
+          className="mt-6 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white"
+        >
+          Back to business portal
+        </button>
       </div>
     );
   }
