@@ -43,7 +43,7 @@ export const BusinessOwnerSignup: React.FC = () => {
         <button type="button" onClick={()=>set('businessMode','DISCOVERY_AND_STORE')} className={form.businessMode==='DISCOVERY_AND_STORE'?'rounded-2xl border border-slate-900 bg-slate-50 p-4 text-left ring-2 ring-slate-900/10':'rounded-2xl border p-4 text-left'}><b>Discovery + Store</b><span className="mt-1 block text-sm text-slate-500">Build your listing and prepare an online store, inventory and orders.</span></button>
       </div></div>
       <button disabled={loading} className="mt-7 w-full rounded-xl bg-slate-900 px-4 py-3.5 font-semibold text-white disabled:opacity-50">{loading?'Creating your business…':'Create business account'}</button>
-      <p className="mt-4 text-center text-xs text-slate-500">Already have an account? <a href="/login" className="font-semibold text-slate-900">Sign in</a></p>
+      <p className="mt-4 text-center text-xs text-slate-500">Already have an account? <a href="/business/signin" className="font-semibold text-slate-900">Sign in to your merchant portal</a></p>
     </form>
   </div></div>;
 };
