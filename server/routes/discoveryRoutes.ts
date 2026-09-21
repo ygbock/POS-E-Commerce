@@ -107,6 +107,26 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   };
 
   const publicBusiness = async (id: string) => businessService.getPublicProfile(id);
+  const discoveryMatchTokens = (value: unknown): string[] => {
+    const normalized = String(value || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    const stop = new Set(['the','and','for','with','from','this','that','need','want','service','services','please','help','looking','local','business','provider']);
+    return Array.from(new Set(normalized.split(/\s+/).filter(t => t.length >= 3 && !stop.has(t))));
+  };
+
+  const discoveryHaversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  };
+
 
   const trustEvent = async (businessId: string | null, entityType: string, entityId: string, eventType: string, actorUserId: string | null, fromStatus?: string | null, toStatus?: string | null, reason?: string | null, metadata: Record<string, unknown> = {}) => {
     await db.query(
@@ -1082,16 +1102,38 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const customerName=String(x.customerName||'').trim();
     const description=String(x.description||'').trim();
     if(!customerName||!description)throw new Error('VALIDATION_ERROR:customerName and description are required.');
+    if(description.length>5000)throw new Error('VALIDATION_ERROR:description exceeds 5000 characters.');
     if((x.latitude==null)!==(x.longitude==null))throw new Error('VALIDATION_ERROR:latitude and longitude must be supplied together.');
+    const lat=x.latitude==null?null:Number(x.latitude);
+    const lng=x.longitude==null?null:Number(x.longitude);
+    if(lat!=null&&(!Number.isFinite(lat)||lat<-90||lat>90))throw new Error('VALIDATION_ERROR:latitude must be between -90 and 90.');
+    if(lng!=null&&(!Number.isFinite(lng)||lng<-180||lng>180))throw new Error('VALIDATION_ERROR:longitude must be between -180 and 180.');
     if(x.budgetFrom!=null&&(!Number.isFinite(Number(x.budgetFrom))||Number(x.budgetFrom)<0))throw new Error('VALIDATION_ERROR:budgetFrom must be a non-negative number.');
     if(x.budgetTo!=null&&(!Number.isFinite(Number(x.budgetTo))||Number(x.budgetTo)<0))throw new Error('VALIDATION_ERROR:budgetTo must be a non-negative number.');
     if(x.budgetFrom!=null&&x.budgetTo!=null&&Number(x.budgetTo)<Number(x.budgetFrom))throw new Error('VALIDATION_ERROR:budgetTo must be greater than or equal to budgetFrom.');
+
+    const requestedServiceId=x.serviceId?String(x.serviceId).trim():null;
+    let requestedServiceType=x.serviceType?String(x.serviceType).trim().slice(0,128):null;
+    if(requestedServiceId){
+      const requested=await db.query(
+        `SELECT s.id,s.service_type,s.name,s.description,b.id AS business_id
+           FROM discovery_services s
+           JOIN discovery_businesses b ON b.id=s.business_id
+          WHERE s.id=$1 AND s.is_active=TRUE
+            AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))`,
+        [requestedServiceId],
+      );
+      if(!requested.rows[0])throw new Error('NOT_FOUND:Selected discovery service is no longer available.');
+      requestedServiceType=requestedServiceType||requested.rows[0].service_type||requested.rows[0].name||null;
+    }
+
     const requestId=`req_${randomUUID().replace(/-/g,'')}`;
     const data=await db.withTransaction(async(tx)=>{
       const r=await tx.query(
-        `INSERT INTO discovery_service_requests(id,customer_user_id,customer_name,customer_phone,customer_email,description,city,district,region,latitude,longitude,preferred_date,budget_from,budget_to)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-        [requestId,req.auth!.userId,customerName,x.customerPhone||null,x.customerEmail||null,description,x.city||null,x.district||null,x.region||null,x.latitude??null,x.longitude??null,x.preferredDate||null,x.budgetFrom??null,x.budgetTo??null],
+        `INSERT INTO discovery_service_requests(id,customer_user_id,customer_name,customer_phone,customer_email,description,city,district,region,latitude,longitude,preferred_date,budget_from,budget_to,requested_service_id,service_type)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [requestId,req.auth!.userId,customerName,x.customerPhone||null,x.customerEmail||null,description,x.city||null,x.district||null,x.region||null,lat,lng,x.preferredDate||null,x.budgetFrom??null,x.budgetTo??null,requestedServiceId,requestedServiceType],
       );
       await tx.query(
         `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
@@ -1099,41 +1141,82 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         [`req_evt_${randomUUID().replace(/-/g,'')}`,requestId,req.auth!.userId,'Request created.'],
       );
 
-      const matches = await tx.query(
-        `INSERT INTO discovery_service_request_matches(request_id,business_id,match_score)
-         SELECT $1,b.id,
-           CASE
-             WHEN $2::text IS NOT NULL AND EXISTS (
-               SELECT 1 FROM discovery_business_locations l
-               WHERE l.business_id=b.id AND l.is_active=TRUE AND lower(l.city)=lower($2)
-             ) THEN 1.000
-             WHEN $3::text IS NOT NULL AND EXISTS (
-               SELECT 1 FROM discovery_business_locations l
-               WHERE l.business_id=b.id AND l.is_active=TRUE AND lower(l.district)=lower($3)
-             ) THEN 0.900
-             WHEN $4::text IS NOT NULL AND EXISTS (
-               SELECT 1 FROM discovery_business_locations l
-               WHERE l.business_id=b.id AND l.is_active=TRUE AND lower(l.region)=lower($4)
-             ) THEN 0.800
-             ELSE 0.500
-           END
-         FROM discovery_businesses b
-         WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
-           AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=b.id AND s.is_active=TRUE)
-
-         ON CONFLICT(request_id,business_id) DO NOTHING
-         RETURNING business_id`,
-        [requestId,x.city||null,x.district||null,x.region||null],
+      const candidateRows=await tx.query(
+        `SELECT s.id AS service_id,s.business_id,s.name AS service_name,s.description AS service_description,s.service_type,
+                s.price_from,s.price_to,b.name AS business_name,
+                l.latitude,l.longitude,l.city AS location_city,l.district AS location_district,l.region AS location_region,
+                l.location_type,l.service_radius_km
+           FROM discovery_services s
+           JOIN discovery_businesses b ON b.id=s.business_id
+           LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE
+          WHERE s.is_active=TRUE
+            AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))
+            AND ($1::text IS NULL OR s.id=$1 OR $1::text IS NOT NULL)
+          LIMIT 300`,
+        [requestedServiceId],
       );
-      if (matches.rows.length > 0) {
+
+      const requestTokens=discoveryMatchTokens([requestedServiceType,description].filter(Boolean).join(' '));
+      const requestTypeTokens=discoveryMatchTokens(requestedServiceType||'');
+      const candidates=new Map<string,{businessId:string;score:number;reason:string}>();
+
+      for(const row of candidateRows.rows){
+        const serviceTokens=discoveryMatchTokens([row.service_type,row.service_name,row.service_description].filter(Boolean).join(' '));
+        const overlap=requestTokens.filter(t=>serviceTokens.includes(t));
+        const overlapRatio=requestTokens.length?overlap.length/requestTokens.length:0;
+        const typeOverlap=requestTypeTokens.filter(t=>serviceTokens.includes(t)).length>0;
+        const exactService=Boolean(requestedServiceId&&row.service_id===requestedServiceId);
+        if(!exactService && !typeOverlap && overlap.length===0) continue;
+
+        let relevance=exactService?0.62:(typeOverlap?0.42:Math.min(0.34,0.16+overlapRatio*0.24));
+        let locationScore=0;
+        let locationCompatible=true;
+        let distanceKm:number|null=null;
+        if(x.city&&row.location_city&&String(row.location_city).toLowerCase()===String(x.city).toLowerCase()) locationScore+=0.10;
+        else if(x.city&&row.location_city) locationScore-=0.03;
+        if(x.district&&row.location_district&&String(row.location_district).toLowerCase()===String(x.district).toLowerCase()) locationScore+=0.07;
+        if(x.region&&row.location_region&&String(row.location_region).toLowerCase()===String(x.region).toLowerCase()) locationScore+=0.04;
+
+        if(lat!=null&&lng!=null&&row.latitude!=null&&row.longitude!=null){
+          distanceKm=discoveryHaversineKm(lat,lng,Number(row.latitude),Number(row.longitude));
+          const radius=row.service_radius_km==null?null:Number(row.service_radius_km);
+          if(String(row.location_type||'').toUpperCase()==='SERVICE_AREA'&&radius!=null&&radius>0){
+            locationCompatible=distanceKm<=radius;
+          }
+          if(locationCompatible) locationScore+=Math.max(0,0.20*(1-Math.min(distanceKm,100)/100));
+        }
+
+        if(!locationCompatible) continue;
+        let budgetScore=0;
+        const serviceFrom=row.price_from==null?null:Number(row.price_from);
+        const serviceTo=row.price_to==null?null:Number(row.price_to);
+        if(x.budgetTo!=null&&serviceFrom!=null&&serviceFrom>Number(x.budgetTo)) continue;
+        if(x.budgetFrom!=null&&serviceTo!=null&&serviceTo<Number(x.budgetFrom)) continue;
+        if((x.budgetTo!=null||x.budgetFrom!=null)&&((serviceFrom!=null)||(serviceTo!=null))) budgetScore=0.08;
+
+        const score=Math.max(0,Math.min(1,relevance+Math.max(0,locationScore)+budgetScore));
+        if(score<0.28) continue;
+        const reason=exactService?'REQUESTED_SERVICE':typeOverlap?'SERVICE_TYPE':overlap.length?'KEYWORD':'LOCATION';
+        const previous=candidates.get(row.business_id);
+        if(!previous||score>previous.score)candidates.set(row.business_id,{businessId:row.business_id,score,reason});
+      }
+
+      const ranked=Array.from(candidates.values()).sort((a,b)=>b.score-a.score||a.businessId.localeCompare(b.businessId)).slice(0,25);
+      for(const match of ranked){
         await tx.query(
-          `UPDATE discovery_service_requests SET status='MATCHED',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,
-          [requestId],
+          `INSERT INTO discovery_service_request_matches(request_id,business_id,match_score,match_reason)
+           VALUES($1,$2,$3,$4) ON CONFLICT(request_id,business_id) DO NOTHING`,
+          [requestId,match.businessId,Number(match.score.toFixed(3)),match.reason],
         );
+      }
+
+      if(ranked.length>0){
+        await tx.query(`UPDATE discovery_service_requests SET status='MATCHED',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,[requestId]);
         await tx.query(
           `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
            VALUES($1,$2,'OPEN','MATCHED',$3,$4)`,
-          [`req_evt_${randomUUID().replace(/-/g,'')}`,requestId,req.auth!.userId,`${matches.rows.length} provider match(es) found.`],
+          [`req_evt_${randomUUID().replace(/-/g,'')}`,requestId,req.auth!.userId,`${ranked.length} relevant provider match(es) found.`],
         );
         r.rows[0].status='MATCHED';
       }
