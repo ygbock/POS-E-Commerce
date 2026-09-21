@@ -9,6 +9,7 @@ export type DiscoveryListingStatus =
   | 'DRAFT'
   | 'SUBMITTED'
   | 'UNDER_REVIEW'
+  | 'REJECTED'
   | 'APPROVED'
   | 'PUBLISHED'
   | 'PAUSED'
