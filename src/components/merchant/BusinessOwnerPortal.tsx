@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { authClient } from '../../services/authClient';
+import { DiscoveryBusinessContainer } from '../discovery/business/DiscoveryBusinessContainer';
 
 type Business={id:string;name:string;business_mode:string;listing_status:string;verification_status:string;is_discoverable:boolean;membership_role:string};
 
@@ -8,6 +9,9 @@ export const BusinessOwnerPortal: React.FC = () => {
   const [loading,setLoading]=useState(true); const [error,setError]=useState('');
   const load=async()=>{setLoading(true);try{const r=await fetch('/api/merchant/me',{headers:authClient.getAuthHeaders()});const j=await r.json();if(!r.ok)throw new Error(j.error?.message||'Unable to load merchant workspace.');setData(j.data);}catch(e){setError(e instanceof Error?e.message:'Unable to load merchant workspace.');}finally{setLoading(false);}};
   useEffect(()=>{if(!authClient.getToken()){window.location.assign('/business/signup');return;}void load();},[]);
+  const pathParts=window.location.pathname.split('/').filter(Boolean);
+  const selectedBusinessId=pathParts.length>=2 && pathParts[0]==='business' && pathParts[1]!=='signup' ? pathParts[1] : null;
+  if(selectedBusinessId && !loading && !error) return <DiscoveryBusinessContainer initialBusinessId={selectedBusinessId} />;
   if(loading)return <div className="min-h-screen bg-slate-50 p-8"><div className="mx-auto max-w-6xl text-slate-500">Loading your merchant workspace…</div></div>;
   if(error)return <div className="min-h-screen bg-slate-50 p-8"><div className="mx-auto max-w-xl rounded-2xl bg-white p-6"><h1 className="text-xl font-bold">Merchant portal</h1><p className="mt-2 text-red-600">{error}</p><button onClick={load} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-white">Retry</button></div></div>;
   const businesses=data?.businesses||[];
