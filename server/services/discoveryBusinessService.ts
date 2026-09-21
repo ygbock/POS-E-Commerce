@@ -233,6 +233,81 @@ export class DiscoveryBusinessService {
     });
   }
 
+  async getListingReadiness(id: string, client?: DatabaseClient): Promise<{ ready: boolean; items: Array<{ key: string; label: string; done: boolean; required: boolean; detail?: string }> }> {
+    const business = await this.repository.findById(id, client);
+    if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
+    const db = client || this.db;
+    const [categories, primaryLocation, service] = await Promise.all([
+      db.query(`SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id=$1 AND c.is_active=TRUE LIMIT 1`, [id]),
+      db.query(`SELECT * FROM discovery_business_locations WHERE business_id=$1 AND is_active=TRUE AND is_primary=TRUE LIMIT 1`, [id]),
+      db.query(`SELECT 1 FROM discovery_services WHERE business_id=$1 AND is_active=TRUE LIMIT 1`, [id]),
+    ]);
+    const loc = primaryLocation.rows[0];
+    const contactDone = Boolean(business.phone?.trim() || business.whatsapp?.trim() || business.email?.trim());
+    const categoryDone = categories.rows.length > 0;
+    const locationDone = Boolean(loc);
+    const coordinatesDone = Boolean(loc && loc.latitude != null && loc.longitude != null);
+    const descriptionDone = Boolean(business.short_description?.trim() || business.description?.trim());
+    const offeringDone = service.rows.length > 0 || business.business_mode === 'DISCOVERY_AND_STORE';
+    const items = [
+      { key: 'identity', label: 'Business identity', done: Boolean(business.name?.trim() && business.slug?.trim()), required: true },
+      { key: 'description', label: 'Business description', done: descriptionDone, required: true },
+      { key: 'contact', label: 'Primary contact', done: contactDone, required: true },
+      { key: 'category', label: 'At least one active category', done: categoryDone, required: true },
+      { key: 'location', label: 'Primary location', done: locationDone, required: true },
+      { key: 'coordinates', label: 'Map coordinates', done: coordinatesDone, required: true },
+      { key: 'offering', label: 'Service or store offering', done: offeringDone, required: true },
+    ];
+    return { ready: items.every((item) => !item.required || item.done), items };
+  }
+
+  async getListingManagementWorkspace(id: string, actor: { userId: string; role: string; organizationId?: string }, client?: DatabaseClient): Promise<any> {
+    const business = await this.repository.findById(id, client);
+    if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
+    this.assertCanManage(business, actor);
+    const db = client || this.db;
+    const [readiness, locations, categories, settings, events, verification] = await Promise.all([
+      this.getListingReadiness(id, client),
+      this.repository.listLocations(id, { activeOnly: true }, client),
+      this.repository.listCategories(id, client),
+      this.repository.getSettings(id, client),
+      db.query(`SELECT id,from_status,to_status,reason,actor_user_id,created_at FROM discovery_listing_events WHERE business_id=$1 ORDER BY created_at DESC LIMIT 50`, [id]),
+      db.query(`SELECT id,status,created_at,updated_at,reviewed_at,review_reason FROM discovery_verification_applications WHERE business_id=$1 ORDER BY created_at DESC LIMIT 10`, [id]),
+    ]);
+    const feedback = events.rows.filter((e:any) => e.to_status === 'REJECTED' && e.reason);
+    return {
+      business,
+      readiness,
+      locations,
+      categories,
+      settings,
+      feedback,
+      lifecycle: events.rows,
+      verification: { status: business.verification_status, applications: verification.rows },
+    };
+  }
+
+  async resubmit(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    const existing = await this.repository.findById(id, client);
+    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+    this.assertCanManage(existing, actor);
+    if (existing.listing_status !== 'REJECTED') {
+      throw new Error('INVALID_STATE_TRANSITION:Only a rejected listing can be resubmitted.');
+    }
+    const readiness = await this.getListingReadiness(id, client);
+    if (!readiness.ready) {
+      const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
+      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
+    }
+    const db = client || this.db;
+    return db.withTransaction(async (tx) => {
+      const updated = await this.repository.updateBusiness(id, { listing_status: 'SUBMITTED' }, tx);
+      if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
+      await this.repository.addListingEvent({ businessId: id, fromStatus: 'REJECTED', toStatus: 'SUBMITTED', reason: reason || 'Listing corrected and resubmitted for moderation.', actorUserId: actor.userId }, tx);
+      return updated;
+    });
+  }
+
   async submit(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
@@ -250,7 +325,15 @@ export class DiscoveryBusinessService {
     client?: DatabaseClient,
   ): Promise<void> {
     const db = client || this.db;
-    const missing: string[] = [];
+    const readiness = await this.getListingReadiness(business.id, client);
+    const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
+    if (missing.length) {
+      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
+    }
+    return;
+
+    /* legacy checks retained below for source compatibility */
+    const legacyMissing: string[] = [];
 
     const contactPresent = Boolean(
       business.phone?.trim() ||
@@ -268,7 +351,7 @@ export class DiscoveryBusinessService {
         LIMIT 1`,
       [business.id],
     );
-    if (categoryResult.rows.length === 0) missing.push('at least one active category');
+    if (categoryResult.rows.length === 0) legacyMissing.push('at least one active category');
 
     const locationResult = await db.query(
       `SELECT 1
@@ -278,21 +361,21 @@ export class DiscoveryBusinessService {
         LIMIT 1`,
       [business.id],
     );
-    if (locationResult.rows.length === 0) missing.push('at least one active location');
+    if (locationResult.rows.length === 0) legacyMissing.push('at least one active location');
 
     if (business.business_mode === 'DISCOVERY_AND_STORE') {
-      if (!business.organization_id) missing.push('an active organization for store mode');
+      if (!business.organization_id) legacyMissing.push('an active organization for store mode');
       else {
         const organization = await db.query(
           'SELECT 1 FROM organizations WHERE id = $1 AND is_active = TRUE LIMIT 1',
           [business.organization_id],
         );
-        if (organization.rows.length === 0) missing.push('an active organization for store mode');
+        if (organization.rows.length === 0) legacyMissing.push('an active organization for store mode');
       }
     }
 
-    if (missing.length) {
-      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
+    if (legacyMissing.length) {
+      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${legacyMissing.join(', ')}.`);
     }
   }
 
