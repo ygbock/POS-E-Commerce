@@ -144,7 +144,7 @@ Remaining:
 - Map/location experience: interactive OpenStreetMap panel with mapped listing/location cards is implemented; merchant drag-pin location editing is now implemented with client-side tile interaction, GPS recentering, zoom/pan, and server-authoritative PATCH persistence.
 - Favorites/saved businesses. **IMPLEMENTED: authenticated customer favorites API + saved-businesses workspace**
 - Customer-to-business contact flows. **IMPLEMENTED: server-tracked contact inquiries with customer submission, merchant inbox, status workflow, merchant notes, and contact analytics attribution**
-- Review management UX.
+- Review management UX. **IMPLEMENTED: merchant review workspace with rating distribution, star filtering, response coverage, refresh/reload state, verified-purchase badges, and merchant response editing/deletion with character guidance.**
 - Verification presentation and workflows. **MERCHANT TRUST CENTER IMPLEMENTED**
 - Merchant-facing trust center: verification history, ownership-claim status, review moderation visibility, sanitized reports, trust timeline, required actions and resubmission entry point. **IMPLEMENTED**
 - Claim UX.
