@@ -411,16 +411,18 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
     item: DiscoveryBusiness | DiscoveryProduct | DiscoveryService,
     eventType: 'IMPRESSION' | 'VIEW' | 'PRODUCT_VIEW' | 'SERVICE_VIEW',
   ) => {
-    const entityType = 'product_id' in item ? 'PRODUCT' : 'business_id' in item && 'name' in item ? 'SERVICE' : 'BUSINESS';
-    const entityId = entityType === 'PRODUCT' ? item.variant_id : item.id;
     if (!item.searchId || item.resultPosition == null) return;
+    const isProduct = 'product_id' in item;
+    const isService = 'booking_mode' in item;
+    const entityType: 'BUSINESS' | 'PRODUCT' | 'SERVICE' = isProduct ? 'PRODUCT' : isService ? 'SERVICE' : 'BUSINESS';
+    const entityId = isProduct ? item.variant_id : item.id;
     void discoveryApi.recordSearchAttribution({
       searchId: item.searchId,
       eventType,
       entityType,
       entityId,
       resultPosition: item.resultPosition,
-      attributionSource: 'DISCOVERY_SEARCH_RESULTS',
+      source: 'DISCOVERY_SEARCH_RESULTS',
     }).catch(() => undefined);
   }, []);
 
