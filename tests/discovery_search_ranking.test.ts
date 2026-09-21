@@ -42,7 +42,10 @@ async function main() {
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_rank_org',
   }, actor);
-  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_exact',$1,'Main Branch','Freetown',TRUE,TRUE)",[exact.id]);
+  await db.query("UPDATE discovery_businesses SET description='Mobile phone sales and accessories in Freetown.', phone='+232 76 100 001' WHERE id=$1",[exact.id]);
+  await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_electronics',TRUE)",[exact.id]);
+  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_rank_loc_exact',$1,'Main Branch','Freetown','Western Area',8.4840,-13.2299,TRUE,TRUE)",[exact.id]);
+  await db.query("INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_rank_service_exact',$1,'Phone Sales','phone-sales','Mobile phone sales','Retail','REQUEST')",[exact.id]);
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](exact.id, actor);
 
   const typo = await service.create({
@@ -51,7 +54,10 @@ async function main() {
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_rank_org',
   }, actor);
-  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_typo',$1,'Main Branch','Freetown',TRUE,TRUE)",[typo.id]);
+  await db.query("UPDATE discovery_businesses SET description='Mobile phone repair services in Freetown.', phone='+232 76 100 002' WHERE id=$1",[typo.id]);
+  await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_electronics',TRUE)",[typo.id]);
+  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_rank_loc_typo',$1,'Main Branch','Freetown','Western Area',8.4841,-13.2300,TRUE,TRUE)",[typo.id]);
+  await db.query("INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_rank_service_typo',$1,'Phone Repair','phone-repair','Mobile phone repair services','Repair','REQUEST')",[typo.id]);
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](typo.id, actor);
 
   const restaurant = await service.create({
@@ -60,8 +66,12 @@ async function main() {
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_rank_org',
   }, actor);
-  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_rank_loc_rest',$1,'Main Branch','Freetown',TRUE,TRUE)",[restaurant.id]);
+  await db.query("UPDATE discovery_businesses SET description='Local restaurant and takeaway in Freetown.', phone='+232 76 100 003' WHERE id=$1",[restaurant.id]);
+  await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_food',TRUE)",[restaurant.id]);
+  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_rank_loc_rest',$1,'Main Branch','Freetown','Western Area',8.4842,-13.2301,TRUE,TRUE)",[restaurant.id]);
+  await db.query("INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_rank_service_rest',$1,'Restaurant Takeaway','restaurant-takeaway','Local restaurant takeaway','Food','REQUEST')",[restaurant.id]);
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](restaurant.id, actor);
+
   await db.query("INSERT INTO discovery_search_aliases (id,entity_type,entity_id,alias,normalized_alias) VALUES ('disc_rank_alias_rest','BUSINESS',$1,'Chop House','chop house')",[restaurant.id]);
 
   const hidden = await service.create({
