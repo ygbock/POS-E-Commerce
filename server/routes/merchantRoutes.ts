@@ -15,7 +15,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
       code === 'EMAIL_ALREADY_REGISTERED' ? 409 :
       code === 'VALIDATION_ERROR' ? 422 :
       code === 'UNAUTHORIZED' ? 401 :
-      code === 'TENANT_ACCESS_DENIED' ? 403 : 400;
+      code === 'PERMISSION_DENIED' || code === 'TENANT_ACCESS_DENIED' ? 403 : 400;
     return res.status(status).json({
       success: false,
       error: { code, message: raw.includes(':') ? raw.slice(raw.indexOf(':') + 1).trim() : raw },
