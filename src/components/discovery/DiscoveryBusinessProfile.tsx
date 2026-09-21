@@ -20,6 +20,7 @@ import {
   X,
   User,
   Heart,
+  UserCheck,
 } from 'lucide-react';
 import type { DiscoveryLocation, DiscoveryService, DiscoveryReview, DiscoveryPublicBusinessProfile } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
@@ -56,6 +57,10 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const [contactMessage, setContactMessage] = useState<string | null>(null);
   const [contactForm, setContactForm] = useState({ customerName: '', customerEmail: '', customerPhone: '', subject: '', message: '' });
+  const [claimOpen, setClaimOpen] = useState(false);
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [claimMessage, setClaimMessage] = useState<string | null>(null);
+  const [claimForm, setClaimForm] = useState({ claimantName: '', claimantEmail: '', evidence: '' });
 
   // Direct service quote modal
   const [activeServiceForModal, setActiveServiceForModal] = useState<DiscoveryService | null>(null);
@@ -153,6 +158,31 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
       setContactMessage(err instanceof Error ? err.message : 'Unable to send your inquiry.');
     } finally {
       setContactSubmitting(false);
+    }
+  };
+
+  const handleClaimSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || claimSubmitting || !claimForm.claimantName.trim() || !claimForm.evidence.trim()) return;
+    setClaimSubmitting(true);
+    setClaimMessage(null);
+    try {
+      await discoveryApi.createClaim(profile.business.id, {
+        claimantName: claimForm.claimantName.trim(),
+        claimantEmail: claimForm.claimantEmail.trim() || undefined,
+        evidence: { details: claimForm.evidence.trim(), source: 'PUBLIC_BUSINESS_PROFILE' },
+      });
+      setClaimMessage('Ownership claim submitted. The AbaCha review team will review your evidence.');
+      setClaimForm({ claimantName: '', claimantEmail: '', evidence: '' });
+      window.setTimeout(() => setClaimOpen(false), 1800);
+    } catch (err: unknown) {
+      if (err instanceof DiscoveryApiError && err.status === 401) {
+        setClaimMessage('Sign in before submitting an ownership claim.');
+      } else {
+        setClaimMessage(err instanceof Error ? err.message : 'Unable to submit ownership claim.');
+      }
+    } finally {
+      setClaimSubmitting(false);
     }
   };
 
@@ -353,6 +383,15 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                   <span>{favoriteBusy ? 'Saving…' : isFavorite ? 'Saved' : 'Save'}</span>
                 </button>
 
+
+                <button
+                  type="button"
+                  onClick={() => { setClaimMessage(null); setClaimOpen(true); }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-xs font-bold"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>Claim Business</span>
+                </button>
 
                 <button
                   type="button"
@@ -622,6 +661,40 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
           </aside>
         </div>
       </main>
+
+      {/* Ownership Claim Modal */}
+      {claimOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="discovery-claim-title">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+            <div className="flex items-center justify-between gap-4 p-5 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h2 id="discovery-claim-title" className="text-lg font-black text-slate-900 dark:text-white">Claim {b.name}</h2>
+                <p className="mt-1 text-xs text-slate-500">Submit evidence that you are authorized to represent this business.</p>
+              </div>
+              <button type="button" onClick={() => !claimSubmitting && setClaimOpen(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close ownership claim form">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleClaimSubmit} className="p-5 space-y-4">
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Your name *
+                <input required maxLength={160} value={claimForm.claimantName} onChange={(e) => setClaimForm((v) => ({ ...v, claimantName: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Email
+                <input type="email" maxLength={320} value={claimForm.claimantEmail} onChange={(e) => setClaimForm((v) => ({ ...v, claimantEmail: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Ownership evidence *
+                <textarea required maxLength={5000} rows={6} value={claimForm.evidence} onChange={(e) => setClaimForm((v) => ({ ...v, evidence: e.target.value }))} placeholder="Registration details, license information, official contact details, or other evidence that can help verify your authority…" className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm resize-y" />
+              </label>
+              <p className="text-[11px] text-slate-500">Do not submit passwords, payment credentials, or other secrets. Supporting documents can be requested during review.</p>
+              {claimMessage && <p role="status" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{claimMessage}</p>}
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setClaimOpen(false)} disabled={claimSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button>
+                <button type="submit" disabled={claimSubmitting} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-60">{claimSubmitting ? 'Submitting…' : 'Submit Claim'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Customer Contact Inquiry Modal */}
       {contactOpen && (
