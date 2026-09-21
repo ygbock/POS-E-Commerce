@@ -109,9 +109,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
           </button>
 
           <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-600">
-            Are you a business owner?{' '}
+            <a href="/business/signin" className="font-bold text-slate-900 hover:underline">
+              Business owner sign in
+            </a>
+            <span className="mx-2 text-slate-300">•</span>
             <a href="/business/signup" className="font-bold text-slate-900 hover:underline">
-              Register your business listing here
+              Register your business
             </a>
           </div>
         </form>
