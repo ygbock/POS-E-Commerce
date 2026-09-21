@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
+import { DiscoveryLocationMapEditor } from './DiscoveryLocationMapEditor';
 import type {
   DiscoveryBusiness,
   DiscoveryLocation,
@@ -41,6 +42,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
   const [saving, setSaving] = useState<boolean>(false);
   const [gettingCoords, setGettingCoords] = useState<boolean>(false);
   const [verifyingLocationId, setVerifyingLocationId] = useState<string | null>(null);
+  const [coordinatesAdjusted, setCoordinatesAdjusted] = useState<boolean>(false);
 
   // Form State
   const [locForm, setLocForm] = useState({
@@ -101,6 +103,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
       isPrimary: locations.length === 0,
       isActive: true,
     });
+    setCoordinatesAdjusted(false);
     setIsModalOpen(true);
   };
 
@@ -123,6 +126,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
       isPrimary: Boolean(loc.is_primary),
       isActive: Boolean(loc.is_active),
     });
+    setCoordinatesAdjusted(false);
     setIsModalOpen(true);
   };
 
@@ -139,6 +143,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
           latitude: pos.coords.latitude.toFixed(6),
           longitude: pos.coords.longitude.toFixed(6),
         }));
+        setCoordinatesAdjusted(false);
         setGettingCoords(false);
       },
       (err) => {
@@ -181,7 +186,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
         latitude: latNum ?? undefined,
         longitude: lngNum ?? undefined,
         serviceRadiusKm: locForm.serviceRadiusKm ? Number(locForm.serviceRadiusKm) : undefined,
-        locationSource: editingLocation?.location_source || (latNum != null ? 'GPS' : 'MANUAL'),
+        locationSource: coordinatesAdjusted ? 'MANUAL' : (editingLocation?.location_source || (latNum != null ? 'GPS' : 'MANUAL')),
         coordinateAccuracyM: editingLocation?.coordinate_accuracy_m ?? undefined,
         phone: locForm.phone.trim() || undefined,
         isPrimary: locForm.isPrimary,
@@ -564,6 +569,23 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                     />
                   </div>
                 </div>
+
+                <DiscoveryLocationMapEditor
+                  latitude={locForm.latitude ? Number(locForm.latitude) : null}
+                  longitude={locForm.longitude ? Number(locForm.longitude) : null}
+                  onChange={(latitude, longitude) => {
+                    setLocForm((prev) => ({
+                      ...prev,
+                      latitude: latitude.toFixed(6),
+                      longitude: longitude.toFixed(6),
+                    }));
+                    setCoordinatesAdjusted(true);
+                  }}
+                  disabled={saving}
+                />
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Dragging the pin records the merchant-adjusted coordinates as manual location data. Use GPS when you want the browser's current position.
+                </p>
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                   Service Radius (km)
