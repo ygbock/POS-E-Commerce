@@ -15,7 +15,24 @@ export function createDiscoveryBusinessRouter(db: DatabaseClient) {
   router.get('/businesses',async(req,res,next)=>{try{const data=await service.listPublished({city:typeof req.query.city==='string'?req.query.city:undefined,district:typeof req.query.district==='string'?req.query.district:undefined,region:typeof req.query.region==='string'?req.query.region:undefined,businessType:typeof req.query.businessType==='string'?req.query.businessType:undefined,categoryId:typeof req.query.categoryId==='string'?req.query.categoryId:undefined,limit:typeof req.query.limit==='string'?Number(req.query.limit):undefined,offset:typeof req.query.offset==='string'?Number(req.query.offset):undefined});res.json({success:true,count:data.length,data});}catch(e){next(e);}});
   router.get('/businesses/my',requireAuth(),async(req,res,next)=>{try{const result=await db.query(`SELECT b.*,m.role AS membership_role FROM discovery_businesses b JOIN discovery_business_memberships m ON m.business_id=b.id WHERE m.user_id=$1 AND m.is_active=TRUE ORDER BY b.created_at DESC`,[req.auth!.userId]);res.json({success:true,count:result.rows.length,data:result.rows});}catch(e){next(e);}});
   router.get('/businesses/:slug',async(req,res,next)=>{try{const b=await service.getBySlug(req.params.slug,true);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});res.json({success:true,data:await service.getPublicProfile(b.id)});}catch(e){next(e);}});
-  router.post('/businesses',requireAuth(),async(req,res,next)=>{try{const organizationId=req.body?.organizationId===undefined?req.auth!.organizationId:String(req.body.organizationId||'');if(req.auth!.role!=='super_admin'&&organizationId!==req.auth!.organizationId)return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant discovery business creation forbidden.'}});const data=await service.create({...req.body,organizationId:organizationId||null,createdByUserId:req.auth!.userId},actor(req));res.status(201).json({success:true,data});}catch(e){next(e);}});
+  router.post('/businesses',requireAuth(),async(req,res,next)=>{try{
+    const businessMode=req.body?.businessMode==='DISCOVERY_AND_STORE'?'DISCOVERY_AND_STORE':'DISCOVERY_ONLY';
+    const requestedOrganizationId=req.body?.organizationId===undefined?null:String(req.body.organizationId||'').trim()||null;
+    if(businessMode==='DISCOVERY_ONLY'){
+      if(requestedOrganizationId && req.auth!.role!=='super_admin'){
+        return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'Discovery-only businesses cannot be attached to an organization.'}});
+      }
+    }else{
+      const organizationId=req.auth!.organizationId;
+      if(!organizationId)return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'An active organization is required for Discovery + Store businesses.'}});
+      if(requestedOrganizationId && requestedOrganizationId!==organizationId && req.auth!.role!=='super_admin'){
+        return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant discovery business creation forbidden.'}});
+      }
+    }
+    const organizationId=businessMode==='DISCOVERY_AND_STORE' ? (req.auth!.organizationId || requestedOrganizationId) : null;
+    const data=await service.create({...req.body,businessMode,organizationId,createdByUserId:req.auth!.userId},actor(req));
+    res.status(201).json({success:true,data});
+  }catch(e){next(e);}});
   // Discovery-only listings have no tenant, so tenant middleware must not block their owner from editing.
   // The service remains authoritative for ownership and organization-attachment authorization.
   router.patch('/businesses/:id',requireAuth(),async(req,res,next)=>{try{if(!(await owned(req,req.params.id,'business.listing.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant discovery business modification forbidden.'}});res.json({success:true,data:await service.update(req.params.id,req.body,actor(req))});}catch(e){next(e);}});
