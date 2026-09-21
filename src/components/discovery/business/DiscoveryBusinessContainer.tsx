@@ -42,6 +42,7 @@ import { DiscoveryBusinessTeamPanel } from './DiscoveryBusinessTeamPanel';
 interface DiscoveryBusinessContainerProps {
   initialBusinessId?: string;
   initialTab?: string;
+  openOnboarding?: boolean;
   onNavigateCustomerDiscovery?: (path: string) => void;
 }
 
@@ -74,6 +75,7 @@ const TABS = [
 export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProps> = ({
   initialBusinessId,
   initialTab = 'dashboard',
+  openOnboarding = false,
   onNavigateCustomerDiscovery,
 }) => {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
@@ -85,7 +87,8 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
 
   // Modals & sub-flows
   const [isStoreConversionOpen, setIsStoreConversionOpen] = useState<boolean>(false);
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(openOnboarding);
+  const [onboardingBusinessId, setOnboardingBusinessId] = useState<string | undefined>(openOnboarding ? initialBusinessId : undefined);
   const [hoursSelectedLocId, setHoursSelectedLocId] = useState<string | undefined>(undefined);
 
   const businessRole = ((selectedBusiness as DiscoveryBusiness & { membership_role?: BusinessRole })?.membership_role || 'OWNER') as BusinessRole;
@@ -135,6 +138,11 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   }, [initialBusinessId]);
 
   useEffect(() => {
+    setIsOnboardingOpen(openOnboarding);
+    setOnboardingBusinessId(openOnboarding ? initialBusinessId : undefined);
+  }, [openOnboarding, initialBusinessId]);
+
+  useEffect(() => {
     if (!ROLE_TAB_ACCESS[businessRole].includes(activeTab)) {
       setActiveTab('dashboard');
     }
@@ -178,8 +186,12 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
     return (
       <div className="py-8 px-4 max-w-4xl mx-auto">
         <DiscoveryOnboardingWizard
+          initialBusinessId={onboardingBusinessId}
           onSuccess={handleBusinessCreated}
-          onCancel={businesses.length > 0 ? () => setIsOnboardingOpen(false) : undefined}
+          onCancel={businesses.length > 0 ? () => {
+            setIsOnboardingOpen(false);
+            setOnboardingBusinessId(undefined);
+          } : undefined}
         />
       </div>
     );
@@ -216,7 +228,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
         </p>
         <button
           type="button"
-          onClick={() => setIsOnboardingOpen(true)}
+          onClick={() => {
+          setOnboardingBusinessId(undefined);
+          setIsOnboardingOpen(true);
+        }}
           className="mt-6 px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-indigo-600/30"
         >
           <Plus className="w-4 h-4" />
@@ -262,7 +277,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={() => setIsOnboardingOpen(true)}
+            onClick={() => {
+            setOnboardingBusinessId(undefined);
+            setIsOnboardingOpen(true);
+          }}
             className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
           >
             <Plus className="w-3.5 h-3.5 text-indigo-600" />
