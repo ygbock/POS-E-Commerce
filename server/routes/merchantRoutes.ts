@@ -21,6 +21,25 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     });
   };
 
+  const normalizeEmail = (value: unknown) => String(value || '').trim().toLowerCase();
+
+  const requireTeamManager = async (req: Request, businessId: string, minimum: 'MANAGER' | 'OWNER' = 'MANAGER') => {
+    const membership = await db.query(
+      `SELECT role,is_active FROM discovery_business_memberships
+        WHERE business_id=$1 AND user_id=$2 AND is_active=TRUE LIMIT 1`,
+      [businessId, req.auth!.userId],
+    );
+    const role = membership.rows[0]?.role as string | undefined;
+    if (!role) throw new Error('NOT_FOUND:Business not found.');
+    if (minimum === 'OWNER' && role !== 'OWNER') {
+      throw new Error('PERMISSION_DENIED:Only the business owner can perform this team operation.');
+    }
+    if (minimum === 'MANAGER' && !['OWNER', 'MANAGER'].includes(role)) {
+      throw new Error('PERMISSION_DENIED:Team management access is restricted to owners and managers.');
+    }
+    return role;
+  };
+
   router.post('/signup', async (req, res) => {
     try {
       const result = await authService.registerBusinessOwner({
@@ -81,6 +100,212 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
       res.json({ success: true, data: result.rows[0] });
     } catch (err) {
       next(err);
+    }
+  });
+
+  router.get('/businesses/:id/team', requireAuth(), async (req, res, next) => {
+    try {
+      await requireTeamManager(req, req.params.id);
+      const members = await db.query(
+        `SELECT m.business_id,m.user_id,m.role,m.is_active,m.created_at,m.updated_at,
+                u.name,u.email,u.email_verified_at
+           FROM discovery_business_memberships m
+           JOIN users u ON u.id=m.user_id
+          WHERE m.business_id=$1
+          ORDER BY CASE m.role WHEN 'OWNER' THEN 0 WHEN 'MANAGER' THEN 1 ELSE 2 END, u.name ASC`,
+        [req.params.id],
+      );
+      const invitations = await db.query(
+        `SELECT i.id,i.business_id,i.invited_email,i.role,i.status,i.expires_at,i.created_at,
+                u.name AS invited_by_name
+           FROM discovery_business_invitations i
+           JOIN users u ON u.id=i.invited_by_user_id
+          WHERE i.business_id=$1 AND i.status='PENDING'
+          ORDER BY i.created_at DESC`,
+        [req.params.id],
+      );
+      res.json({ success: true, data: { members: members.rows, invitations: invitations.rows } });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/businesses/:id/team/invitations', requireAuth(), async (req, res, next) => {
+    try {
+      const actorRole = await requireTeamManager(req, req.params.id);
+      const email = normalizeEmail(req.body?.email);
+      const role = req.body?.role === 'MANAGER' ? 'MANAGER' : 'STAFF';
+      if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+        throw new Error('VALIDATION_ERROR:Enter a valid team member email address.');
+      }
+      if (actorRole === 'MANAGER' && role === 'MANAGER') {
+        throw new Error('PERMISSION_DENIED:Managers may invite staff members only.');
+      }
+
+      const existing = await db.query(
+        `SELECT id FROM users WHERE lower(email)=lower($1) AND is_active=TRUE LIMIT 1`,
+        [email],
+      );
+      if (existing.rows[0]) {
+        const membership = await db.query(
+          `SELECT role,is_active FROM discovery_business_memberships
+            WHERE business_id=$1 AND user_id=$2 LIMIT 1`,
+          [req.params.id, existing.rows[0].id],
+        );
+        if (membership.rows[0]?.is_active) {
+          throw new Error('VALIDATION_ERROR:This user is already a member of the business.');
+        }
+      }
+
+      const pending = await db.query(
+        `SELECT id FROM discovery_business_invitations
+          WHERE business_id=$1 AND lower(invited_email)=lower($2) AND status='PENDING'
+          LIMIT 1`,
+        [req.params.id, email],
+      );
+      if (pending.rows[0]) {
+        throw new Error('VALIDATION_ERROR:An active invitation already exists for this email.');
+      }
+
+      const invitationId = `d_inv_${randomUUID()}`;
+      await db.query(
+        `INSERT INTO discovery_business_invitations
+          (id,business_id,invited_email,role,invited_by_user_id,status,expires_at)
+         VALUES ($1,$2,$3,$4,$5,'PENDING',CURRENT_TIMESTAMP + INTERVAL '7 days')`,
+        [invitationId, req.params.id, email, role, req.auth!.userId],
+      );
+
+      res.status(201).json({
+        success: true,
+        data: {
+          id: invitationId,
+          businessId: req.params.id,
+          invitedEmail: email,
+          role,
+          status: 'PENDING',
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/businesses/:id/team/invitations/:invitationId/revoke', requireAuth(), async (req, res) => {
+    try {
+      const actorRole = await requireTeamManager(req, req.params.id);
+      const result = await db.query(
+        `UPDATE discovery_business_invitations
+            SET status='REVOKED',updated_at=CURRENT_TIMESTAMP
+          WHERE id=$1 AND business_id=$2 AND status='PENDING'
+          RETURNING id,status`,
+        [req.params.invitationId, req.params.id],
+      );
+      if (!result.rows[0]) throw new Error('NOT_FOUND:Pending invitation not found.');
+      res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/businesses/:id/team/members/:userId/role', requireAuth(), async (req, res) => {
+    try {
+      await requireTeamManager(req, req.params.id, 'OWNER');
+      const role = req.body?.role === 'MANAGER' ? 'MANAGER' : req.body?.role === 'STAFF' ? 'STAFF' : '';
+      if (!role) throw new Error('VALIDATION_ERROR:Team role must be MANAGER or STAFF.');
+
+      const result = await db.query(
+        `UPDATE discovery_business_memberships
+            SET role=$1,updated_at=CURRENT_TIMESTAMP
+          WHERE business_id=$2 AND user_id=$3 AND is_active=TRUE AND role <> 'OWNER'
+          RETURNING business_id,user_id,role,is_active,updated_at`,
+        [role, req.params.id, req.params.userId],
+      );
+      if (!result.rows[0]) throw new Error('NOT_FOUND:Active non-owner team member not found.');
+      res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/businesses/:id/team/members/:userId/deactivate', requireAuth(), async (req, res) => {
+    try {
+      const actorRole = await requireTeamManager(req, req.params.id);
+      const target = await db.query(
+        `SELECT role FROM discovery_business_memberships
+          WHERE business_id=$1 AND user_id=$2 AND is_active=TRUE LIMIT 1`,
+        [req.params.id, req.params.userId],
+      );
+      const targetRole = target.rows[0]?.role as string | undefined;
+      if (!targetRole) throw new Error('NOT_FOUND:Active team member not found.');
+      if (targetRole === 'OWNER') throw new Error('VALIDATION_ERROR:The business owner cannot be deactivated.');
+      if (actorRole === 'MANAGER' && targetRole !== 'STAFF') {
+        throw new Error('PERMISSION_DENIED:Managers may deactivate staff members only.');
+      }
+
+      await db.query(
+        `UPDATE discovery_business_memberships
+            SET is_active=FALSE,updated_at=CURRENT_TIMESTAMP
+          WHERE business_id=$1 AND user_id=$2`,
+        [req.params.id, req.params.userId],
+      );
+      res.json({ success: true, data: { businessId: req.params.id, userId: req.params.userId, isActive: false } });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/businesses/:id/team/invitations/:invitationId/accept', requireAuth(), async (req, res) => {
+    try {
+      const invitation = await db.query(
+        `SELECT id,business_id,invited_email,role,status,expires_at
+           FROM discovery_business_invitations
+          WHERE id=$1 AND business_id=$2 LIMIT 1`,
+        [req.params.invitationId, req.params.id],
+      );
+      const row = invitation.rows[0];
+      if (!row) throw new Error('NOT_FOUND:Invitation not found.');
+      if (row.status !== 'PENDING') throw new Error('VALIDATION_ERROR:This invitation is no longer pending.');
+      if (new Date(row.expires_at).getTime() <= Date.now()) {
+        await db.query(
+          `UPDATE discovery_business_invitations SET status='EXPIRED',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,
+          [row.id],
+        );
+        throw new Error('VALIDATION_ERROR:This invitation has expired.');
+      }
+
+      const user = await db.query(
+        `SELECT id,email FROM users WHERE id=$1 AND is_active=TRUE LIMIT 1`,
+        [req.auth!.userId],
+      );
+      if (!user.rows[0] || normalizeEmail(user.rows[0].email) !== normalizeEmail(row.invited_email)) {
+        throw new Error('PERMISSION_DENIED:The signed-in account email does not match this invitation.');
+      }
+
+      await db.query('BEGIN');
+      try {
+        await db.query(
+          `INSERT INTO discovery_business_memberships (business_id,user_id,role,is_active)
+           VALUES ($1,$2,$3,TRUE)
+           ON CONFLICT (business_id,user_id)
+           DO UPDATE SET role=EXCLUDED.role,is_active=TRUE,updated_at=CURRENT_TIMESTAMP`,
+          [row.business_id, req.auth!.userId, row.role],
+        );
+        await db.query(
+          `UPDATE discovery_business_invitations
+              SET status='ACCEPTED',accepted_by_user_id=$1,accepted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+            WHERE id=$2`,
+          [req.auth!.userId, row.id],
+        );
+        await db.query('COMMIT');
+      } catch (err) {
+        await db.query('ROLLBACK');
+        throw err;
+      }
+
+      res.json({ success: true, data: { businessId: row.business_id, role: row.role, status: 'ACCEPTED' } });
+    } catch (err) {
+      fail(res, err);
     }
   });
 
