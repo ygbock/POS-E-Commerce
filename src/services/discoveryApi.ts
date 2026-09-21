@@ -30,6 +30,7 @@ import type {
   DiscoveryContactInquiry,
   DiscoverySearchAttributionEvent,
   DiscoverySearchRankingConfig,
+  DiscoveryListingManagementWorkspace,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
@@ -503,6 +504,17 @@ export const discoveryApi = {
   /**
    * Lifecycle actions
    */
+  async getListingManagementWorkspace(id: string): Promise<DiscoveryListingManagementWorkspace> {
+    return request<DiscoveryListingManagementWorkspace>(`/api/discovery/businesses/${encodeURIComponent(id)}/management`);
+  },
+
+  async resubmitBusiness(id: string, reason?: string): Promise<DiscoveryBusiness> {
+    return request<DiscoveryBusiness>(`/api/discovery/businesses/${encodeURIComponent(id)}/resubmit`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
   async submitBusiness(id: string, reason?: string): Promise<DiscoveryBusiness> {
     return request<DiscoveryBusiness>(`/api/discovery/businesses/${encodeURIComponent(id)}/submit`, {
       method: 'POST',
