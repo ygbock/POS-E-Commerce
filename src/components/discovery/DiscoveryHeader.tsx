@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { DiscoveryLocationSelector } from './DiscoveryLocationSelector';
 import type { DiscoverySearchType } from '../../types/discovery';
+import { authClient } from '../../services/authClient';
 
 interface DiscoveryHeaderProps {
   selectedCity?: string;
@@ -76,6 +77,8 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
+
+  const workspaceHref = (path: string) => authClient.getToken() ? path : '/login?redirect=' + encodeURIComponent(path);
 
   const handleSignInClick = () => {
     window.location.assign('/login');
@@ -159,16 +162,16 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
 
             {/* Customer workspace shortcuts */}
             <div className="hidden md:flex items-center gap-1">
-              <a href="/discover/saved" title="Saved businesses" aria-label="Saved businesses" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+              <a href={workspaceHref("/discover/saved")} title="Saved businesses" aria-label="Saved businesses" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
                 <Heart className="w-4 h-4" />
               </a>
-              <a href="/discover/my-requests" title="My service requests" aria-label="My service requests" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+              <a href={workspaceHref("/discover/my-requests")} title="My service requests" aria-label="My service requests" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
                 <FileText className="w-4 h-4" />
               </a>
-              <a href="/discover/my-inquiries" title="My contact inquiries" aria-label="My contact inquiries" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+              <a href={workspaceHref("/discover/my-inquiries")} title="My contact inquiries" aria-label="My contact inquiries" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
                 <MessageSquare className="w-4 h-4" />
               </a>
-              <a href="/discover/my-claims" title="My business claims" aria-label="My business claims" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+              <a href={workspaceHref("/discover/my-claims")} title="My business claims" aria-label="My business claims" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
                 <UserCheck className="w-4 h-4" />
               </a>
             </div>
