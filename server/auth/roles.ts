@@ -14,7 +14,8 @@ export type UserRole =
   | 'system_owner'
   | 'platform_admin'
   | 'platform_support'
-  | 'platform_finance';
+  | 'platform_finance'
+  | 'business_owner';
 
 export const VALID_ROLES: UserRole[] = [
   'super_admin','admin','manager','cashier','inventory_manager','purchasing_manager','sales_user','viewer',
@@ -144,12 +145,21 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   platform_admin: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_TENANTS,PERMISSIONS.PLATFORM_SUPPORT,PERMISSIONS.PLATFORM_DISCOVERY],
   platform_support: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_SUPPORT],
   platform_finance: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_BILLING],
+  business_owner: [
+    'business.view','business.manage','business.listing.manage','business.listing.submit',
+    'business.verification.manage','business.location.manage','business.service.manage',
+    'business.review.respond','business.analytics.view','business.team.manage',
+    PERMISSIONS.PRODUCTS_VIEW,PERMISSIONS.PRODUCTS_CREATE,PERMISSIONS.PRODUCTS_UPDATE,
+    PERMISSIONS.INVENTORY_VIEW,PERMISSIONS.ORDERS_VIEW,PERMISSIONS.ORDERS_CREATE,
+    PERMISSIONS.CUSTOMERS_VIEW,PERMISSIONS.REPORTS_VIEW,PERMISSIONS.LOCATIONS_VIEW,
+    PERMISSIONS.LOCATIONS_MANAGE,PERMISSIONS.SETTINGS_VIEW,PERMISSIONS.SETTINGS_UPDATE,
+  ],
 };
 
 export function normalizeRole(roleInput: string): UserRole {
   const clean = roleInput.toLowerCase().trim().replace(/[\s-]+/g, '_');
   const aliases: Record<string, UserRole> = {
-    super_admin:'super_admin', business_owner:'super_admin', admin:'admin', manager:'manager', store_manager:'manager',
+    super_admin:'super_admin', business_owner:'business_owner', admin:'admin', manager:'manager', store_manager:'manager',
     cashier:'cashier', inventory_manager:'inventory_manager', warehouse_manager:'inventory_manager',
     purchasing_manager:'purchasing_manager', sales_user:'sales_user', accountant:'sales_user', viewer:'viewer',
     e_commerce_customer:'viewer', system_owner:'system_owner', platform_admin:'platform_admin',
