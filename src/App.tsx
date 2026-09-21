@@ -201,9 +201,14 @@ export default function App() {
 
   const isMerchantPath = window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
   const isMerchantSignupPath = window.location.pathname === '/business/signup';
+  const isMerchantSigninPath = window.location.pathname === '/business/signin';
 
   if (isMerchantSignupPath) {
     return <BusinessOwnerSignup />;
+  }
+
+  if (isMerchantSigninPath) {
+    return <LoginPage onAuthenticated={setAuthUser} />;
   }
 
   if (!authLoading && isMerchantPath && authUser) {
