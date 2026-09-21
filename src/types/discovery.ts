@@ -101,6 +101,36 @@ export interface DiscoveryFavoriteBusiness extends DiscoveryBusiness {
   favorited_at: string;
 }
 
+export interface DiscoveryListingReadinessItem {
+  key: string;
+  label: string;
+  done: boolean;
+  required: boolean;
+  detail?: string;
+}
+
+export interface DiscoveryListingFeedback {
+  id: string;
+  from_status?: DiscoveryListingStatus | null;
+  to_status: DiscoveryListingStatus;
+  reason?: string | null;
+  created_at: string;
+}
+
+export interface DiscoveryListingManagementWorkspace {
+  business: DiscoveryBusiness;
+  readiness: { ready: boolean; items: DiscoveryListingReadinessItem[] };
+  locations: DiscoveryLocation[];
+  categories: DiscoveryCategory[];
+  settings: DiscoveryBusinessSettings;
+  feedback: DiscoveryListingFeedback[];
+  lifecycle: DiscoveryListingFeedback[];
+  verification: {
+    status: DiscoveryVerificationStatus;
+    applications: DiscoveryVerificationApplication[];
+  };
+}
+
 export interface DiscoveryBusiness {
   id: string;
   searchId?: string;
