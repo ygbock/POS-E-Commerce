@@ -38,6 +38,13 @@ export function parseStorefrontRoute(pathname = window.location.pathname, search
   if (segments[0] === 'store' && segments[1]) {
     tenantSlug = segments[1];
     segments.splice(0, 2);
+  } else if (segments[0] === 'storefront') {
+    // Backward-compatible public storefront alias. The canonical tenant-aware
+    // route remains /store/:tenantSlug, while /shop is the default storefront.
+    segments.splice(0, 1);
+  } else if (segments[0] === 'store' && !segments[1]) {
+    // /store is a valid alias for the canonical default storefront.
+    segments.splice(0, 1);
   }
 
   const [first, second] = segments;
