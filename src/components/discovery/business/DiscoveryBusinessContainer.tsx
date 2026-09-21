@@ -37,6 +37,7 @@ import { DiscoverySearchAliasesPanel } from './DiscoverySearchAliasesPanel';
 import { DiscoveryStoreConversionModal } from './DiscoveryStoreConversionModal';
 import { DiscoveryOnboardingWizard } from './DiscoveryOnboardingWizard';
 import { DiscoveryListingManagementWorkspace } from './DiscoveryListingManagementWorkspace';
+import { DiscoveryBusinessTeamPanel } from './DiscoveryBusinessTeamPanel';
 
 interface DiscoveryBusinessContainerProps {
   initialBusinessId?: string;
@@ -58,6 +59,7 @@ const TABS = [
   { id: 'trust', label: 'Trust Center', icon: UserCheck },
   { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   { id: 'settings', label: 'Visibility Settings', icon: Sliders },
+  { id: 'team', label: 'Team', icon: UserCheck },
   { id: 'search', label: 'Search & Aliases', icon: Sparkles },
 ];
 
@@ -352,6 +354,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
 
         {activeTab === 'settings' && (
           <DiscoverySettingsPanel business={selectedBusiness} />
+        )}
+
+        {activeTab === 'team' && (
+          <DiscoveryBusinessTeamPanel businessId={selectedBusiness.id} />
         )}
 
         {activeTab === 'search' && (
