@@ -291,8 +291,9 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     }
   };
 
-  const saveService = async () => {
-    if (!businessId || !form.serviceName.trim()) return true;
+  const saveService = async (draftBusiness?: DiscoveryBusiness | null) => {
+    const id = draftBusiness?.id || businessId;
+    if (!id || !form.serviceName.trim()) return true;
     setSaving(true);
     try {
       const payload = {
@@ -306,9 +307,9 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         isActive: true,
       };
       if (serviceId) {
-        await discoveryApi.updateService(businessId, serviceId, payload as never);
+        await discoveryApi.updateService(id, serviceId, payload as never);
       } else {
-        const service = await discoveryApi.createService(businessId, payload as never);
+        const service = await discoveryApi.createService(id, payload as never);
         setServiceId(service.id);
       }
       setSavedMessage('Service offering saved.');
@@ -348,7 +349,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     const validation = validateStep(5);
     if (validation) {
       setError(validation);
-      setStep(4);
+      setStep(5);
       return;
     }
     setSubmitting(true);
@@ -357,7 +358,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       const business = await createOrSaveDraft();
       if (!business) return;
       if (!(await saveLocation(business))) return;
-      if (!(await saveService())) return;
+      if (!(await saveService(business))) return;
       const submitted = await discoveryApi.submitBusiness(business.id, 'Submitted through the Discovery onboarding wizard.');
       window.localStorage.removeItem(DRAFT_KEY);
       setDrafts((current) => current.filter((item) => item.id !== submitted.id));
