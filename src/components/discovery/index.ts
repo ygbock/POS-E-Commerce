@@ -3,6 +3,7 @@
  */
 
 export * from './VerificationBadge';
+export * from './VerificationStatusInfo';
 export * from './AvailabilityBadge';
 export * from './ListingStatusBadge';
 export * from './DiscoveryRating';
