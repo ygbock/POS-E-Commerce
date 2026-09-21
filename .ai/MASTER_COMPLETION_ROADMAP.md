@@ -147,7 +147,7 @@ Remaining:
 - Review management UX. **IMPLEMENTED: merchant review workspace with rating distribution, star filtering, response coverage, refresh/reload state, verified-purchase badges, and merchant response editing/deletion with character guidance.**
 - Verification presentation and workflows. **MERCHANT TRUST CENTER IMPLEMENTED**
 - Merchant-facing trust center: verification history, ownership-claim status, review moderation visibility, sanitized reports, trust timeline, required actions and resubmission entry point. **IMPLEMENTED**
-- Claim UX.
+- Claim UX. **IMPLEMENTED: public business-profile ownership claim flow with authenticated submission, evidence capture, validation feedback, and privacy guidance.**
 - Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
 - Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
 - Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
