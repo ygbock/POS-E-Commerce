@@ -138,6 +138,7 @@ export interface DiscoveryBusiness {
   rating?: number | string;
   review_count?: number;
   relevance?: number;
+  distance_km?: number | string | null;
 }
 
 /**
@@ -247,6 +248,7 @@ export interface DiscoveryProduct {
   available_stock: string | number;
   show_prices?: boolean;
   show_stock_status?: boolean;
+  distance_km?: number | string | null;
 }
 
 /**
@@ -278,6 +280,7 @@ export interface DiscoveryService {
   region?: string | null;
   created_at?: string;
   updated_at?: string;
+  distance_km?: number | string | null;
 }
 
 /**
