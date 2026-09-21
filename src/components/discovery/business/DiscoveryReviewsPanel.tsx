@@ -62,6 +62,13 @@ export const DiscoveryReviewsPanel: React.FC<DiscoveryReviewsPanelProps> = ({
   });
 
   const numericRating = typeof summary.rating === 'string' ? parseFloat(summary.rating) || 0 : summary.rating || 0;
+  const ratingCounts = [5, 4, 3, 2, 1].map((stars) => ({
+    stars,
+    count: reviews.filter((review) => review.rating === stars).length,
+  }));
+  const ratingTotal = ratingCounts.reduce((sum, item) => sum + item.count, 0);
+  const responseCount = reviews.filter((review) => Boolean(review.merchant_response)).length;
+  const responseRate = reviews.length ? Math.round((responseCount / reviews.length) * 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -93,6 +100,40 @@ export const DiscoveryReviewsPanel: React.FC<DiscoveryReviewsPanelProps> = ({
         </div>
 
         {/* Filter buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px] gap-5 pt-5">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Rating distribution</h3>
+              <span className="text-[10px] text-slate-400">{ratingTotal} loaded</span>
+            </div>
+            {ratingCounts.map(({ stars, count }) => {
+              const width = ratingTotal ? Math.round((count / ratingTotal) * 100) : 0;
+              return (
+                <button
+                  key={stars}
+                  type="button"
+                  onClick={() => setStarFilter(stars)}
+                  className="w-full grid grid-cols-[28px_minmax(0,1fr)_32px] items-center gap-2 text-left group"
+                  aria-label={`Show ${stars}-star reviews`}
+                >
+                  <span className="text-[11px] font-semibold text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white">{stars}★</span>
+                  <span className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <span className="block h-full rounded-full bg-amber-400" style={{ width: `${width}%` }} />
+                  </span>
+                  <span className="text-[10px] text-right text-slate-400">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Response coverage</div>
+            <div className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{responseRate}%</div>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              {responseCount} of {reviews.length} loaded reviews have a merchant response.
+            </p>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2 pt-4 flex-wrap">
           <span className="text-xs font-bold text-slate-500 mr-2 flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" />
@@ -124,6 +165,15 @@ export const DiscoveryReviewsPanel: React.FC<DiscoveryReviewsPanelProps> = ({
               <Star className="w-3 h-3 fill-current" />
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => void fetchReviews()}
+            disabled={loading}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
       </div>
 
@@ -225,6 +275,12 @@ export const DiscoveryReviewsPanel: React.FC<DiscoveryReviewsPanelProps> = ({
                   className="mt-3 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs"
                   aria-label={`Response to review by ${rev.reviewer_name}`}
                 />
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <span className="text-[10px] text-slate-400">
+                    {(responseDrafts[rev.id] ?? rev.merchant_response ?? '').length}/5000
+                  </span>
+                  <span className="text-[10px] text-slate-400">Keep responses factual and customer-focused.</span>
+                </div>
                 <div className="mt-2 flex justify-end gap-2">
                   {rev.merchant_response && (
                     <button type="button" disabled={responseBusy === rev.id} onClick={async () => {
