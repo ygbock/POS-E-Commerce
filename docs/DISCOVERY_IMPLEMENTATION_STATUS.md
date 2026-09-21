@@ -96,3 +96,12 @@ Previously applied migrations remain untouched. Discovery schema is implemented 
 - Added authenticated `GET /api/discovery/my-claims` returning only the caller's own ownership claims.
 - Added `DiscoveryMyClaimsPage` at `/discover/my-claims` with pending/approved/rejected status, submission/review timestamps, and platform decision notes.
 - Claimant privacy is preserved: the workspace never exposes other claimants or private moderation metadata.
+
+
+## Customer workspace discoverability and service matching hardening
+- Discovery header now exposes Saved Businesses, Service Requests, Contact Inquiries, and Business Claims shortcuts on desktop and mobile.
+- Service cards can launch a request directly with the selected service preserved.
+- Service requests now persist the requested service and service type when available.
+- Matching uses service relevance, service-area radius, location signals, budget compatibility, deterministic scoring, and a 25-provider fan-out cap.
+- Match records now include a reason such as REQUESTED_SERVICE, SERVICE_TYPE, or KEYWORD.
+- Added isolated service-matching and 300-listing Discovery performance regression suites.
