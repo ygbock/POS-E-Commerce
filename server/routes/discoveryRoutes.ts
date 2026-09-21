@@ -340,7 +340,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.post('/businesses/:id/locations/:locationId/verify', requireAuth(), async (req,res,next)=>{
     try {
-      if (!(await owned(req, req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Location verification forbidden.'}});
+      if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Location verification forbidden.'}});
       const r=await db.query(`UPDATE discovery_business_locations
         SET location_quality_status='VERIFIED',location_source='VERIFIED',location_verified_at=CURRENT_TIMESTAMP,
             location_verified_by_user_id=$1,updated_at=CURRENT_TIMESTAMP
@@ -352,7 +352,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.put('/businesses/:id/locations/:locationId/hours', requireAuth(), async (req, res, next) => {
     try {
-      if (!(await owned(req, req.params.id))) return res.status(403).json({ success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Hours management forbidden.'} });
+      if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({ success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Hours management forbidden.'} });
       const location = await db.query('SELECT id FROM discovery_business_locations WHERE id=$1 AND business_id=$2', [req.params.locationId, req.params.id]);
       if (!location.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
       const hours = Array.isArray(req.body?.hours) ? req.body.hours : [];
@@ -535,7 +535,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
 
   router.delete('/businesses/:id/search-aliases/:aliasId', requireAuth(), async (req,res,next)=>{try{
-    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias management forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.search_aliases.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias management forbidden.'}});
     const r=await db.query("UPDATE discovery_search_aliases SET is_active=FALSE,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND ((entity_type='BUSINESS' AND entity_id=$2) OR entity_type IN ('PRODUCT','SERVICE') AND entity_id IN (SELECT p.id FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id WHERE b.id=$2 UNION SELECT s.id FROM discovery_services s WHERE s.business_id=$2)) RETURNING id",[req.params.aliasId,req.params.id]);
     if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Search alias not found.'}});
     res.json({success:true});
