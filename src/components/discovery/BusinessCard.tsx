@@ -16,6 +16,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
   className = '',
 }) => {
   const locationString = [business.city, business.district, business.region].filter(Boolean).join(', ');
+  const distanceKm = business.distance_km != null && Number.isFinite(Number(business.distance_km)) ? Number(business.distance_km) : null;
 
   const handleCardClick = () => {
     if (onSelect) {
@@ -104,6 +105,13 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
               <span className="inline-flex items-center gap-1 text-slate-400">
                 <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Sierra Leone</span>
+              </span>
+            )}
+
+            {distanceKm != null && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400" title="Distance from your selected location">
+                <Navigation className="w-3 h-3" aria-hidden="true" />
+                {distanceKm < 10 ? distanceKm.toFixed(1) : Math.round(distanceKm)} km
               </span>
             )}
 
