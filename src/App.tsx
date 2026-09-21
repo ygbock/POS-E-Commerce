@@ -29,6 +29,8 @@ import { DiscoveryMarketplace } from './components/discovery/DiscoveryMarketplac
 import { DiscoveryHome } from './components/discovery/DiscoveryHome';
 import { LoginPage } from './components/auth/LoginPage';
 import { authClient, AuthUser } from './services/authClient';
+import { BusinessOwnerSignup } from './components/merchant/BusinessOwnerSignup';
+import { BusinessOwnerPortal } from './components/merchant/BusinessOwnerPortal';
 
 const StorefrontRouteShell: React.FC<{ onOpenAdmin: () => void; onOpenPos: () => void }> = ({ onOpenAdmin, onOpenPos }) => {
   const { route } = useStorefrontRoute();
@@ -182,6 +184,17 @@ export default function App() {
     return () => { mounted = false; };
   }, []);
 
+  const isMerchantPath = window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
+  const isMerchantSignupPath = window.location.pathname === '/business/signup';
+
+  if (isMerchantSignupPath) {
+    return <BusinessOwnerSignup />;
+  }
+
+  if (!authLoading && isMerchantPath && authUser) {
+    return <BusinessOwnerPortal />;
+  }
+
   // Public storefront and Discovery routes must be previewable without an admin session.
   if (!authLoading && !authUser && isPublicDiscoveryPath(window.location.pathname)) {
     return (
@@ -215,6 +228,7 @@ export default function App() {
   }
 
   if (!authUser) {
+    if (isMerchantPath) return <LoginPage onAuthenticated={setAuthUser} />;
     return <LoginPage onAuthenticated={setAuthUser} />;
   }
 
