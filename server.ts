@@ -20,6 +20,7 @@ import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
 import { createPlatformRouter } from './server/routes/platformRoutes.ts';
 import { createDiscoveryBusinessRouter } from './server/routes/discoveryBusinessRoutes.ts';
 import { createDiscoveryRouter } from './server/routes/discoveryRoutes.ts';
+import { createMerchantRouter } from './server/routes/merchantRoutes.ts';
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
@@ -388,6 +389,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // SaaS control-plane routes. Authorization is enforced inside the router.
   app.use('/api/platform', createPlatformRouter(db, subscriptionService));
+
+  // Business-owner identity, merchant workspace, and business ownership API.
+  app.use('/api/merchant', createMerchantRouter(db, authService));
 
   // Discovery business directory and listing lifecycle API.
   app.use('/api/discovery', createDiscoveryBusinessRouter(db));
