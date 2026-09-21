@@ -69,6 +69,32 @@ async function main() {
   const edited = await service.update(discoveryOnly.id, { shortDescription: 'Updated independently.' }, owner);
   assert.strictEqual(edited.short_description, 'Updated independently.');
 
+  // Self-service discovery onboarding: a normal authenticated user can create a private draft.
+  const selfServiceOwner = { userId: 'disc-self-service', role: 'customer', organizationId: undefined };
+  const selfService = await service.create({ name: 'Self Service Listing', businessMode: 'DISCOVERY_ONLY' }, selfServiceOwner);
+  assert.strictEqual(selfService.listing_status, 'DRAFT');
+  assert.strictEqual(selfService.organization_id, null);
+
+  // Submission is server-gated until the readiness requirements are satisfied.
+  await assert.rejects(
+    () => service.submit(selfService.id, selfServiceOwner),
+    /VALIDATION_ERROR:Complete the listing readiness requirements:/,
+  );
+
+  await db.query(
+    "INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES ($1,'disc_cat_retail',TRUE)",
+    [selfService.id],
+  );
+  await db.query(
+    `INSERT INTO discovery_business_locations
+      (id,business_id,name,location_type,city,region,country,is_primary,is_active)
+      VALUES ('disc_self_loc', $1, 'Main Location', 'STORE', 'Freetown', 'Western Area', 'Sierra Leone', TRUE, TRUE)`,
+    [selfService.id],
+  );
+  await service.update(selfService.id, { phone: '+232 76 111111' }, selfServiceOwner);
+  const submittedSelfService = await service.submit(selfService.id, selfServiceOwner);
+  assert.strictEqual(submittedSelfService.listing_status, 'SUBMITTED');
+
   // A discovery-only listing can be converted to the creator's tenant, preserving its identity and slug.
   const converted = await service.update(discoveryOnly.id, {
     businessMode: 'DISCOVERY_AND_STORE',
