@@ -54,7 +54,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     const loadCats = async () => {
       try {
         const data = await discoveryApi.getCategories();
-        if (mounted) setCategories(data);
+        if (mounted) setCategories(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error('Failed to load categories', err);
       } finally {
@@ -240,7 +240,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
               <span className="text-xs text-slate-400">Loading categories...</span>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {categories.map((cat) => {
+                {(Array.isArray(categories) ? categories : []).map((cat) => {
                   const isSelected = selectedCategoryIds.includes(cat.id);
                   return (
                     <button
