@@ -154,6 +154,13 @@ export class DiscoveryBusinessService {
         created_by_user_id: input.createdByUserId || actor?.userId || null,
       }, tx);
       await this.repository.getSettings(record.id, tx);
+      if (actor?.userId) {
+        await tx.query(
+          `INSERT INTO discovery_business_memberships (business_id,user_id,role,is_active)
+           VALUES ($1,$2,'OWNER',TRUE)`,
+          [record.id, actor.userId],
+        );
+      }
       await this.repository.addListingEvent({ businessId: record.id, fromStatus: null, toStatus: status, actorUserId: actor?.userId }, tx);
       if (actor?.userId && actor.role && (input.organizationId || actor.organizationId)) {
         await this.auditRepository.recordEvent({
