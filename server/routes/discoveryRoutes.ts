@@ -1152,7 +1152,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           WHERE s.is_active=TRUE
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
             AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))
-            AND ($1::text IS NULL OR s.id=$1 OR $1::text IS NOT NULL)
+            AND ($1::text IS NULL OR s.id=$1 OR $1::text IS NULL)
           LIMIT 300`,
         [requestedServiceId],
       );
@@ -1240,7 +1240,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.get('/service-requests/:id', requireAuth(), async(req,res,next)=>{try{
     const r=await db.query(
-      `SELECT r.*,COALESCE(json_agg(json_build_object('businessId',m.business_id,'businessName',b.name,'score',m.match_score))
+      `SELECT r.*,COALESCE(json_agg(json_build_object('businessId',m.business_id,'businessName',b.name,'score',m.match_score,'reason',m.match_reason))
         FILTER(WHERE m.business_id IS NOT NULL),'[]'::json) AS matches
        FROM discovery_service_requests r
        LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id
