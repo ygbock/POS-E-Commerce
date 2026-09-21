@@ -10,6 +10,7 @@ import {
   DiscoveryBusinessListFilter,
 } from '../repositories/discoveryBusinessRepository.ts';
 import { DatabaseClient, getDatabaseClient } from '../db/client.ts';
+import { AuditRepository } from '../repositories/auditRepository.ts';
 
 export interface DiscoveryBusinessCreateInput {
   name: string;
@@ -87,10 +88,12 @@ export function slugifyDiscoveryName(name: string): string {
 export class DiscoveryBusinessService {
   private readonly db: DatabaseClient;
   private readonly repository: DiscoveryBusinessRepository;
+  private readonly auditRepository: AuditRepository;
 
   constructor(repository?: DiscoveryBusinessRepository, db?: DatabaseClient) {
     this.db = db || getDatabaseClient();
     this.repository = repository || new DiscoveryBusinessRepository(this.db);
+    this.auditRepository = new AuditRepository(this.db);
   }
 
   private async uniqueSlug(name: string, excludeId?: string, client?: DatabaseClient): Promise<string> {
@@ -152,6 +155,20 @@ export class DiscoveryBusinessService {
       }, tx);
       await this.repository.getSettings(record.id, tx);
       await this.repository.addListingEvent({ businessId: record.id, fromStatus: null, toStatus: status, actorUserId: actor?.userId }, tx);
+      if (actor?.userId && actor.role && (input.organizationId || actor.organizationId)) {
+        await this.auditRepository.recordEvent({
+          organization_id: input.organizationId || actor.organizationId,
+          actor_id: actor.userId,
+          actor_name: actor.userId,
+          actor_role: actor.role,
+          action: 'DISCOVERY_BUSINESS_CREATED',
+          entity_type: 'DISCOVERY_BUSINESS',
+          entity_id: record.id,
+          after_state: { business_mode: record.business_mode, listing_status: record.listing_status, name: record.name },
+          metadata: { businessMode: record.business_mode },
+          severity: 'Info', result: 'SUCCESS',
+        }, tx);
+      }
       if (input.submitImmediately) {
         const readiness = await this.getListingReadiness(record.id, tx);
         if (!readiness.ready) {
@@ -240,6 +257,21 @@ export class DiscoveryBusinessService {
         ...(patch.name !== undefined ? { slug: nextSlug } : {}),
       } as any, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
+      if (actor.userId && (actor.organizationId || updated.organization_id)) {
+        await this.auditRepository.recordEvent({
+          organization_id: actor.organizationId || updated.organization_id!,
+          actor_id: actor.userId,
+          actor_name: actor.userId,
+          actor_role: actor.role,
+          action: 'DISCOVERY_BUSINESS_UPDATED',
+          entity_type: 'DISCOVERY_BUSINESS',
+          entity_id: id,
+          before_state: { name: existing.name, business_mode: existing.business_mode, organization_id: existing.organization_id },
+          after_state: { name: updated.name, business_mode: updated.business_mode, organization_id: updated.organization_id },
+          metadata: { fields: Object.keys(patch) },
+          severity: 'Low', result: 'SUCCESS',
+        }, tx);
+      }
       return updated;
     });
   }
@@ -315,6 +347,14 @@ export class DiscoveryBusinessService {
       const updated = await this.repository.updateBusiness(id, { listing_status: 'SUBMITTED' }, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
       await this.repository.addListingEvent({ businessId: id, fromStatus: 'REJECTED', toStatus: 'SUBMITTED', reason: reason || 'Listing corrected and resubmitted for moderation.', actorUserId: actor.userId }, tx);
+      if (actor.organizationId || updated.organization_id) {
+        await this.auditRepository.recordEvent({
+          organization_id: actor.organizationId || updated.organization_id!, actor_id: actor.userId, actor_name: actor.userId, actor_role: actor.role,
+          action: 'DISCOVERY_LISTING_RESUBMITTED', entity_type: 'DISCOVERY_BUSINESS', entity_id: id,
+          before_state: { listing_status: existing.listing_status }, after_state: { listing_status: updated.listing_status },
+          metadata: { reason: reason || null }, severity: 'Medium', result: 'SUCCESS',
+        }, tx);
+      }
       return updated;
     });
   }
@@ -389,6 +429,15 @@ export class DiscoveryBusinessService {
       const updated = await this.repository.updateBusiness(id, patch, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
       await this.repository.addListingEvent({ businessId: id, fromStatus: existing.listing_status, toStatus, reason, actorUserId: actor.userId }, tx);
+      if (actor.organizationId || updated.organization_id) {
+        await this.auditRepository.recordEvent({
+          organization_id: actor.organizationId || updated.organization_id!, actor_id: actor.userId, actor_name: actor.userId, actor_role: actor.role,
+          action: `DISCOVERY_LISTING_${toStatus}`, entity_type: 'DISCOVERY_BUSINESS', entity_id: id,
+          before_state: { listing_status: existing.listing_status, is_discoverable: existing.is_discoverable },
+          after_state: { listing_status: updated.listing_status, is_discoverable: updated.is_discoverable },
+          metadata: { reason }, severity: ['SUSPENDED','ARCHIVED'].includes(toStatus) ? 'High' : 'Medium', result: 'SUCCESS',
+        }, tx);
+      }
       return updated;
     });
   }
