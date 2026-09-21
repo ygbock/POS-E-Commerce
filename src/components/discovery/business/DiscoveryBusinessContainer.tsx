@@ -45,6 +45,14 @@ interface DiscoveryBusinessContainerProps {
   onNavigateCustomerDiscovery?: (path: string) => void;
 }
 
+type BusinessRole = 'OWNER' | 'MANAGER' | 'STAFF';
+
+const ROLE_TAB_ACCESS: Record<BusinessRole, string[]> = {
+  OWNER: ['dashboard','listing','submission','locations','hours','services','quotes','contacts','reviews','verification','trust','analytics','settings','team','search'],
+  MANAGER: ['dashboard','listing','submission','locations','hours','services','quotes','contacts','reviews','analytics','search'],
+  STAFF: ['dashboard','services','quotes','contacts','reviews','analytics'],
+};
+
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'listing', label: 'Listing Profile', icon: Building2 },
@@ -122,6 +130,12 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
     void loadBusinesses();
   }, [initialBusinessId]);
 
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, businessRole]);
+
   const handleBusinessCreated = (newBiz: DiscoveryBusiness) => {
     setBusinesses((prev) => [newBiz, ...prev]);
     setSelectedBusiness(newBiz);
@@ -140,6 +154,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
     setHoursSelectedLocId(locationId);
     setActiveTab('hours');
   };
+
+  const businessRole = ((selectedBusiness as DiscoveryBusiness & { membership_role?: BusinessRole })?.membership_role || 'OWNER') as BusinessRole;
+  const visibleTabs = TABS.filter((tab) => ROLE_TAB_ACCESS[businessRole].includes(tab.id));
+  const canManageStore = businessRole === 'OWNER';
 
   const handleViewPublicCard = () => {
     if (selectedBusiness && onNavigateCustomerDiscovery) {
@@ -255,7 +273,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
 
       {/* Main Navigation Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar border-b border-slate-200 dark:border-slate-800">
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -282,7 +300,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
           <DiscoveryBusinessDashboard
             business={selectedBusiness}
             onNavigateTab={(tab) => setActiveTab(tab)}
-            onOpenStoreConversion={() => setIsStoreConversionOpen(true)}
+            onOpenStoreConversion={() => canManageStore && setIsStoreConversionOpen(true)}
             onViewPublicListing={handleViewPublicCard}
           />
         )}
