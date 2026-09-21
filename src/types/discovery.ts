@@ -610,3 +610,35 @@ export interface DiscoverySearchAlias {
   created_at?: string;
   updated_at?: string;
 }
+
+
+export type DiscoveryBusinessTeamRole = 'OWNER' | 'MANAGER' | 'STAFF';
+export type DiscoveryBusinessInvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
+
+export interface DiscoveryBusinessTeamMember {
+  business_id: string;
+  user_id: string;
+  role: DiscoveryBusinessTeamRole;
+  is_active: boolean;
+  name: string;
+  email: string;
+  email_verified_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiscoveryBusinessTeamInvitation {
+  id: string;
+  business_id: string;
+  invited_email: string;
+  role: Exclude<DiscoveryBusinessTeamRole, 'OWNER'>;
+  status: DiscoveryBusinessInvitationStatus;
+  expires_at: string;
+  created_at: string;
+  invited_by_name?: string | null;
+}
+
+export interface DiscoveryBusinessTeamWorkspace {
+  members: DiscoveryBusinessTeamMember[];
+  invitations: DiscoveryBusinessTeamInvitation[];
+}
