@@ -8,6 +8,7 @@ export * from './ListingStatusBadge';
 export * from './DiscoveryRating';
 export * from './DiscoverySearchBar';
 export * from './DiscoveryLocationSelector';
+export * from './DiscoveryMapPanel';
 export * from './DiscoveryTabs';
 export * from './DiscoveryFilters';
 export * from './DiscoverySort';
