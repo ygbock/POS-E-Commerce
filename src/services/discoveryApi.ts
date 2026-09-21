@@ -634,7 +634,7 @@ export const discoveryApi = {
    */
   async getMyClaims(): Promise<DiscoveryBusinessClaim[]> {
     return request<DiscoveryBusinessClaim[]>('/api/discovery/my-claims');
-  }
+  },
 
   /**
    * Search aliases managed by the business owner.
