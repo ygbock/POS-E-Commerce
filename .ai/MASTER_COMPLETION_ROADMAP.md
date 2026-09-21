@@ -141,7 +141,7 @@ Progress:
 Remaining:
 - Complete customer discovery experience across desktop/mobile.
 - Business profile completeness.
-- Map/location experience.
+- Map/location experience: interactive OpenStreetMap panel with mapped listing/location cards is implemented; merchant drag-pin/location editing remains a follow-up hardening item.
 - Favorites/saved businesses. **IMPLEMENTED: authenticated customer favorites API + saved-businesses workspace**
 - Customer-to-business contact flows. **IMPLEMENTED: server-tracked contact inquiries with customer submission, merchant inbox, status workflow, merchant notes, and contact analytics attribution**
 - Review management UX.
@@ -153,7 +153,7 @@ Remaining:
 - Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
 - Category governance.
 
-Discovery governance increment implemented: platform-owned category taxonomy CRUD/audit, active-category enforcement in public discovery filters and merchant category assignment, and existing customer map/location/radius UX are now aligned with governed taxonomy. Customer contact inquiries and merchant review responses are implemented. Location hardening increment is now implemented: location quality/provenance fields, server-side coordinate/radius/type validation, transactional primary-location handling, location verification, service-area-aware radius search, richer search location metadata, and geo/location constraint tests. Remaining map UX work is optional visual map rendering/drag-pin interaction.
+Discovery governance increment implemented: platform-owned category taxonomy CRUD/audit, active-category enforcement in public discovery filters and merchant category assignment, and existing customer map/location/radius UX are now aligned with governed taxonomy. Customer contact inquiries and merchant review responses are implemented. Location hardening increment is now implemented: location quality/provenance fields, server-side coordinate/radius/type validation, transactional primary-location handling, location verification, service-area-aware radius search, richer search location metadata, and geo/location constraint tests. Map UX increment is now implemented for customer discovery and business profiles via the reusable OpenStreetMap panel; merchant drag-pin editing remains a follow-up hardening item.
 
 ### G3 — Merchant operating system completion
 Remaining/verification:
