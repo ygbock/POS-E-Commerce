@@ -63,6 +63,32 @@ async function main() {
     /EMAIL_ALREADY_REGISTERED/,
   );
 
+  const invitation = await db.query(
+    `INSERT INTO discovery_business_invitations
+      (id,business_id,invited_email,role,invited_by_user_id,expires_at)
+     VALUES ($1,$2,$3,'STAFF',$4,CURRENT_TIMESTAMP + INTERVAL '7 days')
+     RETURNING id,status,role`,
+    ['d_inv_test', discovery.business.id, 'staff@example.com', discovery.user.id],
+  );
+  assert.strictEqual(invitation.rows[0].status, 'PENDING');
+  assert.strictEqual(invitation.rows[0].role, 'STAFF');
+
+  await assert.rejects(
+    () => db.query(
+      `INSERT INTO discovery_business_invitations
+        (id,business_id,invited_email,role,invited_by_user_id,expires_at)
+       VALUES ($1,$2,$3,'STAFF',$4,CURRENT_TIMESTAMP + INTERVAL '7 days')`,
+      ['d_inv_test_2', discovery.business.id, 'STAFF@EXAMPLE.COM', discovery.user.id],
+    ),
+    /uq_discovery_business_pending_invitation|duplicate key|unique/i,
+  );
+
+  const migrationCheck = await db.query(
+    `SELECT version,name FROM schema_migrations WHERE version='044'`,
+  );
+  assert.strictEqual(migrationCheck.rows.length, 1);
+  assert.strictEqual(migrationCheck.rows[0].name, 'business_team_invitations');
+
   console.log('Merchant owner signup tests passed.');
 }
 
