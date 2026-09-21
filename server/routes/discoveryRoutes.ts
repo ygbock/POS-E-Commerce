@@ -148,6 +148,23 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-011: authenticated customer favorites
   // ------------------------------------------------------------------
+  // Customer ownership-claim workspace. Only the authenticated claimant's own records are exposed.
+  router.get('/my-claims', requireAuth(), async (req, res, next) => {
+    try {
+      const result = await db.query(
+        `SELECT c.id,c.business_id,c.claimant_user_id,c.claimant_name,c.claimant_email,c.evidence,
+                c.status,c.created_at,c.review_reason,c.reviewed_at,b.name AS business_name
+           FROM discovery_business_claims c
+           JOIN discovery_businesses b ON b.id=c.business_id
+          WHERE c.claimant_user_id=$1
+          ORDER BY c.created_at DESC
+          LIMIT 100`,
+        [req.auth!.userId],
+      );
+      res.json({ success: true, data: result.rows });
+    } catch (err) { next(err); }
+  });
+
   router.get('/favorites', requireAuth(), async (req,res,next)=>{try{
     const r=await db.query(
       `SELECT f.id AS favorite_id,f.created_at AS favorited_at,b.*
