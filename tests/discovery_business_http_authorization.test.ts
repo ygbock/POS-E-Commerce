@@ -58,7 +58,7 @@ async function main() {
       passwordHash: hash,
       passwordSalt: salt,
       role: 'business_owner',
-      isActive: true,
+      is_active: true,
     });
   };
 

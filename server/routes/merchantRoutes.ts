@@ -4,6 +4,7 @@ import { DatabaseClient } from '../db/client.ts';
 import { AuthService } from '../services/authService.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { AuditRepository } from '../repositories/auditRepository.ts';
+import { assertBusinessPermission } from '../services/discoveryBusinessAccess.ts';
 
 export function createMerchantRouter(db: DatabaseClient, authService: AuthService) {
   const router = express.Router();
@@ -12,6 +13,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     const raw = String(err?.message || 'Merchant request failed.');
     const code = raw.split(':')[0];
     const status =
+      code === 'NOT_FOUND' ? 404 :
       code === 'EMAIL_ALREADY_REGISTERED' ? 409 :
       code === 'VALIDATION_ERROR' ? 422 :
       code === 'UNAUTHORIZED' ? 401 :
@@ -39,11 +41,12 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     );
     const role = membership.rows[0]?.role as string | undefined;
     if (!role) throw new Error('NOT_FOUND:Business not found.');
-    if (minimum === 'OWNER' && role !== 'OWNER') {
-      throw new Error('PERMISSION_DENIED:Only the business owner can perform this team operation.');
-    }
-    if (minimum === 'MANAGER' && !['OWNER', 'MANAGER'].includes(role)) {
-      throw new Error('PERMISSION_DENIED:Team management access is restricted to owners and managers.');
+    if (minimum === 'OWNER') {
+      if (role !== 'OWNER') {
+        throw new Error('PERMISSION_DENIED:Only the business owner can perform this team operation.');
+      }
+    } else {
+      await assertBusinessPermission(db, businessId, req.auth!.userId, 'business.team.manage');
     }
     return role;
   };

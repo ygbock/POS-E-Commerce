@@ -130,6 +130,31 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     await assertBusinessPermission(db, businessId, req.auth.userId, permission);
   };
 
+  const checkBusinessVisibility = async (businessId: string, req: Request) => {
+    const business = await repo.findById(businessId);
+    if (!business) {
+      throw new Error('NOT_FOUND:Business not found.');
+    }
+    let publicVisible = business.listing_status === 'PUBLISHED' && business.is_discoverable;
+    if (publicVisible && business.organization_id) {
+      const org = await db.query('SELECT is_active FROM organizations WHERE id = $1', [business.organization_id]);
+      publicVisible = org.rows[0]?.is_active === true;
+    }
+    if (publicVisible) return;
+
+    if (!req.auth?.userId) {
+      throw new Error('PERMISSION_DENIED:You are not an active member of this business.');
+    }
+    const member = await db.query(
+      `SELECT 1 FROM discovery_business_memberships
+        WHERE business_id=$1 AND user_id=$2 AND is_active=TRUE LIMIT 1`,
+      [businessId, req.auth.userId],
+    );
+    if (!member.rows[0]) {
+      throw new Error('PERMISSION_DENIED:You are not an active member of this business.');
+    }
+  };
+
   const publicBusiness = async (id: string) => businessService.getPublicProfile(id);
   const trustEvent = async (businessId: string | null, entityType: string, entityId: string, eventType: string, actorUserId: string | null, fromStatus?: string | null, toStatus?: string | null, reason?: string | null, metadata: Record<string, unknown> = {}) => {
     await db.query(
@@ -293,7 +318,12 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // DISC-007: locations, service areas, hours and public settings
   // ------------------------------------------------------------------
   router.get('/businesses/:id/locations', async (req, res, next) => {
-    try { res.json({ success: true, data: await repo.listLocations(req.params.id, { activeOnly: true }) }); } catch (err) { next(err); }
+    try {
+      await checkBusinessVisibility(req.params.id, req);
+      res.json({ success: true, data: await repo.listLocations(req.params.id, { activeOnly: true }) });
+    } catch (err) {
+      fail(res, err);
+    }
   });
 
   router.post('/businesses/:id/locations', requireAuth(), async (req, res, next) => {
@@ -1063,7 +1093,15 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-010: services + request/quote marketplace
   // ------------------------------------------------------------------
-  router.get('/businesses/:id/services', async (req,res,next)=>{try{const r=await db.query(`SELECT * FROM discovery_services WHERE business_id=$1 AND is_active=TRUE ORDER BY name`,[req.params.id]);res.json({success:true,data:r.rows});}catch(err){next(err);}});
+  router.get('/businesses/:id/services', async (req,res,next)=>{
+    try {
+      await checkBusinessVisibility(req.params.id, req);
+      const r=await db.query(`SELECT * FROM discovery_services WHERE business_id=$1 AND is_active=TRUE ORDER BY name`,[req.params.id]);
+      res.json({success:true,data:r.rows});
+    } catch(err) {
+      fail(res, err);
+    }
+  });
   router.post('/businesses/:id/services', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};if(!String(x.name||'').trim())throw new Error('VALIDATION_ERROR:name is required.');if(x.bookingMode&&!SERVICE_BOOKING_MODES.has(x.bookingMode))throw new Error('VALIDATION_ERROR:invalid bookingMode.');const slug=String(x.slug||x.name).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,180)||`service-${randomUUID().slice(0,8)}`;const r=await db.query(`INSERT INTO discovery_services(id,business_id,name,slug,description,service_type,price_from,price_to,currency,duration_minutes,service_area_text,booking_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[`svc_${randomUUID().replace(/-/g,'')}`,req.params.id,String(x.name).trim(),slug,x.description||null,x.serviceType||null,x.priceFrom??null,x.priceTo??null,x.currency||'SLE',x.durationMinutes??null,x.serviceAreaText||null,x.bookingMode||'REQUEST']);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
   router.patch('/businesses/:id/services/:serviceId', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};const allowed:Record<string,string>={name:'name',description:'description',serviceType:'service_type',priceFrom:'price_from',priceTo:'price_to',currency:'currency',durationMinutes:'duration_minutes',serviceAreaText:'service_area_text',bookingMode:'booking_mode',isActive:'is_active'};const entries=Object.entries(x).filter(([k])=>allowed[k]);if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'}});const vals=entries.map(([,v])=>v);const set=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');vals.push(req.params.id,req.params.serviceId);const r=await db.query(`UPDATE discovery_services SET ${set},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${vals.length-1} AND id=$${vals.length} RETURNING *`,vals);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
