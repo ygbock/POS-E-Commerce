@@ -26,6 +26,10 @@ export const ListingStatusBadge: React.FC<ListingStatusBadgeProps> = ({ status, 
       label: 'Under Review',
       style: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60',
     },
+    REJECTED: {
+      label: 'Changes Required',
+      style: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60',
+    },
     DRAFT: {
       label: 'Draft',
       style: 'bg-slate-100 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700',
