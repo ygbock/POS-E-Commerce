@@ -11,6 +11,16 @@ async function main() {
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_test_org','Discovery Test Org','DISC_TEST',TRUE)");
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_other_org','Other Org','DISC_OTHER',TRUE)");
 
+  // Service-level creation now enforces the real FK-backed OWNER membership
+  // invariant. Seed the actor identities used by this isolated test database.
+  await db.query(
+    `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+     VALUES
+       ('disc-owner','disc_test_org','disc-owner@test.local','Discovery Owner','hash','salt','admin',TRUE),
+       ('disc-other-admin','disc_other_org','disc-other-admin@test.local','Other Tenant Admin','hash','salt','admin',TRUE),
+       ('disc-self-service',NULL,'disc-self-service@test.local','Self Service Owner','hash','salt','customer',TRUE)`,
+  );
+
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const owner = { userId: 'disc-owner', role: 'admin', organizationId: 'disc_test_org' };
