@@ -1152,7 +1152,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           WHERE s.is_active=TRUE
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
             AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))
-            AND ($1::text IS NULL OR s.id=$1 OR $1::text IS NULL)
           LIMIT 300`,
         [requestedServiceId],
       );
