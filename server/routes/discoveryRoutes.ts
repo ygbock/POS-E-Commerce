@@ -7,6 +7,7 @@ import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRe
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
 import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
 import { discoveryFuzzyScore, discoverySearchTokens, normalizeDiscoverySearchText, rankDiscoveryFuzzy } from '../utils/discoverySearch.ts';
+import { rankDiscoveryServiceMatches } from '../utils/discoveryServiceMatching.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
@@ -107,27 +108,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   };
 
   const publicBusiness = async (id: string) => businessService.getPublicProfile(id);
-  const discoveryMatchTokens = (value: unknown): string[] => {
-    const normalized = String(value || '')
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim();
-    const stop = new Set(['the','and','for','with','from','this','that','need','want','service','services','please','help','looking','local','business','provider']);
-    return Array.from(new Set(normalized.split(/\s+/).filter(t => t.length >= 3 && !stop.has(t))));
-  };
-
-  const discoveryHaversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-    const toRad = (v: number) => (v * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a = Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
-  };
-
-
   const trustEvent = async (businessId: string | null, entityType: string, entityId: string, eventType: string, actorUserId: string | null, fromStatus?: string | null, toStatus?: string | null, reason?: string | null, metadata: Record<string, unknown> = {}) => {
     await db.query(
       `INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata)
@@ -1156,57 +1136,41 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         [requestedServiceId],
       );
 
-      const requestTokens=discoveryMatchTokens([requestedServiceType,description].filter(Boolean).join(' '));
-      const requestTypeTokens=discoveryMatchTokens(requestedServiceType||'');
-      const candidates=new Map<string,{businessId:string;score:number;reason:string}>();
-
-      for(const row of candidateRows.rows){
-        const serviceTokens=discoveryMatchTokens([row.service_type,row.service_name,row.service_description].filter(Boolean).join(' '));
-        const overlap=requestTokens.filter(t=>serviceTokens.includes(t));
-        const overlapRatio=requestTokens.length?overlap.length/requestTokens.length:0;
-        const typeOverlap=requestTypeTokens.filter(t=>serviceTokens.includes(t)).length>0;
-        const exactService=Boolean(requestedServiceId&&row.service_id===requestedServiceId);
-        if(!exactService && !typeOverlap && overlap.length===0) continue;
-
-        let relevance=exactService?0.62:(typeOverlap?0.42:Math.min(0.34,0.16+overlapRatio*0.24));
-        let locationScore=0;
-        let locationCompatible=true;
-        let distanceKm:number|null=null;
-        if(x.city&&row.location_city&&String(row.location_city).toLowerCase()===String(x.city).toLowerCase()) locationScore+=0.10;
-        else if(x.city&&row.location_city) locationScore-=0.03;
-        if(x.district&&row.location_district&&String(row.location_district).toLowerCase()===String(x.district).toLowerCase()) locationScore+=0.07;
-        if(x.region&&row.location_region&&String(row.location_region).toLowerCase()===String(x.region).toLowerCase()) locationScore+=0.04;
-
-        if(lat!=null&&lng!=null&&row.latitude!=null&&row.longitude!=null){
-          distanceKm=discoveryHaversineKm(lat,lng,Number(row.latitude),Number(row.longitude));
-          const radius=row.service_radius_km==null?null:Number(row.service_radius_km);
-          if(String(row.location_type||'').toUpperCase()==='SERVICE_AREA'&&radius!=null&&radius>0){
-            locationCompatible=distanceKm<=radius;
-          }
-          if(locationCompatible) locationScore+=Math.max(0,0.20*(1-Math.min(distanceKm,100)/100));
-        }
-
-        if(!locationCompatible) continue;
-        let budgetScore=0;
-        const serviceFrom=row.price_from==null?null:Number(row.price_from);
-        const serviceTo=row.price_to==null?null:Number(row.price_to);
-        if(x.budgetTo!=null&&serviceFrom!=null&&serviceFrom>Number(x.budgetTo)) continue;
-        if(x.budgetFrom!=null&&serviceTo!=null&&serviceTo<Number(x.budgetFrom)) continue;
-        if((x.budgetTo!=null||x.budgetFrom!=null)&&((serviceFrom!=null)||(serviceTo!=null))) budgetScore=0.08;
-
-        const score=Math.max(0,Math.min(1,relevance+Math.max(0,locationScore)+budgetScore));
-        if(score<0.28) continue;
-        const reason=exactService?'REQUESTED_SERVICE':typeOverlap?'SERVICE_TYPE':overlap.length?'KEYWORD':'LOCATION';
-        const previous=candidates.get(row.business_id);
-        if(!previous||score>previous.score)candidates.set(row.business_id,{businessId:row.business_id,score,reason});
-      }
-
-      const ranked=Array.from(candidates.values()).sort((a,b)=>b.score-a.score||a.businessId.localeCompare(b.businessId)).slice(0,25);
+      const ranked=rankDiscoveryServiceMatches(
+        {
+          description,
+          serviceType: requestedServiceType,
+          requestedServiceId,
+          city: x.city||null,
+          district: x.district||null,
+          region: x.region||null,
+          latitude: lat,
+          longitude: lng,
+          budgetFrom: x.budgetFrom==null?null:Number(x.budgetFrom),
+          budgetTo: x.budgetTo==null?null:Number(x.budgetTo),
+        },
+        candidateRows.rows.map((row:any) => ({
+          serviceId: String(row.service_id),
+          businessId: String(row.business_id),
+          serviceName: row.service_name,
+          serviceDescription: row.service_description,
+          serviceType: row.service_type,
+          priceFrom: row.price_from,
+          priceTo: row.price_to,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          city: row.location_city,
+          district: row.location_district,
+          region: row.location_region,
+          locationType: row.location_type,
+          serviceRadiusKm: row.service_radius_km,
+        })),
+      );
       for(const match of ranked){
         await tx.query(
           `INSERT INTO discovery_service_request_matches(request_id,business_id,match_score,match_reason)
            VALUES($1,$2,$3,$4) ON CONFLICT(request_id,business_id) DO NOTHING`,
-          [requestId,match.businessId,Number(match.score.toFixed(3)),match.reason],
+          [requestId,match.businessId,match.score,match.reason],
         );
       }
 
