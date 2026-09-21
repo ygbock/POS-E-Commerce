@@ -257,6 +257,28 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
           Discovery Management Modules
         </h2>
 
+        {['SUBMITTED','UNDER_REVIEW','REJECTED','APPROVED'].includes(business.listing_status) && (
+          <button
+            type="button"
+            onClick={() => onNavigateTab('submission')}
+            className="p-6 rounded-3xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/20 hover:border-indigo-500 hover:shadow-md transition-all text-left flex flex-col justify-between group space-y-4 sm:col-span-2 lg:col-span-3"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Submission & Review Workspace</h3>
+                  <ListingStatusBadge status={business.listing_status} />
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+                  Track moderation progress, complete readiness fixes, read platform feedback, preview your listing, and resubmit only when the platform has returned it for changes.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 shrink-0">Open workspace <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" /></span>
+            </div>
+          </button>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* 1. Identity & Profile */}
           <button
