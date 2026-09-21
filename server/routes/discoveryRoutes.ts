@@ -9,6 +9,7 @@ import { DiscoveryStoreProvisioningService } from '../services/discoveryStorePro
 import { discoveryFuzzyScore, discoverySearchTokens, normalizeDiscoverySearchText, rankDiscoveryFuzzy } from '../utils/discoverySearch.ts';
 import { rankDiscoveryServiceMatches } from '../utils/discoveryServiceMatching.ts';
 import { assertBusinessPermission, type DiscoveryBusinessPermission } from '../services/discoveryBusinessAccess.ts';
+import { AuditRepository } from '../repositories/auditRepository.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
