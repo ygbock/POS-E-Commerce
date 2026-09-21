@@ -127,7 +127,7 @@ Remaining:
 - Search-to-profile/store/product conversion metrics. **IMPLEMENTED: attribution ledger supports result engagement/conversion events and search-linked business/product/service targets.**
 - Configurable ranking controls. **IMPLEMENTED: platform-governed ranking weights with server-side bounds and active/inactive fallback.**
 - Search abuse/rate controls. **IMPLEMENTED: bounded public search/suggestion and attribution rate limits; distributed limiter remains a production-operations concern.**
-- Search load/performance testing.
+- Search load/performance testing. **IMPLEMENTED: isolated 300-listing regression fixture with p95/max latency thresholds.**
 - Public API documentation.
 
 ### G2 — Discovery marketplace completion
@@ -140,6 +140,7 @@ Progress:
 - Tenant-scoped verification/review/report moderation is enforced.
 Remaining:
 - Complete customer discovery experience across desktop/mobile.
+- Customer workspace discovery. **IMPLEMENTED: persistent desktop/mobile shortcuts for saved businesses, service requests, contact inquiries, and business claims; service cards can launch a request directly.**
 - Customer claim tracking. **IMPLEMENTED**
 - Business profile completeness.
 - Map/location experience: interactive OpenStreetMap panel with mapped listing/location cards is implemented; merchant drag-pin location editing is now implemented with client-side tile interaction, GPS recentering, zoom/pan, and server-authoritative PATCH persistence.
@@ -152,6 +153,7 @@ Remaining:
 - Customer claim tracking. **IMPLEMENTED: authenticated customer claim-history API and workspace showing pending/approved/rejected status, submission/review dates, and platform decision notes without exposing other claimants.**
 - Public verification presentation. **IMPLEMENTED: status-specific explanation for VERIFIED, PENDING, REJECTED and UNVERIFIED, with privacy-safe point-in-time verification caveat.**
 - Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
+- Service-request matching hardening. **IMPLEMENTED: selected-service binding, service-type/keyword relevance, service-area radius enforcement, budget compatibility, deterministic scoring, provider fan-out cap, and match reasons.**
 - Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
 - Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
 - Category governance.
