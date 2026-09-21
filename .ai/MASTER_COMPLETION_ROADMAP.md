@@ -142,7 +142,7 @@ Remaining:
 - Complete customer discovery experience across desktop/mobile.
 - Customer workspace discovery. **IMPLEMENTED: persistent desktop/mobile shortcuts for saved businesses, service requests, contact inquiries, and business claims; service cards can launch a request directly.**
 - Customer claim tracking. **IMPLEMENTED**
-- Business profile completeness.
+- Business profile completeness. **IMPLEMENTED: production onboarding wizard with server-side readiness validation, draft save/resume, governed categories, contacts and primary location capture.**
 - Map/location experience: interactive OpenStreetMap panel with mapped listing/location cards is implemented; merchant drag-pin location editing is now implemented with client-side tile interaction, GPS recentering, zoom/pan, and server-authoritative PATCH persistence.
 - Favorites/saved businesses. **IMPLEMENTED: authenticated customer favorites API + saved-businesses workspace**
 - Customer-to-business contact flows. **IMPLEMENTED: server-tracked contact inquiries with customer submission, merchant inbox, status workflow, merchant notes, and contact analytics attribution**
@@ -500,4 +500,4 @@ TASK-DISC-8.1 is now implemented on main: authenticated service requests, explic
 
 Search productization increment is now implemented on main: search attribution/conversion telemetry, configurable ranking controls, and bounded public search/attribution abuse controls. Remaining Search work is representative load/performance verification and richer platform/admin UI for ranking/analytics management.
 
-The master roadmap should be treated as the controlling completion sequence from this checkpoint. TASK-DISC-9 trust/verification workflow is implemented on main, including the platform moderation workspace and merchant trust center; final regression verification remains part of the release gates. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
+The master roadmap should be treated as the controlling completion sequence from this checkpoint. TASK-DISC-8.2 is now implemented on main: the business listing onboarding flow supports Discovery Only and Discovery + Store modes, server-persisted drafts, resume, governed category assignment, contact/location capture, readiness checks, and submission into moderation. Unbound Discovery-only owners can self-manage drafts without tenant middleware; tenant-bound store mode remains organization-scoped. TASK-DISC-9 trust/verification workflow is implemented on main, including the platform moderation workspace and merchant trust center; final regression verification remains part of the release gates. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
