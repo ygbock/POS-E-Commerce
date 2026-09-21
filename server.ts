@@ -472,13 +472,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     '/api/auth/login',
     authRateLimiter,
     validateBody((body) => {
-      const payload = validateLoginPayload(body);
-      if (!payload.organizationId) {
-        throw new ValidationError('Authentication input validation failed', [
-          { field: 'organizationId', message: 'organizationId is required for login' },
-        ]);
-      }
-      return payload;
+      // organizationId is optional for normal sign-in. AuthService resolves the
+      // user's active organization from the email when there is exactly one.
+      return validateLoginPayload(body);
     }),
     async (req: Request, res: Response) => {
       try {
