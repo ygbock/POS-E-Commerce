@@ -11,6 +11,10 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
+  Heart,
+  FileText,
+  MessageSquare,
+  UserCheck,
 } from 'lucide-react';
 import { DiscoveryLocationSelector } from './DiscoveryLocationSelector';
 import type { DiscoverySearchType } from '../../types/discovery';
@@ -153,6 +157,22 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
               onLocationChange={onLocationChange}
             />
 
+            {/* Customer workspace shortcuts */}
+            <div className="hidden md:flex items-center gap-1">
+              <a href="/discover/saved" title="Saved businesses" aria-label="Saved businesses" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+                <Heart className="w-4 h-4" />
+              </a>
+              <a href="/discover/my-requests" title="My service requests" aria-label="My service requests" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+                <FileText className="w-4 h-4" />
+              </a>
+              <a href="/discover/my-inquiries" title="My contact inquiries" aria-label="My contact inquiries" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+                <MessageSquare className="w-4 h-4" />
+              </a>
+              <a href="/discover/my-claims" title="My business claims" aria-label="My business claims" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
+                <UserCheck className="w-4 h-4" />
+              </a>
+            </div>
+
             {/* Sign In Button */}
             <button
               type="button"
@@ -193,6 +213,16 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
                   </button>
                 );
               })}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2">My Discovery</span>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <a href="/discover/saved" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><Heart className="w-4 h-4 text-rose-500" />Saved businesses</a>
+                <a href="/discover/my-requests" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500" />Service requests</a>
+                <a href="/discover/my-inquiries" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-500" />Contact inquiries</a>
+                <a href="/discover/my-claims" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><UserCheck className="w-4 h-4 text-amber-500" />Business claims</a>
+              </div>
             </div>
 
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-1">
