@@ -14,10 +14,12 @@ import {
   Tag,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
+import { DiscoveryLocationMapEditor } from './DiscoveryLocationMapEditor';
 import type {
   DiscoveryBusiness,
   DiscoveryBusinessMode,
   DiscoveryCategory,
+  DiscoveryService,
 } from '../../../types/discovery';
 
 interface DiscoveryOnboardingWizardProps {
@@ -26,7 +28,7 @@ interface DiscoveryOnboardingWizardProps {
   initialBusinessId?: string;
 }
 
-type WizardStep = 1 | 2 | 3 | 4 | 5;
+type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 const DRAFT_KEY = 'abacha.discovery.onboarding.draft.v2';
 
@@ -49,6 +51,11 @@ const emptyForm = {
   latitude: '',
   longitude: '',
   serviceRadiusKm: '',
+  serviceName: '',
+  serviceDescription: '',
+  serviceType: '',
+  priceFrom: '',
+  priceTo: '',
 };
 
 const normalizeBusinessMode = (value: unknown): DiscoveryBusinessMode =>
@@ -63,6 +70,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
   const [form, setForm] = useState(emptyForm);
   const [businessId, setBusinessId] = useState<string | null>(initialBusinessId || null);
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [serviceId, setServiceId] = useState<string | null>(null);
   const [categories, setCategories] = useState<DiscoveryCategory[]>([]);
   const [drafts, setDrafts] = useState<DiscoveryBusiness[]>([]);
   const [showResume, setShowResume] = useState(false);
@@ -88,12 +96,14 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     const draft = businesses.find((item) => item.id === id && item.listing_status === 'DRAFT');
     if (!draft) throw new Error('The saved draft is no longer available.');
 
-    const [locations, assignedCategories] = await Promise.all([
+    const [locations, assignedCategories, services] = await Promise.all([
       discoveryApi.getBusinessLocations(draft.id),
       discoveryApi.getBusinessCategories(draft.id),
+      discoveryApi.getBusinessServices(draft.id),
     ]);
 
     const primary = locations.find((location) => location.is_primary) || locations[0];
+    const primaryService: DiscoveryService | undefined = services[0];
     const assignedIds = assignedCategories
       .filter((category) => category.is_active)
       .map((category) => category.id);
@@ -119,8 +129,14 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       latitude: primary?.latitude != null ? String(primary.latitude) : '',
       longitude: primary?.longitude != null ? String(primary.longitude) : '',
       serviceRadiusKm: primary?.service_radius_km != null ? String(primary.service_radius_km) : '',
+      serviceName: primaryService?.name || '',
+      serviceDescription: primaryService?.description || '',
+      serviceType: primaryService?.service_type || '',
+      priceFrom: primaryService?.price_from != null ? String(primaryService.price_from) : '',
+      priceTo: primaryService?.price_to != null ? String(primaryService.price_to) : '',
     }));
     setLocationId(primary?.id || null);
+    setServiceId(primaryService?.id || null);
     window.localStorage.setItem(DRAFT_KEY, draft.id);
     setShowResume(false);
     setSavedMessage('Draft resumed.');
@@ -226,6 +242,11 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         return 'Service radius must be greater than 0 and no more than 500 km.';
       }
     }
+    if (currentStep === 5 && form.serviceName.trim()) {
+      if (form.priceFrom && (!Number.isFinite(Number(form.priceFrom)) || Number(form.priceFrom) < 0)) return 'Starting price must be a valid non-negative number.';
+      if (form.priceTo && (!Number.isFinite(Number(form.priceTo)) || Number(form.priceTo) < 0)) return 'Maximum price must be a valid non-negative number.';
+      if (form.priceFrom && form.priceTo && Number(form.priceFrom) > Number(form.priceTo)) return 'Starting price cannot exceed the maximum price.';
+    }
     return null;
   };
 
@@ -270,6 +291,36 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     }
   };
 
+  const saveService = async () => {
+    if (!businessId || !form.serviceName.trim()) return true;
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.serviceName.trim(),
+        description: form.serviceDescription.trim() || undefined,
+        serviceType: form.serviceType.trim() || undefined,
+        priceFrom: form.priceFrom.trim() ? Number(form.priceFrom) : undefined,
+        priceTo: form.priceTo.trim() ? Number(form.priceTo) : undefined,
+        currency: 'SLE',
+        bookingMode: 'REQUEST',
+        isActive: true,
+      };
+      if (serviceId) {
+        await discoveryApi.updateService(businessId, serviceId, payload as never);
+      } else {
+        const service = await discoveryApi.createService(businessId, payload as never);
+        setServiceId(service.id);
+      }
+      setSavedMessage('Service offering saved.');
+      return true;
+    } catch (err) {
+      setError(err instanceof DiscoveryApiError ? err.message : err instanceof Error ? err.message : 'Unable to save the service offering.');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleNext = async () => {
     const validation = validateStep(step);
     if (validation) {
@@ -286,12 +337,15 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       if (!saved) return;
       if (!(await saveLocation(saved))) return;
     }
-    setStep((current) => Math.min(5, current + 1) as WizardStep);
+    if (step === 5) {
+      if (!(await saveService())) return;
+    }
+    setStep((current) => Math.min(6, current + 1) as WizardStep);
     setError(null);
   };
 
   const handleSubmit = async () => {
-    const validation = validateStep(4);
+    const validation = validateStep(5);
     if (validation) {
       setError(validation);
       setStep(4);
@@ -303,6 +357,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       const business = await createOrSaveDraft();
       if (!business) return;
       if (!(await saveLocation(business))) return;
+      if (!(await saveService())) return;
       const submitted = await discoveryApi.submitBusiness(business.id, 'Submitted through the Discovery onboarding wizard.');
       window.localStorage.removeItem(DRAFT_KEY);
       setDrafts((current) => current.filter((item) => item.id !== submitted.id));
@@ -368,7 +423,8 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
             ['2', 'Business'],
             ['3', 'Contacts'],
             ['4', 'Location'],
-            ['5', 'Review'],
+            ['5', 'Offerings'],
+            ['6', 'Review'],
           ].map(([number, label]) => (
             <div key={number} className="text-center">
               <div className={`mx-auto w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${step >= Number(number) ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>{number}</div>
@@ -489,6 +545,16 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
               <input value={form.district} onChange={(e) => update('district', e.target.value)} placeholder="District" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
               <input value={form.region} onChange={(e) => update('region', e.target.value)} placeholder="Region" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
             </div>
+            <DiscoveryLocationMapEditor
+              latitude={form.latitude.trim() ? Number(form.latitude) : null}
+              longitude={form.longitude.trim() ? Number(form.longitude) : null}
+              onChange={(latitude, longitude) => {
+                update('latitude', latitude.toFixed(6));
+                update('longitude', longitude.toFixed(6));
+              }}
+              height={280}
+              disabled={saving || submitting}
+            />
             <div className="grid sm:grid-cols-3 gap-3">
               <input value={form.latitude} onChange={(e) => update('latitude', e.target.value)} placeholder="Latitude (optional)" inputMode="decimal" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
               <input value={form.longitude} onChange={(e) => update('longitude', e.target.value)} placeholder="Longitude (optional)" inputMode="decimal" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
@@ -498,6 +564,28 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         )}
 
         {step === 5 && (
+          <section className="space-y-5">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-indigo-600" />
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white">Services & offerings</h3>
+                <p className="text-xs text-slate-500">Add a service customers can discover or request. Product catalog setup remains in the Store workspace for Discovery + Store businesses.</p>
+              </div>
+            </div>
+            <input value={form.serviceName} onChange={(e) => update('serviceName', e.target.value)} placeholder="Service / offering name (optional)" maxLength={180} className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input value={form.serviceType} onChange={(e) => update('serviceType', e.target.value)} placeholder="Service type" maxLength={120} className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={form.priceFrom} onChange={(e) => update('priceFrom', e.target.value)} placeholder="From (SLE)" inputMode="decimal" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
+                <input value={form.priceTo} onChange={(e) => update('priceTo', e.target.value)} placeholder="To (SLE)" inputMode="decimal" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
+              </div>
+            </div>
+            <textarea value={form.serviceDescription} onChange={(e) => update('serviceDescription', e.target.value)} rows={4} maxLength={5000} placeholder="Describe this service (optional)" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm resize-none" />
+            {form.mode === 'DISCOVERY_AND_STORE' && <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 text-xs text-indigo-800 dark:text-indigo-200">Your Store catalog will be managed after onboarding through the tenant catalog, inventory and POS workflows. This keeps product creation subject to the store's tenant permissions and catalog rules.</div>}
+          </section>
+        )}
+
+        {step === 6 && (
           <section className="space-y-5">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-6 h-6 text-emerald-600" />
@@ -513,6 +601,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                 ['Category', form.categoryIds.length ? `${form.categoryIds.length} selected` : 'Missing', form.categoryIds.length > 0],
                 ['Contact', form.phone.trim() || form.whatsapp.trim() || form.email.trim() ? 'Provided' : 'Missing', Boolean(form.phone.trim() || form.whatsapp.trim() || form.email.trim())],
                 ['Primary location', form.city.trim() && form.locationName.trim() ? 'Provided' : 'Missing', Boolean(form.city.trim() && form.locationName.trim())],
+                ['Service offering', form.serviceName.trim() ? 'Provided' : 'Optional', true],
               ].map(([label, value, ready]) => (
                 <div key={String(label)} className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
                   <div>
