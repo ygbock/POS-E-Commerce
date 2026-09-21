@@ -31,6 +31,7 @@ import { DiscoveryLoadingState } from './DiscoveryLoadingState';
 import { DiscoveryErrorState } from './DiscoveryErrorState';
 import { DiscoveryRateLimitState } from './DiscoveryRateLimitState';
 import { DiscoveryPagination } from './DiscoveryPagination';
+import { DiscoveryMapPanel } from './DiscoveryMapPanel';
 import { DiscoveryResultCount } from './DiscoveryResultCount';
 
 // ---------------------------------------------------------------------------
@@ -205,6 +206,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
 
   // Mobile filter drawer
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [mobileMapOpen, setMobileMapOpen] = useState(false);
 
   // AbortController ref for request cancellation
   const abortRef = useRef<AbortController | null>(null);
@@ -401,6 +403,47 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
   const handleViewAllType = (t: DiscoverySearchType) => {
     navigateTo({ type: t, page: 1 });
   };
+
+  // -------------------------------------------------------------------------
+  // Search result attribution helpers
+  // -------------------------------------------------------------------------
+  const recordResultEvent = useCallback((
+    item: DiscoveryBusiness | DiscoveryProduct | DiscoveryService,
+    eventType: 'IMPRESSION' | 'VIEW' | 'PRODUCT_VIEW' | 'SERVICE_VIEW',
+  ) => {
+    const entityType = 'product_id' in item ? 'PRODUCT' : 'business_id' in item && 'name' in item ? 'SERVICE' : 'BUSINESS';
+    const entityId = entityType === 'PRODUCT' ? item.variant_id : item.id;
+    if (!item.searchId || item.resultPosition == null) return;
+    void discoveryApi.recordSearchAttribution({
+      searchId: item.searchId,
+      eventType,
+      entityType,
+      entityId,
+      resultPosition: item.resultPosition,
+      attributionSource: 'DISCOVERY_SEARCH_RESULTS',
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    [...businessesState.data, ...productsState.data, ...servicesState.data]
+      .slice(0, 60)
+      .forEach((item) => recordResultEvent(item, 'IMPRESSION'));
+  }, [businessesState.data, productsState.data, servicesState.data, recordResultEvent]);
+
+  const handleBusinessSelect = useCallback((business: DiscoveryBusiness) => {
+    recordResultEvent(business, 'VIEW');
+    window.location.assign('/discover/business/' + encodeURIComponent(business.slug || business.id));
+  }, [recordResultEvent]);
+
+  const handleProductSelect = useCallback((product: DiscoveryProduct) => {
+    recordResultEvent(product, 'PRODUCT_VIEW');
+    window.location.assign('/discover/business/' + encodeURIComponent(product.business_slug || product.business_id));
+  }, [recordResultEvent]);
+
+  const handleServiceSelect = useCallback((service: DiscoveryService) => {
+    recordResultEvent(service, 'SERVICE_VIEW');
+    window.location.assign('/discover/request-service?serviceId=' + encodeURIComponent(service.id) + '&serviceName=' + encodeURIComponent(service.name));
+  }, [recordResultEvent]);
 
   // -------------------------------------------------------------------------
   // Derived helpers
@@ -612,6 +655,21 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
 
           <DiscoverySort value={sort} onChange={handleSortChange} />
         </div>
+
+        <section className="mb-6" aria-label="Map results">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-900 dark:text-white">Map results</h2>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Explore mapped businesses from this search.</p>
+            </div>
+            <button type="button" onClick={() => setMobileMapOpen((v) => !v)} className="sm:hidden px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
+              {mobileMapOpen ? 'Hide map' : 'Show map'}
+            </button>
+          </div>
+          <div className={mobileMapOpen ? 'block' : 'hidden sm:block'}>
+            <DiscoveryMapPanel businesses={businessesState.data} onSelectBusiness={handleBusinessSelect} />
+          </div>
+        </section>
 
         {/* ---------------------------------------------------------------- */}
         {/* 5. LAYOUT: desktop sidebar + results, mobile full-width          */}
