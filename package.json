@@ -52,7 +52,8 @@
     "test:discovery-location-quality": "tsx tests/discovery_location_quality.test.ts",
     "test:discovery-service-matching": "tsx tests/discovery_service_matching.test.ts",
     "test:discovery-performance": "tsx tests/discovery_performance.test.ts",
-    "test:discovery-search-attribution": "tsx tests/discovery_search_attribution.test.ts"
+    "test:discovery-search-attribution": "tsx tests/discovery_search_attribution.test.ts",
+    "test:merchant-owner": "tsx tests/merchant_owner_signup.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
