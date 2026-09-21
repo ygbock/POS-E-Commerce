@@ -124,7 +124,8 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
           ORDER BY i.created_at DESC`,
         [req.params.id],
       );
-      res.json({ success: true, data: { members: members.rows, invitations: invitations.rows } });
+      const currentMember = members.rows.find((member: any) => member.user_id === req.auth!.userId);
+      res.json({ success: true, data: { members: members.rows, invitations: invitations.rows, currentUserRole: currentMember?.role || null } });
     } catch (err) {
       fail(res, err);
     }
