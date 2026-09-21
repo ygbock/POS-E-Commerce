@@ -145,9 +145,10 @@ Remaining:
 - Favorites/saved businesses. **IMPLEMENTED: authenticated customer favorites API + saved-businesses workspace**
 - Customer-to-business contact flows. **IMPLEMENTED: server-tracked contact inquiries with customer submission, merchant inbox, status workflow, merchant notes, and contact analytics attribution**
 - Review management UX. **IMPLEMENTED: merchant review workspace with rating distribution, star filtering, response coverage, refresh/reload state, verified-purchase badges, and merchant response editing/deletion with character guidance.**
-- Verification presentation and workflows. **MERCHANT TRUST CENTER IMPLEMENTED**
+- Verification presentation and workflows. **IMPLEMENTED: merchant trust center plus public verification-status explainer on business profiles.**
 - Merchant-facing trust center: verification history, ownership-claim status, review moderation visibility, sanitized reports, trust timeline, required actions and resubmission entry point. **IMPLEMENTED**
 - Claim UX. **IMPLEMENTED: public business-profile ownership claim flow with authenticated submission, evidence capture, validation feedback, and privacy guidance.**
+- Public verification presentation. **IMPLEMENTED: status-specific explanation for VERIFIED, PENDING, REJECTED and UNVERIFIED, with privacy-safe point-in-time verification caveat.**
 - Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
 - Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
 - Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
