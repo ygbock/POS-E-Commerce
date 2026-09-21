@@ -118,7 +118,7 @@ export class DiscoveryBusinessService {
     return mode;
   }
 
-  async create(input: DiscoveryBusinessCreateInput, actor?: { userId?: string; role?: string }, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+  async create(input: DiscoveryBusinessCreateInput, actor?: { userId?: string; role?: string; organizationId?: string }, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const name = normalizeText(input.name, 255, 'name', true)!;
     const mode = this.validateMode(input);
     // Discovery-only listings are intentionally self-service: an authenticated user may create
