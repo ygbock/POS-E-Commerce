@@ -76,7 +76,6 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   const [isStoreConversionOpen, setIsStoreConversionOpen] = useState<boolean>(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
   const [hoursSelectedLocId, setHoursSelectedLocId] = useState<string | undefined>(undefined);
-  const [isListingWorkspaceOpen, setIsListingWorkspaceOpen] = useState<boolean>(false);
 
   // Load Business list
   const loadBusinesses = async () => {
