@@ -52,7 +52,7 @@ async function main() {
   assert.ok(publicProfile);
   assert.ok(publicProfile?.settings);
   // Category governance: only active taxonomy entries participate in public filters.
-  await db.query("INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES ($1,'disc_cat_retail',TRUE)", [business.id]);
+  await db.query("INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES ($1,'disc_cat_retail',TRUE) ON CONFLICT DO NOTHING", [business.id]);
   const retailMatches = await repo.listPublished({ categoryId: 'disc_cat_retail' });
   assert.ok(retailMatches.some((row) => row.id === business.id));
 
@@ -106,6 +106,10 @@ async function main() {
     `INSERT INTO discovery_business_locations
       (id,business_id,name,location_type,city,region,country,latitude,longitude,is_primary,is_active)
       VALUES ('disc_self_loc', $1, 'Main Location', 'STORE', 'Freetown', 'Western Area', 'Sierra Leone', 8.4840, -13.2299, TRUE, TRUE)`,
+    [selfService.id],
+  );
+  await db.query(
+    "INSERT INTO discovery_services (id,business_id,name,slug,booking_mode) VALUES ('self_service_svc',$1,'Consultation','consultation','REQUEST')",
     [selfService.id],
   );
   await service.update(selfService.id, {
