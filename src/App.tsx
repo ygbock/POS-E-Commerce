@@ -57,8 +57,23 @@ const PublicStorefrontShell: React.FC = () => (
 const isPublicDiscoveryPath = (pathname: string) =>
   pathname === '/' || pathname === '/discover' || pathname.startsWith('/discover/');
 
-const isPublicStorefrontPath = (pathname: string) =>
-  pathname.startsWith('/store/');
+const isPublicStorefrontPath = (pathname: string) => {
+  const normalized = pathname.replace(/\/$/, '') || '/';
+  return normalized === '/storefront'
+    || normalized.startsWith('/storefront/')
+    || normalized === '/store'
+    || normalized.startsWith('/store/')
+    || normalized === '/shop'
+    || normalized.startsWith('/shop/')
+    || normalized === '/search'
+    || normalized.startsWith('/search/')
+    || normalized === '/product'
+    || normalized.startsWith('/product/')
+    || normalized === '/cart'
+    || normalized === '/checkout'
+    || normalized === '/account'
+    || normalized.startsWith('/order/');
+};
 
 const MainLayout: React.FC = () => {
   const { currentRole } = useCommerce();
