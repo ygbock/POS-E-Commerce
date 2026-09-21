@@ -991,7 +991,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
 
   router.get('/businesses/:id/contact-inquiries', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Contact inquiry access forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Contact inquiry access forbidden.'}});
     const status=String(req.query.status||'');
     if(status && !['OPEN','READ','RESPONDED','CLOSED'].includes(status)) throw new Error('VALIDATION_ERROR:invalid contact inquiry status.');
     const r=await db.query(
@@ -1006,7 +1006,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
 
   router.post('/businesses/:id/contact-inquiries/:inquiryId/decision', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Contact inquiry access forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Contact inquiry access forbidden.'}});
     const status=String(req.body?.status||'');
     if(!['READ','RESPONDED','CLOSED'].includes(status)) throw new Error('VALIDATION_ERROR:status must be READ, RESPONDED, or CLOSED.');
     const note=req.body?.merchantNote==null?'':String(req.body.merchantNote).trim();
@@ -1253,7 +1253,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
          WHERE m.request_id=$1 AND m.business_id=$2`,
         [req.params.id,String(req.body.businessId)],
       );
-      isProvider=ownedMatch.rows.length>0 && await owned(req,String(req.body.businessId));
+      isProvider=ownedMatch.rows.length>0 && await owned(req,String(req.body.businessId),'business.leads.manage');
     }
     if(!isCustomer&&!isProvider&&req.auth!.role!=='super_admin')throw new Error('PERMISSION_DENIED:Only the customer, matched provider, or platform administrator may close the request.');
     const data=await transitionRequest(req.params.id,'CLOSED',req.auth!.userId,req.body?.reason||'Request closed.');
