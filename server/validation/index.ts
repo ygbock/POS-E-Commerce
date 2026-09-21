@@ -202,7 +202,7 @@ export function validateLoginPayload(body: any): { email: string; password: stri
     errors.push({ field: 'password', message: 'Password is required' });
   }
 
-  if (body.organizationId !== undefined && (typeof body.organizationId !== 'string' || body.organizationId.trim().length === 0)) {
+  if (body.organizationId !== undefined && body.organizationId !== '' && (typeof body.organizationId !== 'string' || body.organizationId.trim().length === 0)) {
     errors.push({ field: 'organizationId', message: 'organizationId must be a non-empty string when supplied' });
   }
 
@@ -213,7 +213,7 @@ export function validateLoginPayload(body: any): { email: string; password: stri
   return {
     email: body.email.toLowerCase().trim(),
     password: body.password,
-    ...(body.organizationId !== undefined ? { organizationId: String(body.organizationId).trim() } : {}),
+    ...(body.organizationId !== undefined && body.organizationId !== '' ? { organizationId: String(body.organizationId).trim() } : {}),
   };
 }
 
