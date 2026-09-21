@@ -260,6 +260,11 @@ export const discoveryApi = {
     return request<DiscoveryLocation[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/locations`);
   },
 
+  /** Get the active categories currently assigned to a merchant listing. */
+  async getBusinessCategories(businessId: string): Promise<DiscoveryCategory[]> {
+    return request<DiscoveryCategory[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/categories`);
+  },
+
   /**
    * Get public services offered by a business
    */
