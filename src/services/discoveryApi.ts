@@ -629,6 +629,14 @@ export const discoveryApi = {
   },
 
   /**
+   * List ownership claims submitted by the authenticated customer.
+   * The server returns only the caller's own claims.
+   */
+  async getMyClaims(): Promise<DiscoveryBusinessClaim[]> {
+    return request<DiscoveryBusinessClaim[]>('/api/discovery/my-claims');
+  }
+
+  /**
    * Search aliases managed by the business owner.
    */
   async getSearchAliases(businessId: string): Promise<DiscoverySearchAlias[]> {
