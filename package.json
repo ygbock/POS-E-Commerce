@@ -50,6 +50,8 @@
     "test:discovery-review-responses": "tsx tests/discovery_review_responses.test.ts",
     "test:discovery-category-governance": "tsx tests/discovery_category_governance.test.ts",
     "test:discovery-location-quality": "tsx tests/discovery_location_quality.test.ts",
+    "test:discovery-service-matching": "tsx tests/discovery_service_matching.test.ts",
+    "test:discovery-performance": "tsx tests/discovery_performance.test.ts",
     "test:discovery-search-attribution": "tsx tests/discovery_search_attribution.test.ts"
   },
   "dependencies": {
