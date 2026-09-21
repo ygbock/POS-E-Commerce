@@ -31,7 +31,7 @@
     "test:storefront": "tsx tests/storefront_multi_tenant.test.ts",
     "test:storefront-modernization": "tsx tests/storefront_modernization.test.ts",
     "test:audit": "tsx tests/audit_security_administration.test.ts",
-    "test:discovery": "tsx tests/discovery.test.ts && tsx tests/discovery_service_request_lifecycle.test.ts && tsx tests/discovery_trust_workflow.test.ts && tsx tests/discovery_merchant_trust.test.ts && tsx tests/discovery_customer_favorites.test.ts && tsx tests/discovery_contact_inquiries.test.ts && tsx tests/discovery_review_responses.test.ts && tsx tests/discovery_category_governance.test.ts && npm run test:discovery-location-quality && npm run test:discovery-service-matching && npm run test:discovery-performance && npm run test:discovery-http-authorization",
+    "test:discovery": "tsx tests/discovery.test.ts && tsx tests/discovery_service_request_lifecycle.test.ts && tsx tests/discovery_trust_workflow.test.ts && tsx tests/discovery_merchant_trust.test.ts && tsx tests/discovery_customer_favorites.test.ts && tsx tests/discovery_contact_inquiries.test.ts && tsx tests/discovery_review_responses.test.ts && tsx tests/discovery_category_governance.test.ts && npm run test:discovery-location-quality && npm run test:discovery-service-matching && npm run test:discovery-performance && npm run test:discovery-http-authorization && npm run test:discovery-audit",
     "test": "npm run test:db && npm run test:platform && npm run test:subscription-foundation && npm run test:subscription-limits && npm run test:platform-subscriptions && npm run test:tenant-provisioning && npm run test:security && npm run test:inventory && npm run test:transfer && npm run test:pos && npm run test:api && npm run test:qa && npm run test:ux && npm run test:checkout && npm run test:offline-pos && npm run test:prod-gate && npm run test:operational && npm run test:storefront && npm run test:storefront-modernization && npm run test:storefront-api && npm run test:storefront-router && npm run test:storefront-catalog && npm run test:tenant-business-plane && npm run test:audit && npm run test:discovery && npm run test:discovery-search",
     "test:coverage": "c8 --all --src server --lines 70 --branches 60 --functions 75 --statements 70 --reporter=text --reporter=html npm test",
     "test:storefront-router": "tsx tests/storefront_router.test.ts",
@@ -57,7 +57,8 @@
     "test:discovery-permissions": "tsx tests/discovery_business_permissions.test.ts",
     "test:discovery-authorization": "tsx tests/discovery_business_authorization.test.ts",
     "test:discovery-moderation": "tsx tests/discovery_moderation_authorization.test.ts",
-    "test:discovery-http-authorization": "tsx tests/discovery_business_http_authorization.test.ts"
+    "test:discovery-http-authorization": "tsx tests/discovery_business_http_authorization.test.ts",
+    "test:discovery-audit": "tsx tests/discovery_audit_logging.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
