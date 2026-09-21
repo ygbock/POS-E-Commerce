@@ -30,6 +30,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
         longitude: b.longitude as number,
         business: b,
         quality: undefined as DiscoveryLocation['location_quality_status'],
+        distanceKm: b.distance_km != null && Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : null,
       }));
 
     const fromLocations = locations
@@ -41,6 +42,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
         longitude: l.longitude as number,
         business: undefined as DiscoveryBusiness | undefined,
         quality: l.location_quality_status,
+        distanceKm: null,
       }));
 
     return [...fromBusinesses, ...fromLocations].slice(0, 40);
@@ -127,7 +129,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
                   <span className="min-w-0 flex-1">
                     <span className="block text-xs font-black text-slate-900 dark:text-white truncate">{point.name}</span>
                     <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
-                      {point.latitude.toFixed(5)}, {point.longitude.toFixed(5)}
+                      {point.distanceKm != null ? `${point.distanceKm < 10 ? point.distanceKm.toFixed(1) : Math.round(point.distanceKm)} km away` : `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`} 
                     </span>
                     {point.quality && (
                       <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
