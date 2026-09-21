@@ -1,19 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
-  Award,
   FileCheck,
-  Building,
-  Upload,
   CheckCircle2,
   AlertCircle,
   Clock,
   Sparkles,
   RefreshCw,
-  Info,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
-import type { DiscoveryBusiness } from '../../../types/discovery';
+import type { DiscoveryBusiness, DiscoveryVerificationApplication } from '../../../types/discovery';
 import { VerificationBadge } from '../VerificationBadge';
 
 interface DiscoveryVerificationPanelProps {
@@ -31,6 +27,24 @@ export const DiscoveryVerificationPanel: React.FC<DiscoveryVerificationPanelProp
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [applications, setApplications] = useState<DiscoveryVerificationApplication[]>([]);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoading(true);
+    void discoveryApi.getVerification(business.id)
+      .then((result) => {
+        if (!cancelled) setApplications(result.applications);
+      })
+      .catch(() => {
+        if (!cancelled) setApplications([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [business.id, business.verification_status]);
 
   const isVerified = business.verification_status === 'VERIFIED';
   const isPending = business.verification_status === 'PENDING';
@@ -52,8 +66,10 @@ export const DiscoveryVerificationPanel: React.FC<DiscoveryVerificationPanelProp
         documentUrl: documentUrl.trim() || undefined,
       });
 
-      setSuccess('Verification request submitted successfully. Our compliance team will review your business credentials.');
+      setSuccess('Verification request submitted successfully. An authorized platform moderator will review the submitted evidence.');
       onUpdate({ ...business, verification_status: 'PENDING' });
+      const latest = await discoveryApi.getVerification(business.id);
+      setApplications(latest.applications);
     } catch (err: unknown) {
       if (err instanceof DiscoveryApiError) {
         setError(err.message);
@@ -131,6 +147,32 @@ export const DiscoveryVerificationPanel: React.FC<DiscoveryVerificationPanelProp
           )}
         </div>
       </div>
+
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Verification history</h3>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Your submitted applications and platform decisions. Private evidence and moderator identities are not displayed here.</p>
+          </div>
+          <button type="button" onClick={() => { setHistoryLoading(true); void discoveryApi.getVerification(business.id).then((result) => setApplications(result.applications)).catch(() => setError('Unable to refresh verification history.')).finally(() => setHistoryLoading(false)); }} className="rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-slate-600 dark:text-slate-300" aria-label="Refresh verification history" title="Refresh verification history">
+            <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        <div className="mt-5 space-y-3">
+          {applications.map((application) => (
+            <div key={application.id} className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <VerificationBadge status={application.status === 'APPROVED' ? 'VERIFIED' : application.status === 'REJECTED' ? 'REJECTED' : application.status === 'PENDING' ? 'PENDING' : 'UNVERIFIED'} />
+                <span className="text-[11px] text-slate-400">{new Date(application.created_at).toLocaleString()}</span>
+              </div>
+              {application.reviewed_at && <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Reviewed {new Date(application.reviewed_at).toLocaleString()}</p>}
+              {application.review_reason && <p className="mt-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-[11px] text-slate-600 dark:text-slate-300"><span className="font-semibold">Decision reason:</span> {application.review_reason}</p>}
+            </div>
+          ))}
+          {!historyLoading && applications.length === 0 && <p className="text-xs text-slate-400">No verification applications have been submitted yet.</p>}
+          {historyLoading && applications.length === 0 && <p className="text-xs text-slate-400">Loading verification history…</p>}
+        </div>
+      </section>
 
       {/* Notifications */}
       {success && (
