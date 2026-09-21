@@ -9,6 +9,7 @@
 - **DISC-008** Search foundation: unified `/api/discovery/search` across businesses, products and services with location and open-now filters.
 - **DISC-009** Product discovery: published store-connected businesses expose products/variants through existing catalog and inventory tables; public price/stock visibility follows business settings.
 - **DISC-010** Services marketplace: services, service requests, provider matches and quotes.
+- **DISC-016** Merchant post-submission workspace: **IMPLEMENTED** — submitted/review status, server-authoritative readiness checklist, moderation feedback, verification status/application access, owner preview for unpublished listings, lifecycle timeline, and controlled rejected-listing resubmission.
 - **DISC-011** Public Discovery UI: customer-facing discovery workspace with search, tabs, business/product/service cards and service-request flow.
 - **DISC-012** Trust and moderation: verification status model, business claims, reviews, verified-purchase flag, reports and admin moderation endpoints.
 - **DISC-013** Discovery-to-Store conversion: the canonical business record can transition from discovery-only to tenant-connected store through the existing update contract, preserving identity and slug.
@@ -24,6 +25,8 @@
 - `POST /api/discovery/businesses`
 - `PATCH /api/discovery/businesses/:id`
 - `POST /api/discovery/businesses/:id/submit`
+- `GET /api/discovery/businesses/:id/management`
+- `POST /api/discovery/businesses/:id/resubmit`
 - `POST /api/discovery/businesses/:id/approve`
 - `POST /api/discovery/businesses/:id/publish`
 - `POST /api/discovery/businesses/:id/pause`
