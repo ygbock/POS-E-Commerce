@@ -1404,12 +1404,16 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/categories', async(req,res,next)=>{try{const r=await db.query(`SELECT c.id,c.parent_id,c.name,c.slug,c.description,c.icon_name,c.display_order,COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE) AS item_count FROM discovery_business_categories c LEFT JOIN discovery_business_category_map bcm ON bcm.category_id=c.id LEFT JOIN discovery_businesses b ON b.id=bcm.business_id WHERE c.is_active=TRUE GROUP BY c.id ORDER BY c.display_order,c.name`);res.json({success:true,data:r.rows.map((x:any)=>({...x,item_count:Number(x.item_count||0)}))});}catch(err){next(err);}});
   router.put('/businesses/:id/categories', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});
+    const business = await repo.findById(req.params.id);
+    if(!business)throw new Error('NOT_FOUND:Discovery business not found.');
     const ids=Array.isArray(req.body?.categoryIds)?Array.from(new Set(req.body.categoryIds.map(String).map((x:string)=>x.trim()).filter(Boolean))):[];
-    if(!ids.length)throw new Error('VALIDATION_ERROR:categoryIds must contain at least one category.');
     if(ids.length>20)throw new Error('VALIDATION_ERROR:categoryIds cannot contain more than 20 categories.');
-    const placeholders=ids.map((_,i)=>`$${i+1}`).join(',');
-    const activeCats=await db.query(`SELECT id FROM discovery_business_categories WHERE is_active=TRUE AND id IN (${placeholders})`,ids);
-    if(activeCats.rows.length!==ids.length)throw new Error('VALIDATION_ERROR:categoryIds may reference active categories only.');
+    if(!ids.length && business.listing_status!=='DRAFT')throw new Error('VALIDATION_ERROR:at least one category is required after draft stage.');
+    if(ids.length){
+      const placeholders=ids.map((_,i)=>`${i+1}`).join(',');
+      const activeCats=await db.query(`SELECT id FROM discovery_business_categories WHERE is_active=TRUE AND id IN (${placeholders})`,ids);
+      if(activeCats.rows.length!==ids.length)throw new Error('VALIDATION_ERROR:categoryIds may reference active categories only.');
+    }
     await db.query('BEGIN');
     try{
       await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1',[req.params.id]);
