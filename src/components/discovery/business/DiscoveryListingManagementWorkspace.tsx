@@ -1,0 +1,225 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock3,
+  Eye,
+  FileText,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  XCircle,
+} from 'lucide-react';
+import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
+import type { DiscoveryBusiness, DiscoveryListingManagementWorkspace as Workspace } from '../../../types/discovery';
+import { ListingStatusBadge } from '../ListingStatusBadge';
+
+interface Props {
+  business: DiscoveryBusiness;
+  onUpdate: (business: DiscoveryBusiness) => void;
+  onNavigateTab: (tabId: string) => void;
+  onOpenPreview: () => void;
+}
+
+const statusCopy: Record<string, string> = {
+  DRAFT: 'Draft — not submitted',
+  SUBMITTED: 'Submitted — awaiting moderation intake',
+  UNDER_REVIEW: 'Under review by the platform',
+  APPROVED: 'Approved — awaiting publication',
+  PUBLISHED: 'Published and discoverable',
+  REJECTED: 'Changes required before resubmission',
+  PAUSED: 'Paused by the merchant',
+  SUSPENDED: 'Suspended by the platform',
+  ARCHIVED: 'Archived',
+};
+
+export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
+  business,
+  onUpdate,
+  onNavigateTab,
+  onOpenPreview,
+}) => {
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [resubmitReason, setResubmitReason] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setWorkspace(await discoveryApi.getListingManagementWorkspace(business.id));
+    } catch (err) {
+      setError(err instanceof DiscoveryApiError ? err.message : 'Unable to load listing management workspace.');
+    } finally {
+      setLoading(false);
+    }
+  }, [business.id]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const latestFeedback = workspace?.feedback?.[0] || null;
+  const requiredItems = workspace?.readiness.items.filter((item) => item.required) || [];
+  const readyCount = requiredItems.filter((item) => item.done).length;
+  const readinessPercent = requiredItems.length ? Math.round((readyCount / requiredItems.length) * 100) : 0;
+
+  const canResubmit = business.listing_status === 'REJECTED' && Boolean(workspace?.readiness.ready);
+  const canSubmit = business.listing_status === 'DRAFT' && Boolean(workspace?.readiness.ready);
+
+  const actionLabel = useMemo(() => {
+    if (business.listing_status === 'REJECTED') return canResubmit ? 'Resubmit for review' : 'Complete required fixes';
+    if (business.listing_status === 'DRAFT') return canSubmit ? 'Submit for review' : 'Complete readiness checklist';
+    return statusCopy[business.listing_status] || business.listing_status;
+  }, [business.listing_status, canResubmit, canSubmit]);
+
+  const submit = async (resubmit = false) => {
+    setActionBusy(true);
+    setError(null);
+    try {
+      const updated = resubmit
+        ? await discoveryApi.resubmitBusiness(business.id, resubmitReason.trim() || undefined)
+        : await discoveryApi.submitBusiness(business.id);
+      onUpdate(updated);
+      setResubmitReason('');
+      await load();
+    } catch (err) {
+      setError(err instanceof DiscoveryApiError ? err.message : 'The listing could not be submitted.');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  if (loading && !workspace) {
+    return <div className="min-h-[320px] flex items-center justify-center gap-3 text-xs text-slate-500"><RefreshCw className="w-5 h-5 animate-spin text-indigo-600" />Loading submission workspace…</div>;
+  }
+
+  if (!workspace) {
+    return <div className="p-6 rounded-3xl border border-rose-200 bg-rose-50 text-sm text-rose-700">{error || 'Listing management data is unavailable.'}<button onClick={() => void load()} className="ml-3 underline font-bold">Retry</button></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {error && <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-800 text-sm flex gap-2"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{error}</div>}
+
+      <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Listing Submission & Review</h2>
+              <ListingStatusBadge status={business.listing_status} />
+            </div>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{statusCopy[business.listing_status] || 'Listing lifecycle status'}</p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={onOpenPreview} className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-2">
+              <Eye className="w-4 h-4" /> Preview listing
+            </button>
+            <button type="button" onClick={() => void load()} className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-2" disabled={loading}>
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-3">
+          {[
+            ['Current status', business.listing_status],
+            ['Readiness', `${readinessPercent}%`],
+            ['Verification', workspace.verification.status],
+            ['Last update', business.updated_at ? new Date(business.updated_at).toLocaleString() : '—'],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-2xl bg-slate-50 dark:bg-slate-800/50 p-4">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">{label}</div>
+              <div className="mt-1 text-sm font-extrabold text-slate-800 dark:text-slate-100">{value}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-extrabold text-slate-900 dark:text-white">Readiness checklist</h3>
+            <p className="text-xs text-slate-500 mt-1">The server uses the same required checks before allowing moderation submission.</p>
+          </div>
+          <span className="text-sm font-black text-indigo-600">{readyCount}/{requiredItems.length}</span>
+        </div>
+        <div className="mt-5 space-y-2">
+          {requiredItems.map((item) => (
+            <button key={item.key} type="button" onClick={() => {
+              const map: Record<string,string> = { identity: 'listing', description: 'listing', contact: 'listing', category: 'listing', location: 'locations', coordinates: 'locations', offering: 'services' };
+              if (!item.done && map[item.key]) onNavigateTab(map[item.key]);
+            }} className="w-full text-left flex items-center justify-between gap-4 rounded-2xl border border-slate-100 dark:border-slate-800 p-3.5 hover:border-indigo-300 transition-colors">
+              <span className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {item.done ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <XCircle className="w-5 h-5 text-rose-500" />}
+                {item.label}
+              </span>
+              {!item.done && <span className="text-[10px] font-bold uppercase text-indigo-600">Fix</span>}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {latestFeedback && (
+        <section className="rounded-3xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 p-6">
+          <div className="flex items-start gap-3">
+            <FileText className="w-5 h-5 text-amber-700 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-extrabold text-amber-900 dark:text-amber-200">Moderation feedback</h3>
+              <p className="mt-2 text-sm text-amber-900/80 dark:text-amber-100/80 whitespace-pre-wrap">{latestFeedback.reason}</p>
+              <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Returned on {new Date(latestFeedback.created_at).toLocaleString()}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
+        <div className="flex items-center gap-2">
+          <Clock3 className="w-5 h-5 text-indigo-600" />
+          <h3 className="font-extrabold text-slate-900 dark:text-white">Submission timeline</h3>
+        </div>
+        <div className="mt-5 space-y-3">
+          {workspace.lifecycle.slice(0, 8).map((event) => (
+            <div key={event.id} className="flex gap-3 items-start">
+              <div className="mt-1 w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+              <div className="flex-1">
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{event.from_status || 'Created'} → {event.to_status}</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">{event.reason || 'Lifecycle update'} · {new Date(event.created_at).toLocaleString()}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
+        <div className="flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-indigo-600" /><h3 className="font-extrabold text-slate-900 dark:text-white">Verification</h3></div>
+        <p className="text-xs text-slate-500 mt-1">Listing moderation and business verification are separate workflows.</p>
+        <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 p-4">
+          <span className="text-sm font-bold">{workspace.verification.status}</span>
+          <button type="button" onClick={() => onNavigateTab('verification')} className="text-xs font-bold text-indigo-600">Open verification center →</button>
+        </div>
+      </section>
+
+      {(canSubmit || canResubmit) && (
+        <section className="sticky bottom-4 z-10 rounded-3xl border border-indigo-200 dark:border-indigo-900 bg-white/95 dark:bg-slate-900/95 backdrop-blur p-5 shadow-xl">
+          {canResubmit && (
+            <div className="mb-3">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">Resubmission note <span className="font-normal text-slate-400">(optional)</span></label>
+              <textarea value={resubmitReason} onChange={(e) => setResubmitReason(e.target.value)} maxLength={1000} rows={2} placeholder="Briefly describe what you corrected…" className="mt-2 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-transparent p-3 text-sm" />
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-extrabold text-slate-900 dark:text-white">{actionLabel}</div>
+              <div className="text-xs text-slate-500 mt-1">{canResubmit ? 'Only rejected listings can be resubmitted. New changes must pass readiness checks first.' : 'Submission will move the listing into the moderation workflow.'}</div>
+            </div>
+            <button type="button" disabled={actionBusy || (!canSubmit && !canResubmit)} onClick={() => void submit(canResubmit)} className="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold flex items-center justify-center gap-2">
+              {actionBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              {canResubmit ? 'Resubmit for review' : 'Submit for review'}
+            </button>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+};
