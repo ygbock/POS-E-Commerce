@@ -32,8 +32,8 @@ async function main() {
   await runMigrations(db);
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_rank_org','Ranking Test Org','DISC_RANK',TRUE)");
   await db.query(
-    \`INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
-     VALUES ('${f.user}','${f.org}','${f.email}','${f.name}','hash','salt','admin',TRUE)\`,
+    `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+     VALUES ('disc-rank-owner','disc_rank_org','disc-rank-owner@test.local','Discovery Ranking Owner','hash','salt','admin',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
