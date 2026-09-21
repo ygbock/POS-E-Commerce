@@ -8,6 +8,7 @@ import { DiscoveryBusinessService } from '../services/discoveryBusinessService.t
 import { DiscoveryStoreProvisioningService } from '../services/discoveryStoreProvisioningService.ts';
 import { discoveryFuzzyScore, discoverySearchTokens, normalizeDiscoverySearchText, rankDiscoveryFuzzy } from '../utils/discoverySearch.ts';
 import { rankDiscoveryServiceMatches } from '../utils/discoveryServiceMatching.ts';
+import { assertBusinessPermission, type DiscoveryBusinessPermission } from '../services/discoveryBusinessAccess.ts';
 
 const SERVICE_BOOKING_MODES = new Set(['REQUEST', 'BOOKING', 'QUOTE']);
 const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
@@ -96,15 +97,21 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   // Resource ownership is intentionally delegated to the domain service so route-level
   // authorization cannot drift from the tenant-boundary rules used by lifecycle/update APIs.
-  const owned = async (req: Request, businessId: string) => {
-    const business = await repo.findById(businessId);
-    if (!business || !req.auth) return false;
+  const owned = async (req: Request, businessId: string, permission: DiscoveryBusinessPermission = 'business.listing.manage') => {
+    if (!req.auth) return false;
+    if (req.auth.role === 'super_admin') return true;
     try {
-      businessService.assertCanManage(business, actor(req));
+      await assertBusinessPermission(db, businessId, req.auth.userId, permission);
       return true;
     } catch {
       return false;
     }
+  };
+
+  const requireBusinessPermission = async (req: Request, businessId: string, permission: DiscoveryBusinessPermission) => {
+    if (!req.auth) throw new Error('UNAUTHORIZED:Authentication required.');
+    if (req.auth.role === 'super_admin') return;
+    await assertBusinessPermission(db, businessId, req.auth.userId, permission);
   };
 
   const publicBusiness = async (id: string) => businessService.getPublicProfile(id);
@@ -229,7 +236,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses/:id/convert-to-store', requireAuth(), async (req, res, next) => {
     try {
       if (!req.auth!.organizationId) return res.status(422).json({success:false,error:{code:'TENANT_REQUIRED',message:'An active organization is required to enable store mode.'}});
-      if (!(await owned(req, req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Business conversion forbidden.'}});
+      if (!(await owned(req, req.params.id, 'business.store.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Business conversion forbidden.'}});
       const business = await repo.findById(req.params.id);
       if (!business) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
       if (business.organization_id && business.organization_id !== req.auth!.organizationId) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Business is already bound to another organization.'}});
@@ -275,7 +282,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.post('/businesses/:id/locations', requireAuth(), async (req, res, next) => {
     try {
-      if (!(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Location management forbidden.' } });
+      if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Location management forbidden.' } });
       const b = await repo.findById(req.params.id);
       if (!b || b.listing_status === 'ARCHIVED') throw new Error('DISCOVERY_ARCHIVED:Archived businesses cannot add locations.');
       const x = normalizeLocation(req.body);
@@ -363,7 +370,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.patch('/businesses/:id/settings', requireAuth(), async (req,res,next)=>{
     try {
-      if (!(await owned(req, req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Discovery settings management forbidden.'}});
+      if (!(await owned(req, req.params.id, 'business.settings.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Discovery settings management forbidden.'}});
       const keys = ['show_products','show_prices','show_stock_status','allow_phone_contact','allow_whatsapp_contact','allow_directions','allow_service_requests','allow_reviews','allow_public_store_link'];
       const values: any[] = [];
       const set: string[] = [];
@@ -499,13 +506,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   });
 
   router.get('/businesses/:id/search-aliases', requireAuth(), async (req,res,next)=>{try{
-    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias access forbidden.'}});
+    if(!(await owned(req,req.params.id,'business.search_aliases.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias access forbidden.'}});
     const r=await db.query("SELECT id,entity_type,entity_id,alias,created_at,updated_at FROM discovery_search_aliases WHERE entity_type='BUSINESS' AND entity_id=$1 AND is_active=TRUE ORDER BY alias",[req.params.id]);
     res.json({success:true,data:r.rows});
   }catch(err){next(err);}});
 
   router.post('/businesses/:id/search-aliases', requireAuth(), async (req,res,next)=>{try{
-    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias management forbidden.'}});
+    if(!(await owned(req,req.params.id,'business.search_aliases.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Search alias management forbidden.'}});
     const entityType=String(req.body?.entityType||'BUSINESS').toUpperCase();
     const alias=String(req.body?.alias||'').trim().slice(0,180);
     if(!['BUSINESS','PRODUCT','SERVICE'].includes(entityType))throw new Error('VALIDATION_ERROR:entityType must be BUSINESS, PRODUCT or SERVICE.');
@@ -911,7 +918,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(202).json({success:true,data:{accepted:results.length,results}});
   }catch(err){next(err);}});
   router.post('/businesses/:id/reviews/:reviewId/response', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Review response forbidden.'}});
+    if(!(await owned(req,req.params.id,'business.reviews.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Review response forbidden.'}});
     const text=String(req.body?.response||'').trim();
     if(!text||text.length>5000) throw new Error('VALIDATION_ERROR:response is required and must be at most 5000 characters.');
     const review=await db.query("SELECT id,status FROM discovery_reviews WHERE id=$1 AND business_id=$2",[req.params.reviewId,req.params.id]);
@@ -930,7 +937,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
 
   router.delete('/businesses/:id/reviews/:reviewId/response', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Review response deletion forbidden.'}});
+    if(!(await owned(req,req.params.id,'business.reviews.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Review response deletion forbidden.'}});
     const r=await db.query('DELETE FROM discovery_review_responses WHERE review_id=$1 AND business_id=$2 RETURNING id',[req.params.reviewId,req.params.id]);
     if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Merchant response not found.'}});
     await trustEvent(req.params.id,'REVIEW',req.params.reviewId,'MERCHANT_RESPONSE_DELETED',req.auth!.userId,null,null,null,{});
@@ -1041,8 +1048,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // DISC-010: services + request/quote marketplace
   // ------------------------------------------------------------------
   router.get('/businesses/:id/services', async (req,res,next)=>{try{const r=await db.query(`SELECT * FROM discovery_services WHERE business_id=$1 AND is_active=TRUE ORDER BY name`,[req.params.id]);res.json({success:true,data:r.rows});}catch(err){next(err);}});
-  router.post('/businesses/:id/services', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};if(!String(x.name||'').trim())throw new Error('VALIDATION_ERROR:name is required.');if(x.bookingMode&&!SERVICE_BOOKING_MODES.has(x.bookingMode))throw new Error('VALIDATION_ERROR:invalid bookingMode.');const slug=String(x.slug||x.name).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,180)||`service-${randomUUID().slice(0,8)}`;const r=await db.query(`INSERT INTO discovery_services(id,business_id,name,slug,description,service_type,price_from,price_to,currency,duration_minutes,service_area_text,booking_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[`svc_${randomUUID().replace(/-/g,'')}`,req.params.id,String(x.name).trim(),slug,x.description||null,x.serviceType||null,x.priceFrom??null,x.priceTo??null,x.currency||'SLE',x.durationMinutes??null,x.serviceAreaText||null,x.bookingMode||'REQUEST']);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
-  router.patch('/businesses/:id/services/:serviceId', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};const allowed:Record<string,string>={name:'name',description:'description',serviceType:'service_type',priceFrom:'price_from',priceTo:'price_to',currency:'currency',durationMinutes:'duration_minutes',serviceAreaText:'service_area_text',bookingMode:'booking_mode',isActive:'is_active'};const entries=Object.entries(x).filter(([k])=>allowed[k]);if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'}});const vals=entries.map(([,v])=>v);const set=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');vals.push(req.params.id,req.params.serviceId);const r=await db.query(`UPDATE discovery_services SET ${set},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${vals.length-1} AND id=$${vals.length} RETURNING *`,vals);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  router.post('/businesses/:id/services', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};if(!String(x.name||'').trim())throw new Error('VALIDATION_ERROR:name is required.');if(x.bookingMode&&!SERVICE_BOOKING_MODES.has(x.bookingMode))throw new Error('VALIDATION_ERROR:invalid bookingMode.');const slug=String(x.slug||x.name).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,180)||`service-${randomUUID().slice(0,8)}`;const r=await db.query(`INSERT INTO discovery_services(id,business_id,name,slug,description,service_type,price_from,price_to,currency,duration_minutes,service_area_text,booking_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[`svc_${randomUUID().replace(/-/g,'')}`,req.params.id,String(x.name).trim(),slug,x.description||null,x.serviceType||null,x.priceFrom??null,x.priceTo??null,x.currency||'SLE',x.durationMinutes??null,x.serviceAreaText||null,x.bookingMode||'REQUEST']);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  router.patch('/businesses/:id/services/:serviceId', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};const allowed:Record<string,string>={name:'name',description:'description',serviceType:'service_type',priceFrom:'price_from',priceTo:'price_to',currency:'currency',durationMinutes:'duration_minutes',serviceAreaText:'service_area_text',bookingMode:'booking_mode',isActive:'is_active'};const entries=Object.entries(x).filter(([k])=>allowed[k]);if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'}});const vals=entries.map(([,v])=>v);const set=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');vals.push(req.params.id,req.params.serviceId);const r=await db.query(`UPDATE discovery_services SET ${set},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${vals.length-1} AND id=$${vals.length} RETURNING *`,vals);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
   // ------------------------------------------------------------------
   // DISC-010: service-request lifecycle
@@ -1461,7 +1468,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
 
   router.get('/businesses/:id/analytics', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))&&req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Analytics access forbidden.'}});
+    if(!(await owned(req,req.params.id,'business.analytics.view')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Analytics access forbidden.'}});
     const days=Math.min(Math.max(Number(req.query.days||30),1),365);
     const r=await db.query("SELECT event_type,COUNT(*)::int AS count,COUNT(DISTINCT session_hash)::int AS unique_sessions FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval GROUP BY event_type ORDER BY count DESC",[req.params.id,String(days)]);
     const counts:Record<string,number>={}; for(const row of r.rows) counts[String(row.event_type)]=Number(row.count)||0;
