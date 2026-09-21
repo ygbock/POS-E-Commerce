@@ -56,7 +56,8 @@
     "test:merchant-owner": "tsx tests/merchant_owner_signup.test.ts",
     "test:discovery-permissions": "tsx tests/discovery_business_permissions.test.ts",
     "test:discovery-authorization": "tsx tests/discovery_business_authorization.test.ts",
-    "test:discovery-moderation": "tsx tests/discovery_moderation_authorization.test.ts"
+    "test:discovery-moderation": "tsx tests/discovery_moderation_authorization.test.ts",
+    "test:discovery-http-authorization": "tsx tests/discovery_business_http_authorization.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
