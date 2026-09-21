@@ -121,6 +121,36 @@ async function main() {
     const ownerMe = await requestJson(baseUrl, '/api/merchant/me', actors.ownerA);
     assert.strictEqual(ownerMe.status, 200);
 
+    // Business creation must keep Discovery-only listings unbound while creating
+    // the business-scoped OWNER membership needed by the merchant portal.
+    const createdDiscovery = await requestJson(baseUrl, '/api/discovery/businesses', actors.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'HTTP Created Discovery Listing',
+        businessMode: 'DISCOVERY_ONLY',
+      }),
+    });
+    assert.strictEqual(createdDiscovery.status, 201);
+    assert.strictEqual(createdDiscovery.body?.data?.organization_id ?? createdDiscovery.body?.data?.organizationId, null);
+
+    const createdDiscoveryMembership = await db.query(
+      'SELECT role,is_active FROM discovery_business_memberships WHERE business_id=$1 AND user_id=$2',
+      [createdDiscovery.body.data.id, actors.ownerA.userId],
+    );
+    assert.strictEqual(createdDiscoveryMembership.rows[0]?.role, 'OWNER');
+    assert.strictEqual(createdDiscoveryMembership.rows[0]?.is_active, true);
+
+    // Store-mode creation must bind to the authenticated owner's organization.
+    const createdStore = await requestJson(baseUrl, '/api/discovery/businesses', actors.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'HTTP Created Store Listing',
+        businessMode: 'DISCOVERY_AND_STORE',
+      }),
+    });
+    assert.strictEqual(createdStore.status, 201);
+    assert.strictEqual(createdStore.body?.data?.organization_id ?? createdStore.body?.data?.organizationId, actors.ownerA.organizationId);
+
     const ownerTeam = await requestJson(baseUrl, `/api/merchant/businesses/${ownerA.business.id}/team`, actors.ownerA);
     assert.strictEqual(ownerTeam.status, 200);
 
