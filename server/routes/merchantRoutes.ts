@@ -194,7 +194,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
 
   router.post('/businesses/:id/team/invitations/:invitationId/revoke', requireAuth(), async (req, res) => {
     try {
-      const actorRole = await requireTeamManager(req, req.params.id);
+      await requireTeamManager(req, req.params.id);
       const result = await db.query(
         `UPDATE discovery_business_invitations
             SET status='REVOKED',updated_at=CURRENT_TIMESTAMP
