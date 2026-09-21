@@ -239,7 +239,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     } catch (err) { next(err); }
   });
 
-  router.patch('/businesses/:id', requireAuth(), requireTenantAccess(), async (req, res, next) => {
+  router.patch('/businesses/:id', requireAuth(), async (req, res, next) => {
     try {
       if (!(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business modification forbidden.' } });
       res.json({ success: true, data: await businessService.update(req.params.id, req.body, actor(req)) });
