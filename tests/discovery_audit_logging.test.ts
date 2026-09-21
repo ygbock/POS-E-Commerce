@@ -9,6 +9,10 @@ async function main() {
   const db: DatabaseClient = createIsolatedTestClient();
   await runMigrations(db);
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('audit_disc_org','Audit Discovery Org','AUD_DISC',TRUE)");
+  await db.query(
+    `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+     VALUES ('audit-owner','audit_disc_org','audit-owner@test.local','Audit Owner','hash','salt','admin',TRUE)`,
+  );
 
   const audit = new AuditRepository(db);
   const repo = new DiscoveryBusinessRepository(db);

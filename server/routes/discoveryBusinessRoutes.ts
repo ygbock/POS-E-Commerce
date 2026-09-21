@@ -31,7 +31,14 @@ export function createDiscoveryBusinessRouter(db: DatabaseClient) {
     }
     const organizationId=businessMode==='DISCOVERY_AND_STORE' ? (req.auth!.organizationId || requestedOrganizationId) : null;
     const data=await service.create({...req.body,businessMode,organizationId,createdByUserId:req.auth!.userId},actor(req));
-    res.status(201).json({success:true,data});
+    res.status(201).json({
+      success: true,
+      data: {
+        ...data,
+        organization_id: data.organization_id ?? null,
+        organizationId: data.organization_id ?? null,
+      },
+    });
   }catch(e){next(e);}});
   // Discovery-only listings have no tenant, so tenant middleware must not block their owner from editing.
   // The service remains authoritative for ownership and organization-attachment authorization.

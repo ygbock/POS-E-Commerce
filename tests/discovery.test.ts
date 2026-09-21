@@ -18,7 +18,7 @@ async function main() {
      VALUES
        ('disc-owner','disc_test_org','disc-owner@test.local','Discovery Owner','hash','salt','admin',TRUE),
        ('disc-other-admin','disc_other_org','disc-other-admin@test.local','Other Tenant Admin','hash','salt','admin',TRUE),
-       ('disc-self-service',NULL,'disc-self-service@test.local','Self Service Owner','hash','salt','customer',TRUE)`,
+       ('disc-self-service','disc_test_org','disc-self-service@test.local','Self Service Owner','hash','salt','viewer',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);

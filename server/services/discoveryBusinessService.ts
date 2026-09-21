@@ -472,7 +472,12 @@ export class DiscoveryBusinessService {
       [business.id, actor.userId],
     );
     const scopedRole = membership.rows[0]?.role;
-    if (scopedRole === 'OWNER' || scopedRole === 'MANAGER') return;
+    if (scopedRole === 'OWNER' || scopedRole === 'MANAGER') {
+      if (business.organization_id && actor.organizationId !== business.organization_id) {
+        throw new Error('PERMISSION_DENIED:Cross-tenant access to this discovery business is forbidden.');
+      }
+      return;
+    }
     if (scopedRole === 'STAFF') {
       throw new Error('PERMISSION_DENIED:Staff members cannot manage the business listing.');
     }
