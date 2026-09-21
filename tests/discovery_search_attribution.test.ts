@@ -18,8 +18,8 @@ async function main() {
   await runMigrations(db);
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_attr_org','Attribution Org','DISC_ATTR',TRUE)");
   await db.query(
-    \`INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
-     VALUES ('${f.user}','${f.org}','${f.email}','${f.name}','hash','salt','admin',TRUE)\`,
+    `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+     VALUES ('disc-attr-owner','disc_attr_org','disc-attr-owner@test.local','Discovery Attribution Owner','hash','salt','admin',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
