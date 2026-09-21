@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, MailPlus, RefreshCw, Shield, UserMinus, Users, X } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
 import type {
@@ -34,12 +34,9 @@ export const DiscoveryBusinessTeamPanel: React.FC<Props> = ({ businessId }) => {
     void load();
   }, [businessId]);
 
-  const currentMember = useMemo(
-    () => workspace?.members.find((member) => member.is_active && member.role === 'OWNER'),
-    [workspace],
-  );
-
-  const canManage = Boolean(currentMember) || Boolean(workspace?.members.some((member) => member.role === 'MANAGER' && member.is_active));
+  const currentRole = workspace?.currentUserRole || null;
+  const canManage = currentRole === 'OWNER' || currentRole === 'MANAGER';
+  const canManageRoles = currentRole === 'OWNER';
 
   const invite = async () => {
     if (!email.trim()) return;
@@ -177,7 +174,7 @@ export const DiscoveryBusinessTeamPanel: React.FC<Props> = ({ businessId }) => {
 
               {member.role !== 'OWNER' && canManage && (
                 <div className="flex items-center gap-2">
-                  <select
+                  {canManageRoles && <select
                     value={member.role}
                     disabled={busy}
                     onChange={(e) => void changeRole(member.user_id, e.target.value as 'MANAGER' | 'STAFF')}
@@ -185,7 +182,7 @@ export const DiscoveryBusinessTeamPanel: React.FC<Props> = ({ businessId }) => {
                   >
                     <option value="MANAGER">Manager</option>
                     <option value="STAFF">Staff</option>
-                  </select>
+                  </select>}
                   <button type="button" disabled={busy} onClick={() => void deactivate(member.user_id)} className="inline-flex items-center gap-1 rounded-xl border border-red-200 px-3 py-2 text-[11px] font-bold text-red-600 disabled:opacity-50">
                     <UserMinus className="h-3.5 w-3.5" /> Deactivate
                   </button>
