@@ -140,6 +140,7 @@ Progress:
 - Tenant-scoped verification/review/report moderation is enforced.
 Remaining:
 - Complete customer discovery experience across desktop/mobile.
+- Customer claim tracking. **IMPLEMENTED**
 - Business profile completeness.
 - Map/location experience: interactive OpenStreetMap panel with mapped listing/location cards is implemented; merchant drag-pin location editing is now implemented with client-side tile interaction, GPS recentering, zoom/pan, and server-authoritative PATCH persistence.
 - Favorites/saved businesses. **IMPLEMENTED: authenticated customer favorites API + saved-businesses workspace**
@@ -148,6 +149,7 @@ Remaining:
 - Verification presentation and workflows. **IMPLEMENTED: merchant trust center plus public verification-status explainer on business profiles.**
 - Merchant-facing trust center: verification history, ownership-claim status, review moderation visibility, sanitized reports, trust timeline, required actions and resubmission entry point. **IMPLEMENTED**
 - Claim UX. **IMPLEMENTED: public business-profile ownership claim flow with authenticated submission, evidence capture, validation feedback, and privacy guidance.**
+- Customer claim tracking. **IMPLEMENTED: authenticated customer claim-history API and workspace showing pending/approved/rejected status, submission/review dates, and platform decision notes without exposing other claimants.**
 - Public verification presentation. **IMPLEMENTED: status-specific explanation for VERIFIED, PENDING, REJECTED and UNVERIFIED, with privacy-safe point-in-time verification caveat.**
 - Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
 - Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
