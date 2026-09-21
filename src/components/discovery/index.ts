@@ -42,3 +42,5 @@ export { DiscoverySavedBusinessesPage } from './DiscoverySavedBusinessesPage';
 
 export { DiscoveryMyContactInquiriesPage } from './DiscoveryMyContactInquiriesPage';
 export { DiscoveryContactInbox } from './business/DiscoveryContactInbox';
+
+export { DiscoveryMyClaimsPage } from './DiscoveryMyClaimsPage';
