@@ -544,7 +544,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                       key={svc.id}
                       service={svc}
                       onRequestService={(selected) => {
-                        window.location.assign(`/discover/business/${encodeURIComponent(selected.business_slug || selected.business_id)}`);
+                        window.location.assign(`/discover/request-service?serviceId=${encodeURIComponent(selected.id)}&serviceName=${encodeURIComponent(selected.name)}`);
                       }}
                     />
                   ))}
@@ -687,6 +687,9 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             </a>
             <a href="/discover/my-inquiries" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
               My Inquiries
+            </a>
+            <a href="/discover/my-claims" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+              My Business Claims
             </a>
             <a href="/login" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
               Merchant Login
