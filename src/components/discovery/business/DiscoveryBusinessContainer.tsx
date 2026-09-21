@@ -46,6 +46,7 @@ interface DiscoveryBusinessContainerProps {
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'listing', label: 'Listing Profile', icon: Building2 },
+  { id: 'submission', label: 'Submission & Review', icon: ShieldCheck },
   { id: 'locations', label: 'Branches & Map', icon: MapPin },
   { id: 'hours', label: 'Operating Hours', icon: Clock },
   { id: 'services', label: 'Services', icon: Wrench },
@@ -74,6 +75,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   const [isStoreConversionOpen, setIsStoreConversionOpen] = useState<boolean>(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
   const [hoursSelectedLocId, setHoursSelectedLocId] = useState<string | undefined>(undefined);
+  const [isListingWorkspaceOpen, setIsListingWorkspaceOpen] = useState<boolean>(false);
 
   // Load Business list
   const loadBusinesses = async () => {
@@ -252,6 +254,15 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
             onNavigateTab={(tab) => setActiveTab(tab)}
             onOpenStoreConversion={() => setIsStoreConversionOpen(true)}
             onViewPublicListing={handleViewPublicCard}
+          />
+        )}
+
+        {activeTab === 'submission' && (
+          <DiscoveryListingManagementWorkspace
+            business={selectedBusiness}
+            onUpdate={handleBusinessUpdated}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+            onOpenPreview={handleViewPublicCard}
           />
         )}
 
