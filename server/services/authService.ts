@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
@@ -63,12 +64,12 @@ export class AuthService {
     if (existing.rows.length) throw new Error('EMAIL_ALREADY_REGISTERED: An account with this email already exists.');
 
     const baseSlug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'business';
-    const idSuffix = require('node:crypto').randomUUID().replace(/-/g, '').slice(0, 12);
+    const idSuffix = randomUUID().replace(/-/g, '').slice(0, 12);
     const organizationId = `org_merchant_${idSuffix}`;
     const organizationCode = `MERCHANT_${idSuffix.toUpperCase()}`;
-    const userId = `usr_${require('node:crypto').randomUUID()}`;
-    const businessId = `disc_${require('node:crypto').randomUUID()}`;
-    const publicId = `biz_${require('node:crypto').randomUUID().replace(/-/g, '').slice(0, 16)}`;
+    const userId = `usr_${randomUUID()}`;
+    const businessId = `disc_${randomUUID()}`;
+    const publicId = `biz_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
     const slug = `${baseSlug}-${idSuffix.slice(0, 6)}`;
     const { hash, salt } = hashPassword(password);
 
@@ -116,10 +117,10 @@ export class AuthService {
       await this.db.query(
         `INSERT INTO organization_subscriptions
          (id,organization_id,plan_id,status,current_period_start,current_period_end,trial_ends_at,metadata)
-         SELECT $1,$2,COALESCE((SELECT id FROM subscription_plans WHERE code='starter' LIMIT 1),'plan_starter'),
+         SELECT $1,$2::varchar,COALESCE((SELECT id FROM subscription_plans WHERE code='starter' LIMIT 1),'plan_starter'),
                 'trialing',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '14 days',
                 CURRENT_TIMESTAMP + INTERVAL '14 days',jsonb_build_object('source','merchant_signup')
-         WHERE NOT EXISTS (SELECT 1 FROM organization_subscriptions WHERE organization_id=$2)`,
+         WHERE NOT EXISTS (SELECT 1 FROM organization_subscriptions WHERE organization_id=$2::varchar)`,
         [`sub_${idSuffix}`, organizationId],
       );
 
