@@ -27,6 +27,7 @@ import { VerificationBadge } from './VerificationBadge';
 import { DiscoveryRating } from './DiscoveryRating';
 import { DiscoveryLoadingState } from './DiscoveryLoadingState';
 import { ServiceCard } from './ServiceCard';
+import { DiscoveryMapPanel } from './DiscoveryMapPanel';
 
 export interface DiscoveryBusinessProfileProps {
   businessId: string;
@@ -475,6 +476,8 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 </div>
               </section>
             )}
+
+            <DiscoveryMapPanel locations={locations} className="mb-6" />
 
             {/* Reviews Section */}
             {s.allow_reviews && (
