@@ -133,6 +133,7 @@ export interface DiscoveryListingManagementWorkspace {
 }
 
 export interface DiscoveryBusiness {
+  membership_role?: DiscoveryBusinessTeamRole | null;
   id: string;
   searchId?: string;
   resultPosition?: number;
