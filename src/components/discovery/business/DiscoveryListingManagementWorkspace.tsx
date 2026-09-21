@@ -44,6 +44,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
   const [actionBusy, setActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resubmitReason, setResubmitReason] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,7 +113,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{statusCopy[business.listing_status] || 'Listing lifecycle status'}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={onOpenPreview} className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-2">
+            <button type="button" onClick={() => setShowPreview(true)} className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-2">
               <Eye className="w-4 h-4" /> Preview listing
             </button>
             <button type="button" onClick={() => void load()} className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-2" disabled={loading}>
@@ -199,6 +200,42 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
           <button type="button" onClick={() => onNavigateTab('verification')} className="text-xs font-bold text-indigo-600">Open verification center →</button>
         </div>
       </section>
+
+      {showPreview && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 p-4 sm:p-8 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Listing preview">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-bold text-indigo-600">Owner preview</div>
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">{business.name}</h3>
+              </div>
+              <button type="button" onClick={() => setShowPreview(false)} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Close</button>
+            </div>
+            {business.cover_image_url && <img src={business.cover_image_url} alt="" className="w-full h-48 object-cover" />}
+            <div className="p-6 space-y-5">
+              <div className="flex items-start gap-4">
+                {business.logo_url ? <img src={business.logo_url} alt="" className="w-16 h-16 rounded-2xl object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-black">{business.name.slice(0,2).toUpperCase()}</div>}
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap"><h4 className="text-xl font-black text-slate-900 dark:text-white">{business.name}</h4><ListingStatusBadge status={business.listing_status} /></div>
+                  <p className="mt-1 text-sm text-slate-500">{business.short_description || 'No short description added yet.'}</p>
+                  <div className="mt-2 text-xs text-slate-500">{workspace.categories.map((cat) => cat.name).join(' · ') || 'No categories'}</div>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+                <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">About</h5>
+                <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{business.description || 'No full description added yet.'}</p>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/50 p-4"><div className="text-[10px] uppercase font-bold text-slate-400">Contact</div><div className="mt-1 text-sm font-semibold">{business.phone || business.whatsapp || business.email || 'No contact added'}</div></div>
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/50 p-4"><div className="text-[10px] uppercase font-bold text-slate-400">Location</div><div className="mt-1 text-sm font-semibold">{workspace.locations.find((l) => l.is_primary)?.city || workspace.locations.find((l) => l.is_primary)?.address_line_1 || 'No primary location'}</div></div>
+              </div>
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 dark:bg-indigo-950/20 dark:border-indigo-900 p-4 text-xs text-indigo-800 dark:text-indigo-200">
+                This is a merchant-side preview. The listing is not publicly visible until it reaches <strong>PUBLISHED</strong>.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(canSubmit || canResubmit) && (
         <section className="sticky bottom-4 z-10 rounded-3xl border border-indigo-200 dark:border-indigo-900 bg-white/95 dark:bg-slate-900/95 backdrop-blur p-5 shadow-xl">
