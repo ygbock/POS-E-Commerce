@@ -337,6 +337,8 @@ export interface DiscoveryServiceRequest {
   customer_phone?: string | null;
   customer_email?: string | null;
   description: string;
+  requested_service_id?: string | null;
+  service_type?: string | null;
   city?: string | null;
   district?: string | null;
   region?: string | null;
@@ -348,7 +350,7 @@ export interface DiscoveryServiceRequest {
   status: 'OPEN' | 'MATCHED' | 'QUOTED' | 'ACCEPTED' | 'CANCELLED' | 'CLOSED';
   created_at?: string;
   updated_at?: string;
-  matches?: Array<{ businessId: string; businessName: string; score: number }>;
+  matches?: Array<{ businessId: string; businessName: string; score: number; reason?: string | null }>;
   quotes?: DiscoveryServiceQuote[];
 }
 
