@@ -28,11 +28,17 @@ async function main() {
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_attr_org',
   }, actor);
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](business.id, actor);
+  await db.query("UPDATE discovery_businesses SET description='Phones, repairs and accessories for attribution testing.', phone='+232 76 200 001' WHERE id=$1",[business.id]);
+  await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_electronics',TRUE)",[business.id]);
   await db.query(
-    "INSERT INTO discovery_business_locations (id,business_id,name,city,is_primary,is_active) VALUES ('disc_attr_loc',$1,'Main Branch','Freetown',TRUE,TRUE)",
+    "INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_attr_loc',$1,'Main Branch','Freetown','Western Area',8.4840,-13.2299,TRUE,TRUE)",
     [business.id],
   );
+  await db.query(
+    "INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_attr_service',$1,'Phone Repair','phone-repair','Mobile phone repair','Repair','REQUEST')",
+    [business.id],
+  );
+  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](business.id, actor);
 
   const hidden = await service.create({
     name: 'Attribution Hidden',
