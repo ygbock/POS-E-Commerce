@@ -406,7 +406,7 @@ export class DiscoveryBusinessService {
     // is tenant-bound, ownership is governed by the tenant boundary rather than
     // the historical creator identity.
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
-    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager'].includes(actor.role)) return;
+    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'business_owner'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 
