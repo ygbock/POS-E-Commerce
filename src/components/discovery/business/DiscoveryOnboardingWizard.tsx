@@ -196,9 +196,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         });
       }
 
-      if (form.categoryIds.length) {
-        await discoveryApi.updateBusinessCategories(business.id, form.categoryIds);
-      }
+      await discoveryApi.updateBusinessCategories(business.id, form.categoryIds);
 
       setSavedMessage('Draft saved securely.');
       return business;
