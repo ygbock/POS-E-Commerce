@@ -35,6 +35,116 @@ export class AuthService {
    * Authenticate a user with email, password, and mandatory organization ID.
    * Fail-closed: Never falls back to default tenant implicitly.
    */
+  async registerBusinessOwner(input: {
+    name: string;
+    email: string;
+    password: string;
+    businessName: string;
+    businessMode: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE';
+  }): Promise<{
+    token: string;
+    user: LoginResult['user'];
+    business: { id: string; publicId: string; name: string; slug: string; businessMode: string; listingStatus: string };
+  }> {
+    const name = input.name.trim();
+    const email = input.email.toLowerCase().trim();
+    const businessName = input.businessName.trim();
+    const password = input.password;
+
+    if (!name || name.length < 2) throw new Error('VALIDATION_ERROR: Full name is required.');
+    if (!/^\\S+@\\S+\\.\\S+$/.test(email)) throw new Error('VALIDATION_ERROR: A valid email address is required.');
+    if (!password || password.length < 12) throw new Error('VALIDATION_ERROR: Password must be at least 12 characters.');
+    if (!businessName || businessName.length < 2) throw new Error('VALIDATION_ERROR: Business name is required.');
+    if (!['DISCOVERY_ONLY', 'DISCOVERY_AND_STORE'].includes(input.businessMode)) {
+      throw new Error('VALIDATION_ERROR: A valid business mode is required.');
+    }
+
+    const existing = await this.db.query('SELECT id FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
+    if (existing.rows.length) throw new Error('EMAIL_ALREADY_REGISTERED: An account with this email already exists.');
+
+    const baseSlug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'business';
+    const idSuffix = require('node:crypto').randomUUID().replace(/-/g, '').slice(0, 12);
+    const organizationId = `org_merchant_${idSuffix}`;
+    const organizationCode = `MERCHANT_${idSuffix.toUpperCase()}`;
+    const userId = `usr_${require('node:crypto').randomUUID()}`;
+    const businessId = `disc_${require('node:crypto').randomUUID()}`;
+    const publicId = `biz_${require('node:crypto').randomUUID().replace(/-/g, '').slice(0, 16)}`;
+    const slug = `${baseSlug}-${idSuffix.slice(0, 6)}`;
+    const { hash, salt } = hashPassword(password);
+
+    await this.db.query('BEGIN');
+    try {
+      await this.db.query(
+        `INSERT INTO organizations (id,name,code,slug,plan_tier,is_active)
+         VALUES ($1,$2,$3,$4,'starter',TRUE)`,
+        [organizationId, businessName, organizationCode, `${baseSlug}-${idSuffix.slice(0, 6)}`],
+      );
+
+      await this.db.query(
+        `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,'business_owner',TRUE)`,
+        [userId, organizationId, email, name, hash, salt],
+      );
+
+      await this.db.query(
+        `INSERT INTO discovery_businesses
+         (id,public_id,organization_id,name,slug,short_description,business_mode,listing_status,verification_status,is_discoverable,created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT','UNVERIFIED',FALSE,$8)`,
+        [
+          businessId,
+          publicId,
+          input.businessMode === 'DISCOVERY_ONLY' ? null : organizationId,
+          businessName,
+          slug,
+          `New ${businessName} listing on AbaCha.`,
+          input.businessMode,
+          userId,
+        ],
+      );
+
+      await this.db.query(
+        `INSERT INTO discovery_business_settings (business_id) VALUES ($1)`,
+        [businessId],
+      );
+
+      await this.db.query(
+        `INSERT INTO discovery_business_memberships (business_id,user_id,role,is_active)
+         VALUES ($1,$2,'OWNER',TRUE)`,
+        [businessId, userId],
+      );
+
+      await this.db.query(
+        `INSERT INTO organization_subscriptions
+         (id,organization_id,plan_id,status,current_period_start,current_period_end,trial_ends_at,metadata)
+         SELECT $1,$2,COALESCE((SELECT id FROM subscription_plans WHERE code='starter' LIMIT 1),'plan_starter'),
+                'trialing',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '14 days',
+                CURRENT_TIMESTAMP + INTERVAL '14 days',jsonb_build_object('source','merchant_signup')
+         WHERE NOT EXISTS (SELECT 1 FROM organization_subscriptions WHERE organization_id=$2)`,
+        [`sub_${idSuffix}`, organizationId],
+      );
+
+      await this.db.query('COMMIT');
+    } catch (error) {
+      await this.db.query('ROLLBACK');
+      throw error;
+    }
+
+    const permissions = getPermissionsForRole('business_owner');
+    const token = signToken({
+      userId,
+      email,
+      organizationId,
+      role: 'business_owner',
+      permissions,
+    });
+
+    return {
+      token,
+      user: { id: userId, organizationId, email, name, role: 'business_owner', permissions },
+      business: { id: businessId, publicId, name: businessName, slug, businessMode: input.businessMode, listingStatus: 'DRAFT' },
+    };
+  }
+
   async login(credentials: {
     email: string;
     password: string;
