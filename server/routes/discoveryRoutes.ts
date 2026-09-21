@@ -1264,7 +1264,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const businessId=String(req.body?.businessId||'');
     if(!businessId)throw new Error('VALIDATION_ERROR:businessId is required.');
     const b=await repo.findById(businessId);
-    if(!b||!(await owned(req,businessId)))throw new Error('TENANT_ACCESS_DENIED:Only the business owner may match a service request.');
+    if(!b||!(await owned(req,businessId,'business.leads.manage')))throw new Error('TENANT_ACCESS_DENIED:Business lead management access required.');
     const service=await db.query('SELECT 1 FROM discovery_services WHERE business_id=$1 AND is_active=TRUE LIMIT 1',[businessId]);
     if(!service.rows[0])throw new Error('VALIDATION_ERROR:Business must have an active discovery service.');
     const data=await db.withTransaction(async(tx)=>{
@@ -1374,7 +1374,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);} });
 
   router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
     const status=String(req.query.status||'');
     const r=await db.query(
       `SELECT DISTINCT r.*,m.match_score
@@ -1410,7 +1410,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.get('/categories', async(req,res,next)=>{try{const r=await db.query(`SELECT c.id,c.parent_id,c.name,c.slug,c.description,c.icon_name,c.display_order,COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE) AS item_count FROM discovery_business_categories c LEFT JOIN discovery_business_category_map bcm ON bcm.category_id=c.id LEFT JOIN discovery_businesses b ON b.id=bcm.business_id WHERE c.is_active=TRUE GROUP BY c.id ORDER BY c.display_order,c.name`);res.json({success:true,data:r.rows.map((x:any)=>({...x,item_count:Number(x.item_count||0)}))});}catch(err){next(err);}});
   router.put('/businesses/:id/categories', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id)))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.listing.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});
     const business = await repo.findById(req.params.id);
     if(!business)throw new Error('NOT_FOUND:Discovery business not found.');
     const ids=Array.isArray(req.body?.categoryIds)?Array.from(new Set(req.body.categoryIds.map(String).map((x:string)=>x.trim()).filter(Boolean))):[];
@@ -1461,7 +1461,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
   
   router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req,req.params.id))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
     const status=String(req.query.status||'');
     const r=await db.query("SELECT DISTINCT r.* FROM discovery_service_requests r LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1 LEFT JOIN discovery_business_locations l ON l.business_id=$1 AND l.is_primary=TRUE AND l.is_active=TRUE WHERE (m.business_id=$1 OR (m.business_id IS NULL AND r.status IN ('OPEN','MATCHED') AND r.city IS NOT NULL AND l.city IS NOT NULL AND lower(r.city)=lower(l.city) AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=$1 AND s.is_active=TRUE))) AND ($2='' OR r.status=$2) ORDER BY r.created_at DESC LIMIT 100",[req.params.id,status]);
     res.json({success:true,data:r.rows});
@@ -1489,7 +1489,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/businesses/:id/trust', requireAuth(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    if(!(await owned(req,req.params.id)) && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.verification.manage')) && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
 
     const [applications, claims, reviewSummary, reports, events] = await Promise.all([
       db.query(
