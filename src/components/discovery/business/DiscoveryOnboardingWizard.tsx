@@ -90,12 +90,12 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
 
     const [locations, assignedCategories] = await Promise.all([
       discoveryApi.getBusinessLocations(draft.id),
-      discoveryApi.getCategories().then((all) => all),
+      discoveryApi.getBusinessCategories(draft.id),
     ]);
 
     const primary = locations.find((location) => location.is_primary) || locations[0];
     const assignedIds = assignedCategories
-      .filter((category) => category.is_active && (draft.category_name === category.name || false))
+      .filter((category) => category.is_active)
       .map((category) => category.id);
 
     setBusinessId(draft.id);
@@ -231,12 +231,13 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     return null;
   };
 
-  const saveLocation = async () => {
-    if (!businessId) {
+  const saveLocation = async (draftBusiness?: DiscoveryBusiness | null) => {
+    let id = draftBusiness?.id || businessId;
+    if (!id) {
       const business = await createOrSaveDraft();
       if (!business) return false;
+      id = business.id;
     }
-    const id = businessId;
     if (!id) return false;
 
     setSaving(true);
@@ -285,7 +286,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     if (step === 4) {
       const saved = await createOrSaveDraft();
       if (!saved) return;
-      if (!(await saveLocation())) return;
+      if (!(await saveLocation(saved))) return;
     }
     setStep((current) => Math.min(5, current + 1) as WizardStep);
     setError(null);
@@ -303,7 +304,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     try {
       const business = await createOrSaveDraft();
       if (!business) return;
-      if (!(await saveLocation())) return;
+      if (!(await saveLocation(business))) return;
       const submitted = await discoveryApi.submitBusiness(business.id, 'Submitted through the Discovery onboarding wizard.');
       window.localStorage.removeItem(DRAFT_KEY);
       setDrafts((current) => current.filter((item) => item.id !== submitted.id));
