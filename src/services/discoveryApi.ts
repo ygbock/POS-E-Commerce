@@ -543,6 +543,34 @@ export const discoveryApi = {
     });
   },
 
+  /** Business team management */
+  async getBusinessTeam(businessId: string): Promise<import('../types/discovery').DiscoveryBusinessTeamWorkspace> {
+    return request<import('../types/discovery').DiscoveryBusinessTeamWorkspace>(`/api/merchant/businesses/${encodeURIComponent(businessId)}/team`);
+  },
+
+  async inviteBusinessTeamMember(businessId: string, email: string, role: 'MANAGER' | 'STAFF'): Promise<import('../types/discovery').DiscoveryBusinessTeamInvitation> {
+    return request<import('../types/discovery').DiscoveryBusinessTeamInvitation>(`/api/merchant/businesses/${encodeURIComponent(businessId)}/team/invitations`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    });
+  },
+
+  async revokeBusinessTeamInvitation(businessId: string, invitationId: string): Promise<void> {
+    await request<unknown>(`/api/merchant/businesses/${encodeURIComponent(businessId)}/team/invitations/${encodeURIComponent(invitationId)}/revoke`, { method: 'POST', body: JSON.stringify({}) });
+  },
+
+  async updateBusinessTeamMemberRole(businessId: string, userId: string, role: 'MANAGER' | 'STAFF'): Promise<unknown> {
+    return request<unknown>(`/api/merchant/businesses/${encodeURIComponent(businessId)}/team/members/${encodeURIComponent(userId)}/role`, { method: 'POST', body: JSON.stringify({ role }) });
+  },
+
+  async deactivateBusinessTeamMember(businessId: string, userId: string): Promise<void> {
+    await request<unknown>(`/api/merchant/businesses/${encodeURIComponent(businessId)}/team/members/${encodeURIComponent(userId)}/deactivate`, { method: 'POST', body: JSON.stringify({}) });
+  },
+
+  async acceptBusinessTeamInvitation(businessId: string, invitationId: string): Promise<unknown> {
+    return request<unknown>(`/api/merchant/businesses/${encodeURIComponent(businessId)}/team/invitations/${encodeURIComponent(invitationId)}/accept`, { method: 'POST', body: JSON.stringify({}) });
+  },
+
   /**
    * Location management
    */
