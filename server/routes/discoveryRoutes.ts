@@ -21,6 +21,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   const router = express.Router();
   const repo = new DiscoveryBusinessRepository(db);
   const businessService = new DiscoveryBusinessService(repo, db);
+  const auditRepository = new AuditRepository(db);
 
   const actor = (req: Request) => ({
     userId: req.auth!.userId,
@@ -104,7 +105,21 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     try {
       await assertBusinessPermission(db, businessId, req.auth.userId, permission);
       return true;
-    } catch {
+    } catch (error) {
+      try {
+        await auditRepository.recordEvent({
+          organization_id: req.auth.organizationId,
+          actor_id: req.auth.userId,
+          actor_name: req.auth.email || req.auth.userId,
+          actor_role: req.auth.role,
+          action: 'DISCOVERY_AUTHORIZATION_DENIED',
+          entity_type: 'DISCOVERY_BUSINESS',
+          entity_id: businessId,
+          metadata: { permission, path: req.originalUrl, method: req.method, reason: String((error as Error)?.message || 'PERMISSION_DENIED') },
+          severity: 'High',
+          result: 'DENIED',
+        });
+      } catch (auditError) { console.warn('[Audit] Discovery authorization denial log failed:', auditError); }
       return false;
     }
   };
