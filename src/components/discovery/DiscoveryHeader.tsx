@@ -15,6 +15,7 @@ import {
   FileText,
   MessageSquare,
   UserCheck,
+  ClipboardPlus,
 } from 'lucide-react';
 import { DiscoveryLocationSelector } from './DiscoveryLocationSelector';
 import type { DiscoverySearchType } from '../../types/discovery';
@@ -160,6 +161,15 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
               onLocationChange={onLocationChange}
             />
 
+            <a
+              href={workspaceHref("/discover/request-service")}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm"
+              title="Post a service request"
+            >
+              <ClipboardPlus className="w-3.5 h-3.5" />
+              <span>Request Service</span>
+            </a>
+
             {/* Customer workspace shortcuts */}
             <div className="hidden md:flex items-center gap-1">
               <a href={workspaceHref("/discover/saved")} title="Saved businesses" aria-label="Saved businesses" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
@@ -229,10 +239,11 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2">My Discovery</span>
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <a href="/discover/saved" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><Heart className="w-4 h-4 text-rose-500" />Saved businesses</a>
-                <a href="/discover/my-requests" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500" />Service requests</a>
-                <a href="/discover/my-inquiries" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-500" />Contact inquiries</a>
-                <a href="/discover/my-claims" onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><UserCheck className="w-4 h-4 text-amber-500" />Business claims</a>
+                <a href={workspaceHref("/discover/request-service")} onClick={() => setMobileMenuOpen(false)} className="col-span-2 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-xs font-bold flex items-center gap-2 text-emerald-700 dark:text-emerald-300"><ClipboardPlus className="w-4 h-4" />Post a service request</a>
+                <a href={workspaceHref("/discover/saved")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><Heart className="w-4 h-4 text-rose-500" />Saved businesses</a>
+                <a href={workspaceHref("/discover/my-requests")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500" />Service requests</a>
+                <a href={workspaceHref("/discover/my-inquiries")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-500" />Contact inquiries</a>
+                <a href={workspaceHref("/discover/my-claims")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl border p-3 text-xs font-bold flex items-center gap-2"><UserCheck className="w-4 h-4 text-amber-500" />Business claims</a>
               </div>
             </div>
 
