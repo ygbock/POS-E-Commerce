@@ -26,6 +26,7 @@ interface DiscoveryOnboardingWizardProps {
   onSuccess: (createdBusiness: DiscoveryBusiness) => void;
   onCancel?: () => void;
   initialBusinessId?: string;
+  initialStep?: WizardStep;
 }
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
@@ -65,8 +66,9 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
   onSuccess,
   onCancel,
   initialBusinessId,
+  initialStep = 1,
 }) => {
-  const [step, setStep] = useState<WizardStep>(1);
+  const [step, setStep] = useState<WizardStep>(initialStep);
   const [form, setForm] = useState(emptyForm);
   const [businessId, setBusinessId] = useState<string | null>(initialBusinessId || null);
   const [locationId, setLocationId] = useState<string | null>(null);
