@@ -12,6 +12,15 @@ import {
 } from 'lucide-react';
 import { authClient } from '../../services/authClient';
 
+interface ListingQueueMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
 type Queue = 'listings' | 'verification' | 'claims' | 'reviews' | 'reports';
 
 interface ModerationItem {
@@ -61,26 +70,43 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reportsFilter, setReportsFilter] = useState('');
   const [listingStatusFilter, setListingStatusFilter] = useState('SUBMITTED');
+  const [listingSearch, setListingSearch] = useState('');
+  const [listingModeFilter, setListingModeFilter] = useState('');
+  const [listingVerificationFilter, setListingVerificationFilter] = useState('');
+  const [listingIssuesFilter, setListingIssuesFilter] = useState('');
+  const [listingPage, setListingPage] = useState(1);
+  const [listingPageSize, setListingPageSize] = useState(25);
+  const [listingMeta, setListingMeta] = useState<ListingQueueMeta>({ page:1, pageSize:25, total:0, totalPages:0, hasNextPage:false, hasPreviousPage:false });
 
   const endpoint = useMemo(() => {
-    if (queue === 'listings') return `/api/platform/discovery/moderation/listings?status=${encodeURIComponent(listingStatusFilter)}`;
+    if (queue === 'listings') return `/api/platform/discovery/moderation/listings?status=${encodeURIComponent(listingStatusFilter)}&page=${listingPage}&pageSize=${listingPageSize}&search=${encodeURIComponent(listingSearch)}&mode=${encodeURIComponent(listingModeFilter)}&verification=${encodeURIComponent(listingVerificationFilter)}&hasIssues=${encodeURIComponent(listingIssuesFilter)}`;
     if (queue === 'reports' && reportsFilter) return `/api/platform/discovery/moderation/reports?status=${encodeURIComponent(reportsFilter)}`;
     if (queue === 'reviews') return '/api/platform/discovery/moderation/reviews?status=PENDING';
     return `/api/platform/discovery/moderation/${queue}`;
-  }, [queue, reportsFilter, listingStatusFilter]);
+  }, [queue, reportsFilter, listingStatusFilter, listingPage, listingPageSize, listingSearch, listingModeFilter, listingVerificationFilter, listingIssuesFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setItems(await platformRequest<ModerationItem[]>(endpoint));
+      if (queue === 'listings') {
+        const response = await fetch(endpoint, {
+          headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeaders() },
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || !body.success) throw new Error(body.error?.message || `Request failed with status ${response.status}`);
+        setItems(body.data as ModerationItem[]);
+        setListingMeta(body.meta || { page:listingPage, pageSize:listingPageSize, total:0, totalPages:0, hasNextPage:false, hasPreviousPage:false });
+      } else {
+        setItems(await platformRequest<ModerationItem[]>(endpoint));
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to load moderation queue.');
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [endpoint]);
+  }, [endpoint, listingPage, listingPageSize, queue]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -199,15 +225,49 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
       </div>
 
       {queue === 'listings' && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="listing-status-filter" className="text-xs font-bold text-slate-600 dark:text-slate-300">Listing status</label>
-          <select id="listing-status-filter" value={listingStatusFilter} onChange={(e) => setListingStatusFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900">
-            <option value="SUBMITTED">Submitted</option>
-            <option value="UNDER_REVIEW">Under review</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="APPROVED">Approved</option>
-            <option value="PUBLISHED">Published</option>
-          </select>
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[220px] flex-1">
+              <label htmlFor="listing-search" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Search</label>
+              <input id="listing-search" value={listingSearch} onChange={(e) => { setListingSearch(e.target.value); setListingPage(1); }} placeholder="Business name, slug or type…" className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950" />
+            </div>
+            <div>
+              <label htmlFor="listing-status-filter" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</label>
+              <select id="listing-status-filter" value={listingStatusFilter} onChange={(e) => { setListingStatusFilter(e.target.value); setListingPage(1); }} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
+                <option value="SUBMITTED">Submitted</option><option value="UNDER_REVIEW">Under review</option><option value="REJECTED">Rejected</option><option value="APPROVED">Approved</option><option value="PUBLISHED">Published</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="listing-mode-filter" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Mode</label>
+              <select id="listing-mode-filter" value={listingModeFilter} onChange={(e) => { setListingModeFilter(e.target.value); setListingPage(1); }} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
+                <option value="">All modes</option><option value="DISCOVERY_ONLY">Discovery only</option><option value="DISCOVERY_AND_STORE">Discovery + store</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="listing-verification-filter" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Verification</label>
+              <select id="listing-verification-filter" value={listingVerificationFilter} onChange={(e) => { setListingVerificationFilter(e.target.value); setListingPage(1); }} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
+                <option value="">All</option><option value="PENDING">Pending</option><option value="VERIFIED">Verified</option><option value="REJECTED">Rejected</option><option value="UNVERIFIED">Unverified</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="listing-issues-filter" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Issues</label>
+              <select id="listing-issues-filter" value={listingIssuesFilter} onChange={(e) => { setListingIssuesFilter(e.target.value); setListingPage(1); }} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
+                <option value="">All</option><option value="true">Has open issues</option><option value="false">No open issues</option>
+              </select>
+            </div>
+            <button type="button" onClick={() => { setListingSearch(''); setListingModeFilter(''); setListingVerificationFilter(''); setListingIssuesFilter(''); setListingPage(1); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold dark:border-slate-700">Reset</button>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800">
+            <span>{listingMeta.total === 0 ? 'No listings' : `Showing ${((listingMeta.page - 1) * listingMeta.pageSize) + 1}–${Math.min(listingMeta.page * listingMeta.pageSize, listingMeta.total)} of ${listingMeta.total}`}</span>
+            <div className="flex items-center gap-2">
+              <select value={listingPageSize} onChange={(e) => { setListingPageSize(Number(e.target.value)); setListingPage(1); }} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950">
+                <option value={10}>10 / page</option><option value={25}>25 / page</option><option value={50}>50 / page</option><option value={100}>100 / page</option>
+              </select>
+              <button type="button" disabled={!listingMeta.hasPreviousPage || loading} onClick={() => setListingPage((p) => Math.max(1, p - 1))} className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700">Previous</button>
+              <span className="min-w-[70px] text-center font-bold">Page {listingMeta.page} / {Math.max(1, listingMeta.totalPages)}</span>
+              <button type="button" disabled={!listingMeta.hasNextPage || loading} onClick={() => setListingPage((p) => p + 1)} className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700">Next</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -241,7 +301,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-slate-400" />
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">{queueMeta[queue].label} queue</h2>
-            <span className="text-xs text-slate-400">{items.length} item(s)</span>
+            <span className="text-xs text-slate-400">{queue === 'listings' ? `${listingMeta.total} item(s)` : `${items.length} item(s)`}</span>
           </div>
         </div>
 
