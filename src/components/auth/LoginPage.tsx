@@ -24,6 +24,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
     try {
       const user = await authClient.login(email.trim(), password);
       localStorage.setItem('abacha_login_email', email.trim());
+      const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+      const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+        ? redirectParam
+        : window.location.pathname === '/business/signin'
+          ? '/business'
+          : '/discover';
+
+      // Complete the journey the user started before authentication instead of
+      // dropping them back on a generic landing page.
+      window.location.assign(safeRedirect);
       onAuthenticated(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in. Please check your credentials.');
