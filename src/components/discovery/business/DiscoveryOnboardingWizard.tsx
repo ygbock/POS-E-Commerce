@@ -33,6 +33,7 @@ interface DiscoveryOnboardingWizardProps {
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 const DRAFT_KEY = 'abacha.discovery.onboarding.draft.v2';
+const DRAFT_STEP_KEY_PREFIX = 'abacha.discovery.onboarding.step.v2:';
 
 const emptyForm = {
   name: '',
@@ -85,6 +86,12 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
+  const getDraftStepKey = (id: string) => `${DRAFT_STEP_KEY_PREFIX}${id}`;
+  const readSavedStep = (id: string): WizardStep => {
+    const raw = Number(window.localStorage.getItem(getDraftStepKey(id)));
+    return Number.isInteger(raw) && raw >= 1 && raw <= 6 ? raw as WizardStep : 1;
+  };
+
   const activeCategories = useMemo(
     () => (Array.isArray(categories) ? categories : []).filter((category) => category.is_active),
     [categories],
@@ -114,6 +121,11 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       .map((category) => category.id);
 
     setBusinessId(draft.id);
+    // A targeted step supplied by the dashboard takes precedence. Otherwise,
+    // resume the last step the merchant saved for this draft.
+    if (initialStep === 1) {
+      setStep(readSavedStep(draft.id));
+    }
     setForm((current) => ({
       ...current,
       name: draft.name || '',
@@ -144,6 +156,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     setServiceId(primaryService?.id || null);
     setLocationAccuracyM(null);
     window.localStorage.setItem(DRAFT_KEY, draft.id);
+    window.localStorage.setItem(getDraftStepKey(draft.id), String(initialStep === 1 ? readSavedStep(draft.id) : initialStep));
     setShowResume(false);
     setSavedMessage('Draft resumed.');
   };
@@ -178,6 +191,14 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     void init();
     return () => { mounted = false; };
   }, [initialBusinessId]);
+
+  // Persist the current wizard position so Save draft / Cancel / later
+  // reopening resumes at the last completed step on this device.
+  useEffect(() => {
+    if (!loading && businessId) {
+      window.localStorage.setItem(getDraftStepKey(businessId), String(step));
+    }
+  }, [businessId, loading, step]);
 
   const createOrSaveDraft = async () => {
     if (!form.name.trim()) {
@@ -409,6 +430,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       if (!(await saveService(business))) return;
       const submitted = await discoveryApi.submitBusiness(business.id, 'Submitted through the Discovery onboarding wizard.');
       window.localStorage.removeItem(DRAFT_KEY);
+      window.localStorage.removeItem(getDraftStepKey(submitted.id));
       setDrafts((current) => current.filter((item) => item.id !== submitted.id));
       onSuccess(submitted);
     } catch (err) {
@@ -450,7 +472,10 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Resume your saved draft</p>
-                <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">{drafts.find((item) => item.id === window.localStorage.getItem(DRAFT_KEY))?.name}</p>
+                <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
+                  {drafts.find((item) => item.id === window.localStorage.getItem(DRAFT_KEY))?.name}
+                  {' · '}Step {readSavedStep(window.localStorage.getItem(DRAFT_KEY) || '')} of 6
+                </p>
               </div>
               <button
                 type="button"
