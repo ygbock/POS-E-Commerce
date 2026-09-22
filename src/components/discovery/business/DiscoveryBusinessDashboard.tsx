@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
+  Clock3,
   Eye,
   FileText,
   MapPin,
@@ -83,6 +84,16 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
   const completionPercentage = readinessItems.length
     ? Math.round((completedCount / readinessItems.length) * 100)
     : 0;
+
+  const nextIncomplete = readinessItems.find((item) => item.required && !item.done);
+  const nextActionTab = nextIncomplete ? (readinessTabs[nextIncomplete.key] || 'submission') : 'submission';
+  const nextActionLabel = nextIncomplete
+    ? `Complete ${nextIncomplete.label}`
+    : business.listing_status === 'REJECTED'
+      ? 'Review requested changes'
+      : business.listing_status === 'DRAFT'
+        ? 'Submit listing for review'
+        : 'Review listing status';
 
   const modules = [
     {
@@ -231,6 +242,46 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
         </div>
       </section>
 
+      <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+        <div className="rounded-3xl border border-indigo-200 bg-indigo-50 p-6 dark:border-indigo-900 dark:bg-indigo-950/30">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-indigo-600 shadow-sm dark:bg-slate-900">
+              <ArrowRight className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">Next action</p>
+              <h2 className="mt-1 text-base font-extrabold text-slate-900 dark:text-white">{nextActionLabel}</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                {nextIncomplete?.detail || (business.listing_status === 'PUBLISHED'
+                  ? 'Your listing is live. Keep your profile, services and customer activity up to date.'
+                  : 'Use the guided workspace to move the listing to its next lifecycle stage.')}
+              </p>
+              <button type="button" onClick={() => onNavigateTab(nextActionTab)}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700">
+                Continue setup <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick actions</p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {[
+              ['Add service', 'services', Wrench],
+              ['Add location', 'locations', MapPin],
+              ['View requests', 'quotes', FileText],
+              ['Edit listing', 'listing', Building2],
+            ].map(([label, tab, Icon]) => (
+              <button key={String(tab)} type="button" onClick={() => onNavigateTab(String(tab))}
+                className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                <Icon className="h-4 w-4 text-indigo-600" /> {String(label)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {error && (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -263,6 +314,29 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
           ))}
         </div>
       </section>
+
+      {workspace?.lifecycle?.length ? (
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Recent activity</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Latest listing lifecycle changes.</p>
+            </div>
+            <Clock3 className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="space-y-3">
+            {workspace.lifecycle.slice(0, 4).map((event) => (
+              <div key={event.id} className="flex items-start justify-between gap-4 rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{event.to_status.replace(/_/g, ' ')}</p>
+                  {event.reason && <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{event.reason}</p>}
+                </div>
+                <time className="shrink-0 text-[10px] text-slate-400">{new Date(event.created_at).toLocaleString()}</time>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section>
         <h2 className="mb-4 text-base font-bold text-slate-900 dark:text-white">Discovery management</h2>
