@@ -58,7 +58,7 @@ async function main() {
     description: 'A complete listing used to verify the platform moderation center.',
     phone: '+232 76 222 222',
     businessMode: 'DISCOVERY_ONLY',
-    organizationId: 'disc_http_merchant',
+    organizationId: null,
     createdByUserId: merchant.userId,
   }, merchant);
 
