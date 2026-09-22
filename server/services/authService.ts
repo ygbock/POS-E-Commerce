@@ -412,6 +412,19 @@ export class AuthService {
        ON CONFLICT (id) DO NOTHING`
     );
 
+    const platformAdminPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD?.trim();
+    if (!platformAdminPassword || platformAdminPassword.length < 12) {
+      throw new Error('PLATFORM_ADMIN_SEED_PASSWORD_REQUIRED: Set ABACHA_PLATFORM_ADMIN_PASSWORD (minimum 12 characters) before running development seed.');
+    }
+
+      {
+        id: 'usr_platform_admin',
+        orgId: orgDefault,
+        email: 'platformadmin@abacha.internal',
+        name: 'AbaCha Platform Administrator',
+        role: 'platform_admin' as UserRole,
+        password: platformAdminPassword,
+      },
     const defaultUsers = [
       {
         id: 'usr_super_admin',
