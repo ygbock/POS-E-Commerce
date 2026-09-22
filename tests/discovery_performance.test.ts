@@ -10,7 +10,7 @@ async function main() {
   await runMigrations(db);
 
   await db.query(
-    `INSERT INTO organizations (id,name,slug) VALUES ('perf_discovery_org','Discovery Performance Fixture','perf-discovery-fixture') ON CONFLICT (id) DO NOTHING`,
+    `INSERT INTO organizations (id,name,code,slug) VALUES ('perf_discovery_org','Discovery Performance Fixture','PERF-DISCOVERY','perf-discovery-fixture') ON CONFLICT (id) DO NOTHING`,
   );
 
   await db.query(
