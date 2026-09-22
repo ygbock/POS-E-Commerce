@@ -35,10 +35,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       }
       localStorage.setItem('abacha_login_email', email.trim());
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-      const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
-        ? redirectParam
-        : mode === 'platform'
-          ? '/platform'
+      const safeRedirect = mode === 'platform'
+        ? (redirectParam && redirectParam.startsWith('/platform') && !redirectParam.startsWith('//') ? redirectParam : '/platform')
+        : redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+          ? redirectParam
           : (user.role === 'business_owner' || window.location.pathname.startsWith('/business'))
             ? '/business'
             : '/discover';
