@@ -170,21 +170,33 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
               <span>Request Service</span>
             </a>
 
-            {/* Customer workspace shortcuts */}
-            <div className="hidden md:flex items-center gap-1">
-              <a href={workspaceHref("/discover/saved")} title="Saved businesses" aria-label="Saved businesses" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
-                <Heart className="w-4 h-4" />
-              </a>
-              <a href={workspaceHref("/discover/my-requests")} title="My service requests" aria-label="My service requests" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
-                <FileText className="w-4 h-4" />
-              </a>
-              <a href={workspaceHref("/discover/my-inquiries")} title="My contact inquiries" aria-label="My contact inquiries" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
-                <MessageSquare className="w-4 h-4" />
-              </a>
-              <a href={workspaceHref("/discover/my-claims")} title="My business claims" aria-label="My business claims" className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600">
-                <UserCheck className="w-4 h-4" />
-              </a>
-            </div>
+            {/* Customer workspace: one entry point instead of four competing icons. */}
+            <details className="hidden md:block relative group">
+              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                <Heart className="w-3.5 h-3.5 text-rose-500" />
+                <span>My AbaCha</span>
+              </summary>
+              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-2xl z-50">
+                <div className="px-3 py-2">
+                  <p className="text-xs font-black text-slate-900 dark:text-white">My Discovery</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">Your saved businesses and activity.</p>
+                </div>
+                <div className="space-y-1">
+                  <a href={workspaceHref("/discover/saved")} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <Heart className="w-4 h-4 text-rose-500" /> Saved businesses
+                  </a>
+                  <a href={workspaceHref("/discover/my-requests")} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileText className="w-4 h-4 text-indigo-500" /> Service requests
+                  </a>
+                  <a href={workspaceHref("/discover/my-inquiries")} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <MessageSquare className="w-4 h-4 text-emerald-500" /> Contact inquiries
+                  </a>
+                  <a href={workspaceHref("/discover/my-claims")} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <UserCheck className="w-4 h-4 text-amber-500" /> Business claims
+                  </a>
+                </div>
+              </div>
+            </details>
 
             {/* Sign In Button */}
             <a
