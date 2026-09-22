@@ -325,7 +325,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
           })}
           {visibleTabs.some((tab) => tab.group === 'team') && <button type="button" onClick={() => setActiveTab('team')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'team' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Users className="h-4 w-4" /> Team</button>}
           {visibleTabs.some((tab) => tab.group === 'settings') && <button type="button" onClick={() => setActiveTab('settings')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4" /> Settings</button>}
-          {selectedBusiness.business_mode === 'DISCOVERY_AND_STORE' && selectedBusiness.tenant_slug && businessRole === 'OWNER' && (
+          {selectedBusiness.business_mode === 'DISCOVERY_AND_STORE' && selectedBusiness.tenant_slug && (
             <button type="button" onClick={() => window.location.assign(`/store/${encodeURIComponent(selectedBusiness.tenant_slug as string)}`)} className="ml-auto inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
               <ShoppingBag className="h-4 w-4" /> Open Store <ExternalLink className="h-3.5 w-3.5" />
             </button>
