@@ -1596,14 +1596,21 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(ids.length>20)throw new Error('VALIDATION_ERROR:categoryIds cannot contain more than 20 categories.');
     if(!ids.length && business.listing_status!=='DRAFT')throw new Error('VALIDATION_ERROR:at least one category is required after draft stage.');
     if(ids.length){
-      const placeholders=ids.map((_,i)=>`${i+1}`).join(',');
-      const activeCats=await db.query(`SELECT id FROM discovery_business_categories WHERE is_active=TRUE AND id IN (${placeholders})`,ids);
+      const activeCats=await db.query(
+        `SELECT id FROM discovery_business_categories WHERE is_active=TRUE AND id = ANY($1::varchar[])`,
+        [ids],
+      );
       if(activeCats.rows.length!==ids.length)throw new Error('VALIDATION_ERROR:categoryIds may reference active categories only.');
     }
     await db.query('BEGIN');
     try{
-      await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1',[req.params.id]);
-      for(let i=0;i<ids.length;i++)await db.query('INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1,$2,$3)',[req.params.id,ids[i],i===0]);
+      await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1::varchar',[req.params.id]);
+      for(let i=0;i<ids.length;i++) {
+        await db.query(
+          'INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1::varchar,$2::varchar,$3::boolean)',
+          [req.params.id,ids[i],i===0],
+        );
+      }
       await db.query('COMMIT');
     }catch(e){
       await db.query('ROLLBACK');
