@@ -51,6 +51,54 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     return role;
   };
 
+  router.post('/login', async (req, res) => {
+    try {
+      const email = normalizeEmail(req.body?.email);
+      const password = String(req.body?.password || '');
+      if (!email || !password) throw new Error('VALIDATION_ERROR:Email and password are required.');
+
+      // Merchant sign-in deliberately resolves the tenant from the business-owner
+      // identity. The merchant UI must not require the owner to know an internal
+      // organization ID, especially for Discovery-only businesses.
+      const user = await db.query(
+        `SELECT u.id,u.organization_id,u.email,u.role,o.is_active AS organization_active
+           FROM users u
+           JOIN organizations o ON o.id=u.organization_id
+          WHERE LOWER(u.email)=LOWER($1)
+            AND u.is_active=TRUE
+            AND u.role='business_owner'
+          LIMIT 2`,
+        [email],
+      );
+      if (user.rows.length === 0) throw new Error('UNAUTHORIZED:Invalid email or password.');
+      if (user.rows.length > 1) throw new Error('TENANT_SELECTION_REQUIRED:This business owner account belongs to multiple organizations.');
+      const row = user.rows[0];
+      if (row.organization_active !== true) throw new Error('INACTIVE_ORGANIZATION:Organization is inactive.');
+
+      const result = await authService.login({
+        email,
+        password,
+        organizationId: row.organization_id,
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      const raw = String((err as any)?.message || 'Merchant sign-in failed.');
+      const code = raw.split(':')[0];
+      const status =
+        code === 'VALIDATION_ERROR' ? 422 :
+        code === 'TENANT_SELECTION_REQUIRED' ? 409 :
+        code === 'INACTIVE_ORGANIZATION' ? 403 :
+        code === 'UNAUTHORIZED' ? 401 : 401;
+      res.status(status).json({
+        success: false,
+        error: {
+          code,
+          message: code === 'UNAUTHORIZED' ? 'Invalid email or password.' : (raw.includes(':') ? raw.slice(raw.indexOf(':') + 1).trim() : raw),
+        },
+      });
+    }
+  });
+
   router.post('/signup', async (req, res) => {
     try {
       const result = await authService.registerBusinessOwner({
