@@ -4,9 +4,10 @@ import { authClient, AuthUser } from '../../services/authClient';
 
 interface LoginPageProps {
   onAuthenticated: (user: AuthUser) => void;
+  mode?: 'customer' | 'business' | 'platform';
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'customer' }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,17 +24,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
     setError('');
     setLoading(true);
     try {
-      const isBusinessOwnerSignIn = window.location.pathname === '/business/signin' || window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
+      const isBusinessOwnerSignIn = mode === 'business' || window.location.pathname === '/business/signin' || window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
       const user = isBusinessOwnerSignIn
         ? await authClient.loginBusinessOwner(email.trim(), password)
         : await authClient.login(email.trim(), password);
+
+      if (mode === 'platform' && !['system_owner', 'platform_admin', 'platform_support', 'platform_finance'].includes(user.role)) {
+        await authClient.logout();
+        throw new Error('PLATFORM_ACCESS_DENIED: This sign-in is restricted to authorized platform operators.');
+      }
       localStorage.setItem('abacha_login_email', email.trim());
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
       const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
         ? redirectParam
-        : (user.role === 'business_owner' || window.location.pathname.startsWith('/business'))
-          ? '/business'
-          : '/discover';
+        : mode === 'platform'
+          ? '/platform'
+          : (user.role === 'business_owner' || window.location.pathname.startsWith('/business'))
+            ? '/business'
+            : '/discover';
 
       // Complete the journey the user started before authentication instead of
       // dropping them back on a generic landing page.
@@ -63,7 +71,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-white text-slate-950 flex items-center justify-center text-2xl font-black">A</div>
           <h1 className="text-3xl font-bold text-white">AbaCha</h1>
-          <p className="mt-2 text-sm text-slate-400">Unified Commerce Platform</p>
+          <p className="mt-2 text-sm text-slate-400">{mode === 'platform' ? 'Platform Control Plane' : 'Unified Commerce Platform'}</p>
         </div>
 
         <form onSubmit={submit} className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xl relative">
@@ -78,8 +86,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
           </div>
 
           <div className="mb-6 pr-6">
-            <h2 className="text-xl font-bold text-slate-900">Sign in</h2>
-            <p className="mt-1 text-sm text-slate-500">Use your authorized account to continue.</p>
+            <h2 className="text-xl font-bold text-slate-900">{mode === 'platform' ? 'Platform administrator sign in' : 'Sign in'}</h2>
+            <p className="mt-1 text-sm text-slate-500">{mode === 'platform' ? 'Use an authorized platform operator account.' : 'Use your authorized account to continue.'}</p>
           </div>
 
           {error && (
@@ -133,15 +141,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
 
-          <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-600">
-            <a href="/business/signin" className="font-bold text-slate-900 hover:underline">
-              Business owner sign in
-            </a>
-            <span className="mx-2 text-slate-300">•</span>
-            <a href="/business/signup" className="font-bold text-slate-900 hover:underline">
-              Register your business
-            </a>
-          </div>
+          {mode !== 'platform' && (
+            <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-600">
+              <a href="/business/signin" className="font-bold text-slate-900 hover:underline">
+                Business owner sign in
+              </a>
+              <span className="mx-2 text-slate-300">•</span>
+              <a href="/business/signup" className="font-bold text-slate-900 hover:underline">
+                Register your business
+              </a>
+            </div>
+          )}
         </form>
 
         <p className="mt-6 text-center text-xs text-slate-500">
