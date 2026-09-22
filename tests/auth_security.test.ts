@@ -415,10 +415,16 @@ async function main() {
       const auditRepo = new AuditRepository(db);
       const authService = new AuthService(userRepo, auditRepo);
 
-      // Seed default users
-      await authService.seedDefaultUsers();
+      // Development seed now requires an explicit platform-admin password.
+      // Keep the security test self-contained without embedding a production credential.
+      const originalPlatformAdminPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD;
+      process.env.ABACHA_PLATFORM_ADMIN_PASSWORD = 'SecurityTestPlatform123!';
 
-      // Successful login
+      try {
+        // Seed default users
+        await authService.seedDefaultUsers();
+
+        // Successful login
       const loginResult = await authService.login({
         email: 'superadmin@abacha.internal',
         password: 'SuperAdmin123!',
@@ -446,6 +452,13 @@ async function main() {
         assert.strictEqual(err.code, 'REVOKED', 'Revoked token should fail with REVOKED code');
       }
       assert.strictEqual(revokedError, true, 'Revoked session cannot be verified');
+      } finally {
+        if (originalPlatformAdminPassword === undefined) {
+          delete process.env.ABACHA_PLATFORM_ADMIN_PASSWORD;
+        } else {
+          process.env.ABACHA_PLATFORM_ADMIN_PASSWORD = originalPlatformAdminPassword;
+        }
+      }
     });
 
     // 8. Server-Authoritative Audit Logging
