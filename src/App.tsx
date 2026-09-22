@@ -199,12 +199,19 @@ export default function App() {
     return () => { mounted = false; };
   }, []);
 
+  const isLoginPath = window.location.pathname === '/login';
   const isMerchantPath = window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
   const isMerchantSignupPath = window.location.pathname === '/business/signup';
   const isMerchantSigninPath = window.location.pathname === '/business/signin';
 
   if (isMerchantSignupPath) {
     return <BusinessOwnerSignup />;
+  }
+
+  // Keep authentication outside the storefront router. /login must always
+  // resolve to the shared login screen, even when reached from a storefront.
+  if (isLoginPath) {
+    return <LoginPage onAuthenticated={setAuthUser} />;
   }
 
   if (isMerchantSigninPath) {
