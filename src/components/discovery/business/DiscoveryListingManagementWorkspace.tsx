@@ -63,7 +63,8 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
   useEffect(() => { void load(); }, [load]);
 
   const latestFeedback = workspace?.feedback?.[0] || null;
-  const latestModerationIssue = workspace?.issues?.[0] || null;
+  const moderationIssues = (workspace?.issues || []).filter((issue) => issue.status === 'OPEN');
+  const latestModerationIssue = moderationIssues[0] || null;
   const hasModerationFeedback = Boolean(latestFeedback || moderationIssues.length > 0);
   const requiredItems = workspace?.readiness.items.filter((item) => item.required) || [];
   const readyCount = requiredItems.filter((item) => item.done).length;
@@ -103,8 +104,6 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
     detail: string;
     tab: string;
   };
-
-  const moderationIssues = (workspace?.issues || []).filter((issue) => issue.status === 'OPEN');
 
   const issueActions = useMemo<FeedbackAction[]>(() => {
     const labels: Record<string, { title: string; detail: string; tab: string }> = {
