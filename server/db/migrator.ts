@@ -116,6 +116,7 @@ export async function getAppliedMigrations(client: DatabaseClient): Promise<Set<
 const LEGACY_APPLIED_MIGRATION_CHECKSUMS: Record<string, ReadonlySet<string>> = {
   '011': new Set([
     'b2c9e9ffe21dd2795065a5228bbca6e8adcbc7a3ca44fc239c6ed527efcaac14',
+    '8d60b1e768699b212ab29a4375555fa59c2b1b89db0b0dcfcf032783f46e2dbb',
   ]),
   '012': new Set([
     '2f29563803d2341bc5a030553f523d6e696933baca8f5230b0c3d6d9b211ab07',
