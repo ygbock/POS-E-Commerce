@@ -46,6 +46,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [resubmitReason, setResubmitReason] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [submittedNotice, setSubmittedNotice] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +75,25 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
     if (business.listing_status === 'DRAFT') return canSubmit ? 'Submit for review' : 'Complete readiness checklist';
     return statusCopy[business.listing_status] || business.listing_status;
   }, [business.listing_status, canResubmit, canSubmit]);
+
+  const lifecycleSteps = [
+    { key: 'SUBMITTED', label: 'Submitted', description: 'Your listing has been received and is awaiting moderation intake.' },
+    { key: 'UNDER_REVIEW', label: 'Under review', description: 'AbaCha is checking the listing and supporting information.' },
+    { key: 'APPROVED', label: 'Approved', description: 'The listing has passed moderation and is ready for publication.' },
+    { key: 'PUBLISHED', label: 'Published', description: 'The listing is publicly discoverable on AbaCha.' },
+  ] as const;
+
+  const lifecycleRank: Record<string, number> = {
+    DRAFT: 0,
+    SUBMITTED: 1,
+    UNDER_REVIEW: 2,
+    APPROVED: 3,
+    PUBLISHED: 4,
+  };
+
+  const currentLifecycleRank = lifecycleRank[business.listing_status] ?? 0;
+  const isRejected = business.listing_status === 'REJECTED';
+  const isPostSubmission = currentLifecycleRank >= 1;
 
   type FeedbackAction = {
     key: string;
@@ -128,6 +148,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
         : await discoveryApi.submitBusiness(business.id);
       onUpdate(updated);
       setResubmitReason('');
+      setSubmittedNotice(true);
       await load();
     } catch (err) {
       setError(err instanceof DiscoveryApiError ? err.message : 'The listing could not be submitted.');
@@ -147,6 +168,24 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
   return (
     <div className="space-y-6">
       {error && <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-800 text-sm flex gap-2"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{error}</div>}
+
+      {submittedNotice && isPostSubmission && !isRejected && (
+        <section className="rounded-3xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20 p-5">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <div>
+              <h3 className="font-extrabold text-emerald-900 dark:text-emerald-200">
+                {business.listing_status === 'SUBMITTED' ? 'Listing submitted successfully' : 'Listing updated'}
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-emerald-800 dark:text-emerald-100/80">
+                {business.listing_status === 'SUBMITTED'
+                  ? 'Your listing is now in the moderation workflow. It is not publicly discoverable until AbaCha approves and publishes it.'
+                  : 'Your listing has moved forward in the moderation workflow.'}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
@@ -249,6 +288,65 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
                 </p>
               </div>
             </div>
+          </div>
+        </section>
+      )}
+
+      {isPostSubmission && (
+        <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Clock3 className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-extrabold text-slate-900 dark:text-white">Submission & publication status</h3>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Your listing moves through moderation before it becomes visible to customers.</p>
+            </div>
+            <span className="text-xs font-black text-indigo-600 dark:text-indigo-300">{statusCopy[business.listing_status]}</span>
+          </div>
+
+          {isRejected ? (
+            <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/20 p-4">
+              <div className="flex items-center gap-2 text-sm font-extrabold text-rose-900 dark:text-rose-200">
+                <XCircle className="h-5 w-5" /> Changes required
+              </div>
+              <p className="mt-1 text-xs leading-5 text-rose-800 dark:text-rose-100/80">The listing is not public. Review the moderation feedback below, make the requested corrections, and resubmit.</p>
+            </div>
+          ) : (
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-3">
+              {lifecycleSteps.map((step, index) => {
+                const stepRank = index + 1;
+                const complete = currentLifecycleRank >= stepRank;
+                const current = currentLifecycleRank === stepRank;
+                const event = [...(workspace.lifecycle || [])].reverse().find((item) => item.to_status === step.key);
+                return (
+                  <div key={step.key} className="relative">
+                    <div className={`rounded-2xl border p-4 h-full ${complete ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/20' : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/40'}`}>
+                      <div className="flex items-center gap-2">
+                        {complete ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <div className="h-5 w-5 rounded-full border-2 border-slate-300 dark:border-slate-600" />}
+                        <span className="text-sm font-extrabold text-slate-900 dark:text-white">{step.label}</span>
+                      </div>
+                      <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">{step.description}</p>
+                      {current && <span className="mt-2 inline-block rounded-full bg-indigo-100 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">Current</span>}
+                      {event && <div className="mt-2 text-[10px] text-slate-400">{new Date(event.created_at).toLocaleString()}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 p-4">
+            <div className="text-xs font-extrabold text-slate-700 dark:text-slate-200">What happens next?</div>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {business.listing_status === 'SUBMITTED'
+                ? 'AbaCha will take the submission into moderation. You can continue editing where permitted, but it will remain private until approved and published.'
+                : business.listing_status === 'UNDER_REVIEW'
+                  ? 'A moderator is reviewing the listing. If changes are required, you will receive moderation feedback and a resubmission path.'
+                  : business.listing_status === 'APPROVED'
+                    ? 'The listing has passed moderation. It will become customer-visible when the publication step is completed.'
+                    : 'The listing is live in Discovery. Keep your business profile, locations and offerings up to date.'}
+            </p>
           </div>
         </section>
       )}
