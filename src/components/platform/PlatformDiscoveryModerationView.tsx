@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { authClient } from '../../services/authClient';
 
-type Queue = 'verification' | 'claims' | 'reviews' | 'reports';
+type Queue = 'listings' | 'verification' | 'claims' | 'reviews' | 'reports';
 
 interface ModerationItem {
   id: string;
@@ -25,6 +25,7 @@ interface ModerationItem {
 }
 
 const queueMeta: Record<Queue, { label: string; description: string; icon: React.ReactNode }> = {
+  listings: { label: 'Listings', description: 'Business listings awaiting platform moderation and publication decisions.', icon: <ShieldCheck className="w-4 h-4" /> },
   verification: { label: 'Verification', description: 'Business verification applications awaiting review.', icon: <ShieldCheck className="w-4 h-4" /> },
   claims: { label: 'Claims', description: 'Ownership claims for discovery businesses.', icon: <UserCheck className="w-4 h-4" /> },
   reviews: { label: 'Reviews', description: 'Customer reviews awaiting moderation.', icon: <FileCheck2 className="w-4 h-4" /> },
@@ -48,7 +49,11 @@ async function platformRequest<T>(path: string, options?: RequestInit): Promise<
 }
 
 export const PlatformDiscoveryModerationView: React.FC = () => {
-  const [queue, setQueue] = useState<Queue>('verification');
+  const [queue, setQueue] = useState<Queue>('listings');
+  const [selectedListing, setSelectedListing] = useState<ModerationItem | null>(null);
+  const [listingDetail, setListingDetail] = useState<any>(null);
+  const [listingLoading, setListingLoading] = useState(false);
+  const [listingIssues, setListingIssues] = useState<Record<string, string>>({});
   const [items, setItems] = useState<ModerationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +62,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   const [reportsFilter, setReportsFilter] = useState('');
 
   const endpoint = useMemo(() => {
+    if (queue === 'listings') return '/api/platform/discovery/moderation/listings?status=SUBMITTED';
     if (queue === 'reports' && reportsFilter) return `/api/platform/discovery/moderation/reports?status=${encodeURIComponent(reportsFilter)}`;
     if (queue === 'reviews') return '/api/platform/discovery/moderation/reviews?status=PENDING';
     return `/api/platform/discovery/moderation/${queue}`;
@@ -76,6 +82,38 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   }, [endpoint]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const openListing = async (item: ModerationItem) => {
+    setSelectedListing(item);
+    setListingDetail(null);
+    setListingIssues({});
+    setListingLoading(true);
+    try {
+      setListingDetail(await platformRequest<any>(`/api/platform/discovery/moderation/listings/${encodeURIComponent(item.id)}`));
+    } catch (err: any) {
+      setError(err?.message || 'Unable to load listing details.');
+    } finally {
+      setListingLoading(false);
+    }
+  };
+
+  const decideListing = async (status: string) => {
+    if (!selectedListing) return;
+    const selectedIssues = Object.entries(listingIssues).filter(([, detail]) => detail !== undefined).map(([key, detail]) => ({ key, detail }));
+    const note = reason[selectedListing.id]?.trim() || '';
+    if (status === 'REJECTED' && !note && selectedIssues.length === 0) {
+      setError('Select at least one issue or provide an overall rejection note.');
+      return;
+    }
+    setBusyId(selectedListing.id);
+    try {
+      await platformRequest(`/api/platform/discovery/moderation/listings/${encodeURIComponent(selectedListing.id)}/decision`, { method:'POST', body:JSON.stringify({status,reason:note||undefined,issues:selectedIssues}) });
+      setSelectedListing(null);
+      setListingDetail(null);
+      await load();
+    } catch (err: any) { setError(err?.message || 'Unable to apply listing decision.'); }
+    finally { setBusyId(null); }
+  };
 
   const decide = async (item: ModerationItem, status: string) => {
     const currentReason = reason[item.id]?.trim() || '';
@@ -222,6 +260,12 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                       {item.organization_id ? ` · Organization ${item.organization_id}` : ''}
                     </p>
 
+                    {queue === 'listings' && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => void openListing(item)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white">Open listing review</button>
+                        <span className="text-[11px] text-slate-400">{String(item.open_issue_count || 0)} open moderation issue(s)</span>
+                      </div>
+                    )}
                     {queue === 'verification' && (
                       <pre className="mt-3 max-h-40 overflow-auto rounded-xl bg-slate-950 p-3 text-[11px] text-slate-200">
                         {JSON.stringify(item.evidence || {}, null, 2)}
@@ -248,7 +292,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                     )}
                   </div>
 
-                  {(queue !== 'reports' || ['PENDING', 'UNDER_REVIEW'].includes(item.status)) && (
+                  {queue !== 'listings' && (queue !== 'reports' || ['PENDING', 'UNDER_REVIEW'].includes(item.status)) && (
                     <div className="w-full max-w-md space-y-2 lg:w-96">
                       <label htmlFor={`reason-${item.id}`} className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Decision note</label>
                       <textarea
@@ -295,6 +339,65 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           </div>
         )}
       </div>
+      {selectedListing && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 sm:p-8 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Listing moderation review">
+          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+              <div><div className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Listing moderation</div><h2 className="text-lg font-black text-slate-900 dark:text-white">{selectedListing.business_name || selectedListing.id}</h2></div>
+              <button type="button" onClick={() => setSelectedListing(null)} className="rounded-xl border px-3 py-2 text-xs font-bold">Close</button>
+            </div>
+            {listingLoading || !listingDetail ? <div className="p-12 text-center text-sm text-slate-500"><RefreshCw className="mx-auto mb-3 h-6 w-6 animate-spin" />Loading listing details…</div> : (
+              <div className="p-6 space-y-6">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {[
+                    ['Status', listingDetail.business.listing_status],
+                    ['Mode', listingDetail.business.business_mode],
+                    ['Verification', listingDetail.business.verification_status],
+                    ['Readiness', listingDetail.readiness.ready ? 'Ready' : 'Incomplete'],
+                  ].map(([label,value]) => <div key={label} className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/50"><div className="text-[10px] uppercase font-bold text-slate-400">{label}</div><div className="mt-1 text-sm font-black text-slate-900 dark:text-white">{value}</div></div>)}
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border p-4 dark:border-slate-800">
+                    <h3 className="text-sm font-black">Business profile</h3>
+                    <p className="mt-2 text-sm font-bold">{listingDetail.business.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{listingDetail.business.description || listingDetail.business.short_description || 'No description'}</p>
+                    <p className="mt-3 text-xs text-slate-500">Categories: {(listingDetail.categories || []).map((x:any)=>x.name).join(', ') || 'None'}</p>
+                    <p className="mt-1 text-xs text-slate-500">Contact: {listingDetail.business.phone || listingDetail.business.email || listingDetail.business.whatsapp || 'None'}</p>
+                  </div>
+                  <div className="rounded-2xl border p-4 dark:border-slate-800">
+                    <h3 className="text-sm font-black">Primary location</h3>
+                    <p className="mt-2 text-xs text-slate-500">{(listingDetail.locations || []).find((x:any)=>x.is_primary)?.address_line_1 || 'No address'}</p>
+                    <p className="mt-1 text-xs text-slate-500">{(listingDetail.locations || []).find((x:any)=>x.is_primary)?.city || 'No city'}</p>
+                    <p className="mt-1 text-xs text-slate-500">Coordinates: {(listingDetail.locations || []).find((x:any)=>x.is_primary)?.latitude ?? '—'}, {(listingDetail.locations || []).find((x:any)=>x.is_primary)?.longitude ?? '—'}</p>
+                  </div>
+                </div>
+                <div className="rounded-2xl border p-4 dark:border-slate-800">
+                  <h3 className="text-sm font-black">Readiness checks</h3>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">{listingDetail.readiness.items.map((x:any)=><div key={x.key} className="flex items-center gap-2 text-xs">{x.done?<CheckCircle2 className="h-4 w-4 text-emerald-600"/>:<XCircle className="h-4 w-4 text-rose-600"/>}{x.label}</div>)}</div>
+                </div>
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/60 dark:bg-rose-950/20">
+                  <h3 className="text-sm font-black text-rose-900 dark:text-rose-200">Structured rejection issues</h3>
+                  <p className="mt-1 text-xs text-rose-700 dark:text-rose-300">Select the exact areas the business owner must correct.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {['identity','description','contact','category','location','coordinates','offering','store'].map((key) => (
+                      <label key={key} className="rounded-xl border bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                        <span className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={Object.prototype.hasOwnProperty.call(listingIssues,key)} onChange={(e)=>setListingIssues(prev=>{const next={...prev}; if(e.target.checked) next[key]=''; else delete next[key]; return next;})}/>{key}</span>
+                        {Object.prototype.hasOwnProperty.call(listingIssues,key) && <input value={listingIssues[key]} onChange={(e)=>setListingIssues(prev=>({...prev,[key]:e.target.value.slice(0,1000)}))} placeholder="Specific correction needed (optional)" className="mt-2 w-full rounded-lg border px-2.5 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"/>}
+                      </label>
+                    ))}
+                  </div>
+                  <textarea value={reason[selectedListing.id]||''} onChange={(e)=>setReason(prev=>({...prev,[selectedListing.id]:e.target.value.slice(0,4000)}))} rows={3} placeholder="Overall moderation note (optional when issues are selected)" className="mt-3 w-full rounded-xl border px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"/>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  {selectedListing.status === 'SUBMITTED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('UNDER_REVIEW')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Start review</button>}
+                  {selectedListing.status === 'UNDER_REVIEW' && <><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('APPROVED')} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white">Approve</button><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('REJECTED')} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white">Reject & request changes</button></>}
+                  {selectedListing.status === 'APPROVED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('PUBLISHED')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Publish listing</button>}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 };
