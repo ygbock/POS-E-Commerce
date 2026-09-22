@@ -417,6 +417,10 @@ export class DiscoveryBusinessService {
     return this.transition(id, 'APPROVED', actor, reason || 'Listing approved.', client, true);
   }
 
+  async reject(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    return this.transition(id, 'REJECTED', actor, reason || 'Listing requires changes before resubmission.', client, true);
+  }
+
   async publish(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published.', client, true);
   }
