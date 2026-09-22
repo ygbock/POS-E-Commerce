@@ -1,10 +1,11 @@
 import React, { FormEvent, useState } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import { authClient } from '../../services/authClient';
 
 export const BusinessOwnerSignup: React.FC = () => {
   const [form, setForm] = useState({ name:'', email:'', password:'', confirmPassword:'', businessName:'', businessMode:'DISCOVERY_ONLY' as 'DISCOVERY_ONLY'|'DISCOVERY_AND_STORE' });
   const [loading,setLoading]=useState(false); const [error,setError]=useState('');
+  const [showPassword,setShowPassword]=useState(false); const [showConfirmPassword,setShowConfirmPassword]=useState(false);
   const submit=async(e:FormEvent)=>{e.preventDefault();setError('');if(form.password.length<12)return setError('Password must be at least 12 characters.');if(form.password!==form.confirmPassword)return setError('Passwords do not match.');setLoading(true);try{const result=await authClient.registerBusinessOwner({name:form.name,email:form.email,password:form.password,businessName:form.businessName,businessMode:form.businessMode});window.location.assign('/business/'+encodeURIComponent(result.business.id)+'?onboarding=1');}catch(err){setError(err instanceof Error?err.message:'Unable to create your business account.');}finally{setLoading(false);}};
   const set=(key:string,value:string)=>setForm(v=>({...v,[key]:value}));
   return <div className="min-h-screen bg-slate-950 px-4 py-10 text-slate-900 relative">
@@ -34,8 +35,22 @@ export const BusinessOwnerSignup: React.FC = () => {
       <div className="grid gap-5 sm:grid-cols-2">
         <label className="text-sm font-medium">Full name<input required value={form.name} onChange={e=>set('name',e.target.value)} className="mt-1.5 w-full rounded-xl border p-3" autoComplete="name"/></label>
         <label className="text-sm font-medium">Email<input required type="email" value={form.email} onChange={e=>set('email',e.target.value)} className="mt-1.5 w-full rounded-xl border p-3" autoComplete="email"/></label>
-        <label className="text-sm font-medium">Password<input required type="password" minLength={12} value={form.password} onChange={e=>set('password',e.target.value)} className="mt-1.5 w-full rounded-xl border p-3" autoComplete="new-password"/></label>
-        <label className="text-sm font-medium">Confirm password<input required type="password" minLength={12} value={form.confirmPassword} onChange={e=>set('confirmPassword',e.target.value)} className="mt-1.5 w-full rounded-xl border p-3" autoComplete="new-password"/></label>
+        <label className="text-sm font-medium">Password
+          <div className="relative mt-1.5">
+            <input required type={showPassword ? 'text' : 'password'} minLength={12} value={form.password} onChange={e=>set('password',e.target.value)} className="w-full rounded-xl border p-3 pr-11" autoComplete="new-password"/>
+            <button type="button" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 hover:text-slate-700">
+              {showPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+            </button>
+          </div>
+        </label>
+        <label className="text-sm font-medium">Confirm password
+          <div className="relative mt-1.5">
+            <input required type={showConfirmPassword ? 'text' : 'password'} minLength={12} value={form.confirmPassword} onChange={e=>set('confirmPassword',e.target.value)} className="w-full rounded-xl border p-3 pr-11" autoComplete="new-password"/>
+            <button type="button" onClick={()=>setShowConfirmPassword(v=>!v)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'} title={showConfirmPassword ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 hover:text-slate-700">
+              {showConfirmPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+            </button>
+          </div>
+        </label>
         <label className="text-sm font-medium sm:col-span-2">Business name<input required value={form.businessName} onChange={e=>set('businessName',e.target.value)} className="mt-1.5 w-full rounded-xl border p-3" placeholder="e.g. Freetown Mobile Hub"/></label>
       </div>
       <div className="mt-6"><p className="text-sm font-semibold">How do you want to use AbaCha?</p><div className="mt-3 grid gap-3 sm:grid-cols-2">
