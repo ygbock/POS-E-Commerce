@@ -117,6 +117,19 @@ async function main() {
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
   try {
+    // Merchant owner sign-in must resolve the owner organization server-side;
+    // the business owner should never need to know an internal organization ID.
+    const merchantLogin = await fetch(baseUrl + '/api/merchant/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'http-owner-a@example.test', password: 'OwnerPassword123!' }),
+    });
+    const merchantLoginBody = await merchantLogin.json();
+    assert.strictEqual(merchantLogin.status, 200);
+    assert.strictEqual(merchantLoginBody?.data?.user?.id, ownerA.user.id);
+    assert.strictEqual(merchantLoginBody?.data?.user?.role, 'business_owner');
+    assert.ok(merchantLoginBody?.data?.token);
+
     // OWNER: direct API access to owner-scoped workspaces and management operations.
     const ownerMe = await requestJson(baseUrl, '/api/merchant/me', actors.ownerA);
     assert.strictEqual(ownerMe.status, 200);
