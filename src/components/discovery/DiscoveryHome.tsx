@@ -313,42 +313,50 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   return (
     <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between ${className}`}>
       <div>
-        {/* ------------------------------------------------------------------ */}
-        {/* 1. Header with Sticky Navigation & Location Selector               */}
-        {/* ------------------------------------------------------------------ */}
-        <DiscoveryHeader
-          selectedCity={selectedCity}
-          selectedRadiusKm={radiusKm}
-          latitude={latitude}
-          longitude={longitude}
-          onLocationChange={handleLocationChange}
-          activeNav={activeType}
-          onNavigateSection={(sec) => {
-            setActiveType(sec);
-            syncToUrl({ type: sec });
-          }}
-        />
+        {/* Unified Top Banner and Hero with background image */}
+        <div 
+          className="relative bg-cover bg-center bg-no-repeat border-b border-slate-900"
+          style={{ backgroundImage: `url('/src/assets/images/kitchen_chef_hero_bg_1790069159511.jpg')` }}
+        >
+          {/* Rich dark mask overlay for high contrast readability */}
+          <div className="absolute inset-0 bg-slate-950/80" />
+          
+          <div className="relative z-10">
+            {/* Header with Sticky Navigation & Location Selector */}
+            <DiscoveryHeader
+              selectedCity={selectedCity}
+              selectedRadiusKm={radiusKm}
+              latitude={latitude}
+              longitude={longitude}
+              onLocationChange={handleLocationChange}
+              activeNav={activeType}
+              onNavigateSection={(sec) => {
+                setActiveType(sec);
+                syncToUrl({ type: sec });
+              }}
+              transparent={true}
+            />
 
-        {/* ------------------------------------------------------------------ */}
-        {/* 2. Hero Search Experience                                          */}
-        {/* ------------------------------------------------------------------ */}
-        <DiscoveryHero
-          query={query}
-          onQueryChange={setQuery}
-          onSearch={handleSearchSubmit}
-          activeType={activeType}
-          onTypeChange={(type) => {
-            setActiveType(type);
-            syncToUrl({ type });
-          }}
-          selectedCity={selectedCity}
-          onCityChange={(city) => {
-            handleLocationChange({ city });
-          }}
-          latitude={latitude}
-          longitude={longitude}
-          radiusKm={radiusKm}
-        />
+            {/* Hero Search Experience */}
+            <DiscoveryHero
+              query={query}
+              onQueryChange={setQuery}
+              onSearch={handleSearchSubmit}
+              activeType={activeType}
+              onTypeChange={(type) => {
+                setActiveType(type);
+                syncToUrl({ type });
+              }}
+              selectedCity={selectedCity}
+              onCityChange={(city) => {
+                handleLocationChange({ city });
+              }}
+              latitude={latitude}
+              longitude={longitude}
+              radiusKm={radiusKm}
+            />
+          </div>
+        </div>
 
         {/* ------------------------------------------------------------------ */}
         {/* 3. Main Discovery Canvas                                            */}
