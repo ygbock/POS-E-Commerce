@@ -338,6 +338,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
         {activeTab === 'dashboard' && (
           <DiscoveryBusinessDashboard
             business={selectedBusiness}
+            businessRole={businessRole}
             onNavigateTab={(tab) => setActiveTab(tab)}
             onOpenStoreConversion={() => canManageStore && setIsStoreConversionOpen(true)}
             onViewPublicListing={handleViewPublicCard}
