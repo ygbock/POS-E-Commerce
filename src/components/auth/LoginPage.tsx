@@ -22,7 +22,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
     setError('');
     setLoading(true);
     try {
-      const user = await authClient.login(email.trim(), password);
+      const isBusinessOwnerSignIn = window.location.pathname === '/business/signin';
+      const user = isBusinessOwnerSignIn
+        ? await authClient.loginBusinessOwner(email.trim(), password)
+        : await authClient.login(email.trim(), password);
       localStorage.setItem('abacha_login_email', email.trim());
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
       const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
