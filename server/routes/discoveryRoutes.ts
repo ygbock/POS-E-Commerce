@@ -1189,12 +1189,18 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                 l.location_type,l.service_radius_km
            FROM discovery_services s
            JOIN discovery_businesses b ON b.id=s.business_id
-           LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE
+           LEFT JOIN LATERAL (
+             SELECT l.*
+             FROM discovery_business_locations l
+             WHERE l.business_id=b.id AND l.is_active=TRUE
+             ORDER BY l.is_primary DESC,l.created_at ASC,l.id ASC
+             LIMIT 1
+           ) l ON TRUE
           WHERE s.is_active=TRUE
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
             AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))
-          LIMIT 300`,
-        [requestedServiceId],
+          ORDER BY s.id ASC
+          LIMIT 500`,
       );
 
       const ranked=rankDiscoveryServiceMatches(
