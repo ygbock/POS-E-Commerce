@@ -168,7 +168,7 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
         await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'REVIEW',$3,'REVIEW_DECIDED',$4,$5,$6,$7,$8)`,[eventId('trust'),row.business_id,req.params.id,row.status,status,req.auth!.userId,reason,{}]);
         return updated.rows[0];
       });
-      res.json({success:true,data:updated});
+      res.json({success:true,data:result});
     } catch (err) { next(err); }
   });
 
