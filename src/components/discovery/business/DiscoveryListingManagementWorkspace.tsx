@@ -63,6 +63,8 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
   useEffect(() => { void load(); }, [load]);
 
   const latestFeedback = workspace?.feedback?.[0] || null;
+  const latestModerationIssue = workspace?.issues?.[0] || null;
+  const hasModerationFeedback = Boolean(latestFeedback || moderationIssues.length > 0);
   const requiredItems = workspace?.readiness.items.filter((item) => item.required) || [];
   const readyCount = requiredItems.filter((item) => item.done).length;
   const readinessPercent = requiredItems.length ? Math.round((readyCount / requiredItems.length) * 100) : 0;
@@ -248,7 +250,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
         </div>
       </section>
 
-      {latestFeedback && (
+      {hasModerationFeedback && (
         <section className="rounded-3xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/20 p-6">
           <div className="flex items-start gap-3">
             <FileText className="w-5 h-5 text-rose-700 dark:text-rose-300 mt-0.5 shrink-0" />
@@ -256,8 +258,8 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="font-extrabold text-rose-900 dark:text-rose-200">Changes requested by moderation</h3>
-                  <p className="mt-2 text-sm leading-6 text-rose-900/80 dark:text-rose-100/80 whitespace-pre-wrap">{latestFeedback.reason}</p>
-                  <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">Returned on {new Date(latestFeedback.created_at).toLocaleString()}</p>
+                  <p className="mt-2 text-sm leading-6 text-rose-900/80 dark:text-rose-100/80 whitespace-pre-wrap">{latestFeedback?.reason || 'Platform moderation identified corrections that must be addressed before the listing can be resubmitted.'}</p>
+                  <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">Returned on {new Date(latestFeedback?.created_at || latestModerationIssue?.event_created_at || latestModerationIssue?.created_at || Date.now()).toLocaleString()}</p>
                 </div>
                 <button
                   type="button"
