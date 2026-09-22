@@ -10,6 +10,10 @@ async function main() {
   await runMigrations(db);
 
   await db.query(
+    `INSERT INTO organizations (id,name,slug) VALUES ('perf_discovery_org','Discovery Performance Fixture','perf-discovery-fixture') ON CONFLICT (id) DO NOTHING`,
+  );
+
+  await db.query(
     `INSERT INTO users
      (id,organization_id,email,name,password_hash,password_salt,role,is_active)
      VALUES ('perf-user','perf_discovery_org','perf-user@test.local','Discovery Performance Fixture','hash','salt','admin',TRUE)`,
