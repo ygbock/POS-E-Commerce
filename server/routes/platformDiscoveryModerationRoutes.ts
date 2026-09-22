@@ -92,7 +92,7 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
       else if (status === 'APPROVED') updated = await discoveryService.approve(req.params.id, actor, reason);
       else if (status === 'PUBLISHED') updated = await discoveryService.publish(req.params.id, actor, reason);
       else updated = await discoveryService.reject(req.params.id, actor, reason, undefined, normalizedIssues);
-      res.json({success:true,data:updated});
+      res.json({success:true,data:result});
     } catch (err) { next(err); }
   });
 
