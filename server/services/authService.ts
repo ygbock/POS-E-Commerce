@@ -417,6 +417,7 @@ export class AuthService {
       throw new Error('PLATFORM_ADMIN_SEED_PASSWORD_REQUIRED: Set ABACHA_PLATFORM_ADMIN_PASSWORD (minimum 12 characters) before running development seed.');
     }
 
+    const defaultUsers = [
       {
         id: 'usr_platform_admin',
         orgId: orgDefault,
@@ -425,7 +426,6 @@ export class AuthService {
         role: 'platform_admin' as UserRole,
         password: platformAdminPassword,
       },
-    const defaultUsers = [
       {
         id: 'usr_super_admin',
         orgId: orgDefault,
