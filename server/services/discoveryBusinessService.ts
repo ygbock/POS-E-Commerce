@@ -311,6 +311,26 @@ export class DiscoveryBusinessService {
     return { ready: items.every((item) => !item.required || item.done), items };
   }
 
+  async getListingModerationDetail(id: string, actor: { userId: string; role: string; organizationId?: string }, client?: DatabaseClient): Promise<any> {
+    const business = await this.repository.findById(id, client);
+    if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
+    this.assertModerator(actor, business);
+    const db = client || this.db;
+    const [locations, categories, settings, events, issues, services] = await Promise.all([
+      this.repository.listLocations(id, { activeOnly: true }, db),
+      this.repository.listCategories(id, db),
+      this.repository.getSettings(id, db),
+      db.query(`SELECT id,from_status,to_status,reason,actor_user_id,created_at FROM discovery_listing_events WHERE business_id=$1 ORDER BY created_at DESC LIMIT 50`, [id]),
+      db.query(`SELECT i.*, e.to_status AS event_status, e.created_at AS event_created_at
+                   FROM discovery_listing_moderation_issues i
+                   LEFT JOIN discovery_listing_events e ON e.id=i.listing_event_id
+                  WHERE i.business_id=$1 ORDER BY i.created_at DESC`, [id]),
+      db.query(`SELECT * FROM discovery_services WHERE business_id=$1 AND is_active=TRUE ORDER BY created_at DESC`, [id]),
+    ]);
+    const readiness = await this.getListingReadiness(id, db);
+    return { business, readiness, locations, categories, settings, services: services.rows, lifecycle: events.rows, issues: issues.rows };
+  }
+
   async getListingManagementWorkspace(id: string, actor: { userId: string; role: string; organizationId?: string }, client?: DatabaseClient): Promise<any> {
     const business = await this.repository.findById(id, client);
     if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
