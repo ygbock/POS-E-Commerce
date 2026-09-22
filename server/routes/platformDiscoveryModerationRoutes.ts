@@ -65,15 +65,7 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
       else if (status === 'APPROVED') updated = await discoveryService.approve(req.params.id, actor, reason);
       else if (status === 'PUBLISHED') updated = await discoveryService.publish(req.params.id, actor, reason);
       else {
-        updated = await discoveryService.reject(req.params.id, actor, reason);
-        const event = await db.query(`SELECT id FROM discovery_listing_events WHERE business_id=$1 AND to_status='REJECTED' ORDER BY created_at DESC LIMIT 1`, [req.params.id]);
-        const eventIdValue = event.rows[0]?.id || null;
-        await db.withTransaction(async (tx) => {
-          await tx.query(`UPDATE discovery_listing_moderation_issues SET status='SUPERSEDED',resolved_at=CURRENT_TIMESTAMP,resolved_by_user_id=$2 WHERE business_id=$1 AND status='OPEN'`, [req.params.id, req.auth!.userId]);
-          for (const issue of normalizedIssues) {
-            await tx.query(`INSERT INTO discovery_listing_moderation_issues(id,business_id,listing_event_id,issue_key,detail,status) VALUES($1,$2,$3,$4,$5,'OPEN')`, [randomUUID(),req.params.id,eventIdValue,issue.key,issue.detail]);
-          }
-        });
+        updated = await discoveryService.reject(req.params.id, actor, reason, undefined, normalizedIssues);
       }
       res.json({success:true,data:updated});
     } catch (err) { next(err); }
