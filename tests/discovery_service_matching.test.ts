@@ -63,6 +63,23 @@ async function main() {
   assert.strictEqual(result.length, 25, 'matching should cap provider fan-out');
   assert.ok(elapsed < 500, `500-candidate matching should remain bounded; took ${elapsed.toFixed(1)}ms`);
 
+  const malformed = rankDiscoveryServiceMatches({
+    description: 'solar installation',
+    serviceType: 'Solar Energy',
+    latitude: Number.NaN,
+    longitude: Number.POSITIVE_INFINITY,
+    budgetFrom: Number.NaN,
+    budgetTo: Number.POSITIVE_INFINITY,
+  }, [
+    { serviceId: 'svc_valid', businessId: 'biz_valid', serviceName: 'Solar Installation', serviceDescription: 'Solar panels', serviceType: 'Solar Energy', city: 'Freetown', priceFrom: 1000, priceTo: 5000 },
+    { serviceId: 'svc_bad', businessId: 'biz_bad', serviceName: 'Solar Installation', serviceDescription: 'Solar panels', serviceType: 'Solar Energy', latitude: 'not-a-number', longitude: 'not-a-number', serviceRadiusKm: 'not-a-number', priceFrom: 'not-a-number', priceTo: 'not-a-number' },
+  ]);
+  assert.ok(malformed.some(x => x.businessId === 'biz_valid'), 'malformed request numbers must not suppress valid matches');
+  assert.ok(malformed.some(x => x.businessId === 'biz_bad'), 'malformed optional candidate numbers must not create NaN scores');
+
+  const bounded = rankDiscoveryServiceMatches({ description: 'solar installation', serviceType: 'Solar Energy' }, many, 0);
+  assert.strictEqual(bounded.length, 25, 'invalid match limits should fall back to the safe default');
+
   console.log('Discovery service matching hardening tests passed.');
 }
 
