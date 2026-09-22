@@ -74,6 +74,50 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
     return statusCopy[business.listing_status] || business.listing_status;
   }, [business.listing_status, canResubmit, canSubmit]);
 
+  type FeedbackAction = {
+    key: string;
+    title: string;
+    detail: string;
+    tab: string;
+  };
+
+  const feedbackActions = useMemo<FeedbackAction[]>(() => {
+    const reason = latestFeedback?.reason?.trim();
+    if (!reason) return [];
+
+    const normalized = reason.toLowerCase();
+    const actions: FeedbackAction[] = [];
+    const add = (key: string, title: string, detail: string, tab: string) => {
+      if (!actions.some((item) => item.key === key)) actions.push({ key, title, detail, tab });
+    };
+
+    if (/contact|phone|whatsapp|email|website/.test(normalized)) {
+      add('contact', 'Review contact information', 'Check the phone, WhatsApp, email, and website details used for customer contact.', 'listing');
+    }
+    if (/categor|business type|industry/.test(normalized)) {
+      add('category', 'Review business category', 'Confirm the listing uses the correct business type and active Discovery category.', 'listing');
+    }
+    if (/description|about|profile|identity|name|business name|logo|cover/.test(normalized)) {
+      add('profile', 'Review business profile', 'Check the business name, description, and listing identity details.', 'listing');
+    }
+    if (/location|address|city|district|region|map|coordinate|latitude|longitude|gps/.test(normalized)) {
+      add('location', 'Review location details', 'Check the primary address, map pin, city and service-area coordinates.', 'locations');
+    }
+    if (/service|offering|booking|quote/.test(normalized)) {
+      add('offering', 'Review services & offerings', 'Check the service name, description, type, pricing and request/quote setup.', 'services');
+    }
+    if (/store|product|catalog|inventory/.test(normalized)) {
+      add('store', 'Review store setup', 'Check the store/catalog information associated with this listing.', 'settings');
+    }
+
+    if (!actions.length) {
+      add('submission', 'Review the submission checklist', 'The moderation note is not tied to a known field. Review the full submission workspace before resubmitting.', 'submission');
+    }
+
+    return actions;
+  }, [latestFeedback?.reason]);
+
+
   const submit = async (resubmit = false) => {
     setActionBusy(true);
     setError(null);
@@ -162,13 +206,47 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
       </section>
 
       {latestFeedback && (
-        <section className="rounded-3xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 p-6">
+        <section className="rounded-3xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/20 p-6">
           <div className="flex items-start gap-3">
-            <FileText className="w-5 h-5 text-amber-700 mt-0.5" />
+            <FileText className="w-5 h-5 text-rose-700 dark:text-rose-300 mt-0.5 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-extrabold text-amber-900 dark:text-amber-200">Moderation feedback</h3>
-              <p className="mt-2 text-sm text-amber-900/80 dark:text-amber-100/80 whitespace-pre-wrap">{latestFeedback.reason}</p>
-              <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Returned on {new Date(latestFeedback.created_at).toLocaleString()}</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="font-extrabold text-rose-900 dark:text-rose-200">Changes requested by moderation</h3>
+                  <p className="mt-2 text-sm leading-6 text-rose-900/80 dark:text-rose-100/80 whitespace-pre-wrap">{latestFeedback.reason}</p>
+                  <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">Returned on {new Date(latestFeedback.created_at).toLocaleString()}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('submission')}
+                  className="shrink-0 rounded-xl border border-rose-200 bg-white/70 px-3 py-2 text-xs font-bold text-rose-800 hover:bg-white dark:border-rose-800 dark:bg-slate-900/50 dark:text-rose-200"
+                >
+                  Review checklist
+                </button>
+              </div>
+
+              <div className="mt-5">
+                <div className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">Suggested fixes</div>
+                <div className="mt-2 grid gap-2">
+                  {feedbackActions.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      onClick={() => onNavigateTab(action.tab)}
+                      className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-rose-200/80 bg-white/70 p-4 text-left transition hover:border-rose-400 hover:bg-white dark:border-rose-900/70 dark:bg-slate-900/40 dark:hover:bg-slate-900"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-sm font-extrabold text-slate-900 dark:text-white">{action.title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-600 dark:text-slate-300">{action.detail}</span>
+                      </span>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-rose-600 transition-transform group-hover:translate-x-0.5" />
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                  These are guided destinations based on the moderation note. After making the correction, return here to re-check readiness and resubmit.
+                </p>
+              </div>
             </div>
           </div>
         </section>
