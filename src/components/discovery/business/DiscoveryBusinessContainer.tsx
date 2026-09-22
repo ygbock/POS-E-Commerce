@@ -82,7 +82,11 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   openOnboarding = false,
   onNavigateCustomerDiscovery,
 }) => {
-  const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const key = `abacha.discovery.business.tab:${initialBusinessId || 'default'}`;
+    const saved = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+    return saved || initialTab;
+  });
   const [businesses, setBusinesses] = useState<DiscoveryBusiness[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<DiscoveryBusiness | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -95,6 +99,14 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   const [onboardingBusinessId, setOnboardingBusinessId] = useState<string | undefined>(openOnboarding ? initialBusinessId : undefined);
   const [hoursSelectedLocId, setHoursSelectedLocId] = useState<string | undefined>(undefined);
   const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (selectedBusiness?.id) {
+      window.localStorage.setItem('abacha.discovery.business.selected', selectedBusiness.id);
+      window.localStorage.setItem(`abacha.discovery.business.tab:${selectedBusiness.id}`, activeTab);
+    }
+  }, [activeTab, selectedBusiness?.id]);
 
   const businessRole = ((selectedBusiness as DiscoveryBusiness & { membership_role?: BusinessRole })?.membership_role || 'OWNER') as BusinessRole;
   const visibleTabs = TABS.filter((tab) => ROLE_TAB_ACCESS[businessRole].includes(tab.id));
@@ -121,7 +133,16 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
           }
         } else {
           setRequestedBusinessMissing(false);
-          setSelectedBusiness(list[0]);
+          const savedBusinessId = typeof window !== 'undefined' ? window.localStorage.getItem('abacha.discovery.business.selected') : null;
+          const saved = savedBusinessId ? list.find((b) => b.id === savedBusinessId) : undefined;
+          const nextBusiness = saved || list[0];
+          setSelectedBusiness(nextBusiness);
+          if (nextBusiness) {
+            const savedTab = typeof window !== 'undefined'
+              ? window.localStorage.getItem(`abacha.discovery.business.tab:${nextBusiness.id}`)
+              : null;
+            if (savedTab) setActiveTab(savedTab);
+          }
         }
       } else {
         setRequestedBusinessMissing(Boolean(initialBusinessId));
