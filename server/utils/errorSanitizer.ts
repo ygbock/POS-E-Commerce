@@ -354,10 +354,17 @@ export function apiErrorHandler(err: any, req: Request, res: Response, _next?: a
 
   // Always log server-side with context, never leak stack to client
   if (status >= 500) {
+    // Server logs are also treated as a security boundary: sanitize credentials,
+    // connection strings, paths, trace identifiers, and stack details before emission.
+    const safeLogMessage = sanitizeApiErrorMessage(String(err?.message || ''));
+    const safeLogStack = process.env.NODE_ENV === 'production'
+      ? undefined
+      : sanitizeApiErrorMessage(String(err?.stack || ''));
+
     console.error(`[AbaCha API Error] [${req.method} ${req.originalUrl || req.url}] Status: ${status}`, {
       code: body.error.code,
-      message: err?.message,
-      stack: process.env.NODE_ENV === 'production' ? undefined : err?.stack,
+      message: safeLogMessage,
+      stack: safeLogStack,
       requestId: body.error.requestId,
       caller: (req as any).auth ? { userId: (req as any).auth.userId, orgId: (req as any).auth.organizationId } : 'unauthenticated',
     });
