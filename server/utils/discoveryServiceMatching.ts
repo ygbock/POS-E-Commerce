@@ -39,6 +39,21 @@ const STOP_WORDS = new Set([
   'please','help','looking','local','business','provider',
 ]);
 
+function finiteNumber(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function validLatitude(value: unknown): number | null {
+  const number = finiteNumber(value);
+  return number != null && number >= -90 && number <= 90 ? number : null;
+}
+
+function validLongitude(value: unknown): number | null {
+  const number = finiteNumber(value);
+  return number != null && number >= -180 && number <= 180 ? number : null;
+}
+
 export function discoveryMatchTokens(value: unknown): string[] {
   const normalized = String(value || '')
     .toLowerCase()
@@ -64,6 +79,12 @@ export function rankDiscoveryServiceMatches(
   rows: DiscoveryServiceMatchCandidate[],
   maxMatches = 25,
 ): DiscoveryServiceMatchResult[] {
+  const limit = Number.isInteger(maxMatches) && maxMatches > 0 ? maxMatches : 25;
+  const requestLatitude = validLatitude(request.latitude);
+  const requestLongitude = validLongitude(request.longitude);
+  const requestHasCoordinates = requestLatitude != null && requestLongitude != null;
+  const requestBudgetFrom = finiteNumber(request.budgetFrom);
+  const requestBudgetTo = finiteNumber(request.budgetTo);
   const requestTokens = discoveryMatchTokens([request.serviceType, request.description].filter(Boolean).join(' '));
   const requestTypeTokens = discoveryMatchTokens(request.serviceType || '');
   const candidates = new Map<string, DiscoveryServiceMatchResult>();
@@ -93,11 +114,16 @@ export function rankDiscoveryServiceMatches(
     if (request.district && row.district && request.district.toLowerCase() === row.district.toLowerCase()) locationScore += 0.07;
     if (request.region && row.region && request.region.toLowerCase() === row.region.toLowerCase()) locationScore += 0.04;
 
-    if (request.latitude != null && request.longitude != null && row.latitude != null && row.longitude != null) {
+    const rowLatitude = validLatitude(row.latitude);
+    const rowLongitude = validLongitude(row.longitude);
+    if (requestHasCoordinates && rowLatitude != null && rowLongitude != null) {
       const distanceKm = discoveryHaversineKm(
-        Number(request.latitude), Number(request.longitude), Number(row.latitude), Number(row.longitude),
+        requestLatitude,
+        requestLongitude,
+        rowLatitude,
+        rowLongitude,
       );
-      const radius = row.serviceRadiusKm == null ? null : Number(row.serviceRadiusKm);
+      const radius = finiteNumber(row.serviceRadiusKm);
       if (String(row.locationType || '').toUpperCase() === 'SERVICE_AREA' && radius != null && radius > 0) {
         locationCompatible = distanceKm <= radius;
       }
@@ -108,13 +134,13 @@ export function rankDiscoveryServiceMatches(
 
     if (!locationCompatible) continue;
 
-    const serviceFrom = row.priceFrom == null ? null : Number(row.priceFrom);
-    const serviceTo = row.priceTo == null ? null : Number(row.priceTo);
-    if (request.budgetTo != null && serviceFrom != null && serviceFrom > request.budgetTo) continue;
-    if (request.budgetFrom != null && serviceTo != null && serviceTo < request.budgetFrom) continue;
+    const serviceFrom = finiteNumber(row.priceFrom);
+    const serviceTo = finiteNumber(row.priceTo);
+    if (requestBudgetTo != null && serviceFrom != null && serviceFrom > requestBudgetTo) continue;
+    if (requestBudgetFrom != null && serviceTo != null && serviceTo < requestBudgetFrom) continue;
 
     const budgetScore =
-      (request.budgetTo != null || request.budgetFrom != null) && (serviceFrom != null || serviceTo != null)
+      (requestBudgetTo != null || requestBudgetFrom != null) && (serviceFrom != null || serviceTo != null)
         ? 0.08
         : 0;
 
@@ -130,6 +156,6 @@ export function rankDiscoveryServiceMatches(
 
   return Array.from(candidates.values())
     .sort((a, b) => b.score - a.score || a.businessId.localeCompare(b.businessId))
-    .slice(0, maxMatches)
+    .slice(0, limit)
     .map(x => ({ ...x, score: Number(x.score.toFixed(3)) }));
 }
