@@ -21,6 +21,7 @@ import {
   User,
   Heart,
   UserCheck,
+  ClipboardPlus,
 } from 'lucide-react';
 import type { DiscoveryLocation, DiscoveryService, DiscoveryReview, DiscoveryPublicBusinessProfile } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
@@ -385,6 +386,14 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                   <span>{favoriteBusy ? 'Saving…' : isFavorite ? 'Saved' : 'Save'}</span>
                 </button>
 
+
+                <a
+                  href="/discover/request-service"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
+                >
+                  <ClipboardPlus className="w-4 h-4" />
+                  <span>Request Service</span>
+                </a>
 
                 <button
                   type="button"
