@@ -97,6 +97,26 @@ class AuthClient {
     return { ...data.data.user, business: data.data.business };
   }
 
+  async loginBusinessOwner(email: string, password: string): Promise<AuthUser> {
+    const res = await fetch('/api/merchant/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), password }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error?.message || 'Unable to sign in to the business owner portal.');
+    }
+
+    this.currentToken = data.data.token;
+    this.currentUser = data.data.user;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(TOKEN_KEY, data.data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
+    }
+    return data.data.user;
+  }
+
   async login(email: string, password: string, organizationId?: string): Promise<AuthUser> {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
