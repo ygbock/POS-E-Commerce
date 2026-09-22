@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
+  LocateFixed,
   MapPin,
   Save,
   Sparkles,
@@ -79,6 +80,8 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locationAccuracyM, setLocationAccuracyM] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
@@ -139,6 +142,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     }));
     setLocationId(primary?.id || null);
     setServiceId(primaryService?.id || null);
+    setLocationAccuracyM(null);
     window.localStorage.setItem(DRAFT_KEY, draft.id);
     setShowResume(false);
     setSavedMessage('Draft resumed.');
@@ -252,6 +256,47 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     return null;
   };
 
+  const useMyLocation = () => {
+    if (saving || submitting || locating) return;
+    if (!navigator.geolocation) {
+      setError('Location services are not supported by this device or browser.');
+      return;
+    }
+
+    setLocating(true);
+    setError(null);
+    setSavedMessage(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        update('latitude', position.coords.latitude.toFixed(6));
+        update('longitude', position.coords.longitude.toFixed(6));
+        setLocationAccuracyM(
+          Number.isFinite(position.coords.accuracy) && position.coords.accuracy >= 0
+            ? Math.round(position.coords.accuracy)
+            : null,
+        );
+        setSavedMessage(
+          position.coords.accuracy > 0
+            ? `Location found. GPS accuracy is approximately ${Math.round(position.coords.accuracy)} m.`
+            : 'Location found from your device.',
+        );
+        setLocating(false);
+      },
+      (positionError) => {
+        const message =
+          positionError.code === 1
+            ? 'Location permission was denied. Allow location access in your browser/device settings and try again.'
+            : positionError.code === 2
+              ? 'Your device could not determine its location. Check that GPS/location services are enabled and try again.'
+              : 'Unable to determine your current location. Please try again or set the pin manually.';
+        setError(message);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
   const saveLocation = async (draftBusiness?: DiscoveryBusiness | null) => {
     let id = draftBusiness?.id || businessId;
     if (!id) {
@@ -274,6 +319,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
         latitude: form.latitude.trim() ? Number(form.latitude) : undefined,
         longitude: form.longitude.trim() ? Number(form.longitude) : undefined,
         service_radius_km: form.serviceRadiusKm.trim() ? Number(form.serviceRadiusKm) : undefined,
+        coordinateAccuracyM: locationAccuracyM ?? undefined,
         is_primary: true,
         is_active: true,
       };
@@ -547,6 +593,21 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
               <input value={form.city} onChange={(e) => update('city', e.target.value)} placeholder="City *" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
               <input value={form.district} onChange={(e) => update('district', e.target.value)} placeholder="District" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
               <input value={form.region} onChange={(e) => update('region', e.target.value)} placeholder="Region" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Pinpoint your business</p>
+                <p className="text-[11px] text-slate-500">Use your device GPS to place the pin at your current location, then adjust it on the map if needed.</p>
+              </div>
+              <button
+                type="button"
+                onClick={useMyLocation}
+                disabled={saving || submitting || locating}
+                className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300 disabled:opacity-50"
+              >
+                {locating ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
+                {locating ? 'Finding your location…' : 'Use my location'}
+              </button>
             </div>
             <DiscoveryLocationMapEditor
               latitude={form.latitude.trim() ? Number(form.latitude) : null}
