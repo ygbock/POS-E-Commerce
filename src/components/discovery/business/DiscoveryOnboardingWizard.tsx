@@ -329,20 +329,23 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
 
     setSaving(true);
     try {
+      // The discovery location API accepts the canonical camelCase location
+      // contract. Keep the onboarding payload aligned with that contract so
+      // primary status and coordinates are actually persisted.
       const payload = {
         name: form.locationName.trim(),
-        location_type: 'STORE',
-        address_line_1: form.address.trim() || undefined,
+        locationType: 'STORE',
+        addressLine1: form.address.trim() || undefined,
         city: form.city.trim(),
         district: form.district.trim() || undefined,
         region: form.region.trim() || undefined,
         country: 'Sierra Leone',
         latitude: form.latitude.trim() ? Number(form.latitude) : undefined,
         longitude: form.longitude.trim() ? Number(form.longitude) : undefined,
-        service_radius_km: form.serviceRadiusKm.trim() ? Number(form.serviceRadiusKm) : undefined,
+        serviceRadiusKm: form.serviceRadiusKm.trim() ? Number(form.serviceRadiusKm) : undefined,
         coordinateAccuracyM: locationAccuracyM ?? undefined,
-        is_primary: true,
-        is_active: true,
+        isPrimary: true,
+        isActive: true,
       };
       if (locationId) {
         await discoveryApi.updateLocation(id, locationId, payload as never);
