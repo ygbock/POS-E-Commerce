@@ -112,13 +112,16 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
                 <path d="M12 2L4 5V11C4 16.52 7.42 21.64 12 23C16.58 21.64 20 16.52 20 11V5L12 2Z" fill="#f97316" stroke="#f59e0b" strokeWidth="2"/>
                 <text x="12" y="15.5" fill="white" fontSize="11" fontWeight="900" textAnchor="middle">s</text>
               </svg>
-              <div className="flex items-baseline">
-                <span className="font-sans font-black text-white tracking-tight text-xl leading-none">
-                  AbaCha
+              <div className="flex flex-col">
+                <div className="flex items-baseline">
+                  <span className="font-sans font-black text-white tracking-tight text-lg leading-none">
+                    AbaCha
+                  </span>
+                  <sup className="text-[9px] font-bold text-slate-400 align-super leading-none ml-0.5">®</sup>
+                </div>
+                <span className="text-[10px] font-semibold tracking-widest text-indigo-400 uppercase mt-1 leading-none">
+                  Discovery
                 </span>
-                <span className="font-light text-slate-300">Discovery</span>
-                <sup className="text-[10px] font-bold text-slate-400 align-super leading-none ml-0.5">®</sup>
-                
               </div>
             </a>
 

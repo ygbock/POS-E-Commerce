@@ -22,7 +22,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
     setError('');
     setLoading(true);
     try {
-      const isBusinessOwnerSignIn = window.location.pathname === '/business/signin';
+      const isBusinessOwnerSignIn = window.location.pathname === '/business/signin' || window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
       const user = isBusinessOwnerSignIn
         ? await authClient.loginBusinessOwner(email.trim(), password)
         : await authClient.login(email.trim(), password);
@@ -30,7 +30,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
       const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
         ? redirectParam
-        : window.location.pathname === '/business/signin'
+        : (user.role === 'business_owner' || window.location.pathname.startsWith('/business'))
           ? '/business'
           : '/discover';
 
