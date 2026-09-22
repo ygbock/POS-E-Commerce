@@ -102,7 +102,27 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
     tab: string;
   };
 
+  const moderationIssues = (workspace?.issues || []).filter((issue) => issue.status === 'OPEN');
+
+  const issueActions = useMemo<FeedbackAction[]>(() => {
+    const labels: Record<string, { title: string; detail: string; tab: string }> = {
+      identity: { title: 'Review business identity', detail: 'Check the business name, profile identity, logo and cover information.', tab: 'listing' },
+      description: { title: 'Review business description', detail: 'Update the short description or full profile description used in Discovery.', tab: 'listing' },
+      contact: { title: 'Review contact information', detail: 'Check phone, WhatsApp, email and website details.', tab: 'listing' },
+      category: { title: 'Review business category', detail: 'Confirm the business type and active Discovery category.', tab: 'listing' },
+      location: { title: 'Review location details', detail: 'Check the primary address, city, service area and map pin.', tab: 'locations' },
+      coordinates: { title: 'Review map coordinates', detail: 'Confirm the primary location has accurate latitude and longitude.', tab: 'locations' },
+      offering: { title: 'Review services & offerings', detail: 'Check service details, pricing, booking and quote settings.', tab: 'services' },
+      store: { title: 'Review store setup', detail: 'Check the store/catalog information associated with this listing.', tab: 'settings' },
+    };
+    return moderationIssues.map((issue) => {
+      const meta = labels[issue.issue_key] || labels.identity;
+      return { key: issue.id, title: meta.title, detail: issue.detail?.trim() || meta.detail, tab: meta.tab };
+    });
+  }, [workspace?.issues]);
+
   const feedbackActions = useMemo<FeedbackAction[]>(() => {
+    if (moderationIssues.length) return [];
     const reason = latestFeedback?.reason?.trim();
     if (!reason) return [];
 
@@ -111,32 +131,15 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
     const add = (key: string, title: string, detail: string, tab: string) => {
       if (!actions.some((item) => item.key === key)) actions.push({ key, title, detail, tab });
     };
-
-    if (/contact|phone|whatsapp|email|website/.test(normalized)) {
-      add('contact', 'Review contact information', 'Check the phone, WhatsApp, email, and website details used for customer contact.', 'listing');
-    }
-    if (/categor|business type|industry/.test(normalized)) {
-      add('category', 'Review business category', 'Confirm the listing uses the correct business type and active Discovery category.', 'listing');
-    }
-    if (/description|about|profile|identity|name|business name|logo|cover/.test(normalized)) {
-      add('profile', 'Review business profile', 'Check the business name, description, and listing identity details.', 'listing');
-    }
-    if (/location|address|city|district|region|map|coordinate|latitude|longitude|gps/.test(normalized)) {
-      add('location', 'Review location details', 'Check the primary address, map pin, city and service-area coordinates.', 'locations');
-    }
-    if (/service|offering|booking|quote/.test(normalized)) {
-      add('offering', 'Review services & offerings', 'Check the service name, description, type, pricing and request/quote setup.', 'services');
-    }
-    if (/store|product|catalog|inventory/.test(normalized)) {
-      add('store', 'Review store setup', 'Check the store/catalog information associated with this listing.', 'settings');
-    }
-
-    if (!actions.length) {
-      add('submission', 'Review the submission checklist', 'The moderation note is not tied to a known field. Review the full submission workspace before resubmitting.', 'submission');
-    }
-
+    if (/contact|phone|whatsapp|email|website/.test(normalized)) add('contact', 'Review contact information', 'Check the phone, WhatsApp, email, and website details used for customer contact.', 'listing');
+    if (/categor|business type|industry/.test(normalized)) add('category', 'Review business category', 'Confirm the listing uses the correct business type and active Discovery category.', 'listing');
+    if (/description|about|profile|identity|name|business name|logo|cover/.test(normalized)) add('profile', 'Review business profile', 'Check the business name, description, and listing identity details.', 'listing');
+    if (/location|address|city|district|region|map|coordinate|latitude|longitude|gps/.test(normalized)) add('location', 'Review location details', 'Check the primary address, map pin, city and service-area coordinates.', 'locations');
+    if (/service|offering|booking|quote/.test(normalized)) add('offering', 'Review services & offerings', 'Check the service name, description, type, pricing and request/quote setup.', 'services');
+    if (/store|product|catalog|inventory/.test(normalized)) add('store', 'Review store setup', 'Check the store/catalog information associated with this listing.', 'settings');
+    if (!actions.length) add('submission', 'Review the submission checklist', 'The moderation note is not tied to a known field. Review the full submission workspace before resubmitting.', 'submission');
     return actions;
-  }, [latestFeedback?.reason]);
+  }, [latestFeedback?.reason, moderationIssues.length]);
 
 
   const submit = async (resubmit = false) => {
@@ -265,6 +268,22 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
                 </button>
               </div>
 
+              {moderationIssues.length > 0 && (
+                <div className="mt-5">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">Required corrections</div>
+                  <div className="mt-2 grid gap-2">
+                    {issueActions.map((action) => (
+                      <button key={action.key} type="button" onClick={() => onNavigateTab(action.tab)} className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-rose-200/80 bg-white/70 p-4 text-left transition hover:border-rose-400 hover:bg-white dark:border-rose-900/70 dark:bg-slate-900/40 dark:hover:bg-slate-900">
+                        <span className="min-w-0"><span className="block text-sm font-extrabold text-slate-900 dark:text-white">{action.title}</span><span className="mt-1 block text-xs leading-5 text-slate-600 dark:text-slate-300">{action.detail}</span></span>
+                        <ArrowRight className="h-4 w-4 shrink-0 text-rose-600" />
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-[11px] text-rose-700/80 dark:text-rose-300/80">These corrections were recorded by platform moderation. Complete them, then return here to re-check readiness and resubmit.</p>
+                </div>
+              )}
+
+              {moderationIssues.length === 0 && (
               <div className="mt-5">
                 <div className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">Suggested fixes</div>
                 <div className="mt-2 grid gap-2">
@@ -287,6 +306,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
                   These are guided destinations based on the moderation note. After making the correction, return here to re-check readiness and resubmit.
                 </p>
               </div>
+              )}
             </div>
           </div>
         </section>
