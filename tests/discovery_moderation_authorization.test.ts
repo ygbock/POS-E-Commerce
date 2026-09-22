@@ -42,11 +42,16 @@ assert.throws(
   /TENANT_ACCESS_DENIED:Administrators may moderate only businesses belonging to their organization/,
 );
 
-// Platform roles are intentionally not implicitly moderator roles.
-// They require an explicit moderation policy rather than inheriting tenant-admin power.
-for (const role of ['platform_admin', 'platform_support', 'platform_finance', 'system_owner']) {
+// Platform trust roles are platform-wide moderators.
+for (const role of ['platform_admin', 'system_owner']) {
+  assert.doesNotThrow(() => assertModerator({ userId: role + '-1', role }, businessA));
+  assert.doesNotThrow(() => assertModerator({ userId: role + '-1', role }, businessWithoutOrg));
+}
+
+// Platform support/finance do not inherit moderation authority.
+for (const role of ['platform_support', 'platform_finance']) {
   assert.throws(
-    () => assertModerator({ userId: `${role}-1`, role }, businessA),
+    () => assertModerator({ userId: role + '-1', role }, businessA),
     /PERMISSION_DENIED:Discovery moderation requires administrator authorization/,
   );
 }
