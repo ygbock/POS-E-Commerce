@@ -58,7 +58,8 @@
     "test:discovery-authorization": "tsx tests/discovery_business_authorization.test.ts",
     "test:discovery-moderation": "tsx tests/discovery_moderation_authorization.test.ts",
     "test:discovery-http-authorization": "tsx tests/discovery_business_http_authorization.test.ts",
-    "test:discovery-audit": "tsx tests/discovery_audit_logging.test.ts"
+    "test:discovery-audit": "tsx tests/discovery_audit_logging.test.ts",
+    "test:discovery-service-request-matching-http": "tsx tests/discovery_service_request_matching_http.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
