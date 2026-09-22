@@ -370,8 +370,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const r = await tx.query(`UPDATE discovery_business_locations SET
           name=$1,location_type=$2,address_line_1=$3,address_line_2=$4,city=$5,district=$6,region=$7,country=$8,postal_code=$9,
           latitude=$10,longitude=$11,service_radius_km=$12,phone=$13,is_primary=$14,is_active=$15,
-          location_quality_status=$16,location_source=$17,address_completeness_score=$18,coordinate_accuracy_m=$19,quality_notes=$20,
-          location_verified_at=CASE WHEN $16='VERIFIED' THEN COALESCE(location_verified_at,CURRENT_TIMESTAMP) ELSE NULL END,
+          location_quality_status=$16::varchar(16),location_source=$17,address_completeness_score=$18,coordinate_accuracy_m=$19,quality_notes=$20,
+          location_verified_at=CASE WHEN $16::varchar(16)='VERIFIED' THEN COALESCE(location_verified_at,CURRENT_TIMESTAMP) ELSE NULL END,
           updated_at=CURRENT_TIMESTAMP
           WHERE business_id=$21 AND id=$22 RETURNING *`,
           [x.name,x.locationType,x.addressLine1,x.addressLine2,x.city,x.district,x.region,x.country,x.postalCode,x.latitude,x.longitude,
