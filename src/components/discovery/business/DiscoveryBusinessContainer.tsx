@@ -94,6 +94,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(openOnboarding);
   const [onboardingBusinessId, setOnboardingBusinessId] = useState<string | undefined>(openOnboarding ? initialBusinessId : undefined);
   const [hoursSelectedLocId, setHoursSelectedLocId] = useState<string | undefined>(undefined);
+  const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
   const businessRole = ((selectedBusiness as DiscoveryBusiness & { membership_role?: BusinessRole })?.membership_role || 'OWNER') as BusinessRole;
   const visibleTabs = TABS.filter((tab) => ROLE_TAB_ACCESS[businessRole].includes(tab.id));
@@ -152,6 +153,25 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
     }
   }, [activeTab, businessRole]);
 
+  const handleOpenOnboardingStep = (step: number) => {
+    if (!selectedBusiness) return;
+    if (selectedBusiness.listing_status === 'DRAFT') {
+      setOnboardingStep(Math.min(6, Math.max(1, step)) as 1 | 2 | 3 | 4 | 5 | 6);
+      setOnboardingBusinessId(selectedBusiness.id);
+      setIsOnboardingOpen(true);
+      return;
+    }
+    // Submitted/rejected/published businesses use their lifecycle-specific management panels.
+    const tabByStep: Record<number, string> = {
+      2: 'listing',
+      3: 'listing',
+      4: 'locations',
+      5: 'services',
+      6: 'submission',
+    };
+    setActiveTab(tabByStep[step] || 'submission');
+  };
+
   const handleBusinessCreated = (newBiz: DiscoveryBusiness) => {
     setBusinesses((prev) => [newBiz, ...prev]);
     setSelectedBusiness(newBiz);
@@ -191,6 +211,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
       <div className="py-8 px-4 max-w-4xl mx-auto">
         <DiscoveryOnboardingWizard
           initialBusinessId={onboardingBusinessId}
+          initialStep={onboardingStep}
           onSuccess={handleBusinessCreated}
           onCancel={businesses.length > 0 ? () => {
             setIsOnboardingOpen(false);
@@ -340,6 +361,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
             business={selectedBusiness}
             businessRole={businessRole}
             onNavigateTab={(tab) => setActiveTab(tab)}
+            onOpenOnboardingStep={handleOpenOnboardingStep}
             onOpenStoreConversion={() => canManageStore && setIsStoreConversionOpen(true)}
             onViewPublicListing={handleViewPublicCard}
           />
