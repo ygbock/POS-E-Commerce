@@ -118,6 +118,32 @@ export interface DiscoveryListingFeedback {
   created_at: string;
 }
 
+export type DiscoveryListingModerationIssueKey =
+  | 'identity'
+  | 'description'
+  | 'contact'
+  | 'category'
+  | 'location'
+  | 'coordinates'
+  | 'offering'
+  | 'store';
+
+export type DiscoveryListingModerationIssueStatus = 'OPEN' | 'RESOLVED' | 'SUPERSEDED';
+
+export interface DiscoveryListingModerationIssue {
+  id: string;
+  business_id: string;
+  listing_event_id?: string | null;
+  issue_key: DiscoveryListingModerationIssueKey;
+  detail?: string | null;
+  status: DiscoveryListingModerationIssueStatus;
+  created_at: string;
+  resolved_at?: string | null;
+  resolved_by_user_id?: string | null;
+  event_status?: DiscoveryListingStatus | null;
+  event_created_at?: string | null;
+}
+
 export interface DiscoveryListingManagementWorkspace {
   business: DiscoveryBusiness;
   readiness: { ready: boolean; items: DiscoveryListingReadinessItem[] };
@@ -125,6 +151,7 @@ export interface DiscoveryListingManagementWorkspace {
   categories: DiscoveryCategory[];
   settings: DiscoveryBusinessSettings;
   feedback: DiscoveryListingFeedback[];
+  issues: DiscoveryListingModerationIssue[];
   lifecycle: DiscoveryListingFeedback[];
   verification: {
     status: DiscoveryVerificationStatus;
