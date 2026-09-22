@@ -418,7 +418,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-5 gap-2">
+        <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-6">
           {[
             ['1', 'Model'],
             ['2', 'Business'],
