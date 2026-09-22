@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
@@ -17,18 +17,55 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
       const status = String(req.query.status || 'SUBMITTED').trim().toUpperCase();
       const allowed = ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PUBLISHED'];
       if (!allowed.includes(status)) return res.status(422).json({ success:false, error:{code:'INVALID_STATUS',message:'Invalid listing moderation status.'} });
+
+      const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+      const pageSize = Math.min(100, Math.max(10, Number.parseInt(String(req.query.pageSize || '25'), 10) || 25));
+      const search = String(req.query.search || '').trim().slice(0, 120);
+      const mode = String(req.query.mode || '').trim().toUpperCase();
+      const verification = String(req.query.verification || '').trim().toUpperCase();
+      const hasIssues = String(req.query.hasIssues || '').trim().toLowerCase();
+      const offset = (page - 1) * pageSize;
+
+      const where = ['b.listing_status=$1'];
+      const params: unknown[] = [status];
+      let n = 2;
+      if (search) {
+        where.push(`(b.name ILIKE $${n} OR b.slug ILIKE $${n} OR b.business_type ILIKE $${n})`);
+        params.push(`%${search.replace(/[%_]/g, '\\$&')}%`);
+        n++;
+      }
+      if (mode && ['DISCOVERY_ONLY','DISCOVERY_AND_STORE'].includes(mode)) {
+        where.push(`b.business_mode=$${n}`);
+        params.push(mode);
+        n++;
+      }
+      if (verification && ['PENDING','VERIFIED','REJECTED','UNVERIFIED'].includes(verification)) {
+        where.push(`b.verification_status=$${n}`);
+        params.push(verification);
+        n++;
+      }
+      if (hasIssues === 'true') where.push(`EXISTS (SELECT 1 FROM discovery_listing_moderation_issues i WHERE i.business_id=b.id AND i.status='OPEN')`);
+      if (hasIssues === 'false') where.push(`NOT EXISTS (SELECT 1 FROM discovery_listing_moderation_issues i WHERE i.business_id=b.id AND i.status='OPEN')`);
+
+      const count = await db.query(
+        `SELECT COUNT(*)::int AS total FROM discovery_businesses b WHERE ${where.join(' AND ')}`,
+        params,
+      );
+      const total = Number(count.rows[0]?.total || 0);
+
+      const dataParams = [...params, pageSize, offset];
       const r = await db.query(
         `SELECT b.id,b.name,b.slug,b.business_type,b.business_mode,b.organization_id,b.listing_status,
                 b.verification_status,b.is_discoverable,b.created_at,b.updated_at,
                 COALESCE((SELECT COUNT(*) FROM discovery_listing_moderation_issues i WHERE i.business_id=b.id AND i.status='OPEN'),0)::int AS open_issue_count,
                 (SELECT e.created_at FROM discovery_listing_events e WHERE e.business_id=b.id AND e.to_status=$1 ORDER BY e.created_at DESC LIMIT 1) AS status_changed_at
            FROM discovery_businesses b
-          WHERE b.listing_status=$1
+          WHERE ${where.join(' AND ')}
           ORDER BY status_changed_at ASC NULLS LAST, b.created_at ASC
-          LIMIT 200`,
-        [status],
+          LIMIT $${n} OFFSET $${n + 1}`,
+        dataParams,
       );
-      res.json({success:true,data:r.rows});
+      res.json({success:true,data:r.rows,meta:{page,pageSize,total,totalPages:Math.ceil(total/pageSize),hasNextPage:offset+pageSize<total,hasPreviousPage:page>1}});
     } catch (err) { next(err); }
   });
 
@@ -44,29 +81,17 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
       const status = String(req.body?.status || '').trim().toUpperCase();
       const reason = String(req.body?.reason || '').trim().slice(0, 4000) || undefined;
       const issues = Array.isArray(req.body?.issues) ? req.body.issues : [];
-      if (!['UNDER_REVIEW','APPROVED','REJECTED','PUBLISHED'].includes(status)) {
-        return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Decision status must be UNDER_REVIEW, APPROVED, REJECTED, or PUBLISHED.'}});
-      }
-      if (status === 'REJECTED' && !reason && issues.length === 0) {
-        return res.status(422).json({success:false,error:{code:'REJECTION_REASON_REQUIRED',message:'Select at least one moderation issue or provide an overall rejection note.'}});
-      }
+      if (!['UNDER_REVIEW','APPROVED','REJECTED','PUBLISHED'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Decision status must be UNDER_REVIEW, APPROVED, REJECTED, or PUBLISHED.'}});
+      if (status === 'REJECTED' && !reason && issues.length === 0) return res.status(422).json({success:false,error:{code:'REJECTION_REASON_REQUIRED',message:'Select at least one moderation issue or provide an overall rejection note.'}});
       const allowedIssues = new Set(['identity','description','contact','category','location','coordinates','offering','store']);
-      const normalizedIssues = issues.map((item:any) => ({
-        key: String(item?.key || '').trim().toLowerCase(),
-        detail: String(item?.detail || '').trim().slice(0,1000) || null,
-      })).filter((item:any) => allowedIssues.has(item.key));
-      if (status === 'REJECTED' && issues.length !== normalizedIssues.length) {
-        return res.status(422).json({success:false,error:{code:'INVALID_MODERATION_ISSUE',message:'One or more moderation issue keys are invalid.'}});
-      }
-
+      const normalizedIssues = issues.map((item:any) => ({key:String(item?.key || '').trim().toLowerCase(),detail:String(item?.detail || '').trim().slice(0,1000) || null})).filter((item:any) => allowedIssues.has(item.key));
+      if (status === 'REJECTED' && issues.length !== normalizedIssues.length) return res.status(422).json({success:false,error:{code:'INVALID_MODERATION_ISSUE',message:'One or more moderation issue keys are invalid.'}});
       const actor = { userId:req.auth!.userId, role:req.auth!.role, organizationId:req.auth!.organizationId };
       let updated;
       if (status === 'UNDER_REVIEW') updated = await discoveryService.review(req.params.id, actor, reason);
       else if (status === 'APPROVED') updated = await discoveryService.approve(req.params.id, actor, reason);
       else if (status === 'PUBLISHED') updated = await discoveryService.publish(req.params.id, actor, reason);
-      else {
-        updated = await discoveryService.reject(req.params.id, actor, reason, undefined, normalizedIssues);
-      }
+      else updated = await discoveryService.reject(req.params.id, actor, reason, undefined, normalizedIssues);
       res.json({success:true,data:updated});
     } catch (err) { next(err); }
   });
@@ -143,8 +168,8 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
         await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'REVIEW',$3,'REVIEW_DECIDED',$4,$5,$6,$7,$8)`,[eventId('trust'),row.business_id,req.params.id,row.status,status,req.auth!.userId,reason,{}]);
         return updated.rows[0];
       });
-      res.json({success:true,data:result});
-    }catch(err){next(err);}
+      res.json({success:true,data:updated});
+    } catch (err) { next(err); }
   });
 
   router.get('/reports', ...guard, async (req, res, next) => {
