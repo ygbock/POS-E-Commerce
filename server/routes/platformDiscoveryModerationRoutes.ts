@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
 import { PERMISSIONS } from '../auth/roles.ts';
