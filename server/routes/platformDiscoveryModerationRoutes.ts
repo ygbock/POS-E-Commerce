@@ -3,12 +3,81 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
 import { PERMISSIONS } from '../auth/roles.ts';
+import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
 
 const eventId = (prefix: string) => prefix + '_' + randomUUID().replace(/-/g, '');
 
 export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Router {
   const router = Router();
   const guard = [requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY)];
+  const discoveryService = new DiscoveryBusinessService(undefined, db);
+
+  router.get('/listings', ...guard, async (req, res, next) => {
+    try {
+      const status = String(req.query.status || 'SUBMITTED').trim().toUpperCase();
+      const allowed = ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PUBLISHED'];
+      if (!allowed.includes(status)) return res.status(422).json({ success:false, error:{code:'INVALID_STATUS',message:'Invalid listing moderation status.'} });
+      const r = await db.query(
+        `SELECT b.id,b.name,b.slug,b.business_type,b.business_mode,b.organization_id,b.listing_status,
+                b.verification_status,b.is_discoverable,b.created_at,b.updated_at,
+                COALESCE((SELECT COUNT(*) FROM discovery_listing_moderation_issues i WHERE i.business_id=b.id AND i.status='OPEN'),0)::int AS open_issue_count,
+                (SELECT e.created_at FROM discovery_listing_events e WHERE e.business_id=b.id AND e.to_status=$1 ORDER BY e.created_at DESC LIMIT 1) AS status_changed_at
+           FROM discovery_businesses b
+          WHERE b.listing_status=$1
+          ORDER BY status_changed_at ASC NULLS LAST, b.created_at ASC
+          LIMIT 200`,
+        [status],
+      );
+      res.json({success:true,data:r.rows});
+    } catch (err) { next(err); }
+  });
+
+  router.get('/listings/:id', ...guard, async (req, res, next) => {
+    try {
+      const data = await discoveryService.getListingModerationDetail(req.params.id, { userId:req.auth!.userId, role:req.auth!.role, organizationId:req.auth!.organizationId });
+      res.json({success:true,data});
+    } catch (err) { next(err); }
+  });
+
+  router.post('/listings/:id/decision', ...guard, async (req, res, next) => {
+    try {
+      const status = String(req.body?.status || '').trim().toUpperCase();
+      const reason = String(req.body?.reason || '').trim().slice(0, 4000) || undefined;
+      const issues = Array.isArray(req.body?.issues) ? req.body.issues : [];
+      if (!['UNDER_REVIEW','APPROVED','REJECTED','PUBLISHED'].includes(status)) {
+        return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Decision status must be UNDER_REVIEW, APPROVED, REJECTED, or PUBLISHED.'}});
+      }
+      if (status === 'REJECTED' && !reason && issues.length === 0) {
+        return res.status(422).json({success:false,error:{code:'REJECTION_REASON_REQUIRED',message:'Select at least one moderation issue or provide an overall rejection note.'}});
+      }
+      const allowedIssues = new Set(['identity','description','contact','category','location','coordinates','offering','store']);
+      const normalizedIssues = issues.map((item:any) => ({
+        key: String(item?.key || '').trim().toLowerCase(),
+        detail: String(item?.detail || '').trim().slice(0,1000) || null,
+      })).filter((item:any) => allowedIssues.has(item.key));
+      if (status === 'REJECTED' && issues.length !== normalizedIssues.length) {
+        return res.status(422).json({success:false,error:{code:'INVALID_MODERATION_ISSUE',message:'One or more moderation issue keys are invalid.'}});
+      }
+
+      const actor = { userId:req.auth!.userId, role:req.auth!.role, organizationId:req.auth!.organizationId };
+      let updated;
+      if (status === 'UNDER_REVIEW') updated = await discoveryService.review(req.params.id, actor, reason);
+      else if (status === 'APPROVED') updated = await discoveryService.approve(req.params.id, actor, reason);
+      else if (status === 'PUBLISHED') updated = await discoveryService.publish(req.params.id, actor, reason);
+      else {
+        updated = await discoveryService.reject(req.params.id, actor, reason);
+        const event = await db.query(`SELECT id FROM discovery_listing_events WHERE business_id=$1 AND to_status='REJECTED' ORDER BY created_at DESC LIMIT 1`, [req.params.id]);
+        const eventIdValue = event.rows[0]?.id || null;
+        await db.withTransaction(async (tx) => {
+          await tx.query(`UPDATE discovery_listing_moderation_issues SET status='SUPERSEDED',resolved_at=CURRENT_TIMESTAMP,resolved_by_user_id=$2 WHERE business_id=$1 AND status='OPEN'`, [req.params.id, req.auth!.userId]);
+          for (const issue of normalizedIssues) {
+            await tx.query(`INSERT INTO discovery_listing_moderation_issues(id,business_id,listing_event_id,issue_key,detail,status) VALUES($1,$2,$3,$4,$5,'OPEN')`, [randomUUID(),req.params.id,eventIdValue,issue.key,issue.detail]);
+          }
+        });
+      }
+      res.json({success:true,data:updated});
+    } catch (err) { next(err); }
+  });
 
   router.get('/verification', ...guard, async (_req, res, next) => {
     try {
