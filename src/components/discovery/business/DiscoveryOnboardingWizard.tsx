@@ -636,7 +636,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
             </button>
           )}
 
-          {step < 5 ? (
+          {step < 6 ? (
             <button type="button" onClick={() => void handleNext()} disabled={saving || submitting}
               className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 disabled:opacity-50">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />} Continue
