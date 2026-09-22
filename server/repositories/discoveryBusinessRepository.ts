@@ -131,9 +131,11 @@ export class DiscoveryBusinessRepository {
        ON CONFLICT (business_id) DO UPDATE SET business_id = EXCLUDED.business_id RETURNING *`, [businessId]);
     return result.rows[0];
   }
-  async addListingEvent(data: { businessId: string; fromStatus: DiscoveryListingStatus | null; toStatus: DiscoveryListingStatus; reason?: string | null; actorUserId?: string | null }, client?: DatabaseClient): Promise<void> {
+  async addListingEvent(data: { businessId: string; fromStatus: DiscoveryListingStatus | null; toStatus: DiscoveryListingStatus; reason?: string | null; actorUserId?: string | null }, client?: DatabaseClient): Promise<{ id: string }> {
+    const id = randomUUID();
     await this.db(client).query(
       `INSERT INTO discovery_listing_events (id, business_id, from_status, to_status, reason, actor_user_id) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [randomUUID(), data.businessId, data.fromStatus, data.toStatus, data.reason || null, data.actorUserId || null]);
+      [id, data.businessId, data.fromStatus, data.toStatus, data.reason || null, data.actorUserId || null]);
+    return { id };
   }
 }
