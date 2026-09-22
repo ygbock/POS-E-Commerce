@@ -9,6 +9,12 @@ async function main() {
   const db: DatabaseClient = createIsolatedTestClient();
   await runMigrations(db);
 
+  await db.query(
+    `INSERT INTO users
+     (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+     VALUES ('perf-user','perf_discovery_org','perf-user@test.local','Discovery Performance Fixture','hash','salt','admin',TRUE)`,
+  );
+
   for (let i = 0; i < 300; i += 1) {
     await db.query(
       `INSERT INTO discovery_businesses
