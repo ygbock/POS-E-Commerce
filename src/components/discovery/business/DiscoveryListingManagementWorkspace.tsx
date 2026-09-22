@@ -10,7 +10,6 @@ import {
   RotateCcw,
   ShieldCheck,
   XCircle,
-  ArrowRight,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
 import type { DiscoveryBusiness, DiscoveryListingManagementWorkspace as Workspace } from '../../../types/discovery';
