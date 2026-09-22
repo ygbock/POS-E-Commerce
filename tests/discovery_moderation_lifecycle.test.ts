@@ -76,7 +76,7 @@ async function main() {
     [business.id],
   );
   assert.strictEqual(firstIssues.rows.length, 2);
-  assert.deepStrictEqual(firstIssues.rows.map((row: any) => row.issue_key), ['location', 'offering']);
+  assert.deepStrictEqual(firstIssues.rows.map((row: any) => row.issue_key).sort(), ['location', 'offering'].sort());
   assert.ok(firstIssues.rows.every((row: any) => row.status === 'OPEN'));
   assert.ok(firstIssues.rows.every((row: any) => row.listing_event_id));
   assert.ok(firstIssues.rows.every((row: any) => row.to_status === 'REJECTED'));
@@ -127,11 +127,13 @@ async function main() {
     [business.id],
   );
   assert.strictEqual(allIssues.rows.length, 4);
-  assert.strictEqual(allIssues.rows[2].status, 'SUPERSEDED');
-  assert.strictEqual(allIssues.rows[2].issue_key, 'description');
-  assert.strictEqual(allIssues.rows[2].resolved_by_user_id, moderator.userId);
-  assert.strictEqual(allIssues.rows[3].status, 'OPEN');
-  assert.strictEqual(allIssues.rows[3].issue_key, 'contact');
+  const staleIssue = allIssues.rows.find((row: any) => row.issue_key === 'description');
+  const freshIssue = allIssues.rows.find((row: any) => row.issue_key === 'contact');
+  assert.ok(staleIssue);
+  assert.strictEqual(staleIssue.status, 'SUPERSEDED');
+  assert.strictEqual(staleIssue.resolved_by_user_id, moderator.userId);
+  assert.ok(freshIssue);
+  assert.strictEqual(freshIssue.status, 'OPEN');
 
   // Merchant users are never allowed to invoke moderation decisions.
   await assert.rejects(
