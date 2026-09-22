@@ -26,6 +26,7 @@ interface DiscoveryBusinessDashboardProps {
   businessRole?: 'OWNER' | 'MANAGER' | 'STAFF';
   onNavigateTab: (tabId: string) => void;
   onOpenStoreConversion: () => void;
+  onOpenOnboardingStep: (step: number) => void;
   onViewPublicListing: () => void;
 }
 
@@ -43,6 +44,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
   businessRole = 'OWNER',
   onNavigateTab,
   onOpenStoreConversion,
+  onOpenOnboardingStep,
   onViewPublicListing,
 }) => {
   const [analytics, setAnalytics] = useState<DiscoveryAnalyticsSummary | null>(null);
@@ -214,7 +216,9 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
                 key={item.key}
                 type="button"
                 title={item.detail || undefined}
-                onClick={() => onNavigateTab(readinessTabs[item.key] || 'submission')}
+                onClick={() => onOpenOnboardingStep(
+                ({ identity: 2, description: 2, primary_contact: 3, contact: 3, category: 2, primary_location: 4, coordinates: 4, offering: 5 } as Record<string, number>)[item.key] || 6
+              )}
                 className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
                   item.done
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
@@ -260,7 +264,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
                     ? 'Your listing is live. Keep your profile, services and customer activity up to date.'
                     : 'Use the guided workspace to move the listing to its next lifecycle stage.')}
               </p>
-              <button type="button" onClick={() => onNavigateTab(businessRole === 'STAFF' ? 'quotes' : nextActionTab)}
+              <button type="button" onClick={() => businessRole === 'STAFF' ? onNavigateTab('quotes') : onOpenOnboardingStep(({ identity: 2, description: 2, primary_contact: 3, contact: 3, category: 2, primary_location: 4, coordinates: 4, offering: 5 } as Record<string, number>)[nextIncomplete?.key || ''] || 6)
                 className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700">
                 Continue setup <ArrowRight className="h-3.5 w-3.5" />
               </button>
