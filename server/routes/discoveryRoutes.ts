@@ -1345,7 +1345,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
              LIMIT 1
            ) l ON TRUE
           WHERE s.is_active=TRUE
-            AND s.business_id=$2
+            AND s.business_id=$1
             AND b.listing_status='PUBLISHED'
             AND b.is_discoverable=TRUE
             AND (b.organization_id IS NULL OR EXISTS(
@@ -1353,7 +1353,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             ))
           ORDER BY s.id ASC
           LIMIT 100`,
-        [req.params.id,businessId],
+        [businessId],
       );
 
       const requestRow=request.rows[0];
@@ -1386,7 +1386,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           locationType:row.location_type,
           serviceRadiusKm:row.service_radius_km,
         })),
-        {maxMatches:100},
+        100,
       );
       const match=ranked[0];
       if(!match||match.businessId!==businessId)throw new Error('NOT_FOUND:Business does not satisfy the matching criteria for this service request.');

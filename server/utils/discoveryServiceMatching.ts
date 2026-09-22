@@ -40,6 +40,7 @@ const STOP_WORDS = new Set([
 ]);
 
 function finiteNumber(value: unknown): number | null {
+  if (value == null || String(value).trim() === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
