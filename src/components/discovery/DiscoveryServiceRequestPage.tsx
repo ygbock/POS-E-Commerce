@@ -34,7 +34,24 @@ export const DiscoveryServiceRequestPage: React.FC<DiscoveryServiceRequestPagePr
         <label className="text-sm font-semibold block">Maximum budget (SLE)<input inputMode="decimal" value={form.budgetTo} onChange={e=>update('budgetTo',e.target.value)} placeholder="Optional" className="mt-1.5 w-full rounded-xl border px-3 py-2.5 bg-transparent"/></label>
         <label className="text-sm font-semibold block">Describe what you need<textarea required minLength={10} value={form.description} onChange={e=>update('description',e.target.value)} rows={6} placeholder="Describe the job, timing, location, and useful details…" className="mt-1.5 w-full rounded-xl border px-3 py-3 bg-transparent resize-y"/></label>
         {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300 flex gap-2"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0"/>{error}</div>}
-        <button disabled={status==='submitting' || !authClient.getToken()} type="submit" className="w-full inline-flex justify-center items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-5 py-3 font-bold">{status==='submitting'?'Submitting…':<><Send className="w-4 h-4"/>Submit request</>}</button>
+        {!authClient.getToken() ? (
+          <button
+            type="button"
+            onClick={signIn}
+            className="w-full inline-flex justify-center items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 font-bold"
+          >
+            <Send className="w-4 h-4" />
+            Sign in to submit request
+          </button>
+        ) : (
+          <button
+            disabled={status==='submitting'}
+            type="submit"
+            className="w-full inline-flex justify-center items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-5 py-3 font-bold"
+          >
+            {status==='submitting'?'Submitting…':<><Send className="w-4 h-4"/>Submit request</>}
+          </button>
+        )}
       </section><aside className="space-y-4"><section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4"><h2 className="font-black">Request details</h2><div className="text-xs text-slate-500 space-y-3"><div className="flex gap-2"><MapPin className="w-4 h-4 shrink-0"/>Add your city or district so providers can assess the service area.</div><div className="flex gap-2"><CalendarDays className="w-4 h-4 shrink-0"/>A preferred date helps providers respond accurately.</div><div className="flex gap-2"><Wallet className="w-4 h-4 shrink-0"/>A budget is optional and can help providers quote.</div></div></section>
         <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5"><h2 className="font-black">Share location</h2><p className="mt-2 text-xs text-slate-500">Location sharing is optional and is used to help providers assess proximity.</p><button type="button" onClick={locate} disabled={locating} className="mt-4 w-full inline-flex justify-center items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold disabled:opacity-60"><LocateFixed className="w-4 h-4"/>{locating?'Locating…':coords?'Location attached':'Use my location'}</button></section></aside></form>
     </main></div>;
