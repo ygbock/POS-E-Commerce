@@ -336,13 +336,17 @@ export class DiscoveryBusinessService {
     if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
     await this.assertCanManageScoped(business, actor, client);
     const db = client || this.db;
-    const [readiness, locations, categories, settings, events, verification] = await Promise.all([
+    const [readiness, locations, categories, settings, events, verification, issues] = await Promise.all([
       this.getListingReadiness(id, client),
       this.repository.listLocations(id, { activeOnly: true }, client),
       this.repository.listCategories(id, client),
       this.repository.getSettings(id, client),
       db.query(`SELECT id,from_status,to_status,reason,actor_user_id,created_at FROM discovery_listing_events WHERE business_id=$1 ORDER BY created_at DESC LIMIT 50`, [id]),
       db.query(`SELECT id,status,created_at,updated_at,reviewed_at,review_reason FROM discovery_verification_applications WHERE business_id=$1 ORDER BY created_at DESC LIMIT 10`, [id]),
+      db.query(`SELECT i.*, e.to_status AS event_status, e.created_at AS event_created_at
+                   FROM discovery_listing_moderation_issues i
+                   LEFT JOIN discovery_listing_events e ON e.id=i.listing_event_id
+                  WHERE i.business_id=$1 ORDER BY i.created_at DESC`, [id]),
     ]);
     const feedback = events.rows.filter((e:any) => e.to_status === 'REJECTED' && e.reason);
     return {
@@ -352,6 +356,7 @@ export class DiscoveryBusinessService {
       categories,
       settings,
       feedback,
+      issues: issues.rows,
       lifecycle: events.rows,
       verification: { status: business.verification_status, applications: verification.rows },
     };
@@ -374,6 +379,12 @@ export class DiscoveryBusinessService {
       const updated = await this.repository.updateBusiness(id, { listing_status: 'SUBMITTED' }, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
       await this.repository.addListingEvent({ businessId: id, fromStatus: 'REJECTED', toStatus: 'SUBMITTED', reason: reason || 'Listing corrected and resubmitted for moderation.', actorUserId: actor.userId }, tx);
+      await tx.query(
+        `UPDATE discovery_listing_moderation_issues
+            SET status='RESOLVED', resolved_at=CURRENT_TIMESTAMP, resolved_by_user_id=$2
+          WHERE business_id=$1 AND status='OPEN'`,
+        [id, actor.userId],
+      );
       if (actor.organizationId || updated.organization_id) {
         await this.auditRepository.recordEvent({
           organization_id: actor.organizationId || updated.organization_id!, actor_id: actor.userId, actor_name: actor.userId, actor_role: actor.role,
