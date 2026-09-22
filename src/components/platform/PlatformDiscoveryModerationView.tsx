@@ -60,13 +60,14 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   const [reason, setReason] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reportsFilter, setReportsFilter] = useState('');
+  const [listingStatusFilter, setListingStatusFilter] = useState('SUBMITTED');
 
   const endpoint = useMemo(() => {
-    if (queue === 'listings') return '/api/platform/discovery/moderation/listings?status=SUBMITTED';
+    if (queue === 'listings') return `/api/platform/discovery/moderation/listings?status=${encodeURIComponent(listingStatusFilter)}`;
     if (queue === 'reports' && reportsFilter) return `/api/platform/discovery/moderation/reports?status=${encodeURIComponent(reportsFilter)}`;
     if (queue === 'reviews') return '/api/platform/discovery/moderation/reviews?status=PENDING';
     return `/api/platform/discovery/moderation/${queue}`;
-  }, [queue, reportsFilter]);
+  }, [queue, reportsFilter, listingStatusFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,6 +197,19 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {queue === 'listings' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="listing-status-filter" className="text-xs font-bold text-slate-600 dark:text-slate-300">Listing status</label>
+          <select id="listing-status-filter" value={listingStatusFilter} onChange={(e) => setListingStatusFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+            <option value="SUBMITTED">Submitted</option>
+            <option value="UNDER_REVIEW">Under review</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="APPROVED">Approved</option>
+            <option value="PUBLISHED">Published</option>
+          </select>
+        </div>
+      )}
 
       {queue === 'reports' && (
         <div className="flex items-center gap-2">
