@@ -23,6 +23,7 @@ import { VerificationBadge } from '../VerificationBadge';
 
 interface DiscoveryBusinessDashboardProps {
   business: DiscoveryBusiness;
+  businessRole?: 'OWNER' | 'MANAGER' | 'STAFF';
   onNavigateTab: (tabId: string) => void;
   onOpenStoreConversion: () => void;
   onViewPublicListing: () => void;
@@ -39,6 +40,7 @@ const readinessTabs: Record<string, string> = {
 
 export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProps> = ({
   business,
+  businessRole = 'OWNER',
   onNavigateTab,
   onOpenStoreConversion,
   onViewPublicListing,
@@ -85,7 +87,8 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
     ? Math.round((completedCount / readinessItems.length) * 100)
     : 0;
 
-  const nextIncomplete = readinessItems.find((item) => item.required && !item.done);
+  const canManageListing = businessRole !== 'STAFF';
+  const nextIncomplete = canManageListing ? readinessItems.find((item) => item.required && !item.done) : undefined;
   const nextActionTab = nextIncomplete ? (readinessTabs[nextIncomplete.key] || 'submission') : 'submission';
   const nextActionLabel = nextIncomplete
     ? `Complete ${nextIncomplete.label}`
@@ -96,18 +99,17 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
         : 'Review listing status';
 
   const modules = [
-    {
+    ...(canManageListing ? [{
       label: 'Listing Identity & Media',
       description: 'Business description, contacts, logo, cover media and categories.',
       icon: Building2,
       tab: 'listing',
-    },
-    {
+    }, {
       label: 'Branches & Service Areas',
       description: 'Addresses, GPS coordinates, branches and coverage areas.',
       icon: MapPin,
       tab: 'locations',
-    },
+    }] : []),
     {
       label: 'Services & Bookings',
       description: 'Publish services and configure request, booking or quote options.',
@@ -126,7 +128,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
       icon: ShieldCheck,
       tab: 'verification',
     },
-  ];
+  ].filter(({ tab }) => tab !== 'verification' || businessRole !== 'STAFF');
 
   return (
     <div className="space-y-8">
@@ -249,14 +251,16 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
               <ArrowRight className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">Next action</p>
-              <h2 className="mt-1 text-base font-extrabold text-slate-900 dark:text-white">{nextActionLabel}</h2>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">{businessRole === 'STAFF' ? 'Your workspace' : 'Next action'}</p>
+              <h2 className="mt-1 text-base font-extrabold text-slate-900 dark:text-white">{businessRole === 'STAFF' ? 'Keep customer requests moving' : nextActionLabel}</h2>
               <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                {nextIncomplete?.detail || (business.listing_status === 'PUBLISHED'
-                  ? 'Your listing is live. Keep your profile, services and customer activity up to date.'
-                  : 'Use the guided workspace to move the listing to its next lifecycle stage.')}
+                {businessRole === 'STAFF'
+                  ? 'Manage assigned services, respond to customer requests, and keep reviews up to date.'
+                  : nextIncomplete?.detail || (business.listing_status === 'PUBLISHED'
+                    ? 'Your listing is live. Keep your profile, services and customer activity up to date.'
+                    : 'Use the guided workspace to move the listing to its next lifecycle stage.')}
               </p>
-              <button type="button" onClick={() => onNavigateTab(nextActionTab)}
+              <button type="button" onClick={() => onNavigateTab(businessRole === 'STAFF' ? 'quotes' : nextActionTab)}
                 className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700">
                 Continue setup <ArrowRight className="h-3.5 w-3.5" />
               </button>
@@ -268,10 +272,12 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick actions</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             {[
+              ...(businessRole !== 'STAFF' ? [
+                ['Edit listing', 'listing', Building2],
+                ['Add location', 'locations', MapPin],
+              ] : []),
               ['Add service', 'services', Wrench],
-              ['Add location', 'locations', MapPin],
               ['View requests', 'quotes', FileText],
-              ['Edit listing', 'listing', Building2],
             ].map(([label, tab, Icon]) => (
               <button key={String(tab)} type="button" onClick={() => onNavigateTab(String(tab))}
                 className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
