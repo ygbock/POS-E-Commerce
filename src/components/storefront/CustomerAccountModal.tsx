@@ -35,6 +35,8 @@ import {
   ShoppingBag,
   Gift,
   Key,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Customer, Order, OrderStatus, Product, ProductVariant } from '../../types';
@@ -111,6 +113,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   // Sign In Form State
   const [signinEmail, setSigninEmail] = useState('');
   const [signinPassword, setSigninPassword] = useState('');
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSigninPassword, setShowSigninPassword] = useState(false);
   const [signinError, setSigninError] = useState('');
 
   // Tracking state
@@ -814,13 +818,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                             Password / PIN <span className="text-slate-500 font-normal">(Optional)</span>
                           </label>
-                          <input
-                            type="password"
-                            placeholder="Create a secure password"
-                            value={signupPassword}
-                            onChange={(e) => setSignupPassword(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
-                          />
+                          <div className="relative">
+                            <input
+                              type={showSignupPassword ? 'text' : 'password'}
+                              placeholder="Create a secure password"
+                              value={signupPassword}
+                              onChange={(e) => setSignupPassword(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 pr-10 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowSignupPassword((value) => !value)}
+                              aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                              title={showSignupPassword ? 'Hide password' : 'Show password'}
+                              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                            >
+                              {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -912,13 +927,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                             Password
                           </label>
-                          <input
-                            type="password"
-                            placeholder="Enter your account password"
-                            value={signinPassword}
-                            onChange={(e) => setSigninPassword(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
-                          />
+                          <div className="relative">
+                            <input
+                              type={showSigninPassword ? 'text' : 'password'}
+                              placeholder="Enter your account password"
+                              value={signinPassword}
+                              onChange={(e) => setSigninPassword(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 pr-10 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowSigninPassword((value) => !value)}
+                              aria-label={showSigninPassword ? 'Hide password' : 'Show password'}
+                              title={showSigninPassword ? 'Hide password' : 'Show password'}
+                              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                            >
+                              {showSigninPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
                         </div>
                       </div>
 
