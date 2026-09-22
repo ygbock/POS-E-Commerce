@@ -18,6 +18,10 @@ import {
   ChevronDown,
   LayoutDashboard,
   ExternalLink,
+  Users,
+  BarChart3,
+  Settings,
+  ShoppingBag,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
 import type { DiscoveryBusiness } from '../../../types/discovery';
@@ -55,21 +59,21 @@ const ROLE_TAB_ACCESS: Record<BusinessRole, string[]> = {
 };
 
 const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'listing', label: 'Listing Profile', icon: Building2 },
-  { id: 'submission', label: 'Submission & Review', icon: ShieldCheck },
-  { id: 'locations', label: 'Branches & Map', icon: MapPin },
-  { id: 'hours', label: 'Operating Hours', icon: Clock },
-  { id: 'services', label: 'Services', icon: Wrench },
-  { id: 'quotes', label: 'Quotes Inbox', icon: FileText },
-  { id: 'contacts', label: 'Contact Inbox', icon: MessageSquare },
-  { id: 'reviews', label: 'Reviews', icon: Star },
-  { id: 'verification', label: 'Verification', icon: ShieldCheck },
-  { id: 'trust', label: 'Trust Center', icon: UserCheck },
-  { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-  { id: 'settings', label: 'Visibility Settings', icon: Sliders },
-  { id: 'team', label: 'Team', icon: UserCheck },
-  { id: 'search', label: 'Search & Aliases', icon: Sparkles },
+  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, group: 'overview' },
+  { id: 'listing', label: 'Listing', icon: Building2, group: 'business' },
+  { id: 'submission', label: 'Submission & Review', icon: ShieldCheck, group: 'business' },
+  { id: 'locations', label: 'Locations', icon: MapPin, group: 'business' },
+  { id: 'hours', label: 'Hours', icon: Clock, group: 'business' },
+  { id: 'services', label: 'Services', icon: Wrench, group: 'customers' },
+  { id: 'quotes', label: 'Requests & Quotes', icon: FileText, group: 'customers' },
+  { id: 'contacts', label: 'Messages', icon: MessageSquare, group: 'customers' },
+  { id: 'reviews', label: 'Reviews', icon: Star, group: 'customers' },
+  { id: 'verification', label: 'Verification', icon: ShieldCheck, group: 'growth' },
+  { id: 'trust', label: 'Trust', icon: UserCheck, group: 'growth' },
+  { id: 'analytics', label: 'Analytics', icon: TrendingUp, group: 'growth' },
+  { id: 'search', label: 'Search', icon: Sparkles, group: 'growth' },
+  { id: 'team', label: 'Team', icon: Users, group: 'team' },
+  { id: 'settings', label: 'Settings', icon: Sliders, group: 'settings' },
 ];
 
 export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProps> = ({
@@ -289,28 +293,45 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
         </div>
       </div>
 
-      {/* Main Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar border-b border-slate-200 dark:border-slate-800">
-        {visibleTabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 shrink-0 ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
+      {/* Grouped merchant navigation */}
+      <nav className="rounded-3xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900" aria-label="Business workspace">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setActiveTab('dashboard')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+            <LayoutDashboard className="h-4 w-4" /> Overview
+          </button>
+          {[
+            ['Business', 'business', Building2],
+            ['Customers', 'customers', Users],
+            ['Growth', 'growth', BarChart3],
+          ].map(([label, group, Icon]) => {
+            const groupTabs = visibleTabs.filter((tab) => tab.group === group);
+            if (!groupTabs.length) return null;
+            const activeInGroup = groupTabs.some((tab) => tab.id === activeTab);
+            return (
+              <details key={String(group)} className="relative">
+                <summary className={`list-none cursor-pointer rounded-2xl px-4 py-2.5 text-xs font-bold transition inline-flex items-center gap-2 ${activeInGroup ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+                  <Icon className="h-4 w-4" /> {String(label)} <ChevronDown className="h-3.5 w-3.5" />
+                </summary>
+                <div className="absolute left-0 top-full z-30 mt-2 min-w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  {groupTabs.map((tab) => {
+                    const TabIcon = tab.icon;
+                    return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${activeTab === tab.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'}`}>
+                      <TabIcon className="h-4 w-4" /> {tab.label}
+                    </button>;
+                  })}
+                </div>
+              </details>
+            );
+          })}
+          {visibleTabs.some((tab) => tab.group === 'team') && <button type="button" onClick={() => setActiveTab('team')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'team' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Users className="h-4 w-4" /> Team</button>}
+          {visibleTabs.some((tab) => tab.group === 'settings') && <button type="button" onClick={() => setActiveTab('settings')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4" /> Settings</button>}
+          {selectedBusiness.business_mode === 'DISCOVERY_AND_STORE' && selectedBusiness.tenant_slug && businessRole === 'OWNER' && (
+            <button type="button" onClick={() => window.location.assign(`/store/${encodeURIComponent(selectedBusiness.tenant_slug as string)}`)} className="ml-auto inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <ShoppingBag className="h-4 w-4" /> Open Store <ExternalLink className="h-3.5 w-3.5" />
             </button>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      </nav>
 
       {/* Tab Contents */}
       <div className="mt-6">
