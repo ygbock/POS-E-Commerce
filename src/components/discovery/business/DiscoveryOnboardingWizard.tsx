@@ -690,7 +690,8 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                 ['Category', form.categoryIds.length ? `${form.categoryIds.length} selected` : 'Missing', form.categoryIds.length > 0],
                 ['Contact', form.phone.trim() || form.whatsapp.trim() || form.email.trim() ? 'Provided' : 'Missing', Boolean(form.phone.trim() || form.whatsapp.trim() || form.email.trim())],
                 ['Primary location', form.city.trim() && form.locationName.trim() ? 'Provided' : 'Missing', Boolean(form.city.trim() && form.locationName.trim())],
-                ['Service offering', form.serviceName.trim() ? 'Provided' : 'Optional', true],
+                ['Map coordinates', form.latitude.trim() && form.longitude.trim() ? 'Provided' : 'Missing', Boolean(form.latitude.trim() && form.longitude.trim())],
+                ['Service offering', form.serviceName.trim() ? 'Provided' : 'Optional', form.mode === 'DISCOVERY_AND_STORE' ? Boolean(form.serviceName.trim()) : true],
               ].map(([label, value, ready]) => (
                 <div key={String(label)} className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
                   <div>
