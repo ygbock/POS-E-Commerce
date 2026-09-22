@@ -1325,24 +1325,94 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(!businessId)throw new Error('VALIDATION_ERROR:businessId is required.');
     const b=await repo.findById(businessId);
     if(!b||!(await owned(req,businessId,'business.leads.manage')))throw new Error('TENANT_ACCESS_DENIED:Business lead management access required.');
-    const service=await db.query('SELECT 1 FROM discovery_services WHERE business_id=$1 AND is_active=TRUE LIMIT 1',[businessId]);
-    if(!service.rows[0])throw new Error('VALIDATION_ERROR:Business must have an active discovery service.');
+
     const data=await db.withTransaction(async(tx)=>{
       const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 FOR UPDATE',[req.params.id]);
       if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
-      if(!['OPEN','MATCHED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:Only OPEN or MATCHED requests may be matched.');
-      await tx.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,$3) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId,Number(req.body?.matchScore??1)]);
-      if(request.rows[0].status==='OPEN'){
+      if(!['OPEN','MATCHED'].includes(String(request.rows[0].status)))throw new Error('INVALID_STATE_TRANSITION:Only OPEN or MATCHED requests may be matched.');
+
+      const candidateRows=await tx.query(
+        `SELECT s.id AS service_id,s.business_id,s.name AS service_name,s.description AS service_description,s.service_type,
+                s.price_from,s.price_to,l.latitude,l.longitude,l.city AS location_city,l.district AS location_district,
+                l.region AS location_region,l.location_type,l.service_radius_km
+           FROM discovery_services s
+           JOIN discovery_businesses b ON b.id=s.business_id
+           LEFT JOIN LATERAL (
+             SELECT l.*
+             FROM discovery_business_locations l
+             WHERE l.business_id=b.id AND l.is_active=TRUE
+             ORDER BY l.is_primary DESC,l.created_at ASC,l.id ASC
+             LIMIT 1
+           ) l ON TRUE
+          WHERE s.is_active=TRUE
+            AND s.business_id=$2
+            AND b.listing_status='PUBLISHED'
+            AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS(
+              SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+            ))
+          ORDER BY s.id ASC
+          LIMIT 100`,
+        [req.params.id,businessId],
+      );
+
+      const requestRow=request.rows[0];
+      const ranked=rankDiscoveryServiceMatches(
+        {
+          description:String(requestRow.description||''),
+          serviceType:requestRow.service_type||null,
+          requestedServiceId:requestRow.requested_service_id||null,
+          city:requestRow.city||null,
+          district:requestRow.district||null,
+          region:requestRow.region||null,
+          latitude:requestRow.latitude==null?null:Number(requestRow.latitude),
+          longitude:requestRow.longitude==null?null:Number(requestRow.longitude),
+          budgetFrom:requestRow.budget_from==null?null:Number(requestRow.budget_from),
+          budgetTo:requestRow.budget_to==null?null:Number(requestRow.budget_to),
+        },
+        candidateRows.rows.map((row:any)=>({
+          serviceId:String(row.service_id),
+          businessId:String(row.business_id),
+          serviceName:row.service_name,
+          serviceDescription:row.service_description,
+          serviceType:row.service_type,
+          priceFrom:row.price_from,
+          priceTo:row.price_to,
+          latitude:row.latitude,
+          longitude:row.longitude,
+          city:row.location_city,
+          district:row.location_district,
+          region:row.location_region,
+          locationType:row.location_type,
+          serviceRadiusKm:row.service_radius_km,
+        })),
+        {maxMatches:100},
+      );
+      const match=ranked[0];
+      if(!match||match.businessId!==businessId)throw new Error('NOT_FOUND:Business does not satisfy the matching criteria for this service request.');
+
+      await tx.query(
+        `INSERT INTO discovery_service_request_matches(request_id,business_id,match_score,match_reason)
+         VALUES($1,$2,$3,$4)
+         ON CONFLICT(request_id,business_id) DO UPDATE SET match_score=EXCLUDED.match_score,match_reason=EXCLUDED.match_reason`,
+        [req.params.id,businessId,match.score,match.reason],
+      );
+
+      if(String(requestRow.status)==='OPEN'){
         await tx.query('UPDATE discovery_service_requests SET status=\'MATCHED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
         await tx.query(
           `INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,note)
            VALUES($1,$2,'OPEN','MATCHED',$3,$4)`,
-          [`req_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,'Business matched to request.'],
+          [`req_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,'Eligible business matched to request.'],
         );
       }
-      return request.rows[0].status==='OPEN'
-        ? {...request.rows[0],status:'MATCHED'}
-        : request.rows[0];
+
+      return {
+        ...requestRow,
+        status:String(requestRow.status)==='OPEN'?'MATCHED':requestRow.status,
+        matchScore:match.score,
+        matchReason:match.reason,
+      };
     });
     res.json({success:true,data});
   }catch(err){next(err);} });
