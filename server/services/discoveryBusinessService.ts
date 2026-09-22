@@ -602,7 +602,7 @@ export class DiscoveryBusinessService {
   }
 
   private assertModerator(actor: { role: string; organizationId?: string }, business?: DiscoveryBusinessRecord): void {
-    if (actor.role === 'super_admin') return;
+    if (['super_admin', 'platform_admin', 'system_owner'].includes(actor.role)) return;
     if (actor.role !== 'admin') throw new Error('PERMISSION_DENIED:Discovery moderation requires administrator authorization.');
     if (!business?.organization_id || business.organization_id !== actor.organizationId) {
       throw new Error('TENANT_ACCESS_DENIED:Administrators may moderate only businesses belonging to their organization.');
