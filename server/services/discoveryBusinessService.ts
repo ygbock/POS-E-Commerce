@@ -428,8 +428,78 @@ export class DiscoveryBusinessService {
     return this.transition(id, 'APPROVED', actor, reason || 'Listing approved.', client, true);
   }
 
-  async reject(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    return this.transition(id, 'REJECTED', actor, reason || 'Listing requires changes before resubmission.', client, true);
+  async reject(
+    id: string,
+    actor: { userId: string; role: string; organizationId?: string },
+    reason?: string,
+    client?: DatabaseClient,
+    issues?: Array<{ key: string; detail?: string | null }>,
+  ): Promise<DiscoveryBusinessRecord> {
+    const normalizedIssues = (issues || []).map((issue) => ({
+      key: String(issue.key || '').trim().toLowerCase(),
+      detail: String(issue.detail || '').trim().slice(0, 1000) || null,
+    }));
+    const allowedIssues = new Set(['identity','description','contact','category','location','coordinates','offering','store']);
+    if (normalizedIssues.some((issue) => !allowedIssues.has(issue.key))) {
+      throw new Error('VALIDATION_ERROR:One or more moderation issue keys are invalid.');
+    }
+    if (!reason?.trim() && normalizedIssues.length === 0) {
+      throw new Error('VALIDATION_ERROR:At least one moderation issue or rejection reason is required.');
+    }
+
+    const existing = await this.repository.findById(id, client);
+    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+    this.assertModerator(actor, existing);
+    if (!TRANSITIONS[existing.listing_status].includes('REJECTED')) {
+      throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to REJECTED.`);
+    }
+
+    const db = client || this.db;
+    return db.withTransaction(async (tx) => {
+      const updated = await this.repository.updateBusiness(id, { listing_status: 'REJECTED', is_discoverable: false }, tx);
+      if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
+      const event = await this.repository.addListingEvent({
+        businessId: id,
+        fromStatus: existing.listing_status,
+        toStatus: 'REJECTED',
+        reason: reason || 'Listing requires changes before resubmission.',
+        actorUserId: actor.userId,
+      }, tx);
+
+      await tx.query(
+        `UPDATE discovery_listing_moderation_issues
+            SET status='SUPERSEDED', resolved_at=CURRENT_TIMESTAMP, resolved_by_user_id=$2
+          WHERE business_id=$1 AND status='OPEN'`,
+        [id, actor.userId],
+      );
+
+      for (const issue of normalizedIssues) {
+        await tx.query(
+          `INSERT INTO discovery_listing_moderation_issues
+             (id,business_id,listing_event_id,issue_key,detail,status)
+           VALUES($1,$2,$3,$4,$5,'OPEN')`,
+          [randomUUID(), id, event?.id || null, issue.key, issue.detail],
+        );
+      }
+
+      if (actor.organizationId || updated.organization_id) {
+        await this.auditRepository.recordEvent({
+          organization_id: actor.organizationId || updated.organization_id!,
+          actor_id: actor.userId,
+          actor_name: actor.userId,
+          actor_role: actor.role,
+          action: 'DISCOVERY_LISTING_REJECTED',
+          entity_type: 'DISCOVERY_BUSINESS',
+          entity_id: id,
+          before_state: { listing_status: existing.listing_status, is_discoverable: existing.is_discoverable },
+          after_state: { listing_status: updated.listing_status, is_discoverable: updated.is_discoverable },
+          metadata: { reason: reason || null, moderation_issue_count: normalizedIssues.length },
+          severity: 'Medium',
+          result: 'SUCCESS',
+        }, tx);
+      }
+      return updated;
+    });
   }
 
   async publish(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
