@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requirePlatformPermission } from '../middleware/auth.ts';
 import { PERMISSIONS } from '../auth/roles.ts';
@@ -98,7 +99,7 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
   router.get('/claims', ...guard, async (_req, res, next) => {
     try {
       const r = await db.query(`SELECT c.*, b.name AS business_name FROM discovery_business_claims c JOIN discovery_businesses b ON b.id=c.business_id WHERE c.status='PENDING' ORDER BY c.created_at ASC LIMIT 200`);
-      res.json({ success:true, data:r.rows });
+      res.json({success:true,data:r.rows});
     } catch (err) { next(err); }
   });
 
