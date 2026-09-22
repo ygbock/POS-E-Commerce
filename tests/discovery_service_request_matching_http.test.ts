@@ -107,7 +107,7 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({ businessId: ownerB.business.id, matchScore: 999999 }),
     });
-    assert.strictEqual(unrelated.status, 404);
+    assert.strictEqual(unrelated.status, 404, JSON.stringify(unrelated.body));
 
     const noUnrelatedMatch = await db.query(
       'SELECT 1 FROM discovery_service_request_matches WHERE request_id=$1 AND business_id=$2',
