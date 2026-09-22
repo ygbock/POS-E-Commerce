@@ -306,7 +306,7 @@ export class DiscoveryBusinessService {
       { key: 'category', label: 'At least one active category', done: categoryDone, required: true },
       { key: 'location', label: 'Primary location', done: locationDone, required: true },
       { key: 'coordinates', label: 'Map coordinates', done: coordinatesDone, required: true },
-      { key: 'offering', label: 'Service or store offering', done: offeringDone, required: true },
+      { key: 'offering', label: 'Service or store offering', done: offeringDone, required: business.business_mode === 'DISCOVERY_AND_STORE' },
     ];
     return { ready: items.every((item) => !item.required || item.done), items };
   }
