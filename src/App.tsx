@@ -200,12 +200,21 @@ export default function App() {
   }, []);
 
   const isLoginPath = window.location.pathname === '/login';
+  const isPlatformSigninPath = window.location.pathname === '/platform/signin';
+  const isPlatformPath = window.location.pathname === '/platform' || window.location.pathname.startsWith('/platform/');
   const isMerchantPath = window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
   const isMerchantSignupPath = window.location.pathname === '/business/signup';
   const isMerchantSigninPath = window.location.pathname === '/business/signin';
 
   if (isMerchantSignupPath) {
     return <BusinessOwnerSignup />;
+  }
+
+  // Platform operators have a dedicated authentication entry point. This is
+  // intentionally separate from merchant/customer login so the control plane
+  // boundary is visible and role-checked before entering /platform.
+  if (isPlatformSigninPath) {
+    return <LoginPage mode="platform" onAuthenticated={setAuthUser} />;
   }
 
   // Keep authentication outside the storefront router. /login must always
@@ -255,8 +264,16 @@ export default function App() {
   }
 
   if (!authUser) {
-    if (isMerchantPath) return <LoginPage onAuthenticated={setAuthUser} />;
+    if (isPlatformPath) return <LoginPage mode="platform" onAuthenticated={setAuthUser} />;
+    if (isMerchantPath) return <LoginPage mode="business" onAuthenticated={setAuthUser} />;
     return <LoginPage onAuthenticated={setAuthUser} />;
+  }
+
+  // A valid session is not sufficient for the platform control plane. Keep
+  // tenant/customer identities out of /platform and require a platform role.
+  if (isPlatformPath && !['system_owner', 'platform_admin', 'platform_support', 'platform_finance'].includes(authUser.role)) {
+    void authClient.logout();
+    return <LoginPage mode="platform" onAuthenticated={setAuthUser} />;
   }
 
   // Discovery is the platform landing page. Authenticated users also start here;
