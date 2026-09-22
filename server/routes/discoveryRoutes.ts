@@ -1352,10 +1352,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const businessId=String(x.businessId||'');
     if(!businessId||x.amount==null)throw new Error('VALIDATION_ERROR:businessId and amount are required.');
     const b=await repo.findById(businessId);
-    if(!b||!(await owned(req,businessId)))throw new Error('TENANT_ACCESS_DENIED:Only the business owner may quote.');
+    if(!b||!(await owned(req,businessId,'business.leads.manage')))throw new Error('TENANT_ACCESS_DENIED:Business lead management access required to quote.');
     const serviceId=x.serviceId?String(x.serviceId):null;
     const amount=Number(x.amount);
-    if(!Number.isFinite(amount)||amount<0)throw new Error('VALIDATION_ERROR:amount must be a non-negative number.');
+    if(!Number.isFinite(amount)||amount<0||amount>1000000000000)throw new Error('VALIDATION_ERROR:amount must be a finite non-negative number within supported limits.');
     if(serviceId){
       const s=await db.query('SELECT 1 FROM discovery_services WHERE id=$1 AND business_id=$2 AND is_active=TRUE',[serviceId,businessId]);
       if(!s.rows[0])throw new Error('NOT_FOUND:Service does not belong to the quoting business.');
@@ -1365,12 +1365,30 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 FOR UPDATE',[req.params.id]);
       if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
       if(!['OPEN','MATCHED','QUOTED'].includes(request.rows[0].status))throw new Error('INVALID_STATE_TRANSITION:This request cannot receive a quote.');
+      const matched=await tx.query(
+        `SELECT 1 FROM discovery_service_request_matches
+         WHERE request_id=$1 AND business_id=$2
+         FOR UPDATE`,
+        [req.params.id,businessId],
+      );
+      if(!matched.rows[0])throw new Error('PERMISSION_DENIED:Business must be matched to the service request before submitting a quote.');
+      const existingQuote=await tx.query(
+        `SELECT id,status FROM discovery_service_quotes
+         WHERE request_id=$1 AND business_id=$2
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [req.params.id,businessId],
+      );
+      if(existingQuote.rows[0] && ['SUBMITTED','ACCEPTED'].includes(String(existingQuote.rows[0].status))) {
+        throw new Error('CONFLICT:This business already has an active quote for the service request.');
+      }
       const r=await tx.query(
         `INSERT INTO discovery_service_quotes(id,request_id,business_id,service_id,amount,currency,message,estimated_duration_minutes,valid_until)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
         [quoteId,req.params.id,businessId,serviceId,amount,x.currency||'SLE',x.message||null,x.estimatedDurationMinutes||null,x.validUntil||null],
       );
-      await tx.query('INSERT INTO discovery_service_request_matches(request_id,business_id,match_score) VALUES($1,$2,1) ON CONFLICT(request_id,business_id) DO NOTHING',[req.params.id,businessId]);
+      // The business must already be an eligible match; quoting never creates a match implicitly.
       if(request.rows[0].status==='OPEN'||request.rows[0].status==='MATCHED'){
         await tx.query('UPDATE discovery_service_requests SET status=\'QUOTED\',updated_at=CURRENT_TIMESTAMP WHERE id=$1',[req.params.id]);
         await tx.query(
