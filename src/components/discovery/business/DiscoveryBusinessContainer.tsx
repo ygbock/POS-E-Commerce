@@ -194,7 +194,13 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   };
 
   const handleBusinessCreated = (newBiz: DiscoveryBusiness) => {
-    setBusinesses((prev) => [newBiz, ...prev]);
+    setBusinesses((prev) => {
+      const exists = prev.some((b) => b.id === newBiz.id);
+      if (exists) {
+        return prev.map((b) => (b.id === newBiz.id ? newBiz : b));
+      }
+      return [newBiz, ...prev];
+    });
     setSelectedBusiness(newBiz);
     setIsOnboardingOpen(false);
     setActiveTab('dashboard');

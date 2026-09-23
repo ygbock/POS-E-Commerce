@@ -99,8 +99,21 @@ class PostgresPoolClient implements DatabaseClient {
   }
 }
 
+class AsyncMutex {
+  private promise: Promise<void> = Promise.resolve();
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    const nextPromise = this.promise.then(async () => {
+      return await fn();
+    });
+    this.promise = nextPromise.then(() => {}, () => {});
+    return nextPromise;
+  }
+}
+
 class PGliteDatabaseClient implements DatabaseClient {
   private db: PGlite;
+  private mutex = new AsyncMutex();
 
   constructor(dataDir?: string) {
     if (dataDir) {
@@ -114,42 +127,50 @@ class PGliteDatabaseClient implements DatabaseClient {
   }
 
   async query<T = any>(text: string, params?: any[]): Promise<DbQueryResult<T>> {
-    const res = await this.db.query(text, params);
-    return {
-      rows: (res.rows || []) as T[],
-      rowCount: res.affectedRows ?? res.rows.length,
-    };
+    return this.mutex.run(async () => {
+      const res = await this.db.query(text, params);
+      return {
+        rows: (res.rows || []) as T[],
+        rowCount: res.affectedRows ?? res.rows.length,
+      };
+    });
   }
 
   async exec(sql: string): Promise<void> {
-    await this.db.exec(sql);
+    return this.mutex.run(async () => {
+      await this.db.exec(sql);
+    });
   }
 
   async withTransaction<T>(callback: (client: DatabaseClient) => Promise<T>): Promise<T> {
-    return (await this.db.transaction(async (tx) => {
-      const txClient: DatabaseClient = {
-        query: async <R = any>(text: string, params?: any[]) => {
-          const r = await tx.query(text, params);
-          return {
-            rows: (r.rows || []) as R[],
-            rowCount: r.affectedRows ?? r.rows.length,
-          };
-        },
-        exec: async (sql: string) => {
-          await tx.exec(sql);
-        },
-        withTransaction: async <R = any>(innerCb: (c: DatabaseClient) => Promise<R>) => {
-          return innerCb(txClient);
-        },
-        close: async () => {},
-        isEmbedded: () => true,
-      };
-      return callback(txClient);
-    })) as T;
+    return this.mutex.run(async () => {
+      return (await this.db.transaction(async (tx) => {
+        const txClient: DatabaseClient = {
+          query: async <R = any>(text: string, params?: any[]) => {
+            const r = await tx.query(text, params);
+            return {
+              rows: (r.rows || []) as R[],
+              rowCount: r.affectedRows ?? r.rows.length,
+            };
+          },
+          exec: async (sql: string) => {
+            await tx.exec(sql);
+          },
+          withTransaction: async <R = any>(innerCb: (c: DatabaseClient) => Promise<R>) => {
+            return innerCb(txClient);
+          },
+          close: async () => {},
+          isEmbedded: () => true,
+        };
+        return callback(txClient);
+      })) as T;
+    });
   }
 
   async close(): Promise<void> {
-    await this.db.close();
+    return this.mutex.run(async () => {
+      await this.db.close();
+    });
   }
 
   isEmbedded(): boolean {
