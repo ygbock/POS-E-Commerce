@@ -1283,8 +1283,15 @@ async function main() {
 
         assert.strictEqual(body.success, false);
         assert.strictEqual(body.error.code, 'INTERNAL_SERVER_ERROR');
-        // In non-production or production, sensitive credentials or database connection details must not leak in error code
+        // 500 responses must expose only a generic public message at the HTTP boundary.
+        assert.strictEqual(body.error.message, 'An unexpected internal error occurred. Please contact support.');
         assert.strictEqual(body.stack, undefined, 'Stack trace must never be returned in API response');
+
+        const rawBody = JSON.stringify(body);
+        assert.strictEqual(rawBody.includes('[REDACTED_CONN_URI]'), false, 'Redacted internal diagnostics must not leak');
+        assert.strictEqual(rawBody.includes('postgres://'), false, 'Database connection URI must not leak');
+        assert.strictEqual(rawBody.includes('db.internal'), false, 'Internal database hostname must not leak');
+        assert.strictEqual(rawBody.includes('CI-REDACTION-TEST'), false, 'Synthetic credential marker must not leak');
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
