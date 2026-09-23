@@ -750,6 +750,18 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
     }
   });
 
+  // POST /api/storefront/orders/:id/cancel
+  // Merchant-side cancellation releases every active inventory reservation atomically.
+  router.post('/orders/:id/cancel', requireAuth(), requirePermission(PERMISSIONS.ORDERS_CANCEL), requireTenantAccess(), async (req: Request, res: Response) => {
+    try {
+      const organizationId = req.auth!.organizationId;
+      const order = await orders.cancelStorefrontOrder(organizationId, req.params.id, req.auth!.userId);
+      res.json({ success: true, data: order });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
   // POST /api/storefront/orders/:id/fulfill
   router.post('/orders/:id/fulfill', requireAuth(), requirePermission(PERMISSIONS.ORDERS_FULFILL), requireTenantAccess(), async (req: Request, res: Response) => {
     try {
