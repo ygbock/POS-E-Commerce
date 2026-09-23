@@ -284,9 +284,11 @@ export function classifyApiError(
   }
 
   // 9. Unhandled internal server error (500)
-  const safeMessage = isProduction
-    ? 'An unexpected internal error occurred. Please contact support.'
-    : sanitizeApiErrorMessage(msg || 'An unexpected internal error occurred. Please contact support.');
+  // Unhandled 500s are always generic at the HTTP boundary.
+  // Sanitization is still used for server-side logs, but a redacted internal
+  // diagnostic (for example a connection URI replaced with [REDACTED_CONN_URI])
+  // is still an internal diagnostic and must not be exposed to API consumers.
+  const safeMessage = 'An unexpected internal error occurred. Please contact support.';
 
   return {
     status: 500,
