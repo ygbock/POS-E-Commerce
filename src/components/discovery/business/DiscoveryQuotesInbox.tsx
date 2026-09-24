@@ -95,7 +95,7 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
     setLoadingDetails(true);
     setError(null);
     try {
-      const detail = await discoveryApi.getServiceRequest(req.id);
+      const detail = await discoveryApi.getBusinessServiceRequest(business.id, req.id);
       setSelectedRequest(detail);
     } catch (err: unknown) {
       setError(err instanceof DiscoveryApiError ? err.message : 'Unable to load request details.');
