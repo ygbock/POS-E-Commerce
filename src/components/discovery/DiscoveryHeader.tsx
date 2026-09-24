@@ -55,6 +55,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -124,6 +125,39 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
                 </span>
               </div>
             </a>
+
+            {/* Customer activity/workspace dropdown */}
+            <div className="relative hidden lg:block">
+              <button
+                type="button"
+                onClick={() => { setActivityOpen((v) => !v); setBrowseOpen(false); }}
+                aria-expanded={activityOpen}
+                aria-haspopup="menu"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold tracking-wide uppercase transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <span>My Activity</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-300 transition-transform duration-200" style={{ transform: activityOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+              </button>
+              {activityOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setActivityOpen(false)} />
+                  <div role="menu" className="absolute left-0 mt-2.5 w-64 rounded-xl bg-white border border-slate-200 shadow-2xl z-50 py-1.5">
+                    <a href={workspaceHref("/discover/my-requests")} onClick={() => setActivityOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors">
+                      <FileText className="w-4 h-4 text-indigo-500 shrink-0" /><span>My Service Requests</span>
+                    </a>
+                    <a href={workspaceHref("/discover/my-inquiries")} onClick={() => setActivityOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors">
+                      <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" /><span>My Inquiries</span>
+                    </a>
+                    <a href={workspaceHref("/discover/my-claims")} onClick={() => setActivityOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors">
+                      <UserCheck className="w-4 h-4 text-amber-500 shrink-0" /><span>My Business Claims</span>
+                    </a>
+                    <a href={workspaceHref("/discover/saved")} onClick={() => setActivityOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors">
+                      <Heart className="w-4 h-4 text-rose-500 shrink-0" /><span>Saved Businesses</span>
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Browse Dropdown Button */}
             <div className="relative">
@@ -260,6 +294,8 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
                 <a href={workspaceHref("/discover/request-service")} onClick={() => setMobileMenuOpen(false)} className="col-span-2 rounded-xl border border-indigo-900 bg-indigo-950/40 p-3 text-xs font-bold flex items-center gap-2"><ClipboardPlus className="w-4 h-4 text-indigo-400" />Request Service</a>
                 <a href={workspaceHref("/discover/saved")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><Heart className="w-4 h-4 text-rose-500" />Saved</a>
                 <a href={workspaceHref("/discover/my-requests")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-400" />Requests</a>
+                <a href={workspaceHref("/discover/my-inquiries")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-blue-400" />Inquiries</a>
+                <a href={workspaceHref("/discover/my-claims")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><UserCheck className="w-4 h-4 text-amber-400" />Claims</a>
               </div>
             </div>
 
