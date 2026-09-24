@@ -45,7 +45,7 @@ async function main() {
   const distance = discoveryHaversineKm(8.484, -13.229, 8.484, -13.229);
   assert.ok(distance < 0.001);
 
-  const many = Array.from({ length: 500 }, (_, i) => ({
+  const many = Array.from({ length: 5000 }, (_, i) => ({
     serviceId: 'svc_' + i,
     businessId: 'biz_' + i,
     serviceName: i % 2 === 0 ? 'Solar Installation' : 'Unrelated Service',
@@ -53,15 +53,28 @@ async function main() {
     serviceType: i % 2 === 0 ? 'Solar Energy' : 'Other',
     city: 'Freetown',
   }));
-  const started = performance.now();
-  const result = rankDiscoveryServiceMatches({
+  const matchingTimings: number[] = [];
+  let result = rankDiscoveryServiceMatches({
     description: 'solar panel installation',
     serviceType: 'Solar Energy',
     city: 'Freetown',
   }, many);
-  const elapsed = performance.now() - started;
   assert.strictEqual(result.length, 25, 'matching should cap provider fan-out');
-  assert.ok(elapsed < 500, `500-candidate matching should remain bounded; took ${elapsed.toFixed(1)}ms`);
+
+  for (let i = 0; i < 10; i += 1) {
+    const started = performance.now();
+    result = rankDiscoveryServiceMatches({
+      description: 'solar panel installation',
+      serviceType: 'Solar Energy',
+      city: 'Freetown',
+    }, many);
+    matchingTimings.push(performance.now() - started);
+  }
+  matchingTimings.sort((a, b) => a - b);
+  const matchingP95 = matchingTimings[Math.min(matchingTimings.length - 1, Math.ceil(matchingTimings.length * 0.95) - 1)];
+  const matchingMax = matchingTimings[matchingTimings.length - 1];
+  assert.ok(matchingP95 < 750, `5000-candidate matching p95 should remain bounded; took ${matchingP95.toFixed(1)}ms`);
+  assert.ok(matchingMax < 1200, `5000-candidate matching max should remain bounded; took ${matchingMax.toFixed(1)}ms`);
 
   const malformed = rankDiscoveryServiceMatches({
     description: 'solar installation',
