@@ -197,6 +197,16 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                     Status: {req.status}
                   </span>
+                  {req.match_reason && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                      Match: {String(req.match_reason).replace(/_/g, ' ').toLowerCase().replace(/^./, (ch) => ch.toUpperCase())}
+                    </span>
+                  )}
+                  {req.match_score != null && (
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      Relevance {Math.round(Number(req.match_score) * 100)}%
+                    </span>
+                  )}
                   <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-slate-400" />
                     {req.customer_name}
