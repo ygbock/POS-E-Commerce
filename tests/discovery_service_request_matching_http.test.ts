@@ -130,6 +130,25 @@ async function main() {
     assert.notStrictEqual(Number(stored.rows[0].match_score), 999999);
     assert.ok(['REQUESTED_SERVICE','SERVICE_TYPE','TEXT','LOCATION','BUDGET'].includes(String(stored.rows[0].match_reason)));
 
+    const providerInbox = await requestJson(
+      baseUrl,
+      '/api/discovery/businesses/' + ownerA.business.id + '/service-requests?status=MATCHED',
+      actors.ownerA,
+    );
+    assert.strictEqual(providerInbox.status, 200, JSON.stringify(providerInbox.body));
+    assert.strictEqual(providerInbox.body?.data?.length, 1);
+    assert.strictEqual(providerInbox.body?.data?.[0]?.id, requestId);
+    assert.ok(providerInbox.body?.data?.[0]?.match_reason);
+    assert.strictEqual(Number(providerInbox.body?.data?.[0]?.match_score), Number(stored.rows[0].match_score));
+
+    const unrelatedInbox = await requestJson(
+      baseUrl,
+      '/api/discovery/businesses/' + ownerB.business.id + '/service-requests?status=MATCHED',
+      actors.ownerB,
+    );
+    assert.strictEqual(unrelatedInbox.status, 200);
+    assert.strictEqual(unrelatedInbox.body?.data?.length, 0);
+
     await db.query('UPDATE discovery_service_requests SET status=\'CLOSED\' WHERE id=$1', [requestId]);
     const terminal = await requestJson(baseUrl, matchPath, actors.ownerA, {
       method: 'POST',
