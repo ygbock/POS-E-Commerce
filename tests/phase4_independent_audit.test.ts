@@ -720,7 +720,43 @@ async function main() {
     const resAfterExp = Number(balAfterExp.rows[0].reserved);
     assert.strictEqual(resBeforeExp - resAfterExp, 2, 'Expiry worker correctly returned 2 reserved units');
 
-    markPassed('Audit 12: Reservation Expiry Worker (Releases reserved stock on timeout)');
+    // Production-readiness invariant: an expired order reservation must not leave
+    // its pending storefront order indefinitely in Stock Reserved. Create a real
+    // order, expire its only reservation, and verify the order is cancelled atomically.
+    const expiryOrderRes = await orderService.placeStorefrontOrder({
+      ...baseOrderParams,
+      organization_id: orgAlpha,
+      idempotency_key: crypto.randomUUID(),
+      payment_method: 'Credit Card',
+      fulfillment_method: 'Standard Delivery',
+      location_id: locAlpha,
+      cart_items: [{ variant_id: varAlpha, quantity: '1.0000' }],
+    });
+    const expiryOrderId = expiryOrderRes.order.id;
+    assert.strictEqual(expiryOrderRes.order.status, 'Stock Reserved');
+
+    const expiryOrderReservations = await reservationService.listReservations(orgAlpha, {
+      referenceType: 'orders',
+      referenceId: expiryOrderId,
+      status: 'ACTIVE',
+    });
+    assert.strictEqual(expiryOrderReservations.length, 1, 'Order must have one active reservation before expiry');
+
+    await db.query(
+      `UPDATE inventory_reservations SET expires_at = $1 WHERE id = $2 AND organization_id = $3`,
+      [new Date(Date.now() - 3600000).toISOString(), expiryOrderReservations[0].id, orgAlpha]
+    );
+
+    const orderExpiryResult = await reservationService.expireStaleReservations(orgAlpha);
+    assert.ok(orderExpiryResult.reservationIds.includes(expiryOrderReservations[0].id));
+
+    const expiredOrder = await orderRepo.findOrderById(expiryOrderId, orgAlpha);
+    assert.strictEqual(expiredOrder?.order.status, 'Cancelled', 'Expired sole order reservation must cancel pending order');
+
+    const expiredOrderReservation = await reservationRepo.findById(orgAlpha, expiryOrderReservations[0].id);
+    assert.strictEqual(expiredOrderReservation?.status, 'EXPIRED');
+
+    markPassed('Audit 12: Reservation Expiry Worker (Releases stock and cancels expired pending orders)');
   } catch (err) {
     markFailed('Audit 12: Reservation Expiry Worker', err);
   }
