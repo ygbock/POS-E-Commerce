@@ -42,6 +42,8 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
   const [quoteSuccess, setQuoteSuccess] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<DiscoveryServiceRequest | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [businessServices, setBusinessServices] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState('');
 
   // Quote form state
   const [quoteForm, setQuoteForm] = useState({
@@ -71,6 +73,9 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
 
   useEffect(() => {
     void fetchRequests();
+    void discoveryApi.getBusinessServices(business.id).then((services) => {
+      setBusinessServices((services || []).filter((service) => service.id).map((service) => ({ id: service.id, name: service.name })));
+    }).catch(() => setBusinessServices([]));
   }, [business.id, filterStatus]);
 
   const handleOpenDetails = async (req: DiscoveryServiceRequest) => {
@@ -90,6 +95,12 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
     setActiveRequest(req);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 7);
+    const existingQuote = (req.quotes || []).find((quote) => quote.business_id === business.id && ['SUBMITTED', 'ACCEPTED'].includes(quote.status));
+    if (existingQuote) {
+      setError('Your business already has an active quote for this request. Open the request to review its current quote status.');
+      return;
+    }
+    setSelectedServiceId(req.quotes?.find((quote) => quote.business_id === business.id)?.service_id || '');
     setQuoteForm({
       amount: req.budget_from ? String(req.budget_from) : '',
       currency: 'SLE',
@@ -112,6 +123,7 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
 
       await discoveryApi.createQuote(activeRequest.id, {
         businessId: business.id,
+        serviceId: selectedServiceId || undefined,
         amount: Number(quoteForm.amount),
         currency: quoteForm.currency,
         message: quoteForm.message.trim() || undefined,
@@ -326,6 +338,24 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
               </div>
             </div>
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 mb-5">
+              <p className="text-xs font-bold text-slate-500 mb-3">Your quote history</p>
+              {selectedRequest.quotes?.filter((quote) => quote.business_id === business.id).length ? (
+                <div className="space-y-2">
+                  {selectedRequest.quotes.filter((quote) => quote.business_id === business.id).map((quote) => (
+                    <div key={quote.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60">
+                      <div>
+                        <p className="text-sm font-bold">{quote.currency} {Number(quote.amount).toLocaleString()}</p>
+                        <p className="text-[11px] text-slate-500">{quote.service_name || 'Service quote'}{quote.created_at ? ` • ${new Date(quote.created_at).toLocaleDateString()}` : ''}</p>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${quote.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' : quote.status === 'SUBMITTED' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>{quote.status}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">No quote submitted by your business yet.</p>
+              )}
+            </div>
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 mb-5">
               <p className="text-xs font-bold text-slate-500 mb-2">Customer requirements</p>
               <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{selectedRequest.description}</p>
               {(selectedRequest.budget_from || selectedRequest.budget_to) && (
@@ -370,6 +400,16 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
             </div>
 
             <form onSubmit={handleSendQuote} className="space-y-4 mt-4">
+              {businessServices.length > 0 && (
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Service</label>
+                  <select value={selectedServiceId} onChange={(e) => setSelectedServiceId(e.target.value)} className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-xs">
+                    <option value="">Select a service (optional)</option>
+                    {businessServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
