@@ -389,6 +389,28 @@ export interface DiscoveryContactInquiry {
 /**
  * Customer service quote request
  */
+export type DiscoveryServiceRequestEventType =
+  | 'REQUEST_CREATED'
+  | 'REQUEST_MATCHED'
+  | 'STATUS_CHANGED'
+  | 'QUOTE_SUBMITTED'
+  | 'QUOTE_ACCEPTED'
+  | 'QUOTES_DECLINED';
+
+export interface DiscoveryServiceRequestEvent {
+  id: string;
+  request_id: string;
+  event_type: DiscoveryServiceRequestEventType | string;
+  from_status?: DiscoveryServiceRequest['status'] | null;
+  to_status: DiscoveryServiceRequest['status'];
+  actor_user_id?: string | null;
+  business_id?: string | null;
+  quote_id?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface DiscoveryServiceRequest {
   id: string;
   customer_user_id?: string | null;
@@ -414,6 +436,7 @@ export interface DiscoveryServiceRequest {
   match_score?: number | string | null;
   match_reason?: string | null;
   quotes?: DiscoveryServiceQuote[];
+  events?: DiscoveryServiceRequestEvent[];
 }
 
 /**
