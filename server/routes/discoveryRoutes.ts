@@ -1541,7 +1541,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
     const status=String(req.query.status||'');
     const r=await db.query(
-      `SELECT DISTINCT r.*,m.match_score
+      `SELECT DISTINCT r.*,m.match_score,m.match_reason
        FROM discovery_service_requests r
        JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1
        WHERE ($2='' OR r.status=$2)
