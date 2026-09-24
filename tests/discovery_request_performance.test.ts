@@ -150,7 +150,7 @@ async function main() {
     assert.ok(detail.max < 4000, 'Concurrent request detail max exceeded 4000ms: ' + detail.max.toFixed(1));
 
     const quoteWrite = await timedConcurrent(20, async (index) => {
-      const requestId = requestIds[index];
+      const requestId = requestIds[20 + index];
       const response = await requestJson(baseUrl, '/api/discovery/service-requests/' + requestId + '/quotes', providerActor, {
         method: 'POST',
         body: JSON.stringify({
@@ -170,7 +170,7 @@ async function main() {
       "SELECT COUNT(*)::int AS count FROM discovery_service_quotes WHERE business_id=$1 AND request_id LIKE 'perf-req-%'",
       [provider.business.id],
     );
-    assert.strictEqual(Number(quoteCount.rows[0].count), 60);
+    assert.strictEqual(Number(quoteCount.rows[0].count), 40);
 
     console.log(
       'Discovery request performance test passed: ' +

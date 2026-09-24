@@ -1,5 +1,31 @@
 # Implementation Report
 
+## TASK: QA-002 — Fix Active Quote Conflict in Discovery Service Request Performance Test
+
+- **Status**: `IMPLEMENTED — READY FOR REVIEW`
+- **Date**: 2026-09-24
+- **Program**: `AbaCha Discovery Performance and Quality Hardening / QA-002`
+- **Boundary**: `TESTS ONLY`
+
+---
+
+### Scope & Changes
+
+1. **Avoid Active Quote Conflicts in Performance Test (`tests/discovery_request_performance.test.ts`)**:
+   - The test suite pre-populates the database with 20 active/submitted quotes for service request IDs `perf-req-0` through `perf-req-19` to assert proper rendering of list items with and without quotes in the details query endpoint.
+   - The concurrent write performance test (`quoteWrite`) was previously attempting to submit quotes for the same request IDs `perf-req-0` through `perf-req-19`.
+   - Because the discovery backend service (`discoveryRoutes.ts`) strictly enforces a "one active quote per business per service request" business rule, this caused the API to reject the writes with a `409 CONFLICT` error (`This business already has an active quote for the service request.`).
+   - Adjusted the concurrent quote write test to submit quotes for requests `perf-req-20` through `perf-req-39` (by offsetting the request selection with `20 + index`). Since these requests have no existing quotes, they resolve cleanly without conflict.
+   - Adjusted the final quote count assertion from `60` to `40` to correctly match the math: 20 quotes pre-populated in setup + 20 quotes written concurrently during performance test = 40 quotes total.
+
+### Verification Results
+
+- `npm run test:discovery-request-performance`: ✅ PASS (All 20 concurrent writes completed cleanly; metrics printed successfully)
+- `npm run lint`: ✅ PASS (0 errors)
+- `npm run compile_applet` (Production Build): ✅ PASS (Compiled successfully)
+
+---
+
 ## TASK: BUG-001 — Resolve Block-Scoped Variable Hoisting Issue in DiscoveryBusinessContainer
 
 - **Status**: `IMPLEMENTED — READY FOR REVIEW`
