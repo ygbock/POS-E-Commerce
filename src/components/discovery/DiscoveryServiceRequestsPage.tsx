@@ -82,6 +82,34 @@ export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPage
         <section role="dialog" aria-modal="true" aria-labelledby="request-detail-title" className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
           <div className="flex justify-between gap-4"><div><p className="text-xs uppercase tracking-widest text-slate-400 font-black">Request</p><h2 id="request-detail-title" className="mt-1 text-xl font-black">{selected.description}</h2></div><button type="button" aria-label="Close" onClick={() => setSelected(null)} className="text-slate-400">×</button></div>
           <div className="mt-5 flex items-center gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black ${statusMeta[selected.status].className}`}>{statusMeta[selected.status].icon}{statusMeta[selected.status].label}</span></div>
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-black text-slate-600">Request timeline</p>
+              <span className="text-[10px] font-semibold text-slate-400">{selected.events?.length || 0} event{selected.events?.length === 1 ? '' : 's'}</span>
+            </div>
+            {selected.events?.length ? (
+              <div className="mt-4 space-y-3">
+                {selected.events.map((event) => (
+                  <div key={event.id} className="flex gap-3">
+                    <div className="mt-1.5 h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        {String(event.event_type || 'STATUS_CHANGED').replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {event.from_status ? `${event.from_status} → ${event.to_status}` : event.to_status}
+                        {event.created_at ? ` • ${new Date(event.created_at).toLocaleString()}` : ''}
+                      </p>
+                      {event.note && <p className="mt-1 text-[11px] text-slate-500">{event.note}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">No lifecycle events recorded yet.</p>
+            )}
+          </div>
+
           <div className="mt-6">
             {selected.quotes?.length ? (
               <>
