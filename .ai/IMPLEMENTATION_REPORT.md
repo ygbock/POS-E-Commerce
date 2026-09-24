@@ -1,5 +1,28 @@
 # Implementation Report
 
+## FINAL RELEASE GATE — 2026-09-24
+
+- **Status**: `VERIFIED — AUTOMATED REGRESSION AND PRODUCTION RUNTIME GATES GREEN`
+- **Branch**: `main`
+- **Head**: `0938598e41de7d0bb19f836a3b0b62fe23451f2d`
+
+### Verification evidence
+
+- `npm test`: ✅ PASS — all chained database, platform, subscription, tenant, security, inventory, POS, API, QA, UX, checkout, offline POS, production-gate, operational, storefront, audit, Discovery, and Discovery Search suites completed successfully.
+- `npm run lint`: ✅ PASS — TypeScript reported 0 errors.
+- `npm run build`: ✅ PASS — Vite frontend bundle and `dist/server.cjs` production server bundle generated.
+- `node dist/server.cjs`: ✅ PASS — production bundle connected to embedded PGlite schema 048 and started the HTTP server on port 3000 after clearing a stale local Node process that had occupied the port.
+- Public source-map gate: ✅ `dist/` contained no `.map` artifacts in the verified build output.
+- Discovery performance: ✅ search p95 148.9ms; request inbox p95 416.2ms; request detail p95 452.1ms; concurrent quote-write p95 532.1ms during the full regression run.
+- Phase 4 storefront lifecycle: ✅ cancellation and fulfillment routes are exposed; reservation expiry now has explicit audit coverage proving that an expired sole reservation cancels a pending `Stock Reserved` order atomically.
+
+### Command correction
+
+`compile_applet` is **not** an npm script in the current repository and is not part of the authoritative build gate. The canonical production build command is `npm run build`.
+
+---
+
+
 ## TASK: QA-002 — Fix Active Quote Conflict in Discovery Service Request Performance Test
 
 - **Status**: `IMPLEMENTED — READY FOR REVIEW`
