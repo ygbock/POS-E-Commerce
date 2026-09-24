@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, XCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, XCircle, AlertCircle, CalendarClock, MapPin, Sparkles, Trophy, Ban } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryServiceRequest } from '../../types/discovery';
 
@@ -23,6 +23,7 @@ export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPage
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [acceptingQuoteId, setAcceptingQuoteId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -81,7 +82,78 @@ export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPage
         <section role="dialog" aria-modal="true" aria-labelledby="request-detail-title" className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
           <div className="flex justify-between gap-4"><div><p className="text-xs uppercase tracking-widest text-slate-400 font-black">Request</p><h2 id="request-detail-title" className="mt-1 text-xl font-black">{selected.description}</h2></div><button type="button" aria-label="Close" onClick={() => setSelected(null)} className="text-slate-400">×</button></div>
           <div className="mt-5 flex items-center gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black ${statusMeta[selected.status].className}`}>{statusMeta[selected.status].icon}{statusMeta[selected.status].label}</span></div>
-          <div className="mt-6 space-y-3">{selected.quotes?.length ? selected.quotes.map(q => <div key={q.id} className="rounded-2xl border p-4"><div className="flex justify-between gap-4"><div><div className="font-black">{q.business_name || 'Provider'}</div><div className="text-xs text-slate-500 mt-1">{q.message || 'No additional message.'}</div></div><div className="font-black text-emerald-700 whitespace-nowrap">{q.currency} {q.amount}</div></div>{q.valid_until && <div className="mt-2 text-[11px] text-slate-500">Valid until {new Date(q.valid_until).toLocaleDateString()}</div>}{q.status==='SUBMITTED' && selected.status==='QUOTED' && <button type="button" onClick={async()=>{try{await discoveryApi.acceptServiceQuote(selected.id,q.id);setSelected(await discoveryApi.getServiceRequest(selected.id));await load();}catch(err:unknown){setError(err instanceof DiscoveryApiError?err.message:'Unable to accept quote.');}}} className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white">Accept quote</button>}</div>) : <p className="text-sm text-slate-500">No quotes have been received yet.</p>}</div>
+          <div className="mt-6">
+            {selected.quotes?.length ? (
+              <>
+                {selected.status === 'QUOTED' && (
+                  <div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
+                      <div>
+                        <p className="text-sm font-black text-indigo-950">Compare your quotes</p>
+                        <p className="mt-1 text-xs leading-5 text-indigo-800">Review price, estimated duration, provider message, and quote validity before accepting.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  {selected.quotes.map((q) => {
+                    const expiresAt = q.valid_until ? new Date(q.valid_until) : null;
+                    const isExpired = expiresAt ? expiresAt.getTime() <= Date.now() : false;
+                    const isSubmitted = q.status === 'SUBMITTED' && !isExpired;
+                    const isAccepted = q.status === 'ACCEPTED';
+                    const amount = Number(q.amount);
+                    const duration = q.estimated_duration_minutes;
+                    return (
+                      <article key={q.id} className={`rounded-2xl border p-4 sm:p-5 ${isAccepted ? 'border-emerald-300 bg-emerald-50/50' : isExpired || q.status === 'EXPIRED' ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-black">{q.business_name || 'Provider'}</h3>
+                              {isAccepted && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-700"><Trophy className="h-3 w-3" />Accepted</span>}
+                              {isExpired && <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-1 text-[10px] font-black text-slate-600"><Ban className="h-3 w-3" />Expired</span>}
+                              {!isAccepted && !isExpired && q.status === 'DECLINED' && <span className="text-[10px] font-black text-slate-500">Declined</span>}
+                            </div>
+                            {q.service_name && <p className="mt-1 text-xs font-semibold text-slate-500">{q.service_name}</p>}
+                            <p className="mt-2 text-sm text-slate-700">{q.message || 'No additional message.'}</p>
+                          </div>
+                          <div className="shrink-0 text-left sm:text-right">
+                            <div className="text-xl font-black text-emerald-700">{q.currency} {Number.isFinite(amount) ? amount.toLocaleString() : q.amount}</div>
+                            {duration != null && <div className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5" />{duration} min estimated</div>}
+                          </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
+                          {q.valid_until && <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5"><CalendarClock className="h-3.5 w-3.5" />Valid until {expiresAt?.toLocaleDateString()}</span>}
+                          {q.created_at && <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5">Submitted {new Date(q.created_at).toLocaleDateString()}</span>}
+                        </div>
+                        {isSubmitted && selected.status === 'QUOTED' && (
+                          <button type="button" disabled={acceptingQuoteId !== null} onClick={async () => {
+                            setAcceptingQuoteId(q.id); setError('');
+                            try {
+                              await discoveryApi.acceptServiceQuote(selected.id, q.id);
+                              setSelected(await discoveryApi.getServiceRequest(selected.id));
+                              await load();
+                            } catch (err: unknown) {
+                              setError(err instanceof DiscoveryApiError ? err.message : 'Unable to accept quote.');
+                            } finally { setAcceptingQuoteId(null); }
+                          }} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-60">
+                            {acceptingQuoteId === q.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                            Accept this quote
+                          </button>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-2xl border border-dashed p-8 text-center">
+                <FileText className="mx-auto h-9 w-9 text-slate-300" />
+                <p className="mt-2 text-sm font-bold">No quotes have been received yet.</p>
+                <p className="mt-1 text-xs text-slate-500">Matched providers can respond as they review your request.</p>
+              </div>
+            )}
+          </div>
           {detailLoading && <div className="mt-4 text-xs text-slate-500">Refreshing…</div>}
         </section>
       </div>}
