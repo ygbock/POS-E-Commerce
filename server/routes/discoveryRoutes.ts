@@ -1304,13 +1304,44 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       [req.params.id],
     );
     const events=await db.query(
-      `SELECT id,from_status,to_status,actor_user_id,note,created_at
-       FROM discovery_service_request_events WHERE request_id=$1 ORDER BY created_at ASC`,
+      `SELECT id,request_id,event_type,from_status,to_status,actor_user_id,business_id,quote_id,note,metadata,created_at
+       FROM discovery_service_request_events WHERE request_id=$1 ORDER BY created_at ASC,id ASC`,
       [req.params.id],
     );
     res.json({success:true,data:{...r.rows[0],quotes:quotes.rows,events:events.rows}});
   }catch(err){next(err);} });
 
+  // Provider-scoped request detail; only a matched business can read it.
+  router.get('/businesses/:businessId/service-requests/:requestId', requireAuth(), async(req,res,next)=>{try{
+    const businessId=String(req.params.businessId);
+    const requestId=String(req.params.requestId);
+    if(!(await owned(req,businessId,'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
+    const r=await db.query(
+      `SELECT r.*,m.match_score,m.match_reason
+         FROM discovery_service_requests r
+         JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$2
+        WHERE r.id=$1`,
+      [requestId,businessId],
+    );
+    if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found for this business.'}});
+    const quotes=await db.query(
+      `SELECT q.*,b.name AS business_name,s.name AS service_name
+         FROM discovery_service_quotes q
+         JOIN discovery_businesses b ON b.id=q.business_id
+         LEFT JOIN discovery_services s ON s.id=q.service_id
+        WHERE q.request_id=$1 AND q.business_id=$2
+        ORDER BY q.created_at DESC`,
+      [requestId,businessId],
+    );
+    const events=await db.query(
+      `SELECT id,request_id,event_type,from_status,to_status,actor_user_id,business_id,quote_id,note,metadata,created_at
+         FROM discovery_service_request_events
+        WHERE request_id=$1 AND (business_id=$2 OR business_id IS NULL)
+        ORDER BY created_at ASC,id ASC`,
+      [requestId,businessId],
+    );
+    res.json({success:true,data:{...r.rows[0],quotes:quotes.rows,events:events.rows}});
+  }catch(err){next(err);}});
   router.post('/service-requests/:id/cancel', requireAuth(), async(req,res,next)=>{try{
     const current=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.auth!.userId]);
     if(!current.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
