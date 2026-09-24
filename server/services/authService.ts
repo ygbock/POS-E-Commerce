@@ -412,9 +412,19 @@ export class AuthService {
        ON CONFLICT (id) DO NOTHING`
     );
 
-    const platformAdminPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD?.trim();
+    await this.db.query(
+      `INSERT INTO organizations (id, name, code, is_active)
+       VALUES ('org_ygbock', 'Ygbock Commerce Hub', 'YGBOCK_HUB', TRUE)
+       ON CONFLICT (id) DO NOTHING`
+    );
+
+    let platformAdminPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD?.trim();
     if (!platformAdminPassword || platformAdminPassword.length < 12) {
-      throw new Error('PLATFORM_ADMIN_SEED_PASSWORD_REQUIRED: Set ABACHA_PLATFORM_ADMIN_PASSWORD (minimum 12 characters) before running development seed.');
+      if (process.env.NODE_ENV !== 'production') {
+        platformAdminPassword = 'PlatformAdmin123!';
+      } else {
+        throw new Error('PLATFORM_ADMIN_SEED_PASSWORD_REQUIRED: Set ABACHA_PLATFORM_ADMIN_PASSWORD (minimum 12 characters) before running development seed.');
+      }
     }
 
     const defaultUsers = [
@@ -499,6 +509,15 @@ export class AuthService {
         role: 'admin' as UserRole,
         password: 'Tenant2Pass123!',
       },
+      // Seeded Merchant Owner
+      {
+        id: 'usr_ygbock',
+        orgId: 'org_ygbock',
+        email: 'ygbock@gmail.com',
+        name: 'Ygbock Merchant Owner',
+        role: 'business_owner' as UserRole,
+        password: 'MerchantOwner123!',
+      },
     ];
 
     for (const u of defaultUsers) {
@@ -517,5 +536,25 @@ export class AuthService {
         });
       }
     }
+
+    // Ensure ygbock discovery business, settings and membership exist
+    await this.db.query(
+      `INSERT INTO discovery_businesses
+       (id, public_id, organization_id, name, slug, short_description, business_mode, listing_status, verification_status, is_discoverable, created_by_user_id)
+       VALUES ('disc_ygbock', 'biz_ygbock_123456', 'org_ygbock', 'Ygbock Retail Express', 'ygbock-retail-express', 'AbaCha merchant hub for Ygbock.', 'DISCOVERY_AND_STORE', 'DRAFT', 'UNVERIFIED', FALSE, 'usr_ygbock')
+       ON CONFLICT (id) DO NOTHING`
+    );
+
+    await this.db.query(
+      `INSERT INTO discovery_business_settings (business_id)
+       VALUES ('disc_ygbock')
+       ON CONFLICT (business_id) DO NOTHING`
+    );
+
+    await this.db.query(
+      `INSERT INTO discovery_business_memberships (business_id, user_id, role, is_active)
+       VALUES ('disc_ygbock', 'usr_ygbock', 'OWNER', TRUE)
+       ON CONFLICT (business_id, user_id) DO NOTHING`
+    );
   }
 }
