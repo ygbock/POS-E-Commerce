@@ -385,6 +385,30 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
                 <p className="text-xs font-semibold text-emerald-600 mt-3">Budget: SLE {selectedRequest.budget_from || 0} — {selectedRequest.budget_to || 'Flexible'}</p>
               )}
             </div>
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 mb-5">
+              <p className="text-xs font-bold text-slate-500 mb-3">Request timeline</p>
+              {selectedRequest.events?.length ? (
+                <div className="space-y-3">
+                  {selectedRequest.events.map((event) => (
+                    <div key={event.id} className="flex gap-3">
+                      <div className="mt-1 h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                          {String(event.event_type || 'STATUS_CHANGED').replace(/_/g, ' ')}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {event.from_status ? `${event.from_status} → ${event.to_status}` : event.to_status}
+                          {event.created_at ? ` • ${new Date(event.created_at).toLocaleString()}` : ''}
+                        </p>
+                        {event.note && <p className="text-[11px] text-slate-500 mt-1">{event.note}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">No lifecycle events recorded yet.</p>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs text-slate-500">
                 {selectedRequest.match_reason ? `Matched because: ${String(selectedRequest.match_reason).replace(/_/g, ' ').toLowerCase()}` : 'Matched to your business services.'}
