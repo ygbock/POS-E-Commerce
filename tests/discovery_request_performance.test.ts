@@ -67,7 +67,7 @@ async function main() {
   );
   await db.query(
     'INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE) ON CONFLICT (id) DO NOTHING',
-    ['perf-req-customer','perf_req_org','perf-req-customer@test.local','Performance Customer','hash','salt','customer'],
+    ['perf-req-customer','perf_req_org','perf-req-customer@test.local','Performance Customer','hash','salt','viewer'],
   );
   const customerActor: Actor = {
     userId: 'perf-req-customer',
