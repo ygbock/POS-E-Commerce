@@ -406,6 +406,12 @@ export const discoveryApi = {
     return request<DiscoveryServiceRequest>(`/api/discovery/service-requests/${encodeURIComponent(id)}`);
   },
 
+  async getBusinessServiceRequest(businessId: string, requestId: string): Promise<DiscoveryServiceRequest> {
+    return request<DiscoveryServiceRequest>(
+      `/api/discovery/businesses/${encodeURIComponent(businessId)}/service-requests/${encodeURIComponent(requestId)}`,
+    );
+  },
+
   /**
    * Provider responds to a service request with a quote (authenticated)
    */
