@@ -100,6 +100,7 @@ export const DiscoveryMarketplace: React.FC = () => {
           serviceName={params.get('serviceName') || undefined}
           serviceId={params.get('serviceId') || undefined}
           onBack={() => navigate('discover-home')}
+          onViewRequests={() => navigate('discover-my-requests')}
         />
       );
     }
