@@ -410,6 +410,9 @@ export interface DiscoveryServiceRequest {
   created_at?: string;
   updated_at?: string;
   matches?: Array<{ businessId: string; businessName: string; score: number; reason?: string | null }>;
+  /** Server-computed relevance for the current provider inbox match. */
+  match_score?: number | string | null;
+  match_reason?: string | null;
   quotes?: DiscoveryServiceQuote[];
 }
 
