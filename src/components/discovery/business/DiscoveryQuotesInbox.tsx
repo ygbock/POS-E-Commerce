@@ -44,6 +44,8 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [businessServices, setBusinessServices] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
 
   // Quote form state
   const [quoteForm, setQuoteForm] = useState({
@@ -60,6 +62,7 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
     try {
       const data = await discoveryApi.getBusinessServiceRequests(business.id, filterStatus === 'ALL' ? '' : filterStatus);
       setRequests(data || []);
+      setLastLoadedAt(new Date());
     } catch (err: unknown) {
       if (err instanceof DiscoveryApiError) {
         setError(err.message);
@@ -71,11 +74,21 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
     }
   };
 
+  const refreshInbox = async () => {
+    setRefreshing(true);
+    try { await fetchRequests(); } finally { setRefreshing(false); }
+  };
+
   useEffect(() => {
     void fetchRequests();
     void discoveryApi.getBusinessServices(business.id).then((services) => {
       setBusinessServices((services || []).filter((service) => service.id).map((service) => ({ id: service.id, name: service.name })));
     }).catch(() => setBusinessServices([]));
+  }, [business.id, filterStatus]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => { void fetchRequests(); }, 30000);
+    return () => window.clearInterval(timer);
   }, [business.id, filterStatus]);
 
   const handleOpenDetails = async (req: DiscoveryServiceRequest) => {
@@ -163,7 +176,10 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => void refreshInbox()} disabled={refreshing || loading} className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-50 flex items-center gap-1.5">
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+          </button>
           {['ALL', 'MATCHED', 'QUOTED', 'ACCEPTED', 'CLOSED'].map((st) => (
             <button
               key={st}
@@ -179,6 +195,7 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
             </button>
           ))}
         </div>
+        {lastLoadedAt && <p className="text-[10px] text-slate-400 sm:col-span-2">Updated {lastLoadedAt.toLocaleTimeString()}</p>}
       </div>
 
       {/* Notifications */}
@@ -243,6 +260,12 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
                 <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
                   {req.description}
                 </p>
+                {req.status === 'ACCEPTED' && (
+                  <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Customer accepted a quote — proceed with the engagement.
+                  </div>
+                )}
+                {req.status === 'CLOSED' && <div className="text-xs font-semibold text-slate-500">This service engagement is closed.</div>}
 
                 <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
                   {req.city && (
