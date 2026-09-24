@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, XCircle, AlertCircle, CalendarClock, MapPin, Sparkles, Trophy, Ban } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, XCircle, AlertCircle, CalendarClock, Sparkles, Trophy, Ban } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryServiceRequest } from '../../types/discovery';
 
