@@ -56,11 +56,22 @@ async function main() {
     [requestId],
   );
 
-  const events = await db.query("SELECT from_status,to_status FROM discovery_service_request_events WHERE request_id=$1 ORDER BY created_at,id", [requestId]);
-  assert.deepStrictEqual(events.rows.map((r:any) => [r.from_status,r.to_status]), [
-    [null,'OPEN'],
-    ['QUOTED','ACCEPTED'],
+  const events = await db.query("SELECT from_status,to_status,event_type,metadata FROM discovery_service_request_events WHERE request_id=$1 ORDER BY created_at,id", [requestId]);
+  assert.deepStrictEqual(events.rows.map((r:any) => [r.from_status,r.to_status,r.event_type]), [
+    [null,'OPEN','REQUEST_CREATED'],
+    ['QUOTED','ACCEPTED','QUOTE_ACCEPTED'],
   ]);
+  assert.deepStrictEqual(events.rows.map((r:any) => r.metadata), [{}, {}]);
+
+  await db.query(
+    "INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,business_id,quote_id,note,metadata) VALUES ('req_evt_quote_meta',$1,'MATCHED','QUOTED','req-owner','req_business','quote_one','Quote submitted.', '{"source":"merchant"}')",
+    [requestId],
+  );
+  const quoteEvent = await db.query("SELECT event_type,business_id,quote_id,metadata FROM discovery_service_request_events WHERE id='req_evt_quote_meta'");
+  assert.strictEqual(quoteEvent.rows[0].event_type, 'QUOTE_SUBMITTED');
+  assert.strictEqual(quoteEvent.rows[0].business_id, 'req_business');
+  assert.strictEqual(quoteEvent.rows[0].quote_id, 'quote_one');
+  assert.deepStrictEqual(quoteEvent.rows[0].metadata, { source: 'merchant' });
 
   console.log('Discovery service request lifecycle tests passed.');
 }
