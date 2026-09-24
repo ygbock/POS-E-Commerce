@@ -46,9 +46,9 @@ async function main() {
   assert.ok(fts.rows.some((row:any) => row.id === business.id), 'business full-text search must match');
 
   const indexes = await db.query(
-    "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname IN ('idx_discovery_business_search_fts','idx_products_discovery_search_fts','idx_discovery_services_search_fts') ORDER BY indexname",
+    "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname IN ('idx_discovery_business_search_fts','idx_products_discovery_search_fts','idx_discovery_services_search_fts','idx_discovery_business_category_map_business_category','idx_discovery_business_search_visibility','idx_discovery_location_business_active_primary','idx_discovery_hours_location_day_open','idx_discovery_search_aliases_business_active_normalized') ORDER BY indexname",
   );
-  assert.strictEqual(indexes.rows.length, 3, 'discovery search FTS indexes must be installed');
+  assert.strictEqual(indexes.rows.length, 8, 'discovery search and filter indexes must be installed');
 
   const attributionColumns = await db.query(
     "SELECT column_name FROM information_schema.columns WHERE table_name='discovery_analytics_events' AND column_name IN ('search_id','result_position','entity_type','entity_id','attribution_source') ORDER BY column_name",
