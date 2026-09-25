@@ -18,6 +18,7 @@ const statusMeta: Record<DiscoveryServiceRequest['status'], { label: string; ico
 };
 
 export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPageProps> = ({ onBack, onOpenRequest }) => {
+  const requestedId = new URLSearchParams(window.location.search).get('requestId');
   const [requests, setRequests] = useState<DiscoveryServiceRequest[]>([]);
   const [selected, setSelected] = useState<DiscoveryServiceRequest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +39,14 @@ export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPage
   };
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    if (!requestedId || loading || !requests.some((request) => request.id === requestedId)) return;
+    void open(requestedId);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('requestId');
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+  }, [requestedId, loading, requests]);
 
   const open = async (id: string) => {
     if (onOpenRequest) { onOpenRequest(id); return; }
