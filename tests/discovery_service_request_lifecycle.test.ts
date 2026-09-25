@@ -64,7 +64,7 @@ async function main() {
   assert.deepStrictEqual(events.rows.map((r:any) => r.metadata), [{}, {}]);
 
   await db.query(
-    "INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,business_id,quote_id,note,metadata) VALUES ('req_evt_quote_meta',$1,'MATCHED','QUOTED','req-owner','req_business','quote_one','Quote submitted.', '{"source":"merchant"}')",
+    "INSERT INTO discovery_service_request_events(id,request_id,from_status,to_status,actor_user_id,business_id,quote_id,note,metadata) VALUES ('req_evt_quote_meta',$1,'MATCHED','QUOTED','req-owner','req_business','quote_one','Quote submitted.', '{\"source\":\"merchant\"}')",
     [requestId],
   );
   const quoteEvent = await db.query("SELECT event_type,business_id,quote_id,metadata FROM discovery_service_request_events WHERE id='req_evt_quote_meta'");
