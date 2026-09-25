@@ -16,6 +16,7 @@ import {
   Filter,
   X,
   MessageSquare,
+  Bell,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
 import type {
@@ -46,6 +47,18 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    request_id: string;
+    business_id?: string | null;
+    notification_type: string;
+    title: string;
+    message: string;
+    read_at?: string | null;
+    created_at: string;
+  }>>([]);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationLoading, setNotificationLoading] = useState(false);
 
   // Quote form state
   const [quoteForm, setQuoteForm] = useState({
@@ -86,10 +99,73 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
     }).catch(() => setBusinessServices([]));
   }, [business.id, filterStatus]);
 
+  const loadMerchantNotifications = async () => {
+    setNotificationLoading(true);
+    try {
+      const data = await discoveryApi.getServiceRequestNotifications(false, 50);
+      setNotifications((data || []).filter((notification) => notification.business_id === business.id));
+    } catch {
+      // Notification availability must not block the request inbox.
+    } finally {
+      setNotificationLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const timer = window.setInterval(() => { void fetchRequests(); }, 30000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => {
+      void fetchRequests();
+      void loadMerchantNotifications();
+    }, 30000);
+    void loadMerchantNotifications();
+    const onFocus = () => void loadMerchantNotifications();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [business.id, filterStatus]);
+
+  const unreadNotifications = notifications.filter((notification) => !notification.read_at).length;
+
+  const openNotification = async (notification: typeof notifications[number]) => {
+    if (!notification.read_at) {
+      try { await discoveryApi.markServiceRequestNotificationRead(notification.id); } catch { /* keep navigation usable */ }
+      setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: item.read_at || new Date().toISOString() } : item));
+    }
+    setNotificationOpen(false);
+    const target = requests.find((request) => request.id === notification.request_id);
+    if (target) {
+      await handleOpenDetails(target);
+    } else {
+      try {
+        const detail = await discoveryApi.getBusinessServiceRequest(business.id, notification.request_id);
+        setSelectedRequest(detail);
+      } catch {
+        setError('Unable to open the service request from this notification.');
+      }
+    }
+  };
+
+  const markAllMerchantNotificationsRead = async () => {
+    if (!unreadNotifications) return;
+    try {
+      await discoveryApi.markAllServiceRequestNotificationsRead();
+      setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })));
+    } catch {
+      setError('Unable to mark notifications as read.');
+    }
+  };
+
+  const notificationAge = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const minutes = Math.floor(Math.max(0, Date.now() - date.getTime()) / 60000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
 
   const handleOpenDetails = async (req: DiscoveryServiceRequest) => {
     setLoadingDetails(true);
@@ -173,6 +249,52 @@ export const DiscoveryQuotesInbox: React.FC<DiscoveryQuotesInboxProps> = ({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Review incoming job requests from local customers, send binding quotes, and win service contracts.
           </p>
+        </div>
+
+        {/* Merchant notification center */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setNotificationOpen((value) => !value)}
+            aria-label={unreadNotifications ? `Service request notifications, ${unreadNotifications} unread` : 'Service request notifications'}
+            aria-expanded={notificationOpen}
+            className="relative inline-flex items-center justify-center w-10 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadNotifications > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] leading-4 text-center font-black">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>}
+          </button>
+          {notificationOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setNotificationOpen(false)} />
+              <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] z-50 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                  <div>
+                    <p className="text-sm font-black text-slate-900 dark:text-white">Request notifications</p>
+                    <p className="text-[10px] text-slate-500">{unreadNotifications ? `${unreadNotifications} unread` : 'All caught up'}</p>
+                  </div>
+                  <button type="button" onClick={() => void markAllMerchantNotificationsRead()} disabled={!unreadNotifications} className="text-[10px] font-bold text-indigo-600 disabled:text-slate-300">Mark all read</button>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {notificationLoading && notifications.length === 0 ? (
+                    <p className="px-4 py-8 text-center text-xs text-slate-500">Loading notifications…</p>
+                  ) : notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center"><Bell className="w-6 h-6 mx-auto text-slate-300" /><p className="mt-2 text-xs font-bold text-slate-500">No request notifications</p></div>
+                  ) : notifications.map((notification) => (
+                    <button key={notification.id} type="button" onClick={() => void openNotification(notification)} className={`w-full text-left px-4 py-3 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 ${notification.read_at ? '' : 'bg-indigo-50/60 dark:bg-indigo-950/20'}`}>
+                      <div className="flex gap-2.5">
+                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${notification.read_at ? 'bg-slate-200' : 'bg-indigo-500'}`} />
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-slate-800 dark:text-slate-100">{notification.title}</p>
+                          <p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400 line-clamp-2">{notification.message}</p>
+                          <p className="mt-1 text-[10px] text-slate-400">{notificationAge(notification.created_at)}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Filter Tabs */}
