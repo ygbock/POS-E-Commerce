@@ -336,6 +336,32 @@ export const discoveryApi = {
   /**
    * Submit a customer service request
    */
+  async getServiceRequestNotifications(unreadOnly = false, limit = 50): Promise<Array<{
+    id: string;
+    request_id: string;
+    event_id?: string | null;
+    business_id?: string | null;
+    notification_type: string;
+    title: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+    read_at?: string | null;
+    created_at: string;
+  }>> {
+    const result = await request<{ data: Array<any> }>(
+      `/api/discovery/notifications?unread=${unreadOnly ? 'true' : 'false'}&limit=${Math.min(Math.max(limit, 1), 100)}`,
+    );
+    return result.data || [];
+  },
+
+  async markServiceRequestNotificationRead(id: string): Promise<void> {
+    await request(`/api/discovery/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
+  },
+
+  async markAllServiceRequestNotificationsRead(): Promise<void> {
+    await request('/api/discovery/notifications/read-all', { method: 'POST' });
+  },
+
   async createServiceRequest(data: {
     customerName: string;
     description: string;
