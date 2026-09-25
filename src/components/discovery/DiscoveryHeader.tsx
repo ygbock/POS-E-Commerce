@@ -17,6 +17,7 @@ import {
   UserCheck,
   ClipboardPlus,
   ChevronDown,
+  Bell,
   Star,
   Users,
 } from 'lucide-react';
@@ -56,6 +57,20 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
   const [isScrolled, setIsScrolled] = useState(false);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    request_id: string;
+    business_id?: string | null;
+    notification_type: string;
+    title: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+    read_at?: string | null;
+    created_at: string;
+  }>>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -64,6 +79,81 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  const loadNotifications = async () => {
+    if (!authClient.getToken()) {
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    setNotificationsLoading(true);
+    try {
+      const data = await (await import('../../services/discoveryApi')).discoveryApi.getServiceRequestNotifications(false, 25);
+      setNotifications(data);
+      setUnreadNotificationCount(data.filter((notification) => !notification.read_at).length);
+    } catch {
+      // Notifications are supplemental UI; do not interrupt Discovery when unavailable.
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadNotifications();
+    const refresh = () => void loadNotifications();
+    window.addEventListener('focus', refresh);
+    const interval = window.setInterval(refresh, 60000);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const handleNotificationClick = async (notification: {
+    id: string;
+    request_id: string;
+    read_at?: string | null;
+  }) => {
+    if (!notification.read_at) {
+      try {
+        await (await import('../../services/discoveryApi')).discoveryApi.markServiceRequestNotificationRead(notification.id);
+      } catch {
+        // Navigation should still work if the read acknowledgement fails.
+      }
+    }
+    setNotifications((current) =>
+      current.map((item) => item.id === notification.id ? { ...item, read_at: item.read_at || new Date().toISOString() } : item)
+    );
+    setUnreadNotificationCount((count) => Math.max(0, count - (notification.read_at ? 0 : 1)));
+    setNotificationOpen(false);
+    setMobileMenuOpen(false);
+    window.location.href = `/discover/my-requests?requestId=${encodeURIComponent(notification.request_id)}`;
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!unreadNotificationCount) return;
+    try {
+      await (await import('../../services/discoveryApi')).discoveryApi.markAllServiceRequestNotificationsRead();
+      setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })));
+      setUnreadNotificationCount(0);
+    } catch {
+      // Keep the unread state if the server acknowledgement fails.
+    }
+  };
+
+  const formatNotificationTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const diff = Math.max(0, Date.now() - date.getTime());
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return days < 7 ? `${days}d ago` : date.toLocaleDateString();
+  };
 
   const navItems: Array<{ id: 'all' | 'businesses' | 'products' | 'services'; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'all', label: 'Discover', icon: Compass },
@@ -223,8 +313,99 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
             </div>
           </div>
 
-          {/* Right: Join • Sign In / Profile Navigation */}
+          {/* Right: Notifications + Join • Sign In */}
           <div className="hidden md:flex items-center gap-3 font-bold text-sm text-white">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setNotificationOpen((v) => !v); setActivityOpen(false); setBrowseOpen(false); }}
+                aria-label={unreadNotificationCount ? `Notifications, ${unreadNotificationCount} unread` : 'Notifications'}
+                aria-expanded={notificationOpen}
+                aria-haspopup="menu"
+                className="relative p-2 rounded-lg text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] leading-4 text-white text-center font-black ring-2 ring-slate-950">
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+              {notificationOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setNotificationOpen(false)} />
+                  <div role="menu" aria-label="Notifications" className="absolute right-0 mt-2.5 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl bg-white border border-slate-200 shadow-2xl z-50 overflow-hidden text-slate-900">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                      <div>
+                        <p className="text-sm font-black">Notifications</p>
+                        <p className="text-[11px] text-slate-500">{unreadNotificationCount ? `${unreadNotificationCount} unread` : 'All caught up'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleMarkAllNotificationsRead()}
+                        disabled={!unreadNotificationCount}
+                        className="text-[11px] font-bold text-indigo-600 disabled:text-slate-300 disabled:cursor-not-allowed hover:text-indigo-800"
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+                    <div className="max-h-[26rem] overflow-y-auto">
+                      {notificationsLoading && notifications.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-xs text-slate-500">Loading notifications…</div>
+                      ) : notifications.length === 0 ? (
+                        <div className="px-4 py-8 text-center">
+                          <Bell className="w-7 h-7 mx-auto text-slate-300 mb-2" />
+                          <p className="text-xs font-bold text-slate-600">No notifications yet</p>
+                          <p className="text-[11px] text-slate-400 mt-1">Updates about your service requests will appear here.</p>
+                        </div>
+                      ) : (
+                        notifications.map((notification) => (
+                          <button
+                            key={notification.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => void handleNotificationClick(notification)}
+                            className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors focus:outline-none focus:bg-slate-50 ${notification.read_at ? '' : 'bg-indigo-50/60'}`}
+                          >
+                            <div className="flex gap-3">
+                              <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${notification.read_at ? 'bg-slate-200' : 'bg-indigo-500'}`} />
+                              <span className="min-w-0">
+                                <span className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-black truncate">{notification.title}</span>
+                                  <span className="text-[10px] text-slate-400 shrink-0">{formatNotificationTime(notification.created_at)}</span>
+                                </span>
+                                <span className="block text-[11px] leading-4 text-slate-600 mt-1 line-clamp-2">{notification.message}</span>
+                              </span>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <a
+                      href={workspaceHref('/discover/my-requests')}
+                      onClick={() => setNotificationOpen(false)}
+                      className="block px-4 py-3 text-center text-[11px] font-black text-indigo-600 hover:bg-slate-50 border-t border-slate-100"
+                    >
+                      View my service requests
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+            <a
+              href="/business/signup"
+              className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
+            >
+              Join
+            </a>
+            <span className="text-white/40 font-normal select-none">•</span>
+            <a
+              href="/login"
+              className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
+            >
+              Sign In
+            </a>
+          </div>
             <a
               href="/business/signup"
               className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
@@ -241,7 +422,23 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
           </div>
 
           {/* Mobile menu toggle */}
-          <div className="md:hidden flex items-center">
+          <div className="md:hidden flex items-center gap-1">
+            {authClient.getToken() && (
+              <button
+                type="button"
+                onClick={() => { setNotificationOpen((v) => !v); setMobileMenuOpen(false); }}
+                aria-label={unreadNotificationCount ? `Notifications, ${unreadNotificationCount} unread` : 'Notifications'}
+                aria-expanded={notificationOpen}
+                className="relative p-2 rounded-lg text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] leading-4 text-white text-center font-black ring-2 ring-slate-950">
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -253,6 +450,41 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {notificationOpen && (
+        <div className="lg:hidden fixed inset-x-0 top-20 bottom-0 z-40 bg-slate-950/60 backdrop-blur-xs p-3" onClick={() => setNotificationOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden text-slate-900 max-h-[70vh]" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <div>
+                <p className="text-sm font-black">Notifications</p>
+                <p className="text-[11px] text-slate-500">{unreadNotificationCount ? `${unreadNotificationCount} unread` : 'All caught up'}</p>
+              </div>
+              <button type="button" onClick={() => void handleMarkAllNotificationsRead()} disabled={!unreadNotificationCount} className="text-[11px] font-bold text-indigo-600 disabled:text-slate-300">
+                Mark all read
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[55vh]">
+              {notifications.length === 0 ? (
+                <div className="px-4 py-10 text-center text-xs text-slate-500">No notifications yet.</div>
+              ) : notifications.map((notification) => (
+                <button key={notification.id} type="button" onClick={() => void handleNotificationClick(notification)} className={`w-full text-left px-4 py-3 border-b border-slate-100 ${notification.read_at ? '' : 'bg-indigo-50/60'}`}>
+                  <div className="flex gap-3">
+                    <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${notification.read_at ? 'bg-slate-200' : 'bg-indigo-500'}`} />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-black">{notification.title}</span>
+                      <span className="block text-[11px] leading-4 text-slate-600 mt-1">{notification.message}</span>
+                      <span className="block text-[10px] text-slate-400 mt-1">{formatNotificationTime(notification.created_at)}</span>
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <a href={workspaceHref('/discover/my-requests')} onClick={() => setNotificationOpen(false)} className="block px-4 py-3 text-center text-[11px] font-black text-indigo-600 border-t border-slate-100">
+              View my service requests
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Mobile Drawer Navigation */}
       {mobileMenuOpen && (
