@@ -1311,6 +1311,41 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:{...r.rows[0],quotes:quotes.rows,events:events.rows}});
   }catch(err){next(err);} });
 
+  router.get('/notifications', requireAuth(), async(req,res,next)=>{try{
+    const limit=Math.min(Math.max(Number(req.query.limit)||50,1),100);
+    const unreadOnly=String(req.query.unread||'')==='true';
+    const result=await db.query(
+      `SELECT id,request_id,event_id,business_id,notification_type,title,message,metadata,read_at,created_at
+         FROM discovery_service_request_notifications
+        WHERE recipient_user_id=$1 AND ($2=FALSE OR read_at IS NULL)
+        ORDER BY created_at DESC,id DESC LIMIT $3`,
+      [req.auth!.userId,unreadOnly,limit],
+    );
+    const unread=await db.query(
+      `SELECT COUNT(*)::int AS count FROM discovery_service_request_notifications WHERE recipient_user_id=$1 AND read_at IS NULL`,
+      [req.auth!.userId],
+    );
+    res.json({success:true,unreadCount:Number(unread.rows[0]?.count||0),data:result.rows});
+  }catch(err){next(err);}});
+
+  router.patch('/notifications/:id/read', requireAuth(), async(req,res,next)=>{try{
+    const result=await db.query(
+      `UPDATE discovery_service_request_notifications SET read_at=COALESCE(read_at,CURRENT_TIMESTAMP)
+        WHERE id=$1 AND recipient_user_id=$2 RETURNING id,read_at`,
+      [req.params.id,req.auth!.userId],
+    );
+    if(!result.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Notification not found.'}});
+    res.json({success:true,data:result.rows[0]});
+  }catch(err){next(err);}});
+
+  router.post('/notifications/read-all', requireAuth(), async(req,res,next)=>{try{
+    const result=await db.query(
+      `UPDATE discovery_service_request_notifications SET read_at=CURRENT_TIMESTAMP
+        WHERE recipient_user_id=$1 AND read_at IS NULL RETURNING id`,
+      [req.auth!.userId],
+    );
+    res.json({success:true,data:{updated:result.rowCount||0}});
+  }catch(err){next(err);}});
   // Provider-scoped request detail; only a matched business can read it.
   router.get('/businesses/:businessId/service-requests/:requestId', requireAuth(), async(req,res,next)=>{try{
     const businessId=String(req.params.businessId);
