@@ -348,10 +348,10 @@ export const discoveryApi = {
     read_at?: string | null;
     created_at: string;
   }>> {
-    const result = await request<{ data: Array<any> }>(
+    const result = await request<Array<any>>(
       `/api/discovery/notifications?unread=${unreadOnly ? 'true' : 'false'}&limit=${Math.min(Math.max(limit, 1), 100)}`,
     );
-    return result.data || [];
+    return result || [];
   },
 
   async markServiceRequestNotificationRead(id: string): Promise<void> {
