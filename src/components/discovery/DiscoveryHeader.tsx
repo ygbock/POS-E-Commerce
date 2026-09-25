@@ -406,20 +406,6 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
               Sign In
             </a>
           </div>
-            <a
-              href="/business/signup"
-              className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
-            >
-              Join
-            </a>
-            <span className="text-white/40 font-normal select-none">•</span>
-            <a
-              href="/login"
-              className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
-            >
-              Sign In
-            </a>
-          </div>
 
           {/* Mobile menu toggle */}
           <div className="md:hidden flex items-center gap-1">
