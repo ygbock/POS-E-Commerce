@@ -135,6 +135,29 @@ async function main() {
   assert.ok(freshIssue);
   assert.strictEqual(freshIssue.status, 'OPEN');
 
+  // Once moderation approves the listing, the business owner can publish it.
+  await service.resubmit(business.id, merchant, 'Corrections completed for the second review.');
+  await service.review(business.id, moderator, 'Second moderation review.');
+  const approved = await service.approve(business.id, moderator, 'Listing approved for publication.');
+  assert.strictEqual(approved.listing_status, 'APPROVED');
+  assert.strictEqual(approved.is_discoverable, false);
+
+  const published = await service.publish(business.id, merchant, 'Publishing the approved listing.');
+  assert.strictEqual(published.listing_status, 'PUBLISHED');
+  assert.strictEqual(published.is_discoverable, true);
+  assert.ok(published.published_at);
+
+  const publicationEvent = await db.query(
+    `SELECT from_status,to_status,actor_user_id
+       FROM discovery_listing_events
+      WHERE business_id=$1 AND to_status='PUBLISHED'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [business.id],
+  );
+  assert.strictEqual(publicationEvent.rows[0].from_status, 'APPROVED');
+  assert.strictEqual(publicationEvent.rows[0].actor_user_id, merchant.userId);
+
   // Merchant users are never allowed to invoke moderation decisions.
   await assert.rejects(
     () => service.review(business.id, merchant),
