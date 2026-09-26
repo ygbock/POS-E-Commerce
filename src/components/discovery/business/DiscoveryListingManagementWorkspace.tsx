@@ -88,10 +88,12 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
 
   const canResubmit = business.listing_status === 'REJECTED' && Boolean(workspace?.readiness.ready);
   const canSubmit = business.listing_status === 'DRAFT' && Boolean(workspace?.readiness.ready);
+  const canPublish = business.listing_status === 'APPROVED';
 
   const actionLabel = useMemo(() => {
     if (business.listing_status === 'REJECTED') return canResubmit ? 'Resubmit for review' : 'Complete required fixes';
     if (business.listing_status === 'DRAFT') return canSubmit ? 'Submit for review' : 'Complete readiness checklist';
+    if (business.listing_status === 'APPROVED') return 'Publish approved listing';
     return statusCopy[business.listing_status] || business.listing_status;
   }, [business.listing_status, canResubmit, canSubmit]);
 
@@ -157,6 +159,20 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
     if (!actions.length) add('submission', 'Review the submission checklist', 'The moderation note is not tied to a known field. Review the full submission workspace before resubmitting.', 'submission');
     return actions;
   }, [latestFeedback?.reason, moderationIssues.length]);
+
+  const publish = async () => {
+    setActionBusy(true);
+    setError(null);
+    try {
+      const updated = await discoveryApi.publishBusiness(business.id, 'Business owner published the approved Discovery listing.');
+      onUpdate(updated);
+      await load();
+    } catch (err) {
+      setError(err instanceof DiscoveryApiError ? err.message : 'The approved listing could not be published.');
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const submit = async (resubmit = false) => {
     setActionBusy(true);
@@ -687,7 +703,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
       )}
 
       {/* Modern, Floating Sticky Glassmorphism Actions Panel (Rule I Cap Compliant) */}
-      {(canSubmit || canResubmit) && (
+      {(canSubmit || canResubmit || canPublish) && (
         <section className="sticky bottom-4 z-20 rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/95 backdrop-blur p-5.5 shadow-2xl transition-all duration-300">
           
           {canResubmit && (
@@ -708,15 +724,17 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
             <div>
               <div className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">{actionLabel}</div>
               <div className="text-xs text-slate-500 mt-1">
-                {canResubmit
-                  ? 'All corrections have been made. Ready to submit to compliance audit.'
-                  : 'Great job! Your profile meets all readiness conditions and is ready for platform intake.'}
+                {canPublish
+                  ? 'Moderation approved this listing. Publish it to make the business visible in Discovery.'
+                  : canResubmit
+                    ? 'All corrections have been made. Ready to submit to compliance audit.'
+                    : 'Great job! Your profile meets all readiness conditions and is ready for platform intake.'}
               </div>
             </div>
             <button
               type="button"
               disabled={actionBusy || (!canSubmit && !canResubmit)}
-              onClick={() => void submit(canResubmit)}
+              onClick={() => void (canPublish ? publish() : submit(canResubmit))}
               className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center justify-center gap-2 transition shadow-lg hover:shadow-indigo-500/20 active:translate-y-px disabled:opacity-50"
             >
               {actionBusy ? (
@@ -724,7 +742,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
               ) : (
                 <RotateCcw className="w-4 h-4" />
               )}
-              <span>{canResubmit ? 'Resubmit Certification' : 'Submit for Review'}</span>
+              <span>{canPublish ? 'Publish Listing' : canResubmit ? 'Resubmit Certification' : 'Submit for Review'}</span>
             </button>
           </div>
         </section>
