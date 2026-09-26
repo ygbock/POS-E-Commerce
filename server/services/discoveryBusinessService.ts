@@ -503,7 +503,13 @@ export class DiscoveryBusinessService {
   }
 
   async publish(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published.', client, true);
+    const existing = await this.repository.findById(id, client);
+    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+    await this.assertCanManageScoped(existing, actor, client);
+    if (existing.listing_status !== 'APPROVED') {
+      throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to PUBLISHED. Listing must be APPROVED first.`);
+    }
+    return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published by business owner.', client);
   }
 
   async pause(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
