@@ -284,10 +284,10 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
         </div>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {[
-            ['Orders (30d)', operating?.commerce?.orders30d ?? 0, 'orders'],
-            ['Open orders', operating?.commerce?.openOrders ?? 0, 'orders'],
-            ['Customers', operating?.commerce?.customers ?? 0, 'crm'],
-            ['Available stock', operating?.commerce?.availableStock ?? '0', 'inventory'],
+            ['Orders (30d)', operating?.commerce?.orders30d ?? 0, 'store'],
+            ['Open orders', operating?.commerce?.openOrders ?? 0, 'store'],
+            ['Customers', operating?.commerce?.customers ?? 0, 'contacts'],
+            ['Available stock', operating?.commerce?.availableStock ?? '0', 'store'],
           ].map(([label, value, tab]) => (
             <button key={String(label)} type="button" onClick={() => onNavigateTab(String(tab))}
               className="rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900">
@@ -322,7 +322,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
               <button type="button" onClick={() => onNavigateTab('reviews')} className="flex w-full justify-between rounded-lg bg-white/60 px-3 py-2 text-left">
                 <span>Pending reviews</span><b>{operating?.discovery.pendingReviews ?? 0}</b>
               </button>
-              <button type="button" onClick={() => onNavigateTab('inventory')} className="flex w-full justify-between rounded-lg bg-white/60 px-3 py-2 text-left">
+              <button type="button" onClick={() => onNavigateTab('store')} className="flex w-full justify-between rounded-lg bg-white/60 px-3 py-2 text-left">
                 <span>Out-of-stock variants</span><b>{operating?.commerce?.outOfStockVariants ?? 0}</b>
               </button>
             </div>
