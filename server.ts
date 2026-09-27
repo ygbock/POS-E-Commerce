@@ -12,6 +12,7 @@ import { OrderRepository, OrderRecord, OrderItemRecord, PaymentRecord } from './
 import { CustomerRepository } from './server/repositories/customerRepository.ts';
 import { InventoryRepository } from './server/repositories/inventoryRepository.ts';
 import { AuditRepository } from './server/repositories/auditRepository.ts';
+import { CatalogRepository } from './server/repositories/catalogRepository.ts';
 import { SubscriptionRepository } from './server/repositories/subscriptionRepository.ts';
 import { SubscriptionService, SubscriptionLimitError } from './server/services/subscriptionService.ts';
 import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
@@ -143,7 +144,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   const customerRepo = new CustomerRepository(db);
   const inventoryRepo = new InventoryRepository(db);
   const auditRepo = new AuditRepository(db);
+  const catalogRepo = new CatalogRepository(db);
   app.set('auditRepo', auditRepo);
+  app.set('catalogRepo', catalogRepo);
   const subscriptionRepo = new SubscriptionRepository(db);
   const subscriptionService = new SubscriptionService(subscriptionRepo);
   app.set('subscriptionRepo', subscriptionRepo);
@@ -1001,6 +1004,75 @@ export async function createApp(options: CreateAppOptions = {}) {
 
       masterProductsStore.unshift(newProduct);
 
+      // Persist the catalog record in PostgreSQL as the authoritative storefront source.
+      // The legacy in-memory store remains populated during the migration window for
+      // existing POS/catalog consumers, but tenant storefront data is no longer ephemeral.
+      const categoryId = body.categoryId || (
+        body.category
+          ? (await db.query<{ id: string }>(
+              'SELECT id FROM categories WHERE organization_id = $1 AND (id = $2 OR slug = $2 OR LOWER(name) = LOWER($2)) LIMIT 1',
+              [authoritativeOrg, body.category]
+            )).rows[0]?.id
+          : undefined
+      );
+      const brandId = body.brandId || (
+        body.brand
+          ? (await db.query<{ id: string }>(
+              'SELECT id FROM brands WHERE organization_id = $1 AND (id = $2 OR slug = $2 OR LOWER(name) = LOWER($2)) LIMIT 1',
+              [authoritativeOrg, body.brand]
+            )).rows[0]?.id
+          : undefined
+      );
+
+      await catalogRepo.createProductWithVariants({
+        id,
+        organization_id: authoritativeOrg,
+        category_id: categoryId || null,
+        brand_id: brandId || null,
+        name: newProduct.name,
+        slug: newProduct.slug,
+        description: newProduct.description,
+        short_description: newProduct.shortDescription,
+        unit_code: newProduct.unit,
+        product_type: newProduct.productType,
+        status: newProduct.status,
+        channels_pos: newProduct.channels.pos,
+        channels_ecommerce: newProduct.channels.ecommerce,
+        channels_wholesale: newProduct.channels.wholesale,
+        is_bundle: newProduct.isBundle,
+        bundle_items: newProduct.bundleItems,
+        is_composite: newProduct.isComposite,
+        bom_items: newProduct.bomItems,
+        assembly_labor_cost: newProduct.assemblyLaborCost,
+        is_track_serial: newProduct.isTrackSerial,
+        is_track_batch: newProduct.isTrackBatch,
+        tax_rate: newProduct.taxRate,
+        rating: newProduct.rating,
+        review_count: newProduct.reviewCount,
+        tags: newProduct.tags,
+        images: newProduct.images,
+        featured: newProduct.featured,
+        sales_count: newProduct.salesCount,
+        specifications: newProduct.specifications,
+      }, newProduct.variants.map((variant) => ({
+        id: variant.id,
+        organization_id: authoritativeOrg,
+        product_id: id,
+        sku: variant.sku,
+        barcode: variant.barcode,
+        name: variant.name,
+        attributes: variant.attributes,
+        cost_price: String(variant.costPrice),
+        retail_price: String(variant.retailPrice),
+        wholesale_price: String(variant.wholesalePrice),
+        member_price: String(variant.memberPrice),
+        min_selling_price: String(variant.minSellingPrice),
+        weight_kg: variant.weightKg,
+        dimensions: variant.dimensionsCm,
+        low_stock_threshold: variant.lowStockThreshold,
+        image_url: variant.image,
+      })));
+
       syncAuditLogs.push({
         id: `sync-${Date.now()}`,
         timestamp: new Date().toISOString(),
@@ -1540,6 +1612,16 @@ export async function createApp(options: CreateAppOptions = {}) {
         isPosQuickAccess: body.isPosQuickAccess || false,
       };
       masterCategoriesStore.push(newCat);
+      await catalogRepo.createCategory({
+        id: newCat.id,
+        organization_id: req.auth!.organizationId,
+        name: newCat.name,
+        slug: newCat.slug,
+        description: newCat.description,
+        subcategories: newCat.subcategories,
+        display_order: newCat.displayOrder,
+        is_pos_quick_access: newCat.isPosQuickAccess,
+      });
       res.status(201).json({ success: true, data: newCat });
     }
   );
