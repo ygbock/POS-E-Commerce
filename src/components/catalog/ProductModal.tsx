@@ -32,7 +32,7 @@ import {
   BranchLocationId,
 } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
-import { productService } from '../../services/productService';
+import { productService, ProductApiPayload } from '../../services/productService';
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -378,7 +378,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
     // Persist through the authenticated server catalog API. Prices are sent as
     // exact decimal strings at the API boundary; the server owns tenant assignment.
-    const apiPayload = {
+    const apiPayload: ProductApiPayload = {
       ...productPayload,
       variants: productPayload.variants.map((variant) => ({
         ...variant,
