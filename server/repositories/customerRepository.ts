@@ -12,6 +12,7 @@ export interface CustomerRecord {
   store_credit_balance?: string;
   credit_limit?: string;
   customer_group?: 'Retail' | 'Wholesale' | 'Corporate' | 'VIP Member';
+  auth_user_id?: string | null;
   notes?: string | null;
   registered_at?: string;
   created_at?: string;
@@ -49,7 +50,7 @@ export class CustomerRepository {
     const res = await db.query<any>(
       `SELECT id, organization_id, name, email, phone, tier,
               loyalty_points, store_credit_balance, credit_limit,
-              customer_group, notes, registered_at, created_at, updated_at
+              customer_group, notes, auth_user_id, registered_at, created_at, updated_at
        FROM customers
        WHERE organization_id = $1
        ORDER BY name ASC`,
