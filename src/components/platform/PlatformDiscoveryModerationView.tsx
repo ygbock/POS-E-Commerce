@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  BarChart3,
   CheckCircle2,
   Clock,
   FileCheck2,
   Flag,
   RefreshCw,
+  SlidersHorizontal,
   ShieldCheck,
   UserCheck,
   XCircle,
@@ -21,7 +23,30 @@ interface ListingQueueMeta {
   hasPreviousPage: boolean;
 }
 
-type Queue = 'listings' | 'verification' | 'claims' | 'reviews' | 'reports';
+type Queue = 'listings' | 'verification' | 'claims' | 'reviews' | 'reports' | 'search';
+
+interface SearchRankingConfig {
+  id: string;
+  text_match_weight: number;
+  exact_match_weight: number;
+  prefix_match_weight: number;
+  verified_weight: number;
+  rating_weight: number;
+  review_count_weight: number;
+  fuzzy_match_weight: number;
+  distance_penalty_weight: number;
+  availability_weight: number;
+  is_active: boolean;
+  updated_by_user_id?: string | null;
+  updated_at?: string | null;
+}
+
+interface SearchAnalytics {
+  windowDays: number;
+  summary: { searches?: number; zero_result_searches?: number; unique_queries?: number; impressions?: number; result_engagements?: number };
+  popularQueries: Array<{ query_hash: string; searches: number; zero_results: number }>;
+  queryPrivacy: string;
+}
 
 interface ModerationItem {
   id: string;
@@ -39,6 +64,7 @@ const queueMeta: Record<Queue, { label: string; description: string; icon: React
   claims: { label: 'Claims', description: 'Ownership claims for discovery businesses.', icon: <UserCheck className="w-4 h-4" /> },
   reviews: { label: 'Reviews', description: 'Customer reviews awaiting moderation.', icon: <FileCheck2 className="w-4 h-4" /> },
   reports: { label: 'Reports', description: 'Business and service abuse reports.', icon: <Flag className="w-4 h-4" /> },
+  search: { label: 'Search', description: 'Search quality analytics and platform ranking controls.', icon: <BarChart3 className="w-4 h-4" /> },
 };
 
 async function platformRequest<T>(path: string, options?: RequestInit): Promise<T> {
@@ -77,13 +103,19 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   const [listingPage, setListingPage] = useState(1);
   const [listingPageSize, setListingPageSize] = useState(25);
   const [listingMeta, setListingMeta] = useState<ListingQueueMeta>({ page:1, pageSize:25, total:0, totalPages:0, hasNextPage:false, hasPreviousPage:false });
+  const [searchAnalytics, setSearchAnalytics] = useState<SearchAnalytics | null>(null);
+  const [searchRanking, setSearchRanking] = useState<SearchRankingConfig | null>(null);
+  const [searchDays, setSearchDays] = useState(30);
+  const [searchSaving, setSearchSaving] = useState(false);
+  const [searchDirty, setSearchDirty] = useState(false);
 
   const endpoint = useMemo(() => {
     if (queue === 'listings') return `/api/platform/discovery/moderation/listings?status=${encodeURIComponent(listingStatusFilter)}&page=${listingPage}&pageSize=${listingPageSize}&search=${encodeURIComponent(listingSearch)}&mode=${encodeURIComponent(listingModeFilter)}&verification=${encodeURIComponent(listingVerificationFilter)}&hasIssues=${encodeURIComponent(listingIssuesFilter)}`;
     if (queue === 'reports' && reportsFilter) return `/api/platform/discovery/moderation/reports?status=${encodeURIComponent(reportsFilter)}`;
     if (queue === 'reviews') return '/api/platform/discovery/moderation/reviews?status=PENDING';
+    if (queue === 'search') return '/api/platform/discovery/search-analytics?days=' + searchDays;
     return `/api/platform/discovery/moderation/${queue}`;
-  }, [queue, reportsFilter, listingStatusFilter, listingPage, listingPageSize, listingSearch, listingModeFilter, listingVerificationFilter, listingIssuesFilter]);
+  }, [queue, reportsFilter, listingStatusFilter, listingPage, listingPageSize, listingSearch, listingModeFilter, listingVerificationFilter, listingIssuesFilter, searchDays]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +129,12 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
         if (!response.ok || !body.success) throw new Error(body.error?.message || `Request failed with status ${response.status}`);
         setItems(body.data as ModerationItem[]);
         setListingMeta(body.meta || { page:listingPage, pageSize:listingPageSize, total:0, totalPages:0, hasNextPage:false, hasPreviousPage:false });
+      } else if (queue === 'search') {
+        const analytics = await platformRequest<SearchAnalytics>(endpoint);
+        setSearchAnalytics(analytics);
+        setSearchRanking(await platformRequest<SearchRankingConfig>('/api/platform/discovery/search-ranking'));
+        setSearchDirty(false);
+        setItems([]);
       } else {
         setItems(await platformRequest<ModerationItem[]>(endpoint));
       }
@@ -266,6 +304,74 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               <button type="button" disabled={!listingMeta.hasPreviousPage || loading} onClick={() => setListingPage((p) => Math.max(1, p - 1))} className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700">Previous</button>
               <span className="min-w-[70px] text-center font-bold">Page {listingMeta.page} / {Math.max(1, listingMeta.totalPages)}</span>
               <button type="button" disabled={!listingMeta.hasNextPage || loading} onClick={() => setListingPage((p) => p + 1)} className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700">Next</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {queue === 'search' && searchAnalytics && searchRanking && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            {[
+              ['Searches', searchAnalytics.summary.searches ?? 0],
+              ['Zero-result', searchAnalytics.summary.zero_result_searches ?? 0],
+              ['Unique queries', searchAnalytics.summary.unique_queries ?? 0],
+              ['Impressions', searchAnalytics.summary.impressions ?? 0],
+              ['Engagements', searchAnalytics.summary.result_engagements ?? 0],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+                <div className="mt-2 text-xl font-black text-slate-900 dark:text-white">{String(value)}</div>
+                <div className="mt-1 text-[10px] text-slate-400">Last {searchAnalytics.windowDays} days</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-black text-slate-900 dark:text-white">Search quality</h2>
+                  <p className="mt-1 text-xs text-slate-500">Query values are intentionally not exposed; only SHA-256 hashes are retained.</p>
+                </div>
+                <select value={searchDays} onChange={(e) => setSearchDays(Number(e.target.value))} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
+                  <option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option>
+                </select>
+              </div>
+              <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="grid grid-cols-[1fr_90px_90px] border-b border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-950">
+                  <span>Query hash</span><span>Searches</span><span>Zero-result</span>
+                </div>
+                {searchAnalytics.popularQueries.length === 0 ? <div className="p-5 text-center text-xs text-slate-500">No search events in this window.</div> : searchAnalytics.popularQueries.map((row) => (
+                  <div key={row.query_hash} className="grid grid-cols-[1fr_90px_90px] border-b border-slate-100 px-3 py-2 text-xs last:border-b-0 dark:border-slate-800">
+                    <span className="truncate font-mono text-[10px] text-slate-500" title={row.query_hash}>{row.query_hash}</span><span>{row.searches}</span><span>{row.zero_results}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-[10px] text-slate-400">{searchAnalytics.queryPrivacy}</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-center justify-between gap-3">
+                <div><h2 className="text-sm font-black text-slate-900 dark:text-white">Ranking controls</h2><p className="mt-1 text-xs text-slate-500">Server validates every weight against bounded ranges before saving.</p></div>
+                <span className={searchRanking.is_active ? 'rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700' : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600'}>{searchRanking.is_active ? 'Active' : 'Fallback active'}</span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {([
+                  ['text_match_weight','Text match'],['exact_match_weight','Exact match'],['prefix_match_weight','Prefix match'],['verified_weight','Verified'],['rating_weight','Rating'],['review_count_weight','Review count'],['fuzzy_match_weight','Fuzzy match'],['distance_penalty_weight','Distance penalty'],['availability_weight','Availability'],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
+                    <input type="number" min={0} step="0.1" value={searchRanking[key]} onChange={(e) => { setSearchRanking((prev) => prev ? ({ ...prev, [key]: Number(e.target.value) }) : prev); setSearchDirty(true); }} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs dark:border-slate-700 dark:bg-slate-950" />
+                  </label>
+                ))}
+              </div>
+              <label className="mt-3 flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={searchRanking.is_active} onChange={(e) => { setSearchRanking((prev) => prev ? ({ ...prev, is_active: e.target.checked }) : prev); setSearchDirty(true); }} />Use custom ranking weights</label>
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400">{searchRanking.updated_at ? 'Updated ' + new Date(searchRanking.updated_at).toLocaleString() : 'Not updated yet'}</span>
+                <button type="button" disabled={!searchDirty || searchSaving} onClick={async () => { if (!searchRanking) return; setSearchSaving(true); setError(null); try { const { id: _id, updated_by_user_id: _actor, updated_at: _updated, ...updates } = searchRanking; const saved = await platformRequest<SearchRankingConfig>('/api/platform/discovery/search-ranking', { method:'PATCH', body:JSON.stringify(updates) }); setSearchRanking(saved); setSearchDirty(false); } catch (err:any) { setError(err?.message || 'Unable to save ranking configuration.'); } finally { setSearchSaving(false); } }} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"><SlidersHorizontal className="h-3.5 w-3.5" />{searchSaving ? 'Saving…' : 'Save ranking controls'}</button>
+              </div>
             </div>
           </div>
         </div>
