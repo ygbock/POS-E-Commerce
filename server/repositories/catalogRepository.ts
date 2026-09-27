@@ -469,10 +469,26 @@ export class CatalogRepository {
              (SELECT COUNT(*) FROM inventory_balances WHERE organization_id = $1 AND variant_id = $2) +
              (SELECT COUNT(*) FROM inventory_movements WHERE organization_id = $1 AND variant_id = $2) +
              (SELECT COUNT(*) FROM inventory_reservations WHERE organization_id = $1 AND variant_id = $2) +
-             (SELECT COUNT(*) FROM inventory_transfer_items WHERE organization_id = $1 AND variant_id = $2) +
-             (SELECT COUNT(*) FROM stock_count_items WHERE variant_id = $2) +
-             (SELECT COUNT(*) FROM order_items WHERE organization_id = $1 AND variant_id = $2) +
-             (SELECT COUNT(*) FROM pos_return_items WHERE variant_id = $2)
+             (SELECT COUNT(*)
+                FROM inventory_transfer_items iti
+                JOIN inventory_transfers it ON it.id = iti.transfer_id
+               WHERE it.organization_id = $1
+                 AND iti.variant_id = $2) +
+             (SELECT COUNT(*)
+                FROM stock_count_items sci
+                JOIN stock_counts sc ON sc.id = sci.stock_count_id
+               WHERE sc.organization_id = $1
+                 AND sci.variant_id = $2) +
+             (SELECT COUNT(*)
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+               WHERE o.organization_id = $1
+                 AND oi.variant_id = $2) +
+             (SELECT COUNT(*)
+                FROM pos_return_items pri
+                JOIN pos_returns pr ON pr.id = pri.return_id
+               WHERE pr.organization_id = $1
+                 AND pri.variant_id = $2)
            )::text AS reference_count`,
           [validOrg, existingVariant.id]
         );
