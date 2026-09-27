@@ -530,6 +530,27 @@ export const discoveryApi = {
       body: JSON.stringify(patch),
     });
   },
+  async getStoreReadiness(businessId: string): Promise<{
+    businessId: string;
+    businessName: string;
+    businessSlug: string;
+    listingStatus: string;
+    discoverable: boolean;
+    organizationId: string | null;
+    organizationName: string | null;
+    tenantSlug: string | null;
+    storeName: string | null;
+    currency: { code: string; symbol: string };
+    onlineCheckoutEnabled: boolean;
+    inventoryLedgerEnabled: boolean;
+    locations: Array<{ id: string; name: string; is_pos_enabled: boolean }>;
+    counts: { categories: number; products: number; variants: number };
+    steps: Array<{ key: string; label: string; complete: boolean; required: boolean }>;
+    ready: boolean;
+  }> {
+    return request('/api/discovery/businesses/' + encodeURIComponent(businessId) + '/store-readiness');
+  },
+
   async convertBusinessToStore(id: string, options: {
     storeName?: string;
     currency?: 'SLE' | 'USD';
