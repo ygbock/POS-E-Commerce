@@ -54,11 +54,14 @@ import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { ProductModal } from './ProductModal';
 import { ProductServiceManager } from './ProductServiceManager';
 import { Server } from 'lucide-react';
+import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 
 type ModuleTab = 'catalog' | 'service' | 'categories' | 'brands' | 'uom' | 'serials' | 'batches';
 type WorkspaceTab = 'overview' | 'variants' | 'inventory' | 'pricing';
 
-export const ProductManagement: React.FC = () => {
+interface ProductManagementProps { storeBusinessId?: string | null; }
+
+export const ProductManagement: React.FC<ProductManagementProps> = ({ storeBusinessId }) => {
   const {
     products,
     deleteProduct,
@@ -93,8 +96,28 @@ export const ProductManagement: React.FC = () => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
+  const [storeSetup, setStoreSetup] = useState<Awaited<ReturnType<typeof discoveryApi.getStoreReadiness>> | null>(null);
+  const [storeSetupError, setStoreSetupError] = useState('');
   const [selectedProductForBarcode, setSelectedProductForBarcode] = useState<Product | null>(null);
   const [selectedVariantForBarcode, setSelectedVariantForBarcode] = useState<ProductVariant | null>(null);
+
+  React.useEffect(() => {
+    if (!storeBusinessId) {
+      setStoreSetup(null);
+      setStoreSetupError('');
+      return;
+    }
+    let active = true;
+    void discoveryApi.getStoreReadiness(storeBusinessId)
+      .then((readiness) => {
+        if (active) setStoreSetup(readiness);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setStoreSetupError(err instanceof DiscoveryApiError ? err.message : 'Unable to load store setup status.');
+      });
+    return () => { active = false; };
+  }, [storeBusinessId]);
 
   // Filter products
   const filteredProducts = products.filter((p) => {
@@ -268,6 +291,33 @@ export const ProductManagement: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {storeBusinessId && (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-900 dark:bg-indigo-950/20">
+          {storeSetupError ? (
+            <p className="text-xs font-semibold text-rose-700 dark:text-rose-300">{storeSetupError}</p>
+          ) : storeSetup ? (
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300">Store onboarding</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  {storeSetup.counts.categories} categories · {storeSetup.counts.products} products · {storeSetup.counts.variants} variants
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {storeSetup.steps.filter((step) => step.complete).length}/{storeSetup.steps.length} setup checks complete.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setActiveModule('categories')} className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-indigo-700 shadow-sm ring-1 ring-indigo-200 dark:bg-slate-900 dark:text-indigo-300 dark:ring-indigo-800">Manage Categories</button>
+                <button type="button" onClick={() => handleOpenCreateProduct()} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">Add Product</button>
+                <button type="button" onClick={() => window.location.assign('/?workspace=dashboard&businessId=' + encodeURIComponent(storeBusinessId))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Store Setup</button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading store onboarding status…</p>
+          )}
+        </section>
+      )}
 
       {/* 2. SUB-MODULES & WORKSPACE TAB NAVIGATION */}
       <div className="space-y-4">
