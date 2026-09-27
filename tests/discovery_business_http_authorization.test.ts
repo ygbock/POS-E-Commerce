@@ -190,6 +190,16 @@ async function main() {
     assert.strictEqual(storeReadiness.body?.data?.counts?.products, 0);
     assert.ok(Array.isArray(storeReadiness.body?.data?.steps));
 
+    // Registration creates a DRAFT, non-discoverable listing. Public profile access is
+    // intentionally gated on publication, so establish the public visibility fixture
+    // before asserting the canonical tenant slug returned by the public endpoint.
+    await db.query(
+      `UPDATE discovery_businesses
+          SET listing_status='PUBLISHED', is_discoverable=TRUE, published_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+        WHERE id=$1`,
+      [ownerA.business.id],
+    );
+
     // The public Discovery profile must expose the canonical tenant slug after conversion
     // so its Visit Store link resolves to the same tenant-scoped storefront.
     const publicProfile = await fetch(baseUrl + '/api/discovery/businesses/' + encodeURIComponent(ownerA.business.slug));
