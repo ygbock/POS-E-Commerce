@@ -2092,7 +2092,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           customer.auth_user_id
             ? db.query(
                 `SELECT r.id,r.status,r.customer_name,r.description,r.city,r.district,r.region,r.preferred_date,r.created_at,r.updated_at,
-                        COUNT(DISTINCT m.id)::int AS match_count
+                        COUNT(m.request_id)::int AS match_count
                    FROM discovery_service_requests r
                    LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id IN (
                      SELECT id FROM discovery_businesses WHERE organization_id=$2
