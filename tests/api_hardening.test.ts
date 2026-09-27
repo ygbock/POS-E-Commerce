@@ -272,6 +272,67 @@ async function runApiHardeningTests() {
       assert.strictEqual(res3c.status, 422);
 
       markPassed('3. Catalog DTO Validation (Categories, Brands, Attributes)');
+
+      // 3d: Merchant catalog mutations must persist to the tenant database.
+      const onboardingCategoryName = 'HTTP Onboarding Category';
+      const onboardingCategory = await fetch(`${baseUrl}/api/categories`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: onboardingCategoryName,
+          slug: 'http-onboarding-category',
+          description: 'Persistent onboarding category',
+          subcategories: ['Standard'],
+          displayOrder: 99,
+          isPosQuickAccess: true,
+        }),
+      });
+      assert.strictEqual(onboardingCategory.status, 201);
+      const onboardingCategoryBody = await onboardingCategory.json();
+      assert.strictEqual(onboardingCategoryBody.success, true);
+
+      const onboardingProduct = await fetch(`${baseUrl}/api/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'HTTP Onboarding Product',
+          slug: 'http-onboarding-product',
+          category: onboardingCategoryName,
+          brand: 'Generic',
+          unit: 'pcs',
+          status: 'active',
+          channels: { pos: true, ecommerce: true, wholesale: false },
+          variants: [{
+            sku: 'HTTP-ONBOARD-001',
+            barcode: '8809123456789',
+            name: 'Standard',
+            costPrice: '10.00',
+            retailPrice: '25.00',
+            wholesalePrice: '20.00',
+            memberPrice: '22.00',
+            minSellingPrice: '15.00',
+            lowStockThreshold: 5,
+          }],
+        }),
+      });
+      assert.strictEqual(onboardingProduct.status, 201);
+      const onboardingProductBody = await onboardingProduct.json();
+      assert.strictEqual(onboardingProductBody.success, true);
+
+      const persistedProduct = await catalogRepo.findProductBySlug('http-onboarding-product', 'org_api_alpha');
+      assert.ok(persistedProduct, 'created onboarding product must be persisted');
+      assert.strictEqual(persistedProduct?.category_id, onboardingCategoryBody.data.id);
+
+      const persistedVariants = await catalogRepo.findVariantsByProductId(persistedProduct!.id, 'org_api_alpha');
+      assert.strictEqual(persistedVariants.length, 1);
+      assert.strictEqual(persistedVariants[0].retail_price, '25.00');
+
     } catch (err) {
       markFailed('3. Catalog DTO Validation (Categories, Brands, Attributes)', err);
     }
