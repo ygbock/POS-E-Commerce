@@ -414,5 +414,173 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
+  /**
+   * Unified merchant operating snapshot.
+   *
+   * This endpoint is intentionally business-scoped rather than organization-
+   * selectable. The authenticated membership resolves the business, and every
+   * commerce query uses the business' server-resolved organization_id.
+   */
+  router.get('/businesses/:id/overview', requireAuth(), async (req, res) => {
+    try {
+      const businessId = String(req.params.id || '').trim();
+      if (!businessId) throw new Error('VALIDATION_ERROR:Business id is required.');
+
+      const business = await db.query(
+        `SELECT b.id,b.name,b.slug,b.business_mode,b.listing_status,b.verification_status,
+                b.is_discoverable,b.organization_id,b.tenant_slug
+           FROM discovery_business_memberships m
+           JOIN discovery_businesses b ON b.id=m.business_id
+          WHERE m.business_id=$1 AND m.user_id=$2 AND m.is_active=TRUE
+          LIMIT 1`,
+        [businessId, req.auth!.userId],
+      );
+      if (!business.rows[0]) throw new Error('NOT_FOUND:Business not found.');
+
+      const b = business.rows[0];
+      const orgId = b.organization_id as string | null;
+
+      const [
+        listing,
+        team,
+        services,
+        requests,
+        contacts,
+        reviews,
+        commerce,
+      ] = await Promise.all([
+        db.query(
+          `SELECT
+             (SELECT COUNT(*)::int FROM discovery_business_category_map WHERE business_id=$1) AS categories,
+             (SELECT COUNT(*)::int FROM discovery_business_locations WHERE business_id=$1 AND is_active=TRUE) AS locations,
+             (SELECT COUNT(*)::int FROM discovery_services WHERE business_id=$1 AND is_active=TRUE) AS active_services`,
+          [businessId],
+        ),
+        db.query(
+          `SELECT COUNT(*)::int AS active_members
+             FROM discovery_business_memberships
+            WHERE business_id=$1 AND is_active=TRUE`,
+          [businessId],
+        ),
+        db.query(
+          `SELECT COUNT(*)::int AS active_services
+             FROM discovery_services
+            WHERE business_id=$1 AND is_active=TRUE`,
+          [businessId],
+        ),
+        db.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE status IN ('OPEN','MATCHED','QUOTED','ACCEPTED'))::int AS open_count,
+             COUNT(*) FILTER (WHERE status='QUOTED')::int AS quoted_count
+             FROM discovery_service_requests r
+             JOIN discovery_service_request_matches m ON m.request_id=r.id
+            WHERE m.business_id=$1`,
+          [businessId],
+        ),
+        db.query(
+          `SELECT COUNT(*) FILTER (WHERE status='OPEN')::int AS open_count
+             FROM discovery_contact_inquiries
+            WHERE business_id=$1`,
+          [businessId],
+        ),
+        db.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE status='PENDING')::int AS pending_count,
+             COUNT(*) FILTER (WHERE status='PUBLISHED')::int AS published_count,
+             COALESCE(ROUND(AVG(rating) FILTER (WHERE status='PUBLISHED'),2),0)::numeric AS published_rating
+             FROM discovery_reviews
+            WHERE business_id=$1`,
+          [businessId],
+        ),
+        orgId
+          ? Promise.all([
+              db.query(
+                `SELECT
+                   COUNT(*)::int AS products,
+                   (SELECT COUNT(*)::int FROM product_variants pv WHERE pv.organization_id=$1) AS variants,
+                   COUNT(*) FILTER (WHERE status='active')::int AS active_products
+                   FROM products
+                  WHERE organization_id=$1`,
+                [orgId],
+              ),
+              db.query(
+                `SELECT
+                   COALESCE(SUM(on_hand-reserved-damaged-expired),0)::text AS available_stock,
+                   COUNT(*) FILTER (WHERE (on_hand-reserved-damaged-expired) <= 0)::int AS out_of_stock_variants
+                   FROM inventory_balances
+                  WHERE organization_id=$1`,
+                [orgId],
+              ),
+              db.query(
+                `SELECT
+                   COUNT(*)::int AS orders_30d,
+                   COUNT(*) FILTER (
+                     WHERE status NOT IN ('Completed','Cancelled','Refunded','Returned')
+                   )::int AS open_orders,
+                   COALESCE(SUM(total_amount) FILTER (
+                     WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+                       AND status NOT IN ('Cancelled','Refunded','Returned')
+                   ),0)::numeric AS gross_sales_30d
+                   FROM orders
+                  WHERE organization_id=$1
+                    AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'`,
+                [orgId],
+              ),
+              db.query(
+                `SELECT COUNT(*)::int AS customers
+                   FROM customers
+                  WHERE organization_id=$1`,
+                [orgId],
+              ),
+            ])
+          : null,
+      ]);
+
+      const c = commerce
+        ? {
+            products: Number(commerce[0].rows[0]?.products || 0),
+            variants: Number(commerce[0].rows[0]?.variants || 0),
+            activeProducts: Number(commerce[0].rows[0]?.active_products || 0),
+            availableStock: String(commerce[1].rows[0]?.available_stock || '0'),
+            outOfStockVariants: Number(commerce[1].rows[0]?.out_of_stock_variants || 0),
+            orders30d: Number(commerce[2].rows[0]?.orders_30d || 0),
+            openOrders: Number(commerce[2].rows[0]?.open_orders || 0),
+            grossSales30d: String(commerce[2].rows[0]?.gross_sales_30d || '0'),
+            customers: Number(commerce[3].rows[0]?.customers || 0),
+          }
+        : null;
+
+      const readiness = {
+        listing: b.listing_status === 'PUBLISHED' && b.is_discoverable === true,
+        catalog: Boolean(c && c.products > 0 && c.variants > 0),
+        inventory: Boolean(c && Number(c.availableStock) > 0),
+        storefront: Boolean(c && c.activeProducts > 0 && Number(c.availableStock) > 0),
+      };
+
+      res.json({
+        success: true,
+        data: {
+          business: b,
+          discovery: {
+            categories: Number(listing.rows[0]?.categories || 0),
+            locations: Number(listing.rows[0]?.locations || 0),
+            activeServices: Number(services.rows[0]?.active_services || 0),
+            activeMembers: Number(team.rows[0]?.active_members || 0),
+            openRequests: Number(requests.rows[0]?.open_count || 0),
+            quotedRequests: Number(requests.rows[0]?.quoted_count || 0),
+            openContacts: Number(contacts.rows[0]?.open_count || 0),
+            pendingReviews: Number(reviews.rows[0]?.pending_count || 0),
+            publishedReviews: Number(reviews.rows[0]?.published_count || 0),
+            rating: String(reviews.rows[0]?.published_rating || '0'),
+          },
+          commerce: c,
+          readiness,
+        },
+      });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   return router;
 }
