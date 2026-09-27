@@ -310,7 +310,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({ storeBusin
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => setActiveModule('categories')} className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-indigo-700 shadow-sm ring-1 ring-indigo-200 dark:bg-slate-900 dark:text-indigo-300 dark:ring-indigo-800">Manage Categories</button>
                 <button type="button" onClick={() => handleOpenCreateProduct()} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">Add Product</button>
-                <button type="button" onClick={() => window.location.assign('/?workspace=dashboard&businessId=' + encodeURIComponent(storeBusinessId))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Store Setup</button>
+                <button type="button" onClick={() => window.location.assign('/business/' + encodeURIComponent(storeBusinessId))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Store Setup</button>
               </div>
             </div>
           ) : (
