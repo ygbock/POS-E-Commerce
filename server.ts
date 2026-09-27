@@ -1614,7 +1614,6 @@ export async function createApp(options: CreateAppOptions = {}) {
         displayOrder: body.displayOrder || masterCategoriesStore.length + 1,
         isPosQuickAccess: body.isPosQuickAccess || false,
       };
-      masterCategoriesStore.push(newCat);
       await catalogRepo.createCategory({
         id: newCat.id,
         organization_id: req.auth!.organizationId,
@@ -1625,6 +1624,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         display_order: newCat.displayOrder,
         is_pos_quick_access: newCat.isPosQuickAccess,
       });
+      masterCategoriesStore.push(newCat);
         res.status(201).json({ success: true, data: newCat });
       } catch (err) {
         next(err);
