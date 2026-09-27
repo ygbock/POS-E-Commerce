@@ -1132,12 +1132,29 @@ export async function createApp(options: CreateAppOptions = {}) {
         updatedAt: new Date().toISOString(),
       };
 
+      const [categoryLookup, brandLookup] = await Promise.all([
+        db.query<{ id: string }>(
+          `SELECT id FROM categories
+             WHERE organization_id = $1
+               AND (id = $2 OR slug = $2 OR LOWER(name) = LOWER($2))
+             LIMIT 1`,
+          [orgId, updated.category]
+        ),
+        db.query<{ id: string }>(
+          `SELECT id FROM brands
+             WHERE organization_id = $1
+               AND (id = $2 OR slug = $2 OR LOWER(name) = LOWER($2))
+             LIMIT 1`,
+          [orgId, updated.brand]
+        ),
+      ]);
+
       const persisted = await catalogRepo.updateProductWithVariants(
         {
           id: updated.id,
           organization_id: orgId,
-          category_id: typeof updated.category === 'string' ? updated.category : null,
-          brand_id: typeof updated.brand === 'string' ? updated.brand : null,
+          category_id: categoryLookup.rows[0]?.id || null,
+          brand_id: brandLookup.rows[0]?.id || null,
           name: updated.name,
           slug: updated.slug,
           description: updated.description,
