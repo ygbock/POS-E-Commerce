@@ -142,6 +142,24 @@ async function main() {
   assert.strictEqual(approved.listing_status, 'APPROVED');
   assert.strictEqual(approved.is_discoverable, false);
 
+  // Merchant users are never allowed to invoke moderation decisions.
+  await assert.rejects(
+    () => service.review(business.id, merchant),
+    /PERMISSION_DENIED:Discovery moderation requires administrator authorization/,
+  );
+
+  const detail = await service.getListingModerationDetail(business.id, moderator);
+  assert.strictEqual(detail.business.listing_status, 'REJECTED');
+  assert.strictEqual(detail.issues.filter((issue: any) => issue.status === 'OPEN').length, 1);
+
+  // A later moderation cycle can approve the corrected listing, after which the
+  // business owner—not the moderator—publishes it.
+  await service.resubmit(business.id, merchant, 'Corrections completed for publication.');
+  await service.review(business.id, moderator, 'Final moderation review.');
+  const approved = await service.approve(business.id, moderator, 'Listing approved for publication.');
+  assert.strictEqual(approved.listing_status, 'APPROVED');
+  assert.strictEqual(approved.is_discoverable, false);
+
   const published = await service.publish(business.id, merchant, 'Publishing the approved listing.');
   assert.strictEqual(published.listing_status, 'PUBLISHED');
   assert.strictEqual(published.is_discoverable, true);
@@ -157,16 +175,6 @@ async function main() {
   );
   assert.strictEqual(publicationEvent.rows[0].from_status, 'APPROVED');
   assert.strictEqual(publicationEvent.rows[0].actor_user_id, merchant.userId);
-
-  // Merchant users are never allowed to invoke moderation decisions.
-  await assert.rejects(
-    () => service.review(business.id, merchant),
-    /PERMISSION_DENIED:Discovery moderation requires administrator authorization/,
-  );
-
-  const detail = await service.getListingModerationDetail(business.id, moderator);
-  assert.strictEqual(detail.business.listing_status, 'REJECTED');
-  assert.strictEqual(detail.issues.filter((issue: any) => issue.status === 'OPEN').length, 1);
 
   console.log('Discovery moderation lifecycle tests passed.');
 }
