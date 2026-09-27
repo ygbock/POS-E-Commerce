@@ -108,7 +108,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const status = ['NOT_FOUND','DISCOVERY_BUSINESS_NOT_FOUND'].includes(code) ? 404
       : ['PERMISSION_DENIED','TENANT_ACCESS_DENIED','INACTIVE_ORGANIZATION'].includes(code) ? 403
       : code.startsWith('VALIDATION_ERROR') ? 422
-      : ['INVALID_STATE_TRANSITION','DISCOVERY_INVALID_LIFECYCLE','CONFLICT'].includes(code) ? 409
+      : ['INVALID_STATE_TRANSITION','DISCOVERY_INVALID_LIFECYCLE','CONFLICT','STORE_CONVERSION_REQUIRED'].includes(code) ? 409
       : 400;
     res.status(status).json({ success: false, error: { code: code || 'DISCOVERY_ERROR', message: raw.includes(':') ? raw.slice(raw.indexOf(':') + 1).trim() : raw } });
   };
