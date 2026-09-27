@@ -365,6 +365,69 @@ export class CatalogRepository {
     });
   }
 
+  async updateProductWithVariants(
+    product: ProductRecord,
+    variants: ProductVariantRecord[],
+    client?: DatabaseClient
+  ): Promise<{ product: ProductRecord; variants: ProductVariantRecord[] }> {
+    const validOrg = this.assertOrgId(product.organization_id, 'update product');
+    const db = this.getClient(client);
+
+    return db.withTransaction(async (tx) => {
+      const prodRes = await tx.query<ProductRecord>(
+        `UPDATE products SET
+          category_id = $3, brand_id = $4, name = $5, slug = $6, description = $7,
+          short_description = $8, unit_code = $9, product_type = $10, status = $11,
+          channels_pos = $12, channels_ecommerce = $13, channels_wholesale = $14,
+          is_bundle = $15, bundle_items = $16, is_composite = $17, bom_items = $18,
+          assembly_labor_cost = $19, is_track_serial = $20, is_track_batch = $21,
+          tax_rate = $22, tags = $23, images = $24, featured = $25,
+          compare_at_price = $26, specifications = $27, updated_at = NOW()
+        WHERE id = $1 AND organization_id = $2
+        RETURNING *`,
+        [
+          product.id, validOrg, product.category_id || null, product.brand_id || null,
+          product.name, product.slug, product.description || null, product.short_description || null,
+          product.unit_code, product.product_type || 'standard', product.status || 'active',
+          product.channels_pos ?? true, product.channels_ecommerce ?? true, product.channels_wholesale ?? false,
+          product.is_bundle ?? false, JSON.stringify(product.bundle_items || []),
+          product.is_composite ?? false, JSON.stringify(product.bom_items || []),
+          product.assembly_labor_cost ?? 0, product.is_track_serial ?? false, product.is_track_batch ?? false,
+          product.tax_rate ?? 0, JSON.stringify(product.tags || []), JSON.stringify(product.images || []),
+          product.featured ?? false, product.compare_at_price ?? null, JSON.stringify(product.specifications || []),
+        ]
+      );
+      if (prodRes.rows.length === 0) throw new Error('PRODUCT_NOT_FOUND_OR_TENANT_MISMATCH');
+
+      const updatedVariants: ProductVariantRecord[] = [];
+      for (const variant of variants) {
+        const variantOrg = this.assertOrgId(variant.organization_id || validOrg, 'update variant');
+        if (variantOrg !== validOrg) throw new Error('TENANT_MISMATCH: Variant organization must match product organization.');
+        const varRes = await tx.query<ProductVariantRecord>(
+          `UPDATE product_variants SET
+             sku=$4, barcode=$5, qr_code=$6, name=$7, attributes=$8,
+             cost_price=$9, retail_price=$10, wholesale_price=$11, member_price=$12,
+             min_selling_price=$13, weight_kg=$14, dimensions=$15,
+             low_stock_threshold=$16, image_url=$17, updated_at=NOW()
+           WHERE id=$1 AND product_id=$2 AND organization_id=$3
+           RETURNING *`,
+          [
+            variant.id, product.id, validOrg, variant.sku, variant.barcode, variant.qr_code || null,
+            variant.name, JSON.stringify(variant.attributes || {}), variant.cost_price, variant.retail_price,
+            variant.wholesale_price ?? variant.retail_price, variant.member_price ?? variant.retail_price,
+            variant.min_selling_price ?? variant.cost_price, variant.weight_kg ?? null,
+            variant.dimensions ? JSON.stringify(variant.dimensions) : null,
+            variant.low_stock_threshold ?? 10, variant.image_url || null,
+          ]
+        );
+        if (varRes.rows.length === 0) throw new Error('VARIANT_NOT_FOUND_OR_TENANT_MISMATCH');
+        updatedVariants.push(varRes.rows[0]);
+      }
+
+      return { product: prodRes.rows[0], variants: updatedVariants };
+    });
+  }
+
   async findVariantsByProductId(productId: string, orgId: string, client?: DatabaseClient): Promise<ProductVariantRecord[]> {
     const validOrg = this.assertOrgId(orgId, 'find variants');
     const db = this.getClient(client);
