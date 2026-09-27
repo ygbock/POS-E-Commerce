@@ -152,6 +152,28 @@ async function main() {
   assert.strictEqual(provisioned?.business_mode, 'DISCOVERY_AND_STORE');
   assert.strictEqual(provisioned?.organization_id, 'disc_store_org');
   assert.strictEqual(provisioned?.slug, provisionableBusiness.slug);
+  const commerceLocation = await db.query(
+    "SELECT id, name, type, is_pos_enabled FROM locations WHERE organization_id='disc_store_org' AND is_active=TRUE",
+  );
+  assert.strictEqual(commerceLocation.rows.length, 1);
+  assert.strictEqual(commerceLocation.rows[0].type, 'Retail Store');
+  assert.strictEqual(commerceLocation.rows[0].is_pos_enabled, true);
+
+  const replay = await provisioning.provisionForDiscoveryBusiness(
+    provisionableBusiness.id,
+    'disc_store_org',
+    provisionableBusiness.slug,
+    provisionableBusiness.name,
+  );
+  assert.strictEqual(replay.locationId, commerceLocation.rows[0].id);
+  assert.strictEqual(replay.createdCommerceLocation, false);
+
+  const storefrontOrg = await db.query(
+    "SELECT currency_code, currency_symbol, branding->>'storeName' AS store_name FROM organizations WHERE id='disc_store_org'",
+  );
+  assert.strictEqual(storefrontOrg.rows[0].currency_code, 'SLE');
+  assert.strictEqual(storefrontOrg.rows[0].currency_symbol, 'Le');
+  assert.strictEqual(storefrontOrg.rows[0].store_name, provisionableBusiness.name);
 
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_no_loc_org','No Location Org','DISC_NO_LOC',TRUE)");
   const noLocationBusiness = await service.create({ name: 'No Location Conversion', businessMode: 'DISCOVERY_ONLY' }, owner);
