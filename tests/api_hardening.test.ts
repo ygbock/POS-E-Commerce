@@ -333,6 +333,41 @@ async function runApiHardeningTests() {
       assert.strictEqual(persistedVariants.length, 1);
       assert.strictEqual(persistedVariants[0].retail_price, '25.00');
 
+      // Merchant onboarding stock must enter the authoritative inventory ledger.
+      await db.query(
+        `INSERT INTO locations (id, organization_id, code, name, type, is_pos_enabled, is_active)
+         VALUES ('loc_api_onboarding', 'org_api_alpha', 'ONBOARD', 'Onboarding Store', 'Retail Store', TRUE, TRUE)
+         ON CONFLICT (id) DO NOTHING`
+      );
+      const openingBalance = await fetch(`${baseUrl}/api/inventory/opening-balance`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          location_id: 'loc_api_onboarding',
+          variant_id: persistedVariants[0].id,
+          quantity: '12',
+          unit_cost: '10.00',
+          idempotency_key: 'api-onboarding-opening-1',
+          notes: 'API onboarding inventory',
+        }),
+      });
+      assert.strictEqual(openingBalance.status, 201);
+      const openingBalanceBody = await openingBalance.json();
+      assert.strictEqual(openingBalanceBody.success, true);
+      assert.strictEqual(openingBalanceBody.data.balance.on_hand, '12.0000');
+
+      const persistedBalance = await db.query(
+        `SELECT on_hand::text, reserved::text
+           FROM inventory_balances
+          WHERE organization_id = $1 AND location_id = $2 AND variant_id = $3`,
+        ['org_api_alpha', 'loc_api_onboarding', persistedVariants[0].id]
+      );
+      assert.strictEqual(persistedBalance.rows[0].on_hand, '12.0000');
+      assert.strictEqual(persistedBalance.rows[0].reserved, '0.0000');
+
     } catch (err) {
       markFailed('3. Catalog DTO Validation (Categories, Brands, Attributes)', err);
     }
