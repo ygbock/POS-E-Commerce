@@ -507,6 +507,11 @@ export class DiscoveryBusinessService {
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
     await this.assertCanManageScoped(existing, actor, client);
     if (existing.listing_status !== 'APPROVED') {
+      try {
+        this.assertModerator(actor, existing);
+      } catch (err) {
+        throw new Error('PERMISSION_DENIED:Discovery moderation requires administrator authorization.');
+      }
       throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to PUBLISHED. Listing must be APPROVED first.`);
     }
     return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published by business owner.', client);
