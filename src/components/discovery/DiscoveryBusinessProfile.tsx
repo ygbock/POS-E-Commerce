@@ -293,8 +293,13 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
   const canCall = s.allow_phone_contact && !!b.phone;
   const canWhatsApp = s.allow_whatsapp_contact && !!b.whatsapp;
   const canDirections = s.allow_directions && primary?.latitude != null && primary?.longitude != null;
-  const canStore = s.allow_public_store_link && b.business_mode === 'DISCOVERY_AND_STORE';
-  const storeUrl = canStore ? `/store/${encodeURIComponent(b.tenant_slug || b.slug || b.id)}` : null;
+  // A public store link is valid only when the business is actually store-connected
+  // and the server has supplied the canonical tenant slug. Never synthesize a storefront
+  // URL from the Discovery business slug/id because that can produce a misleading 404.
+  const canStore = s.allow_public_store_link
+    && b.business_mode === 'DISCOVERY_AND_STORE'
+    && Boolean(b.tenant_slug);
+  const storeUrl = canStore ? `/store/${encodeURIComponent(b.tenant_slug!)}` : null;
 
   return (
     <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 ${className}`}>
