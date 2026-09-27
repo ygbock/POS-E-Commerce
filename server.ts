@@ -2042,6 +2042,86 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   );
 
+  // Merchant CRM profile: tenant-scoped customer history across commerce and Discovery.
+  app.get(
+    '/api/customers/:id/profile',
+    requireAuth(),
+    requirePermission(PERMISSIONS.CUSTOMERS_VIEW),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'CUSTOMER');
+        const customer = await customerRepo.findCustomerById(req.params.id, orgId);
+        if (!customer) {
+          const other = await db.query('SELECT 1 FROM customers WHERE id = $1 AND organization_id <> $2', [req.params.id, orgId]);
+          if (other.rows.length > 0) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant customer access forbidden.' } });
+          return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Customer not found.' } });
+        }
+        const [orders, metrics, addresses, inquiries, requests] = await Promise.all([
+          db.query(
+            `SELECT o.id,o.order_number,o.source,o.status,o.payment_status,o.total_amount,o.created_at,
+                    o.location_id,l.name AS location_name
+               FROM orders o
+               LEFT JOIN locations l ON l.id=o.location_id AND l.organization_id=o.organization_id
+              WHERE o.organization_id=$1 AND o.customer_id=$2
+              ORDER BY o.created_at DESC LIMIT 50`,
+            [orgId, req.params.id],
+          ),
+          db.query(
+            `SELECT COUNT(*)::int AS order_count,
+                    COALESCE(SUM(total_amount) FILTER (WHERE status NOT IN ('Cancelled','Refunded')),0)::numeric AS total_spent,
+                    MAX(created_at) AS last_order_at
+               FROM orders WHERE organization_id=$1 AND customer_id=$2`,
+            [orgId, req.params.id],
+          ),
+          db.query(
+            `SELECT id,label,street,city,state,zip,country,is_default,created_at,updated_at
+               FROM customer_addresses WHERE customer_id=$1 ORDER BY is_default DESC,created_at ASC`,
+            [req.params.id],
+          ),
+          customer.auth_user_id
+            ? db.query(
+                `SELECT i.id,i.business_id,b.name AS business_name,i.subject,i.message,i.status,i.responded_at,i.closed_at,i.created_at
+                   FROM discovery_contact_inquiries i
+                   JOIN discovery_businesses b ON b.id=i.business_id
+                  WHERE i.customer_user_id=$1 AND b.organization_id=$2
+                  ORDER BY i.created_at DESC LIMIT 50`,
+                [customer.auth_user_id, orgId],
+              )
+            : Promise.resolve({ rows: [] } as any),
+          customer.auth_user_id
+            ? db.query(
+                `SELECT r.id,r.status,r.customer_name,r.description,r.city,r.district,r.region,r.preferred_date,r.created_at,r.updated_at,
+                        COUNT(DISTINCT m.id)::int AS match_count
+                   FROM discovery_service_requests r
+                   LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id IN (
+                     SELECT id FROM discovery_businesses WHERE organization_id=$2
+                   )
+                  WHERE r.customer_user_id=$1
+                  GROUP BY r.id
+                  ORDER BY r.created_at DESC LIMIT 50`,
+                [customer.auth_user_id, orgId],
+              )
+            : Promise.resolve({ rows: [] } as any),
+        ]);
+        res.json({
+          success: true,
+          data: {
+            customer,
+            metrics: {
+              orderCount: Number(metrics.rows[0]?.order_count || 0),
+              totalSpent: String(metrics.rows[0]?.total_spent || '0'),
+              lastOrderAt: metrics.rows[0]?.last_order_at || null,
+            },
+            addresses: addresses.rows,
+            orders: orders.rows,
+            discovery: { inquiries: inquiries.rows, serviceRequests: requests.rows },
+          },
+        });
+      } catch (err) { next(err); }
+    },
+  );
+
   // Customers Query (Tenant-scoped)
   app.get(
     '/api/customers',
@@ -2206,6 +2286,633 @@ export async function createApp(options: CreateAppOptions = {}) {
         return res.json({ success: true, data: updated });
       } catch (err) { next(err); }
     }
+  );
+
+  // Supplier directory / CRM foundation. Supplier mutations are tenant-authoritative.
+  app.get(
+    '/api/suppliers',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PURCHASES_VIEW),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'SUPPLIER');
+        const result = await db.query(
+          `SELECT s.id,s.organization_id,s.name,s.contact_person,s.email,s.phone,s.address,s.payment_terms,s.rating,s.lead_time_days,s.is_active,s.created_at,s.updated_at,
+                  COUNT(DISTINCT poi.variant_id)::int AS supplied_variant_count,
+                  COUNT(DISTINCT po.id)::int AS purchase_order_count,
+                  MAX(po.created_at) AS last_purchase_order_at
+             FROM suppliers s
+             LEFT JOIN purchase_orders po ON po.supplier_id=s.id AND po.organization_id=s.organization_id
+             LEFT JOIN purchase_order_items poi ON poi.purchase_order_id=po.id
+            WHERE s.organization_id=$1
+            GROUP BY s.id
+            ORDER BY s.is_active DESC,s.name ASC`,
+          [orgId],
+        );
+        res.json({ success: true, count: result.rows.length, data: result.rows });
+      } catch (err) { next(err); }
+    },
+  );
+
+  app.get(
+    '/api/suppliers/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PURCHASES_VIEW),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'SUPPLIER');
+        const supplier = await db.query(
+          `SELECT id,organization_id,name,contact_person,email,phone,address,payment_terms,rating,lead_time_days,is_active,created_at,updated_at
+             FROM suppliers WHERE id=$1 AND organization_id=$2 LIMIT 1`,
+          [req.params.id, orgId],
+        );
+        if (!supplier.rows[0]) {
+          const other = await db.query('SELECT 1 FROM suppliers WHERE id=$1 AND organization_id<>$2', [req.params.id, orgId]);
+          if (other.rows.length > 0) return res.status(403).json({ success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant supplier access forbidden.'} });
+          return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Supplier not found.'}});
+        }
+        const [products, orders] = await Promise.all([
+          db.query(
+            `SELECT pv.id AS variant_id,p.id AS product_id,p.name AS product_name,pv.name AS variant_name,pv.sku,
+                    COUNT(DISTINCT po.id)::int AS purchase_order_count,
+                    MAX(po.created_at) AS last_ordered_at
+               FROM purchase_orders po
+               JOIN purchase_order_items poi ON poi.purchase_order_id=po.id
+               JOIN product_variants pv ON pv.id=poi.variant_id AND pv.organization_id=po.organization_id
+               JOIN products p ON p.id=pv.product_id AND p.organization_id=po.organization_id
+              WHERE po.organization_id=$1 AND po.supplier_id=$2
+              GROUP BY pv.id,p.id,p.name,pv.name,pv.sku
+              ORDER BY p.name,pv.name`,
+            [orgId, req.params.id],
+          ),
+          db.query(
+            `SELECT id,po_number,status,payment_status,destination_location_id,order_date,expected_date,received_date,total_amount,created_at
+               FROM purchase_orders WHERE organization_id=$1 AND supplier_id=$2
+              ORDER BY created_at DESC LIMIT 50`,
+            [orgId, req.params.id],
+          ),
+        ]);
+        res.json({success:true,data:{supplier:supplier.rows[0],products:products.rows,purchaseOrders:orders.rows}});
+      } catch(err){ next(err); }
+    },
+  );
+
+  app.post(
+    '/api/suppliers',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PURCHASES_CREATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId=await resolveAuthorizedTenant(req,auditRepo,'SUPPLIER');
+        const name=String(req.body?.name||'').trim();
+        if(!name) return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'Supplier name is required.'}});
+        if(name.length>255) return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'Supplier name exceeds 255 characters.'}});
+        const rating=Number(req.body?.rating ?? 5);
+        const lead=Number(req.body?.leadTimeDays ?? req.body?.lead_time_days ?? 7);
+        if(!Number.isFinite(rating)||rating<0||rating>5||!Number.isInteger(lead)||lead<0||lead>365) return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'Invalid supplier rating or lead time.'}});
+        const id=`sup-${randomUUID()}`;
+        const result=await db.query(
+          `INSERT INTO suppliers(id,organization_id,name,contact_person,email,phone,address,payment_terms,rating,lead_time_days,is_active)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           RETURNING *`,
+          [id,orgId,name,req.body?.contactPerson??req.body?.contact_person??null,req.body?.email??null,req.body?.phone??null,req.body?.address??null,req.body?.paymentTerms??req.body?.payment_terms??'Net 30',rating,lead,req.body?.isActive!==false],
+        );
+        await auditRepo.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:(req.auth as any)?.name||req.auth!.userId,actor_role:req.auth!.role,action:'CREATE_SUPPLIER',entity_type:'SUPPLIER',entity_id:id,after_state:result.rows[0]});
+        res.status(201).json({success:true,data:result.rows[0]});
+      }catch(err){next(err);}
+    },
+  );
+
+  app.put(
+    '/api/suppliers/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PURCHASES_CREATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId=await resolveAuthorizedTenant(req,auditRepo,'SUPPLIER');
+        const existing=await db.query('SELECT * FROM suppliers WHERE id=$1 AND organization_id=$2',[req.params.id,orgId]);
+        if(!existing.rows[0]){
+          const other=await db.query('SELECT 1 FROM suppliers WHERE id=$1 AND organization_id<>$2',[req.params.id,orgId]);
+          if(other.rows.length) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant supplier modification forbidden.'}});
+          return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Supplier not found.'}});
+        }
+        const fields=['name','contact_person','email','phone','address','payment_terms','rating','lead_time_days','is_active'];
+        const sets:string[]=[]; const values:any[]=[];
+        for(const field of fields){
+          const camel=field.replace(/_([a-z])/g,(_,x)=>x.toUpperCase());
+          if(Object.prototype.hasOwnProperty.call(req.body,field)||Object.prototype.hasOwnProperty.call(req.body,camel)){
+            const value=Object.prototype.hasOwnProperty.call(req.body,field)?req.body[field]:req.body[camel];
+            values.push(value===undefined?'':value); sets.push(field+' =   app.get(
+    '/api/users',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_VIEW),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+
+        const users = await userRepo.listByOrg(orgId);
+        const sanitized = users.map((u) => ({
+          id: u.id,
+          organizationId: u.organization_id,
+          email: u.email,
+          name: u.name,
+          role: u.role,
+          locationId: u.location_id,
+          isActive: u.is_active,
+          createdAt: u.created_at,
+        }));
+
+        res.json({ success: true, count: sanitized.length, data: sanitized });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.post(
+    '/api/users',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_CREATE),
+    requireTenantAccess(),
+    validateBody(validateUserPayload),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { email, name, password, role, locationId } = req.body;
+        const isSuperAdmin = req.auth!.role === 'super_admin';
+
+        // Tenant user creation can never create platform identities or privilege-escalate into super_admin.
+        const tenantAssignableRoles = ['admin', 'manager', 'cashier', 'inventory_manager', 'purchasing_manager', 'sales_user', 'viewer'];
+        if (!tenantAssignableRoles.includes(role) && !(isSuperAdmin && role === 'admin')) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'The requested role is not assignable as a tenant user.' } });
+        }
+        if (role === 'admin' && !isSuperAdmin) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Only super_admin can assign the admin role.' } });
+        }
+
+        // Server-authoritative tenant assignment via Model B
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+
+        // Subscription plan user limit enforcement (TASK-5.6.2)
+        await subscriptionService.assertCanCreateUser(targetOrgId, db);
+
+        const { hash, salt } = hashPassword(password);
+        const created = await userRepo.createUser({
+          organizationId: targetOrgId,
+          email,
+          name,
+          passwordHash: hash,
+          passwordSalt: salt,
+          role,
+          locationId: locationId || undefined,
+        });
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: 'USER_CREATED',
+          entity_type: 'USER',
+          entity_id: created.id,
+          after_state: {
+            id: created.id,
+            email: created.email,
+            name: created.name,
+            role: created.role,
+            location_id: created.location_id,
+            is_active: created.is_active,
+          },
+          metadata: {
+            createdUserEmail: created.email,
+            createdUserRole: created.role,
+          },
+          severity: 'Medium',
+          result: 'SUCCESS',
+        });
+
+        res.status(201).json({
+          success: true,
+          data: {
+            id: created.id,
+            organizationId: created.organization_id,
+            email: created.email,
+            name: created.name,
+            role: created.role,
+            locationId: created.location_id,
+            isActive: created.is_active,
+            createdAt: created.created_at,
+          },
+        });
+      } catch (err: any) {
+        next(err);
+      }
+    }
+  );
+
+  app.patch(
+    '/api/users/:id/status',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_UPDATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { id } = req.params;
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+
+        const existing = await userRepo.findById(id, targetOrgId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found in organization.' } });
+        }
+
+        let targetIsActive: boolean;
+        if (typeof req.body.isActive === 'boolean') {
+          targetIsActive = req.body.isActive;
+        } else if (typeof req.body.status === 'string') {
+          targetIsActive = req.body.status.toLowerCase() === 'active';
+        } else {
+          return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'isActive (boolean) or status (string) is required.' } });
+        }
+
+        if (!targetIsActive && (existing.role === 'admin' || existing.role === 'super_admin')) {
+          const activeAdmins = await userRepo.countActiveAdmins(targetOrgId);
+          if (activeAdmins <= 1) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'OWNER_PROTECTION_VIOLATION',
+                message: 'Cannot deactivate the organization owner or last active administrator.',
+              },
+            });
+          }
+          if (req.auth!.userId === existing.id) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'SELF_DEACTIVATION_FORBIDDEN',
+                message: 'Administrators cannot deactivate their own account.',
+              },
+            });
+          }
+        }
+
+        const updated = await userRepo.updateUser(id, targetOrgId, { is_active: targetIsActive });
+        if (!updated) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found.' } });
+        }
+
+        if (!targetIsActive) {
+          try {
+            await userRepo.revokeToken(`rev_user_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User suspended');
+          } catch (tokErr) {
+            console.warn('[Auth] Failed to revoke user token on suspension:', tokErr);
+          }
+        }
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: targetIsActive ? 'USER_REACTIVATED' : 'USER_SUSPENDED',
+          entity_type: 'USER',
+          entity_id: updated.id,
+          before_state: { is_active: existing.is_active },
+          after_state: { is_active: updated.is_active },
+          metadata: {
+            targetEmail: updated.email,
+            targetName: updated.name,
+            reason: req.body.reason || (targetIsActive ? 'Staff reactivated' : 'Staff suspended'),
+          },
+          severity: targetIsActive ? 'Medium' : 'High',
+          result: 'SUCCESS',
+        });
+
+        res.json({
+          success: true,
+          data: {
+            id: updated.id,
+            organizationId: updated.organization_id,
+            email: updated.email,
+            name: updated.name,
+            role: updated.role,
+            locationId: updated.location_id,
+            isActive: updated.is_active,
+            updatedAt: updated.updated_at,
+          },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.put(
+    '/api/users/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_UPDATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { id } = req.params;
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+        const isSuperAdmin = req.auth!.role === 'super_admin';
+
+        const existing = await userRepo.findById(id, targetOrgId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found in organization.' } });
+        }
+
+        const { name, role, locationId } = req.body;
+        const targetRole = role || existing.role;
+
+        const tenantAssignableRoles = ['admin', 'manager', 'cashier', 'inventory_manager', 'purchasing_manager', 'sales_user', 'viewer'];
+        if (!tenantAssignableRoles.includes(targetRole) && !(isSuperAdmin && targetRole === 'admin')) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'The requested role is not assignable as a tenant user.' } });
+        }
+        if (targetRole === 'admin' && existing.role !== 'admin' && !isSuperAdmin) {
+          return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Only super_admin can assign the admin role.' } });
+        }
+
+        if (existing.role === 'admin' && targetRole !== 'admin') {
+          const activeAdmins = await userRepo.countActiveAdmins(targetOrgId);
+          if (activeAdmins <= 1) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'OWNER_PROTECTION_VIOLATION',
+                message: 'Cannot demote the organization owner or last active administrator.',
+              },
+            });
+          }
+        }
+
+        const updated = await userRepo.updateUser(id, targetOrgId, {
+          name: typeof name === 'string' && name.trim() ? name.trim() : existing.name,
+          role: targetRole,
+          location_id: locationId !== undefined ? (locationId || null) : existing.location_id,
+        });
+
+        if (!updated) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found.' } });
+        }
+
+        const roleChanged = existing.role !== updated.role;
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: roleChanged ? 'USER_ROLE_CHANGED' : 'USER_UPDATED',
+          entity_type: 'USER',
+          entity_id: updated.id,
+          before_state: { name: existing.name, role: existing.role, location_id: existing.location_id },
+          after_state: { name: updated.name, role: updated.role, location_id: updated.location_id },
+          metadata: {
+            targetEmail: updated.email,
+            previousRole: existing.role,
+            newRole: updated.role,
+          },
+          severity: roleChanged ? 'High' : 'Low',
+          result: 'SUCCESS',
+        });
+
+        res.json({
+          success: true,
+          data: {
+            id: updated.id,
+            organizationId: updated.organization_id,
+            email: updated.email,
+            name: updated.name,
+            role: updated.role,
+            locationId: updated.location_id,
+            isActive: updated.is_active,
+            updatedAt: updated.updated_at,
+          },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  app.delete(
+    '/api/users/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_DELETE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { id } = req.params;
+        const targetOrgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+
+        const existing = await userRepo.findById(id, targetOrgId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found in organization.' } });
+        }
+
+        if (req.auth!.userId === existing.id) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'SELF_DELETION_FORBIDDEN',
+              message: 'Users cannot delete their own account.',
+            },
+          });
+        }
+
+        if (existing.role === 'admin' || existing.role === 'super_admin') {
+          const activeAdmins = await userRepo.countActiveAdmins(targetOrgId);
+          if (activeAdmins <= 1) {
+            return res.status(403).json({
+              success: false,
+              error: {
+                code: 'OWNER_PROTECTION_VIOLATION',
+                message: 'Cannot delete the organization owner or last active administrator.',
+              },
+            });
+          }
+        }
+
+        try {
+          await userRepo.revokeToken(`rev_del_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User deleted');
+        } catch (tokErr) {
+          console.warn('[Auth] Failed to revoke user token on deletion:', tokErr);
+        }
+
+        const deleted = await userRepo.deleteUser(id, targetOrgId);
+        if (!deleted) {
+          return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found.' } });
+        }
+
+        await auditRepo.recordEvent({
+          organization_id: targetOrgId,
+          actor_id: req.auth!.userId,
+          actor_name: (req.auth as any)?.name || req.auth!.email || req.auth!.userId,
+          actor_role: req.auth!.role,
+          action: 'USER_DELETED',
+          entity_type: 'USER',
+          entity_id: id,
+          before_state: {
+            email: existing.email,
+            name: existing.name,
+            role: existing.role,
+            location_id: existing.location_id,
+          },
+          metadata: {
+            deletedUserEmail: existing.email,
+            deletedUserRole: existing.role,
+          },
+          severity: 'High',
+          result: 'SUCCESS',
+        });
+
+        res.json({
+          success: true,
+          message: 'User successfully deleted.',
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Role Permissions Matrix
+  app.get('/api/roles/permissions', requireAuth(), (req: Request, res: Response) => {
+    res.json({ success: true, data: ROLE_PERMISSIONS });
+  });
+
+  // Advanced Reports API (Gated by 'reports_advanced' / 'advanced_reports' subscription feature - TASK-5.6.2)
+  app.get(
+    '/api/reports/advanced',
+    requireAuth(),
+    requirePermission(PERMISSIONS.REPORTS_VIEW),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'REPORT');
+        await subscriptionService.assertFeatureEnabled(orgId, 'reports_advanced');
+        res.json({
+          success: true,
+          data: {
+            organizationId: orgId,
+            reportType: 'advanced_analytics',
+            generatedAt: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Diagnostic Test Error Route (Non-production test harness for error sanitization validation)
+  if (process.env.NODE_ENV !== 'production') {
+    app.get('/api/test-error-trigger', (req: Request, res: Response, next: NextFunction) => {
+      const syntheticCredential = ['CI', 'REDACTION', 'TEST'].join('-');
+      const err: any = new Error('Database connection string: postgres://admin:' + syntheticCredential + '@db.internal:5432/abacha');
+      err.status = 500;
+      next(err);
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // 9. CENTRALIZED API ERROR HANDLER (API-001 / SEC-001)
+  // ------------------------------------------------------------------
+  app.use('/api', (err: any, req: Request, res: Response, _next: NextFunction) => {
+    return apiErrorHandler(err, req, res);
+  });
+
+  // ------------------------------------------------------------------
+  // 10. VITE MIDDLEWARE SETUP (DEV & PROD FALLBACK)
+  // ------------------------------------------------------------------
+  if (!options.skipVite) {
+    if (process.env.NODE_ENV !== 'production') {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } else {
+      // Security Hardening (UPG-001): Block public access to source maps
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        if (req.path.endsWith('.map')) {
+          return res.status(404).send('Not Found');
+        }
+        next();
+      });
+
+      const distPath = path.join(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (req: Request, res: Response) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
+  }
+
+  return {
+    app,
+    db,
+    authService,
+    dbStatus,
+    stores: {
+      masterProductsStore,
+      masterCategoriesStore,
+      masterBrandsStore,
+      masterAttributesStore,
+      syncAuditLogs,
+    },
+    repositories: {
+      userRepo,
+      orderRepo,
+      customerRepo,
+      inventoryRepo,
+      auditRepo,
+      subscriptionRepo,
+    },
+    services: {
+      posService,
+      orderService,
+      subscriptionService,
+    },
+  };
+}
+
+export async function startServer() {
+  const PORT = parseInt(process.env.PORT || '3000', 10);
+
+  const { app } = await createApp();
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Product Service API] Server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+// Auto-start server when executed directly as entrypoint
+const isMain =
+  process.argv[1] &&
+  (process.argv[1].endsWith('server.ts') ||
+    process.argv[1].endsWith('server.js') ||
+    process.argv[1].endsWith('server.cjs'));
+
+if (isMain && process.env.NODE_ENV !== 'test') {
+  startServer();
+}
++values.length);
+          }
+        }
+        if(!sets.length) return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'At least one supplier field is required.'}});
+        values.push(req.params.id,orgId);
+        const result=await db.query(`UPDATE suppliers SET ${sets.join(', ')},updated_at=CURRENT_TIMESTAMP WHERE id=${values.length-1} AND organization_id=${values.length} RETURNING *`,values);
+        await auditRepo.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:(req.auth as any)?.name||req.auth!.userId,actor_role:req.auth!.role,action:'UPDATE_SUPPLIER',entity_type:'SUPPLIER',entity_id:req.params.id,metadata:{changedFields:Object.keys(req.body)}});
+        res.json({success:true,data:result.rows[0]});
+      }catch(err){next(err);}
+    },
   );
 
   // User Management
