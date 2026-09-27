@@ -301,12 +301,14 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           inventoryLedgerEnabled: Boolean(business.inventory_ledger_enabled),
           locations,
           counts: {
-            categories: Number(categoryRes.rows[0]?.count || 0),
-            products: Number(productRes.rows[0]?.count || 0),
-            variants: Number(variantRes.rows[0]?.count || 0),
+            categories: categoryCount,
+            products: productCount,
+            variants: variantCount,
           },
           steps,
-          ready: connected && Boolean(activeLocation),
+          ready: infrastructureReady,
+          catalogReady,
+          storefrontReady,
         },
       });
     } catch (err) {
