@@ -67,7 +67,7 @@ async function main() {
     assert.strictEqual(conversion.response.status, 200);
     assert.strictEqual(conversion.body?.store?.provisioned, true);
 
-    const tenantSlug = String(conversion.body?.data?.tenant_slug || '');
+    const tenantSlug = String(conversion.body?.store?.tenantSlug || '');
     const locationId = String(conversion.body?.store?.locationId || '');
     assert.ok(tenantSlug, 'store conversion must provision a canonical tenant slug');
     assert.ok(locationId, 'store conversion must provision a commerce location');
