@@ -194,6 +194,17 @@ async function main() {
     assert.strictEqual(storeReadiness.body?.data?.storefrontReady, false);
     assert.ok(Array.isArray(storeReadiness.body?.data?.steps));
 
+    const operatingOverview = await requestJson(baseUrl, '/api/merchant/businesses/' + ownerA.business.id + '/overview', actors.ownerA);
+    assert.strictEqual(operatingOverview.status, 200);
+    assert.strictEqual(operatingOverview.body?.data?.business?.organization_id, actors.ownerA.organizationId);
+    assert.strictEqual(operatingOverview.body?.data?.commerce?.products, 0);
+    assert.strictEqual(operatingOverview.body?.data?.commerce?.customers, 0);
+    assert.strictEqual(operatingOverview.body?.data?.readiness?.catalog, false);
+    assert.strictEqual(operatingOverview.body?.data?.readiness?.storefront, false);
+
+    const crossOperatingOverview = await requestJson(baseUrl, '/api/merchant/businesses/' + ownerB.business.id + '/overview', actors.ownerA);
+    assert.strictEqual(crossOperatingOverview.status, 404, 'merchant operating overview must hide another business');
+
     // Registration creates a DRAFT, non-discoverable listing. Public profile access is
     // intentionally gated on publication, so establish the public visibility fixture
     // before asserting the canonical tenant slug returned by the public endpoint.
