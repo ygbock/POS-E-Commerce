@@ -297,9 +297,31 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const business = await repo.findById(req.params.id);
       if (!business) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
       if (business.organization_id && business.organization_id !== req.auth!.organizationId) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Business is already bound to another organization.'}});
-      const provisioned = await new DiscoveryStoreProvisioningService(db).provisionForDiscoveryBusiness(business.id, req.auth!.organizationId, business.slug, business.name);
+      const provisioned = await new DiscoveryStoreProvisioningService(db).provisionForDiscoveryBusiness(
+        business.id,
+        req.auth!.organizationId,
+        business.slug,
+        business.name,
+        {
+          storeName: typeof req.body?.storeName === 'string' ? req.body.storeName : undefined,
+          currency: typeof req.body?.currency === 'string' ? req.body.currency : undefined,
+          enableOnlineCheckout: req.body?.enableOnlineCheckout !== false,
+          enablePOS: req.body?.enablePOS !== false,
+          enableInventoryLedger: req.body?.enableInventoryLedger !== false,
+        },
+      );
       const data = await repo.findById(business.id);
-      res.json({success:true,data,store:{provisioned:true,tenantSlug:provisioned.tenantSlug,organizationId:provisioned.organizationId}});
+      res.json({
+        success:true,
+        data,
+        store:{
+          provisioned:true,
+          tenantSlug:provisioned.tenantSlug,
+          organizationId:provisioned.organizationId,
+          locationId:provisioned.locationId,
+          createdCommerceLocation:provisioned.createdCommerceLocation,
+        },
+      });
     } catch (err) { next(err); }
   });
 
