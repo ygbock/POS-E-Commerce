@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Truck,
   Plus,
@@ -30,11 +30,12 @@ import {
   Package,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { authClient } from '../../services/authClient';
 import { PurchaseOrder, Product, ProductVariant, BranchLocationId, Supplier } from '../../types';
 
 export const PurchasingManagement: React.FC = () => {
   const {
-    suppliers,
+    suppliers: contextSuppliers,
     purchaseOrders,
     products,
     locations,
@@ -47,6 +48,24 @@ export const PurchasingManagement: React.FC = () => {
     formatCurrency,
     getTotalStockForVariant,
   } = useCommerce();
+
+  const [suppliers, setSuppliers] = useState<Supplier[]>(contextSuppliers);
+  const [supplierApiLoading, setSupplierApiLoading] = useState(false);
+  const [supplierApiError, setSupplierApiError] = useState('');
+
+  const loadSuppliers = async () => {
+    setSupplierApiLoading(true); setSupplierApiError('');
+    try {
+      const res = await fetch('/api/suppliers', { headers: authClient.getAuthHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Unable to load suppliers.');
+      setSuppliers(data.data || []);
+    } catch (error: any) {
+      setSupplierApiError(error?.message || 'Unable to load suppliers.');
+      setSuppliers(contextSuppliers);
+    } finally { setSupplierApiLoading(false); }
+  };
+  useEffect(() => { void loadSuppliers(); }, []);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'pos' | 'suppliers' | 'replenishment' | 'analytics'>('pos');
@@ -273,31 +292,32 @@ export const PurchasingManagement: React.FC = () => {
     setIsSupplierModalOpen(true);
   };
 
-  const handleSaveSupplier = (e: React.FormEvent) => {
+  const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supplierFormData.name.trim()) return;
-
-    if (editingSupplier) {
-      updateSupplier({
-        ...editingSupplier,
-        ...supplierFormData,
+    setSupplierApiError('');
+    try {
+      const editing = editingSupplier;
+      const res = await fetch(editing ? '/api/suppliers/' + editing.id : '/api/suppliers', {
+        method: editing ? 'PUT' : 'POST',
+        headers: authClient.getAuthHeaders(),
+        body: JSON.stringify(supplierFormData),
       });
-    } else {
-      const newSup: Supplier = {
-        id: `sup-${Date.now()}`,
-        ...supplierFormData,
-        activeOrdersCount: 0,
-      };
-      addSupplier(newSup);
-    }
-
-    setIsSupplierModalOpen(false);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Unable to save supplier.');
+      setIsSupplierModalOpen(false);
+      await loadSuppliers();
+    } catch (error: any) { setSupplierApiError(error?.message || 'Unable to save supplier.'); }
   };
 
-  const handleDeleteSupplier = (id: string, name: string) => {
-    if (confirm(`Are you sure you want to remove supplier profile for "${name}"?`)) {
-      deleteSupplier(id);
-    }
+  const handleDeleteSupplier = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to remove supplier profile for "${name}"?`)) return;
+    try {
+      const res = await fetch('/api/suppliers/' + id, { method: 'DELETE', headers: authClient.getAuthHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Unable to remove supplier.');
+      await loadSuppliers();
+    } catch (error: any) { setSupplierApiError(error?.message || 'Unable to remove supplier.'); }
   };
 
   // Receiving GRN Modal handlers
@@ -535,6 +555,12 @@ export const PurchasingManagement: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {(supplierApiError || supplierApiLoading) && (
+        <div className={supplierApiError ? "rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700" : "rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600"} role={supplierApiError ? "alert" : undefined}>
+          {supplierApiError || 'Loading authoritative supplier directory…'}
+        </div>
+      )}
 
       {/* Top Procurement Executive KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
