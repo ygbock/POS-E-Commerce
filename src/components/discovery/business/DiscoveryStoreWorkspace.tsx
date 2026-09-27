@@ -107,9 +107,17 @@ export const DiscoveryStoreWorkspace: React.FC<Props> = ({ business }) => {
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">Store setup</h3>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Server-verified configuration and onboarding status.</p>
           </div>
-          <span className={'rounded-full px-3 py-1 text-xs font-bold ' + (data.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>
-            {data.ready ? 'Ready for catalog setup' : 'Setup required'}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={'rounded-full px-3 py-1 text-xs font-bold ' + (data.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>
+              {data.ready ? 'Store connected' : 'Setup required'}
+            </span>
+            {data.catalogReady && (
+              <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700">Catalog ready</span>
+            )}
+            {data.storefrontReady && (
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Storefront ready</span>
+            )}
+          </div>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2">
