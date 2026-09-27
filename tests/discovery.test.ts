@@ -144,7 +144,7 @@ async function main() {
      VALUES ('disc_upgrade_loc',$1,'Upgrade Main Location','STORE','Freetown','Western Area','Sierra Leone',8.4840,-13.2299,TRUE,TRUE)`,
     [discoveryOnly.id],
   );
-  const convertedProvision = await provisioning.provisionForDiscoveryBusiness(
+  const convertedProvision = await new DiscoveryStoreProvisioningService(db).provisionForDiscoveryBusiness(
     discoveryOnly.id,
     'disc_test_org',
     discoveryOnly.slug,
