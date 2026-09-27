@@ -83,6 +83,9 @@ const MainLayout: React.FC = () => {
   const requestedWorkspace = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('workspace')
     : null;
+  const requestedBusinessId = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('businessId')
+    : null;
   const workspaceTabs = new Set(['dashboard', 'catalog', 'inventory', 'orders', 'pos']);
   const [activeTab, setActiveTab] = useState<string>(() =>
     isPlatform ? 'platform-dashboard' : (requestedWorkspace && workspaceTabs.has(requestedWorkspace) ? requestedWorkspace : 'storefront')
@@ -160,7 +163,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'users' && <UserManagementView />}
             {activeTab === 'locations' && <LocationManagementView />}
             {activeTab === 'pos' && <PosTerminal />}
-            {(activeTab === 'catalog' || activeTab === 'products') && <ProductManagement />}
+            {(activeTab === 'catalog' || activeTab === 'products') && <ProductManagement storeBusinessId={requestedBusinessId} />}
             {(activeTab === 'inventory' || activeTab === 'stock' || activeTab === 'movements' || activeTab === 'transfers' || activeTab === 'stocktaking') && (
               <StockManagement initialSubTab={activeTab === 'movements' ? 'movements' : activeTab === 'transfers' ? 'transfers' : activeTab === 'stocktaking' ? 'adjustments' : 'matrix'} />
             )}
