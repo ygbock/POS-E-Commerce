@@ -12,6 +12,7 @@ import { createDiscoveryRouter } from '../server/routes/discoveryRoutes';
 import { createDiscoveryBusinessRouter } from '../server/routes/discoveryBusinessRoutes';
 import { createMerchantRouter } from '../server/routes/merchantRoutes';
 import { createStorefrontRouter } from '../server/routes/storefrontRoutes';
+import { getPermissionsForRole } from '../server/auth/roles';
 
 type Actor = {
   userId: string;
@@ -91,7 +92,7 @@ async function main() {
         userId: actor.userId,
         organizationId: actor.organizationId,
         role: actor.role as any,
-        permissions: [],
+        permissions: getPermissionsForRole(actor.role),
         organizationActive: true,
       };
     }
@@ -201,6 +202,53 @@ async function main() {
     assert.strictEqual(operatingOverview.body?.data?.commerce?.customers, 0);
     assert.strictEqual(operatingOverview.body?.data?.readiness?.catalog, false);
     assert.strictEqual(operatingOverview.body?.data?.readiness?.storefront, false);
+
+
+    // TASK-MERCHANT-2: customer CRM profile is tenant-scoped and aggregates commerce/Discovery activity.
+    const customerA = await db.query(
+      `INSERT INTO customers(id,organization_id,name,email,phone,auth_user_id) VALUES ('merchant2-customer-a',$1,'Merchant2 Customer','customer-a@example.test','+232000001','http-customer-a') RETURNING id`,
+      [actors.ownerA.organizationId],
+    );
+    const customerProfile = await requestJson(baseUrl, '/api/customers/' + customerA.rows[0].id + '/profile', actors.ownerA);
+    assert.strictEqual(customerProfile.status, 200);
+    assert.strictEqual(customerProfile.body?.data?.customer?.organization_id, actors.ownerA.organizationId);
+    assert.strictEqual(customerProfile.body?.data?.metrics?.orderCount, 0);
+
+    const customerB = await db.query(
+      `INSERT INTO customers(id,organization_id,name,email) VALUES ('merchant2-customer-b',$1,'Other Tenant Customer','customer-b@example.test') RETURNING id`,
+      [actors.ownerB.organizationId],
+    );
+    const crossCustomerProfile = await requestJson(baseUrl, '/api/customers/' + customerB.rows[0].id + '/profile', actors.ownerA);
+    assert.strictEqual(crossCustomerProfile.status, 403);
+
+    // TASK-MERCHANT-2: supplier directory CRUD and tenant isolation.
+    const supplierCreated = await requestJson(baseUrl, '/api/suppliers', actors.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Merchant2 Supplier A', contactPerson: 'Supplier Contact', paymentTerms: 'Net 30', leadTimeDays: 5 }),
+    });
+    assert.strictEqual(supplierCreated.status, 201);
+    assert.strictEqual(supplierCreated.body?.data?.organization_id, actors.ownerA.organizationId);
+    const supplierId = supplierCreated.body.data.id;
+
+    const supplierList = await requestJson(baseUrl, '/api/suppliers', actors.ownerA);
+    assert.strictEqual(supplierList.status, 200);
+    assert.ok(supplierList.body?.data?.some((s: any) => s.id === supplierId));
+
+    const supplierProfile = await requestJson(baseUrl, '/api/suppliers/' + supplierId, actors.ownerA);
+    assert.strictEqual(supplierProfile.status, 200);
+    assert.strictEqual(supplierProfile.body?.data?.supplier?.organization_id, actors.ownerA.organizationId);
+
+    const crossSupplier = await requestJson(baseUrl, '/api/suppliers/' + supplierId, actors.ownerB);
+    assert.strictEqual(crossSupplier.status, 403);
+
+    const supplierUpdated = await requestJson(baseUrl, '/api/suppliers/' + supplierId, actors.ownerA, {
+      method: 'PUT', body: JSON.stringify({ phone: '+232000002', leadTimeDays: 7 }),
+    });
+    assert.strictEqual(supplierUpdated.status, 200);
+    assert.strictEqual(supplierUpdated.body?.data?.lead_time_days, 7);
+
+    const supplierDeleted = await requestJson(baseUrl, '/api/suppliers/' + supplierId, actors.ownerA, { method: 'DELETE' });
+    assert.strictEqual(supplierDeleted.status, 200);
 
     const crossOperatingOverview = await requestJson(baseUrl, '/api/merchant/businesses/' + ownerB.business.id + '/overview', actors.ownerA);
     assert.strictEqual(crossOperatingOverview.status, 404, 'merchant operating overview must hide another business');
