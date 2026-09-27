@@ -129,14 +129,26 @@ async function main() {
   const submittedSelfService = await service.submit(selfService.id, selfServiceOwner);
   assert.strictEqual(submittedSelfService.listing_status, 'SUBMITTED');
 
-  // A discovery-only listing can be converted to the creator's tenant, preserving its identity and slug.
-  const converted = await service.update(discoveryOnly.id, {
-    businessMode: 'DISCOVERY_AND_STORE',
-    organizationId: 'disc_test_org',
-  }, owner);
-  assert.strictEqual(converted.business_mode, 'DISCOVERY_AND_STORE');
-  assert.strictEqual(converted.organization_id, 'disc_test_org');
-  assert.strictEqual(converted.slug, discoveryOnly.slug);
+  // Store conversion must use the provisioning workflow rather than a generic
+  // business PATCH, preserving identity while creating the commerce boundary.
+  await assert.rejects(
+    () => service.update(discoveryOnly.id, {
+      businessMode: 'DISCOVERY_AND_STORE',
+      organizationId: 'disc_test_org',
+    }, owner),
+    /STORE_CONVERSION_REQUIRED:/,
+  );
+  const convertedProvision = await provisioning.provisionForDiscoveryBusiness(
+    discoveryOnly.id,
+    'disc_test_org',
+    discoveryOnly.slug,
+    discoveryOnly.name,
+  );
+  const converted = await repo.findById(discoveryOnly.id);
+  assert.strictEqual(convertedProvision.businessId, discoveryOnly.id);
+  assert.strictEqual(converted?.business_mode, 'DISCOVERY_AND_STORE');
+  assert.strictEqual(converted?.organization_id, 'disc_test_org');
+  assert.strictEqual(converted?.slug, discoveryOnly.slug);
 
   // Store conversion must be transactional and require an active commerce location.
   // Use a fresh discovery-only listing here: the earlier listing was intentionally
