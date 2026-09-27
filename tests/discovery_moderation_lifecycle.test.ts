@@ -1,8 +1,11 @@
 import assert from 'assert';
+import express from 'express';
+import { createServer } from 'node:http';
 import { createIsolatedTestClient, DatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
 import { DiscoveryBusinessRepository } from '../server/repositories/discoveryBusinessRepository';
 import { DiscoveryBusinessService } from '../server/services/discoveryBusinessService';
+import { createDiscoveryRouter } from '../server/routes/discoveryRoutes';
 
 async function main() {
   const db: DatabaseClient = createIsolatedTestClient();
@@ -169,7 +172,63 @@ async function main() {
   assert.strictEqual(publicationEvent.rows[0].from_status, 'APPROVED');
   assert.strictEqual(publicationEvent.rows[0].actor_user_id, merchant.userId);
 
-  console.log('Discovery moderation lifecycle tests passed.');
+  // Public Discovery visibility must be synchronized with publication: the listing
+  // is absent before publication and becomes reachable through both public search
+  // and the public business profile after the approved owner publishes it.
+  const publishedListings = await service.listPublished({ limit: 200 });
+  assert.ok(
+    publishedListings.some((listing) => listing.id === business.id),
+    'published listing must appear in the public Discovery listing surface',
+  );
+
+  const publicBySlug = await service.getBySlug(business.slug, true);
+  assert.ok(publicBySlug, 'published listing must be resolvable by its public slug');
+
+  const publicProfile = await service.getPublicProfile(business.id);
+  assert.ok(publicProfile, 'published listing must expose a public Discovery profile');
+  assert.strictEqual(publicProfile?.business.id, business.id);
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/discovery', createDiscoveryRouter(db));
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    const raw = String(err?.message || 'error');
+    const code = raw.split(':')[0];
+    const status = code === 'NOT_FOUND' ? 404 : 500;
+    res.status(status).json({ success: false, error: { code, message: raw } });
+  });
+
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Test server did not expose a port.');
+
+  try {
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const publicSearchResponse = await fetch(baseUrl + '/api/discovery/businesses?limit=200');
+    assert.strictEqual(publicSearchResponse.status, 200);
+    const publicSearchBody = await publicSearchResponse.json();
+    assert.strictEqual(publicSearchBody?.success, true);
+    assert.ok(
+      publicSearchBody?.data?.some((listing: any) => listing.id === business.id),
+      'published listing must be returned by the public Discovery HTTP search endpoint',
+    );
+
+    const publicProfileResponse = await fetch(
+      baseUrl + `/api/discovery/businesses/${encodeURIComponent(business.slug)}`,
+    );
+    assert.strictEqual(publicProfileResponse.status, 200);
+    const publicProfileBody = await publicProfileResponse.json();
+    assert.strictEqual(publicProfileBody?.success, true);
+    assert.strictEqual(publicProfileBody?.data?.business?.id, business.id);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve()),
+    );
+  }
+
+  console.log('Discovery moderation lifecycle and public publication tests passed.');
 }
 
 main().catch((error) => {
