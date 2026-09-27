@@ -32,6 +32,7 @@ import {
   BranchLocationId,
 } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { productService } from '../../services/productService';
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -323,7 +324,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     setNewSpecValue('');
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       alert('Product name is required');
@@ -375,13 +376,32 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    if (productToEdit) {
-      updateProduct(productPayload);
-    } else {
-      addProduct(productPayload);
-    }
+    // Persist through the authenticated server catalog API. Prices are sent as
+    // exact decimal strings at the API boundary; the server owns tenant assignment.
+    const apiPayload = {
+      ...productPayload,
+      variants: productPayload.variants.map((variant) => ({
+        ...variant,
+        costPrice: Number(variant.costPrice).toFixed(2),
+        retailPrice: Number(variant.retailPrice).toFixed(2),
+        wholesalePrice: Number(variant.wholesalePrice).toFixed(2),
+        memberPrice: Number(variant.memberPrice).toFixed(2),
+        minSellingPrice: Number(variant.minSellingPrice).toFixed(2),
+      })),
+    };
 
-    onClose();
+    try {
+      if (productToEdit) {
+        const response = await productService.updateProduct(productToEdit.id, apiPayload);
+        updateProduct(response.data);
+      } else {
+        const response = await productService.createProduct(apiPayload);
+        addProduct(response.data);
+      }
+      onClose();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to save product. Please try again.');
+    }
   };
 
   // Calculations for Bundles & BOM
