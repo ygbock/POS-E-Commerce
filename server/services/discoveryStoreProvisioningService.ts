@@ -144,6 +144,13 @@ export class DiscoveryStoreProvisioningService {
 
         locationRes = { rows: [{ id: locationId }], rowCount: 1 };
         createdCommerceLocation = true;
+      } else {
+        await tx.query(
+          `UPDATE locations
+              SET is_pos_enabled = $1
+            WHERE id = $2`,
+          [options.enablePOS !== false, locationRes.rows[0].id],
+        );
       }
 
       await tx.query(
