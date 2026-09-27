@@ -156,6 +156,12 @@ async function main() {
   assert.strictEqual(approved.listing_status, 'APPROVED');
   assert.strictEqual(approved.is_discoverable, false);
 
+  const prePublicationListings = await service.listPublished({ limit: 200 });
+  assert.ok(
+    !prePublicationListings.some((listing) => listing.id === business.id),
+    'approved but unpublished listing must remain absent from public Discovery',
+  );
+
   const published = await service.publish(business.id, merchant, 'Publishing the approved listing.');
   assert.strictEqual(published.listing_status, 'PUBLISHED');
   assert.strictEqual(published.is_discoverable, true);
