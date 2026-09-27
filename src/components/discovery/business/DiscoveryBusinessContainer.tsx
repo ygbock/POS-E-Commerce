@@ -42,6 +42,7 @@ import { DiscoveryStoreConversionModal } from './DiscoveryStoreConversionModal';
 import { DiscoveryOnboardingWizard } from './DiscoveryOnboardingWizard';
 import { DiscoveryListingManagementWorkspace } from './DiscoveryListingManagementWorkspace';
 import { DiscoveryBusinessTeamPanel } from './DiscoveryBusinessTeamPanel';
+import { DiscoveryStoreWorkspace } from './DiscoveryStoreWorkspace';
 
 interface DiscoveryBusinessContainerProps {
   initialBusinessId?: string;
@@ -53,13 +54,14 @@ interface DiscoveryBusinessContainerProps {
 type BusinessRole = 'OWNER' | 'MANAGER' | 'STAFF';
 
 const ROLE_TAB_ACCESS: Record<BusinessRole, string[]> = {
-  OWNER: ['dashboard','listing','submission','locations','hours','services','quotes','contacts','reviews','verification','trust','analytics','settings','team','search'],
+  OWNER: ['dashboard','store','listing','submission','locations','hours','services','quotes','contacts','reviews','verification','trust','analytics','settings','team','search'],
   MANAGER: ['dashboard','listing','submission','locations','hours','services','quotes','contacts','reviews','analytics','search'],
   STAFF: ['dashboard','services','quotes','contacts','reviews','analytics'],
 };
 
 const TABS = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, group: 'overview' },
+  { id: 'store', label: 'Store', icon: ShoppingBag, group: 'business' },
   { id: 'listing', label: 'Listing', icon: Building2, group: 'business' },
   { id: 'submission', label: 'Submission & Review', icon: ShieldCheck, group: 'business' },
   { id: 'locations', label: 'Locations', icon: MapPin, group: 'business' },
@@ -401,6 +403,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
             onNavigateTab={(tab) => setActiveTab(tab)}
             onOpenPreview={handleViewPublicCard}
           />
+        )}
+
+        {activeTab === 'store' && selectedBusiness.business_mode === 'DISCOVERY_AND_STORE' && (
+          <DiscoveryStoreWorkspace business={selectedBusiness} />
         )}
 
         {activeTab === 'listing' && (
