@@ -117,7 +117,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({ storeBusin
         setStoreSetupError(err instanceof DiscoveryApiError ? err.message : 'Unable to load store setup status.');
       });
     return () => { active = false; };
-  }, [storeBusinessId]);
+  }, [storeBusinessId, products.length, categories.length]);
 
   // Filter products
   const filteredProducts = products.filter((p) => {
