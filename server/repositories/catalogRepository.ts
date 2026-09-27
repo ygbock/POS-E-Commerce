@@ -400,9 +400,13 @@ export class CatalogRepository {
       if (prodRes.rows.length === 0) throw new Error('PRODUCT_NOT_FOUND_OR_TENANT_MISMATCH');
 
       const updatedVariants: ProductVariantRecord[] = [];
+      const submittedVariantIds = new Set<string>();
+
       for (const variant of variants) {
         const variantOrg = this.assertOrgId(variant.organization_id || validOrg, 'update variant');
         if (variantOrg !== validOrg) throw new Error('TENANT_MISMATCH: Variant organization must match product organization.');
+        submittedVariantIds.add(variant.id);
+
         const varRes = await tx.query<ProductVariantRecord>(
           `UPDATE product_variants SET
              sku=$4, barcode=$5, qr_code=$6, name=$7, attributes=$8,
@@ -441,6 +445,54 @@ export class CatalogRepository {
         } else {
           updatedVariants.push(varRes.rows[0]);
         }
+      }
+
+      // A product edit is a full variant-set replacement only when the caller
+      // explicitly supplies the variants array. Variants omitted from that array
+      // are candidates for removal, but historical/operationally referenced
+      // variants must never be hard-deleted because inventory and order tables
+      // intentionally reference them with ON DELETE RESTRICT.
+      const existingVariantRows = await tx.query<{ id: string }>(
+        `SELECT id
+           FROM product_variants
+          WHERE product_id = $1
+            AND organization_id = $2
+          FOR UPDATE`,
+        [product.id, validOrg]
+      );
+
+      for (const existingVariant of existingVariantRows.rows) {
+        if (submittedVariantIds.has(existingVariant.id)) continue;
+
+        const referenceRes = await tx.query<{ reference_count: string }>(
+          `SELECT (
+             (SELECT COUNT(*) FROM inventory_balances WHERE organization_id = $1 AND variant_id = $2) +
+             (SELECT COUNT(*) FROM inventory_movements WHERE organization_id = $1 AND variant_id = $2) +
+             (SELECT COUNT(*) FROM inventory_reservations WHERE organization_id = $1 AND variant_id = $2) +
+             (SELECT COUNT(*) FROM inventory_transfer_items WHERE organization_id = $1 AND variant_id = $2) +
+             (SELECT COUNT(*) FROM stock_count_items WHERE variant_id = $2) +
+             (SELECT COUNT(*) FROM order_items WHERE organization_id = $1 AND variant_id = $2) +
+             (SELECT COUNT(*) FROM pos_return_items WHERE variant_id = $2)
+           )::text AS reference_count`,
+          [validOrg, existingVariant.id]
+        );
+
+        if (Number(referenceRes.rows[0]?.reference_count || 0) > 0) {
+          const err: any = new Error(
+            `VARIANT_IN_USE: Variant ${existingVariant.id} has inventory or transaction history and cannot be removed.`
+          );
+          err.code = 'VARIANT_IN_USE';
+          err.status = 409;
+          throw err;
+        }
+
+        await tx.query(
+          `DELETE FROM product_variants
+             WHERE id = $1
+               AND product_id = $2
+               AND organization_id = $3`,
+          [existingVariant.id, product.id, validOrg]
+        );
       }
 
       return { product: prodRes.rows[0], variants: updatedVariants };
