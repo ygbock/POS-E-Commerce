@@ -51,6 +51,97 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     return role;
   };
 
+  // Tenant-scoped customer CRM profile for the merchant workspace.
+  router.get('/customers/:id/profile', requireAuth(), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const orgId = req.auth.organizationId;
+      const customerId = req.params.id;
+
+      const customerResult = await db.query(
+        `SELECT id,organization_id,name,email,phone,tier,loyalty_points,store_credit_balance,credit_limit,
+                customer_group,notes,registered_at,created_at,updated_at,auth_user_id
+           FROM customers
+          WHERE id=$1 AND organization_id=$2`,
+        [customerId, orgId],
+      );
+      if (!customerResult.rows[0]) {
+        const other = await db.query(
+          'SELECT 1 FROM customers WHERE id=$1 AND organization_id<>$2 LIMIT 1',
+          [customerId, orgId],
+        );
+        if (other.rows[0]) throw new Error('TENANT_ACCESS_DENIED:Cross-tenant customer access forbidden.');
+        throw new Error('NOT_FOUND:Customer not found.');
+      }
+
+      const customer = customerResult.rows[0];
+      const [orders, metrics, addresses, inquiries, requests] = await Promise.all([
+        db.query(
+          `SELECT o.id,o.order_number,o.source,o.status,o.payment_status,o.total_amount,o.created_at,
+                  o.location_id,l.name AS location_name
+             FROM orders o
+             LEFT JOIN locations l ON l.id=o.location_id AND l.organization_id=o.organization_id
+            WHERE o.organization_id=$1 AND o.customer_id=$2
+            ORDER BY o.created_at DESC LIMIT 50`,
+          [orgId, customerId],
+        ),
+        db.query(
+          `SELECT COUNT(*)::int AS order_count,
+                  COALESCE(SUM(total_amount) FILTER (WHERE status NOT IN ('Cancelled','Refunded')),0)::numeric AS total_spent,
+                  MAX(created_at) AS last_order_at
+             FROM orders WHERE organization_id=$1 AND customer_id=$2`,
+          [orgId, customerId],
+        ),
+        db.query(
+          `SELECT id,label,street,city,state,zip,country,is_default,created_at,updated_at
+             FROM customer_addresses WHERE customer_id=$1
+            ORDER BY is_default DESC,created_at ASC`,
+          [customerId],
+        ),
+        customer.auth_user_id
+          ? db.query(
+              `SELECT i.id,i.business_id,b.name AS business_name,i.subject,i.message,i.status,i.responded_at,i.closed_at,i.created_at
+                 FROM discovery_contact_inquiries i
+                 JOIN discovery_businesses b ON b.id=i.business_id
+                WHERE i.customer_user_id=$1 AND b.organization_id=$2
+                ORDER BY i.created_at DESC LIMIT 50`,
+              [customer.auth_user_id, orgId],
+            )
+          : Promise.resolve({ rows: [] } as any),
+        customer.auth_user_id
+          ? db.query(
+              `SELECT r.id,r.status,r.customer_name,r.description,r.city,r.district,r.region,r.preferred_date,r.created_at,r.updated_at,
+                      COUNT(DISTINCT m.id)::int AS match_count
+                 FROM discovery_service_requests r
+                 LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id
+                   AND m.business_id IN (SELECT id FROM discovery_businesses WHERE organization_id=$2)
+                WHERE r.customer_user_id=$1
+                GROUP BY r.id
+                ORDER BY r.created_at DESC LIMIT 50`,
+              [customer.auth_user_id, orgId],
+            )
+          : Promise.resolve({ rows: [] } as any),
+      ]);
+
+      return res.json({
+        success: true,
+        data: {
+          customer,
+          metrics: {
+            orderCount: Number(metrics.rows[0]?.order_count || 0),
+            totalSpent: String(metrics.rows[0]?.total_spent || '0'),
+            lastOrderAt: metrics.rows[0]?.last_order_at || null,
+          },
+          addresses: addresses.rows,
+          orders: orders.rows,
+          discovery: { inquiries: inquiries.rows, serviceRequests: requests.rows },
+        },
+      });
+    } catch (err) {
+      return fail(res, err);
+    }
+  });
+
   router.post('/login', async (req, res) => {
     try {
       const email = normalizeEmail(req.body?.email);
