@@ -35,6 +35,15 @@ export const UserManagementView: React.FC = () => {
   };
   useEffect(()=>{void load();},[]);
   const filtered=useMemo(()=>users.filter(u=>[u.name,u.email,u.role].join(' ').toLowerCase().includes(query.toLowerCase())),[users,query]);
+  const updateRole=async(user:UserRow, role:string)=>{
+    setError('');
+    try{const r=await fetch('/api/users/'+user.id+'/role',{method:'PATCH',headers:authClient.getAuthHeaders(),body:JSON.stringify({role})});const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Unable to change role.');await load();}catch(e:any){setError(e?.message||'Unable to change role.');}
+  };
+  const updateStatus=async(user:UserRow)=>{
+    setError('');
+    try{const r=await fetch('/api/users/'+user.id+'/status',{method:'PATCH',headers:authClient.getAuthHeaders(),body:JSON.stringify({isActive:!user.isActive})});const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Unable to change status.');await load();}catch(e:any){setError(e?.message||'Unable to change status.');}
+  };
+
   const startCreate=()=>{setForm({name:'',email:'',password:'',role:'viewer',locationId:''});setOpen(true);};
 
   const save=async(e:React.FormEvent)=>{
@@ -54,6 +63,7 @@ export const UserManagementView: React.FC = () => {
     {header:'Role',accessor:r=><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold">{r.role.replaceAll('_',' ')}</span>},
     {header:'Status',accessor:r=><span className={r.isActive?'ui-status-success':'ui-status-danger'}>{r.isActive?'Active':'Inactive'}</span>},
     {header:'Location',accessor:r=>locations.find(l=>l.id===r.locationId)?.name||'Unassigned'},
+    {header:'Role & Access',accessor:r=><div className="flex items-center gap-2"><select aria-label={'Role for '+r.name} value={r.role} onChange={e=>void updateRole(r,e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"><option value="admin">Administrator</option><option value="manager">Store Manager</option><option value="cashier">Cashier</option><option value="inventory_manager">Inventory Manager</option><option value="purchasing_manager">Purchasing Manager</option><option value="sales_user">Sales User</option><option value="viewer">Viewer</option></select><Button size="sm" variant="ghost" onClick={()=>void updateStatus(r)}>{r.isActive?'Deactivate':'Activate'}</Button></div>},
     
   ];
 
