@@ -495,7 +495,33 @@ async function runApiHardeningTests() {
       assert.strictEqual(fetchedVariants[0].retail_price, '249.99');
       assert.strictEqual(fetchedVariants[0].cost_price, '120.50');
 
+      const updatedProd = await catalogRepo.updateProductWithVariants(
+        {
+          ...fetchedProd!,
+          name: 'Precision Watch Updated',
+          tax_rate: '9.00' as any,
+        },
+        [
+          {
+            ...fetchedVariants[0],
+            retail_price: '259.99',
+            cost_price: '125.50',
+          },
+        ]
+      );
+      assert.strictEqual(updatedProd.product.name, 'Precision Watch Updated');
+      assert.strictEqual(updatedProd.product.tax_rate, '9.00');
+      assert.strictEqual(updatedProd.variants[0].retail_price, '259.99');
+      assert.strictEqual(updatedProd.variants[0].cost_price, '125.50');
+
+      const rereadUpdated = await catalogRepo.findProductById('prod_exact_dec_1', 'org_api_alpha');
+      const rereadUpdatedVariants = await catalogRepo.findVariantsByProductId('prod_exact_dec_1', 'org_api_alpha');
+      assert.strictEqual(rereadUpdated?.name, 'Precision Watch Updated');
+      assert.strictEqual(rereadUpdatedVariants[0].retail_price, '259.99');
+      assert.strictEqual(rereadUpdatedVariants[0].cost_price, '125.50');
+
       markPassed('6. Exact-Decimal Representation in Catalog Repository');
+
     } catch (err) {
       markFailed('6. Exact-Decimal Representation in Catalog Repository', err);
     }
