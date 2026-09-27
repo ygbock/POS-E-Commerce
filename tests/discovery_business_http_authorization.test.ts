@@ -190,6 +190,15 @@ async function main() {
     assert.strictEqual(storeReadiness.body?.data?.counts?.products, 0);
     assert.ok(Array.isArray(storeReadiness.body?.data?.steps));
 
+    // The public Discovery profile must expose the canonical tenant slug after conversion
+    // so its Visit Store link resolves to the same tenant-scoped storefront.
+    const publicProfile = await fetch(baseUrl + '/api/discovery/businesses/' + encodeURIComponent(ownerA.business.slug));
+    const publicProfileBody = await publicProfile.json();
+    assert.strictEqual(publicProfile.status, 200);
+    assert.strictEqual(publicProfileBody?.data?.business?.business_mode, 'DISCOVERY_AND_STORE');
+    assert.strictEqual(publicProfileBody?.data?.business?.tenant_slug, actors.ownerA.organizationId ? publicProfileBody?.data?.business?.tenant_slug : null);
+    assert.ok(publicProfileBody?.data?.business?.tenant_slug);
+
     const crossStoreReadiness = await requestJson(baseUrl, '/api/discovery/businesses/' + ownerB.business.id + '/store-readiness', actors.ownerA);
     assert.strictEqual(crossStoreReadiness.status, 403, 'cross-business store readiness must be denied');
 
