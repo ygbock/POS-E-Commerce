@@ -42,9 +42,6 @@ export const PurchasingManagement: React.FC = () => {
     createPurchaseOrder,
     receivePurchaseOrderGoods,
     updatePurchaseOrderStatus,
-    addSupplier,
-    updateSupplier,
-    deleteSupplier,
     formatCurrency,
     getTotalStockForVariant,
   } = useCommerce();
@@ -59,7 +56,11 @@ export const PurchasingManagement: React.FC = () => {
       const res = await fetch('/api/suppliers', { headers: authClient.getAuthHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Unable to load suppliers.');
-      setSuppliers(data.data || []);
+      setSuppliers((data.data || []).map((s: any) => ({
+        id: s.id, name: s.name, contactPerson: s.contact_person || '', email: s.email || '', phone: s.phone || '',
+        address: s.address || '', paymentTerms: s.payment_terms || 'Net 30', rating: Number(s.rating || 0),
+        leadTimeDays: Number(s.lead_time_days || 0), activeOrdersCount: 0,
+      })));
     } catch (error: any) {
       setSupplierApiError(error?.message || 'Unable to load suppliers.');
       setSuppliers(contextSuppliers);
