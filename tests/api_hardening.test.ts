@@ -415,7 +415,8 @@ async function runApiHardeningTests() {
       assert.strictEqual(afterRemovalVariants.length, 1);
       assert.strictEqual(afterRemovalVariants[0].id, persistedVariants[0].id);
 
-      // Merchant onboarding stock must enter the authoritative inventory ledger.      await db.query(
+      // Merchant onboarding stock must enter the authoritative inventory ledger.
+      await db.query(
         `INSERT INTO locations (id, organization_id, code, name, type, is_pos_enabled, is_active)
          VALUES ('loc_api_onboarding', 'org_api_alpha', 'ONBOARD', 'Onboarding Store', 'Retail Store', TRUE, TRUE)
          ON CONFLICT (id) DO NOTHING`
