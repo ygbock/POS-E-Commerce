@@ -196,7 +196,8 @@ async function main() {
     const publicProfileBody = await publicProfile.json();
     assert.strictEqual(publicProfile.status, 200);
     assert.strictEqual(publicProfileBody?.data?.business?.business_mode, 'DISCOVERY_AND_STORE');
-    assert.strictEqual(publicProfileBody?.data?.business?.tenant_slug, actors.ownerA.organizationId ? publicProfileBody?.data?.business?.tenant_slug : null);
+    const ownerOrg = await db.query('SELECT slug FROM organizations WHERE id=$1', [actors.ownerA.organizationId]);
+    assert.strictEqual(publicProfileBody?.data?.business?.tenant_slug, ownerOrg.rows[0]?.slug);
     assert.ok(publicProfileBody?.data?.business?.tenant_slug);
 
     const crossStoreReadiness = await requestJson(baseUrl, '/api/discovery/businesses/' + ownerB.business.id + '/store-readiness', actors.ownerA);
