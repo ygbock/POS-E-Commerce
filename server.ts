@@ -1599,9 +1599,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     requirePermission(PERMISSIONS.PRODUCTS_CREATE),
     requireTenantAccess(),
     validateBody(validateCategoryPayload),
-    (req: Request, res: Response) => {
-      const body = req.body;
-      const newCat: Category = {
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const body = req.body;
+        const newCat: Category = {
         id: `cat-${randomUUID().slice(0, 8)}`,
         organizationId: req.auth!.organizationId,
         name: body.name,
@@ -1622,7 +1623,10 @@ export async function createApp(options: CreateAppOptions = {}) {
         display_order: newCat.displayOrder,
         is_pos_quick_access: newCat.isPosQuickAccess,
       });
-      res.status(201).json({ success: true, data: newCat });
+        res.status(201).json({ success: true, data: newCat });
+      } catch (err) {
+        next(err);
+      }
     }
   );
 
