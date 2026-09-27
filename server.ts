@@ -2944,6 +2944,29 @@ if (isMain && process.env.NODE_ENV !== 'test') {
     },
   );
 
+  app.delete(
+    '/api/suppliers/:id',
+    requireAuth(),
+    requirePermission(PERMISSIONS.PURCHASES_CREATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId=await resolveAuthorizedTenant(req,auditRepo,'SUPPLIER');
+        const existing=await db.query('SELECT id,name FROM suppliers WHERE id=$1 AND organization_id=$2',[req.params.id,orgId]);
+        if(!existing.rows[0]){
+          const other=await db.query('SELECT 1 FROM suppliers WHERE id=$1 AND organization_id<>$2',[req.params.id,orgId]);
+          if(other.rows.length) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant supplier modification forbidden.'}});
+          return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Supplier not found.'}});
+        }
+        const linked=await db.query('SELECT 1 FROM purchase_orders WHERE supplier_id=$1 AND organization_id=$2 LIMIT 1',[req.params.id,orgId]);
+        if(linked.rows[0]) return res.status(409).json({success:false,error:{code:'SUPPLIER_IN_USE',message:'Supplier cannot be deleted because purchase orders reference it. Deactivate the supplier instead.'}});
+        await db.query('DELETE FROM suppliers WHERE id=$1 AND organization_id=$2',[req.params.id,orgId]);
+        await auditRepo.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:(req.auth as any)?.name||req.auth!.userId,actor_role:req.auth!.role,action:'DELETE_SUPPLIER',entity_type:'SUPPLIER',entity_id:req.params.id,before_state:existing.rows[0]});
+        res.json({success:true,data:{id:req.params.id,deleted:true}});
+      }catch(err){next(err);}
+    },
+  );
+
   // User Management
   app.get(
     '/api/users',
