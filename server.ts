@@ -1132,6 +1132,63 @@ export async function createApp(options: CreateAppOptions = {}) {
         updatedAt: new Date().toISOString(),
       };
 
+      const persisted = await catalogRepo.updateProductWithVariants(
+        {
+          id: updated.id,
+          organization_id: orgId,
+          category_id: typeof updated.category === 'string' ? updated.category : null,
+          brand_id: typeof updated.brand === 'string' ? updated.brand : null,
+          name: updated.name,
+          slug: updated.slug,
+          description: updated.description,
+          short_description: updated.shortDescription,
+          unit_code: updated.unit,
+          product_type: updated.productType,
+          status: updated.status,
+          channels_pos: updated.channels?.pos,
+          channels_ecommerce: updated.channels?.ecommerce,
+          channels_wholesale: updated.channels?.wholesale,
+          is_bundle: updated.isBundle,
+          bundle_items: updated.bundleItems,
+          is_composite: updated.isComposite,
+          bom_items: updated.bomItems,
+          assembly_labor_cost: updated.assemblyLaborCost,
+          is_track_serial: updated.isTrackSerial,
+          is_track_batch: updated.isTrackBatch,
+          tax_rate: updated.taxRate,
+          tags: updated.tags,
+          images: updated.images,
+          featured: updated.featured,
+          compare_at_price: updated.compareAtPrice,
+          specifications: updated.specifications,
+        },
+        (updated.variants || []).map((variant: any) => ({
+          id: variant.id,
+          organization_id: orgId,
+          product_id: updated.id,
+          sku: variant.sku,
+          barcode: variant.barcode,
+          qr_code: variant.qrCode,
+          name: variant.name,
+          attributes: variant.attributes,
+          cost_price: Number(variant.costPrice).toFixed(2),
+          retail_price: Number(variant.retailPrice).toFixed(2),
+          wholesale_price: Number(variant.wholesalePrice).toFixed(2),
+          member_price: Number(variant.memberPrice).toFixed(2),
+          min_selling_price: Number(variant.minSellingPrice).toFixed(2),
+          weight_kg: variant.weightKg,
+          dimensions: variant.dimensionsCm,
+          low_stock_threshold: variant.lowStockThreshold,
+          image_url: variant.image,
+        }))
+      );
+      // Preserve server-authoritative inventory maps; this product update never writes stock quantities.
+      updated.variants = (updated.variants || []).map((variant: any) => {
+        const persistedVariant = persisted.variants.find((candidate) => candidate.id === variant.id);
+        return persistedVariant
+          ? { ...variant, id: persistedVariant.id }
+          : variant;
+      });
       masterProductsStore[index] = updated;
 
       syncAuditLogs.push({
