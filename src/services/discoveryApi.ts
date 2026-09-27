@@ -530,7 +530,19 @@ export const discoveryApi = {
       body: JSON.stringify(patch),
     });
   },
-  async convertBusinessToStore(id: string): Promise<DiscoveryBusiness> { return request<DiscoveryBusiness>('/api/discovery/businesses/' + encodeURIComponent(id) + '/convert-to-store', { method: 'POST', body: JSON.stringify({}) }); },
+  async convertBusinessToStore(id: string, options: {
+    storeName?: string;
+    currency?: 'SLE' | 'USD';
+    enableOnlineCheckout?: boolean;
+    enablePOS?: boolean;
+    enableInventoryLedger?: boolean;
+  } = {}): Promise<DiscoveryBusiness> {
+    return request<DiscoveryBusiness>(`/api/discovery/businesses/${encodeURIComponent(id)}/convert-to-store`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options),
+    });
+  },
 
 
   /**
