@@ -397,6 +397,30 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       } else {
         const response = await productService.createProduct(apiPayload);
         addProduct(response.data);
+
+        // Initial stock is written only after the catalog transaction succeeds.
+        // Inventory balances remain server-authoritative; this UI never mutates them directly.
+        const createdVariants = response.data.variants || [];
+        const openingBalanceWrites: Promise<unknown>[] = [];
+        for (const sourceVariant of productPayload.variants) {
+          const createdVariant = createdVariants.find((candidate) => candidate.sku === sourceVariant.sku);
+          if (!createdVariant?.id) continue;
+          for (const [locationId, quantity] of Object.entries(sourceVariant.stockByLocation || {})) {
+            const openingQuantity = Number(quantity);
+            if (!Number.isFinite(openingQuantity) || openingQuantity <= 0) continue;
+            openingBalanceWrites.push(
+              productService.recordOpeningBalance({
+                locationId,
+                variantId: createdVariant.id,
+                quantity: openingQuantity,
+                unitCost: sourceVariant.costPrice,
+                idempotencyKey: `opening:${response.data.id}:${createdVariant.id}:${locationId}`,
+                notes: 'Merchant catalog onboarding opening stock',
+              })
+            );
+          }
+        }
+        if (openingBalanceWrites.length > 0) await Promise.all(openingBalanceWrites);
       }
       onClose();
     } catch (error) {
