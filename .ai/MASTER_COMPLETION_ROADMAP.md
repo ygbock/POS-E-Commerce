@@ -1,427 +1,600 @@
 # AbaCha Master Completion Roadmap & Gap Analysis
 
-> Status: ACTIVE — authoritative completion roadmap
-> Repository: ygbock/POS-E-Commerce
-> Execution branch: main
-> Checkpoint: 2026-09-20
-> Current implementation checkpoint: TASK-DISC-8.1 service-request lifecycle is implemented on `main`; CI validation is pending for this increment.
-
-> Latest implementation checkpoint: platform Discovery search governance APIs and permission are now implemented on `main`; local/full regression verification is still pending for this increment.
-> Purpose: Establish the current product baseline, separate implemented foundations from remaining product work, and define the ordered path to pilot and production launch.
+> **Status:** ACTIVE — authoritative completion roadmap
+> **Repository:** ygbock/POS-E-Commerce
+> **Execution branch:** main
+> **Reconciled checkpoint:** 2026-09-27
+> **Current HEAD:** `24d2aa29d3a392d6eea0d449aa8ffd2184d64b73`
+> **Latest verified CI:** `36339508911` — SUCCESS
+>
+> This document is the current source of truth for completion sequencing. Older percentage estimates and historical checkpoint statements have been retired from the active assessment because they no longer accurately describe `main`.
 
 ## 1. Executive assessment
 
-AbaCha is no longer a prototype. The current codebase has a substantial server-authoritative commerce foundation covering authentication, RBAC, multi-tenancy, subscriptions/limits, inventory, transfers, POS, checkout/idempotency, storefront APIs, offline POS foundations, Discovery, Discovery Search, moderation, reviews, analytics, and security hardening.
+AbaCha has moved beyond the foundational/prototype stage. The current `main` branch contains a substantial server-authoritative commerce platform covering:
 
-The latest complete npm run test execution completed with zero failures, including Discovery Search and fuzzy-ranking/analytics suites.
+- authentication, RBAC and tenant isolation;
+- tenant provisioning and lifecycle management;
+- subscriptions, limits and platform billing administration;
+- inventory, reservations, transfers and stock integrity;
+- POS and checkout;
+- storefront routing, catalog and checkout foundations;
+- Discovery business onboarding, listing lifecycle and store conversion;
+- Discovery search, ranking, attribution and abuse controls;
+- claims, reviews, verification and moderation;
+- customer Discovery workspaces and service requests;
+- audit/security administration;
+- extensive automated regression coverage.
 
-The remaining work is primarily product completion and productionization, not rebuilding the core architecture.
+The current completion problem is therefore primarily **product-operating completeness and productionization**, not core architectural reconstruction.
 
-### Completion view
+### Current strategic state
 
-| Dimension | Current assessment | Meaning |
-|---|---:|---|
-| Core platform foundation | 85–90% | Architecture and server-authoritative foundations are substantially complete |
-| Security / tenant isolation | 85–90% | Strong automated coverage; further final audit remains |
-| Inventory / stock integrity | 85–90% | Core engine and concurrency safeguards are mature |
-| POS / checkout | 80–90% | Core transactional path is implemented; real payment/hardware integrations remain |
-| Storefront | 75–85% | API/router/catalog/checkout foundations are implemented; UX and real-world completion remain |
-| Discovery | 75–85% | Business lifecycle, marketplace data, search, moderation and analytics foundations exist |
-| Merchant operating experience | 55–65% | Important workflows and UI surfaces still need completion and integration |
-| Payments / settlement | 55–65% | Ledger/lifecycle foundations exist; live providers, webhooks, reconciliation and payouts remain |
-| Reporting / analytics | 40–55% | Operational analytics exist in places, but the full reporting engine remains |
-| Notifications / support | 40–55% | Event/notification foundations exist, but complete dispatch and support hub remain |
-| External integrations | 30–50% | Integration boundaries exist; production providers/hardware/logistics remain |
-| Production operations | 65–75% | Production gates and hardening exist; backup/restore, monitoring and live infrastructure verification remain |
-| Full commercial product | 55–65% | Core platform is ahead of the customer-facing/commercial surface |
+| Gate | Current state | Assessment |
+|---|---|---|
+| Gate 0 — Baseline | **COMPLETE** | Main is CI-green; core invariants are protected |
+| Gate 1 — Discovery/Search | **SUBSTANTIALLY COMPLETE / FINAL HARDENING** | Core Discovery marketplace and search capabilities are implemented; richer admin UX, public API documentation and representative production-scale verification remain |
+| Gate 2 — Merchant Operating System | **CURRENT WORKSTREAM** | Daily merchant operations still have significant workflow/UI gaps |
+| Gate 3 — Payments/Financial | **NOT COMPLETE** | Provider integrations, reconciliation, settlement and production verification remain |
+| Gate 4 — Reporting/Analytics | **NOT COMPLETE** | A complete server-aggregated reporting layer remains |
+| Gate 5 — Communications/Support | **PARTIAL** | Notification/customer communication foundations exist; complete delivery/support operations remain |
+| Gate 6 — Integrations | **NOT COMPLETE** | Payment, messaging, hardware and logistics integrations remain |
+| Gate 7 — Production Operations | **PARTIAL** | CI/build/security gates are strong; operational recovery/monitoring/backup verification remains |
+| Gate 8 — Final Release | **NOT STARTED AS A FINAL GATE** | Requires pilot evidence and all release criteria |
 
-These percentages are engineering planning estimates, not a mathematical completion metric.
+**Important:** these states are evidence-based engineering statuses, not mathematical completion percentages.
 
-## 2. What is already established
+---
 
-### A. Platform and security
-- Authentication and protected API boundaries.
-- Server-authoritative RBAC and permissions.
-- Organization/tenant isolation.
-- Tenant lifecycle/provisioning foundations.
-- Subscription foundation, limits and platform subscription management.
-- Audit/security administration.
-- Fail-closed production guards.
-- Migration checksum enforcement.
-- Security regression tests.
+## 2. Verified current baseline
+
+### 2.1 Current main
+
+Latest commits on `main` include:
+
+- `24d2aa29` — restore onboarding inventory setup statement and complete variant-hardening test correction.
+- `d40a144e` — protect referenced product variants from deletion.
+- `ec0b1ba8` — add API coverage for variant updates and safe removal.
+- `35dd8e02` — preserve variant IDs during product updates.
+- `2e80cc88` — tenant-scope variant reference checks.
+- `fbdbe841` — safely reconcile removed product variants.
+- `884750d4` — allow business owners to record opening stock.
+- `8c200127` — use the canonical tenant slug from Discovery store conversion.
+- `a0e199ac` / `bac74c05` — cover the Discovery → Store → Catalog → Inventory → Storefront lifecycle.
+
+### 2.2 Latest verified CI
+
+Workflow run: `36339508911`
+
+Verified successful jobs:
+
+- Lint & Build Validation
+  - `npm ci`
+  - `npm run lint`
+  - `npm run build`
+  - source-map exposure guard
+- Multi-Layer Secret Leakage Scan
+- Authoritative Domain Regression Suites
+  - Persistence
+  - Auth & Security
+  - Inventory
+  - Transfer
+  - POS
+  - API Hardening
+  - QA
+  - UX
+  - Checkout
+  - Offline POS
+  - Production DB Gate
+  - Operational Hardening
+  - Storefront
+  - Storefront API
+  - Storefront Router
+  - Storefront Catalog
+  - Platform Authorization
+  - Subscription Foundation
+  - Subscription Limits
+  - Platform Subscription Management
+  - Tenant Provisioning
+  - Audit/Security Administration
+  - Tenant Business Plane
+  - **Full Regression Suite (`npm test`)**
+
+**CI conclusion at this checkpoint: GREEN.**
+
+---
+
+## 3. What is established on main
+
+### A. Platform, security and tenancy
+
+Implemented and regression-covered:
+
+- authentication and protected API boundaries;
+- server-authoritative RBAC;
+- tenant/business authorization;
+- organization isolation;
+- tenant provisioning and lifecycle;
+- subscription foundation and limits;
+- platform subscription management;
+- audit/security administration;
+- production fail-closed guards;
+- migration checksum enforcement;
+- security regression coverage;
+- platform permission enforcement.
 
 ### B. Inventory
-- Stock balances and stock states.
-- Inventory movements.
-- Reservations.
-- Multi-location inventory.
-- Transfers and transfer lifecycle.
-- Database constraints/indexes for integrity.
-- Row locking for concurrent stock mutation.
-- Idempotent mutation safeguards.
 
-### C. POS and checkout
-- POS sessions and cashier workflows.
-- Server checkout.
-- Payment/tender recording foundations.
-- Order creation and item persistence.
-- Checkout idempotency.
-- Reservation idempotency.
-- Canonical replay behavior.
-- Payload fingerprint conflict protection.
-- Transaction/savepoint handling.
-- Offline POS test/foundation coverage.
+Implemented:
 
-### D. Storefront
-- Multi-tenant storefront resolution.
-- Storefront API.
-- Catalog visibility rules.
-- Router/deep-link foundation.
-- Modernization work.
-- Server-authoritative checkout path.
-- Order lookup/tracking foundations.
+- stock balances;
+- inventory movements;
+- reservations;
+- multi-location inventory;
+- transfers;
+- transactional stock mutation;
+- row locking/concurrency safeguards;
+- idempotent mutation protections;
+- opening-stock onboarding;
+- business-owner inventory adjustment authorization;
+- inventory readiness integration with Store onboarding.
 
-### E. Discovery
-- Discovery-only and Discovery+Store business modes.
-- Business onboarding.
-- Listing lifecycle.
-- Store conversion/provisioning.
-- Locations, hours and service areas.
-- Products/services discovery.
-- Service requests and quotes.\n- Service-request lifecycle: OPEN → MATCHED → QUOTED → ACCEPTED/CANCELLED/CLOSED.\n- Request status history and accepted-quote uniqueness.
-- Claims.
-- Reviews.
-- Reports/moderation.
-- Verification state.
-- Discovery analytics.
-- Public visibility/activity enforcement.
-- Tenant-scoped moderation.
+### C. Catalog/product lifecycle
 
-### F. Search
-- Full-text search foundation.
-- Normalization/tokenization.
-- Application-side fuzzy ranking compatible with PGlite.
-- Multi-token recall.
-- Typo tolerance.
-- Search aliases.
-- Search suggestions.
-- Search analytics.
-- Zero-result tracking.
-- Deterministic pagination.
-- Search candidate limits.
-- Alias indexes.
-- Search acceptance tests.
+Implemented and recently hardened:
 
-## 3. Major gaps before commercial launch
+- product creation;
+- product editing persisted to the database;
+- variant price persistence;
+- new variant insertion during product updates;
+- existing variant identity preservation;
+- safe removal of unreferenced variants;
+- protection of variants with inventory/order/operational history;
+- tenant-scoped variant reference checks;
+- API-level regression coverage.
 
-### G1 — Discovery Search productization
-Status: Next.
+Referenced variants are rejected with a domain-level conflict rather than being silently destroyed.
+
+### D. POS and checkout
+
+Established:
+
+- POS sessions;
+- cashier workflows;
+- server-authoritative checkout;
+- order creation;
+- payment/tender recording foundations;
+- checkout idempotency;
+- reservation idempotency;
+- canonical replay behavior;
+- payload fingerprint conflict protection;
+- transaction/savepoint handling;
+- offline POS foundations and regression coverage.
+
+### E. Storefront
+
+Established:
+
+- multi-tenant storefront resolution;
+- canonical storefront routing;
+- storefront API;
+- tenant-scoped catalog visibility;
+- active/e-commerce catalog enforcement;
+- storefront product/category/brand/location APIs;
+- server-authoritative checkout;
+- order lookup/tracking foundations;
+- storefront regression suites.
+
+### F. Discovery
+
+Established:
+
+- Discovery-only business mode;
+- Discovery + Store mode;
+- business onboarding;
+- persisted onboarding drafts and resume;
+- governed categories;
+- contacts and locations;
+- map/location capture;
+- listing readiness;
+- listing submission/moderation lifecycle;
+- Discovery → Store conversion;
+- canonical tenant/store provisioning;
+- Discovery services/products;
+- claims;
+- reviews;
+- verification;
+- moderation;
+- customer saved businesses;
+- customer contact inquiries;
+- customer claim tracking;
+- service requests and quotes;
+- request status history;
+- accepted-quote uniqueness;
+- provider matching;
+- merchant quote inbox;
+- platform moderation workspace;
+- merchant trust center.
+
+### G. Discovery search
+
+Established:
+
+- full-text search;
+- normalization/tokenization;
+- multi-token recall;
+- typo tolerance;
+- fuzzy ranking;
+- aliases and suggestions;
+- deterministic pagination;
+- candidate limits;
+- search analytics;
+- zero-result tracking;
+- attribution/conversion telemetry;
+- server-validated impression/conversion events;
+- idempotent attribution events;
+- configurable ranking controls;
+- bounded public search/suggestion/attribution rate controls;
+- isolated performance regression fixture with latency thresholds.
+
+Remaining search work is productization/hardening rather than core search architecture.
+
+### H. Customer Discovery experience
+
+Established:
+
+- search and listing discovery;
+- saved/favorite businesses;
+- customer workspace shortcuts;
+- service request workspace;
+- business claim workspace;
+- contact inquiry workflow;
+- review interactions;
+- business profile verification presentation;
+- service-request matching and lifecycle;
+- map/location experience.
+
+---
+
+# 4. Current gaps and completion gates
+
+## Gate 0 — Baseline freeze
+
+**Status: COMPLETE**
+
+Exit evidence:
+
+- `main` is regression-green;
+- lint/build pass;
+- secret scan pass;
+- domain regression suites pass;
+- full `npm test` passes;
+- historical migrations remain immutable;
+- new schema changes remain forward-only;
+- tenant/server-authoritative invariants remain protected.
+
+---
+
+## Gate 1 — Discovery/Search and marketplace completion
+
+**Status: SUBSTANTIALLY COMPLETE / FINAL HARDENING**
+
+### Completed
+
+- Discovery business onboarding;
+- Discovery-only and Discovery + Store modes;
+- listing lifecycle;
+- store conversion;
+- category governance;
+- location quality/provenance hardening;
+- map/location UX;
+- claims;
+- verification;
+- reviews;
+- moderation;
+- saved businesses;
+- contact inquiries;
+- service-request lifecycle;
+- matching hardening;
+- merchant quote workspace;
+- customer workspaces;
+- search attribution;
+- ranking controls;
+- abuse controls;
+- search performance regression.
+
+### Remaining
+
+1. Merchant alias-management UI.
+2. Synonym governance.
+3. Rich platform/admin search analytics UI.
+4. Rich platform/admin ranking-control UI.
+5. Public API documentation.
+6. Representative production-scale search/load verification beyond the isolated regression fixture.
+7. Final Discovery mobile/product-polish audit.
+8. Final moderation UX polish.
+
+### Gate 1 exit criteria
+
+- Search acceptance suite green — **met**.
+- No unpublished/private resource leakage — **covered by regression/security suites**.
+- Search analytics actionable — **API foundation met; richer admin UI remains**.
+- Merchant aliases manageable without SQL — **not fully met**.
+- Representative production load evidence — **not fully met**.
+
+Gate 1 should no longer block core merchant workflow implementation; remaining items are controlled hardening/productization work.
+
+---
+
+## Gate 2 — Merchant Operating System
+
+**Status: CURRENT PRIMARY WORKSTREAM**
+
+### Remaining work
+
+#### TASK-MERCHANT-1 — Merchant workspace consolidation
+
+- consolidate merchant dashboard/workspaces;
+- unified business/store status;
+- clear operational KPIs;
+- onboarding/readiness visibility;
+- task/action center;
+- consistent navigation across Discovery and Store.
+
+#### TASK-MERCHANT-2 — Users, locations, customers and suppliers
+
+- staff/user administration UX;
+- role/permission management UX;
+- location management UX;
+- customer/CRM workflows;
+- supplier management;
+- purchasing workflows.
+
+#### TASK-MERCHANT-3 — Purchasing and receiving
+
+- purchase orders;
+- supplier orders;
+- receiving;
+- receiving-to-inventory mutation;
+- purchase history;
+- supplier balances/records where required.
+
+#### TASK-MERCHANT-4 — Returns, exchanges and shift reconciliation
+
+- sales returns;
+- exchanges;
+- inventory effects;
+- refund linkage;
+- POS shift closing;
+- cash reconciliation;
+- variance handling;
+- audit trail.
+
+#### TASK-MERCHANT-5 — Operational alerts and daily workflow
+
+- low-stock alerts;
+- order alerts;
+- operational exceptions;
+- workflow notifications;
+- merchant reports entry points;
+- storefront management;
+- Discovery management;
+- settings/security UX.
+
+### Gate 2 exit criterion
+
+A pilot merchant must be able to operate daily sales, inventory, purchasing, customers, returns and shift/cash workflows **without developer or database intervention**.
+
+---
+
+## Gate 3 — Payments and financial operations
+
+**Status: NOT COMPLETE**
 
 Remaining:
-- Merchant alias-management UI.
-- Platform/admin alias governance. **IMPLEMENTED (API)**
-- Synonym governance.
-- Popular-search reporting. **IMPLEMENTED (API, hashed-query privacy model)**
-- Zero-result query review workflow. **IMPLEMENTED (API summary/popular hash review)**
-- Search result impression/click attribution. **IMPLEMENTED: search IDs, result positions, server-validated impression/conversion events, idempotent event IDs, privacy-safe attribution metadata.**
-- Search-to-profile/store/product conversion metrics. **IMPLEMENTED: attribution ledger supports result engagement/conversion events and search-linked business/product/service targets.**
-- Configurable ranking controls. **IMPLEMENTED: platform-governed ranking weights with server-side bounds and active/inactive fallback.**
-- Search abuse/rate controls. **IMPLEMENTED: bounded public search/suggestion and attribution rate limits; distributed limiter remains a production-operations concern.**
-- Search load/performance testing. **IMPLEMENTED: isolated 300-listing regression fixture with p95/max latency thresholds.**
-- Public API documentation.
 
-### G2 — Discovery marketplace completion
-Progress:
-- Trust/verification workflow: **IMPLEMENTED (API + merchant verification UI + moderation audit schema)**
-- Verification applications, decisions and status transitions are now server-authoritative.
-- New reviews enter moderation; review decisions are audited.
-- Report status transitions are audited.
-- Claim submission/decisions are audited.
-- Tenant-scoped verification/review/report moderation is enforced.
+- provider adapter contract;
+- real payment provider integrations;
+- cryptographic webhook verification;
+- provider-event idempotency;
+- payment status reconciliation;
+- failed/expired payment handling;
+- full/partial refunds;
+- chargeback/dispute lifecycle where applicable;
+- merchant settlement;
+- marketplace commissions/fees where required;
+- payouts;
+- reconciliation reports;
+- production sandbox/live verification.
+
+### Gate 3 exit criteria
+
+- provider-verified server-authoritative payment state;
+- duplicate provider events are harmless;
+- refunds are auditable;
+- settlement is auditable;
+- reconciliation is repeatable;
+- production provider verification is complete.
+
+---
+
+## Gate 4 — Reporting and analytics
+
+**Status: NOT COMPLETE**
+
+Build the server-aggregated reporting layer:
+
+- sales summary;
+- gross margin;
+- product performance;
+- inventory valuation;
+- inventory turnover;
+- stock ageing;
+- purchase/vendor reports;
+- POS shift/cash reconciliation;
+- customer metrics;
+- Discovery/search metrics;
+- exports;
+- date/timezone correctness;
+- tenant isolation;
+- large-dataset performance.
+
+### Gate 4 exit criterion
+
+Reports must be server-aggregated, tenant-scoped, financially correct and reconcilable to transactional data.
+
+---
+
+## Gate 5 — Communications and support
+
+**Status: PARTIAL**
+
+Existing foundations include notifications and communication-related workflows.
+
 Remaining:
-- Complete customer discovery experience across desktop/mobile.
-- Customer workspace discovery. **IMPLEMENTED: persistent desktop/mobile shortcuts for saved businesses, service requests, contact inquiries, and business claims; service cards can launch a request directly.**
-- Customer claim tracking. **IMPLEMENTED**
-- Business profile completeness. **IMPLEMENTED: production onboarding wizard with server-side readiness validation, draft save/resume, governed categories, contacts and primary location capture.**
-- Map/location experience: interactive OpenStreetMap panel with mapped listing/location cards is implemented; merchant drag-pin location editing is now implemented with client-side tile interaction, GPS recentering, zoom/pan, and server-authoritative PATCH persistence.
-- Favorites/saved businesses. **IMPLEMENTED: authenticated customer favorites API + saved-businesses workspace**
-- Customer-to-business contact flows. **IMPLEMENTED: server-tracked contact inquiries with customer submission, merchant inbox, status workflow, merchant notes, and contact analytics attribution**
-- Review management UX. **IMPLEMENTED: merchant review workspace with rating distribution, star filtering, response coverage, refresh/reload state, verified-purchase badges, and merchant response editing/deletion with character guidance.**
-- Verification presentation and workflows. **IMPLEMENTED: merchant trust center plus public verification-status explainer on business profiles.**
-- Merchant-facing trust center: verification history, ownership-claim status, review moderation visibility, sanitized reports, trust timeline, required actions and resubmission entry point. **IMPLEMENTED**
-- Claim UX. **IMPLEMENTED: public business-profile ownership claim flow with authenticated submission, evidence capture, validation feedback, and privacy guidance.**
-- Customer claim tracking. **IMPLEMENTED: authenticated customer claim-history API and workspace showing pending/approved/rejected status, submission/review dates, and platform decision notes without exposing other claimants.**
-- Public verification presentation. **IMPLEMENTED: status-specific explanation for VERIFIED, PENDING, REJECTED and UNVERIFIED, with privacy-safe point-in-time verification caveat.**
-- Service-request lifecycle UX. **BACKEND API + CUSTOMER WORKSPACE IMPLEMENTED**
-- Service-request matching hardening. **IMPLEMENTED: selected-service binding, service-type/keyword relevance, service-area radius enforcement, budget compatibility, deterministic scoring, provider fan-out cap, and match reasons.**
-- Merchant Discovery management workspace. **SERVICE REQUEST / QUOTE INBOX IMPLEMENTED**
-- Platform Discovery moderation workspace. **IMPLEMENTED: PLATFORM TRUST CONTROL-PLANE UI + PLATFORM-SCOPED MODERATION APIs**
-- Category governance.
 
-Discovery governance increment implemented: platform-owned category taxonomy CRUD/audit, active-category enforcement in public discovery filters and merchant category assignment, and existing customer map/location/radius UX are now aligned with governed taxonomy. Customer contact inquiries and merchant review responses are implemented. Location hardening increment is now implemented: location quality/provenance fields, server-side coordinate/radius/type validation, transactional primary-location handling, location verification, service-area-aware radius search, richer search location metadata, and geo/location constraint tests. Map UX increment is now implemented for customer discovery and business profiles via the reusable OpenStreetMap panel; merchant drag-pin editing is now implemented in the merchant location editor with explicit manual-coordinate provenance. Discovery search now preserves the distance sort in URL state and presents server-calculated distance on result/map cards when a user location is supplied.ins a follow-up hardening item.
+- unified notification domain;
+- notification preferences;
+- event-to-notification mapping;
+- reliable email provider;
+- SMS provider;
+- push delivery;
+- retry/dead-letter handling;
+- support ticket lifecycle;
+- platform support workspace;
+- tenant help/support UI;
+- support-action audit trail.
 
-### G3 — Merchant operating system completion
-Remaining/verification:
-- Merchant dashboard consolidation.
-- User/staff administration UX.
-- Location management UX.
-- Customer/CRM workflows.
-- Supplier/purchasing workflows.
-- Purchase orders and receiving.
-- Expenses/cash controls where required.
-- Returns/exchanges.
-- Shift reconciliation.
-- Operational alerts.
-- Merchant reports.
-- Storefront management.
-- Discovery management.
-- Settings/security UX.
+---
 
-### G4 — Payments and financial operations
-The repository already contains payment transaction/lifecycle integrity foundations. The remaining commercial layer is:
-- Real payment provider adapters.
-- Cryptographic webhook verification.
-- Provider-event idempotency.
-- Payment status reconciliation.
-- Failed/expired payment handling.
-- Full/partial refunds.
-- Chargeback/dispute lifecycle where applicable.
-- Merchant settlement.
-- Platform fees/commissions where marketplace transactions require them.
-- Payouts.
-- Reconciliation reports.
-- Production payment sandbox and live verification.
+## Gate 6 — Real-world integrations
 
-### G5 — Reporting and analytics
-Build a server-aggregated reporting layer:
-- Sales summary.
-- Gross margin.
-- Product performance.
-- Inventory valuation.
-- Inventory turnover.
-- Stock ageing.
-- Purchase/vendor reports.
-- POS shift/cash reconciliation.
-- Customer metrics.
-- Discovery/search metrics.
-- Export controls.
-- Date/timezone correctness.
-- Tenant isolation.
-- Large-dataset performance.
+**Status: NOT COMPLETE**
 
-### G6 — Notifications and support
 Remaining:
-- Notification center.
-- Notification preferences.
-- Event-to-notification mapping.
-- Email delivery provider.
-- SMS provider.
-- Push delivery.
-- Retry/dead-letter handling.
-- Support ticket lifecycle.
-- Platform support workspace.
-- Tenant help/support UI.
-- Audit trail for support actions.
 
-### G7 — Real-world integrations
-Prioritize only after stable domain contracts:
-- Payment gateways/mobile money/card processors.
-- Email/SMS providers.
-- Receipt printers.
-- Barcode scanners.
-- Cash drawers.
-- Payment terminals.
-- Delivery/logistics providers.
-- Webhooks and integration health monitoring.
+- payment gateways/mobile money/card processors;
+- email/SMS providers;
+- receipt printers;
+- barcode scanners;
+- cash drawers;
+- payment terminals;
+- delivery/logistics providers;
+- integration webhooks;
+- integration health monitoring.
 
-### G8 — Production operations
-Remaining:
-- Verified automated backups.
-- Restore drills.
-- Disaster recovery runbook.
-- Database connection/pool monitoring.
-- Health/readiness probes.
-- Error monitoring.
-- Structured operational logs.
-- Alerting.
-- Deployment rollback procedure.
-- Secret rotation procedure.
-- Production domain/TLS verification.
-- Staging environment.
-- Production data migration procedure.
-- Operational support runbook.
+All integrations must use explicit adapter contracts, idempotency, retries, observability and failure handling.
 
-### G9 — Final UX/accessibility/product polish
-Remaining:
-- Finish large-component decomposition where still needed.
-- Cross-module loading/error/empty states.
-- WCAG 2.2 AA audit.
-- Keyboard navigation audit.
-- Mobile/tablet testing.
-- Browser compatibility.
-- POS hardware ergonomics.
-- Customer storefront usability.
-- Merchant workflow usability.
-- Discovery mobile experience.
+---
 
-### G10 — Final security and release assurance
-Before production:
-- Complete OWASP-oriented review.
-- Tenant-boundary penetration testing.
-- Authorization matrix verification.
-- Input validation/fuzzing.
-- Rate-limit review.
-- Abuse protection.
-- Secret/logging review.
-- Dependency vulnerability review.
-- Migration/rollback review.
-- Backup restore verification.
-- Full regression.
-- Production build.
-- Staging smoke test.
-- Pilot-merchant acceptance test.
+## Gate 7 — Production operations
 
-## 4. Ordered completion program
+**Status: PARTIAL**
 
-The project should now move through the following gates rather than adding unrelated features in parallel.
+CI and application hardening are substantially established.
 
-### Gate 0 — Baseline freeze
-Status: COMPLETE
-- Current main branch is regression-green.
-- Existing architectural invariants remain protected.
-- No historical migration rewrites.
-- New schema changes are forward-only.
+Remaining production evidence:
 
-### Gate 1 — Discovery/Search and marketplace completion
-Tasks:
-- TASK-SEARCH-7: Search quality, governance and merchant management. **IN PROGRESS: attribution, ranking controls and abuse controls implemented; performance/load verification and richer admin UI remain.**
-- TASK-SEARCH-8: Search conversion/impression analytics.
-- TASK-SEARCH-9: Search abuse controls and performance testing.
-- TASK-DISC-8: Discovery customer/merchant workflow completion.
-- TASK-DISC-9: Discovery moderation/verification completion. **IMPLEMENTED (trust workflow/API + merchant verification UI; richer admin moderation UI remains)**
+- verified automated backups;
+- restore drills;
+- disaster-recovery runbook;
+- DB connection/pool monitoring;
+- production health/readiness probes;
+- error monitoring;
+- structured operational logs;
+- alerting;
+- deployment rollback procedure;
+- secret rotation procedure;
+- production domain/TLS verification;
+- staging environment verification;
+- production migration procedure;
+- operational support runbook.
 
-Exit criteria:
-- Search acceptance suite green.
-- Search analytics actionable.
-- Merchant aliases manageable without direct SQL.
-- No unpublished/private resource leakage.
-- Search performance bounded under representative load.
+---
 
-### Gate 2 — Merchant operating completion
-Tasks:
-- TASK-MERCHANT-1: Merchant workspace consolidation.
-- TASK-MERCHANT-2: Purchasing/suppliers.
-- TASK-MERCHANT-3: Returns/exchanges.
-- TASK-MERCHANT-4: Shift/cash reconciliation.
-- TASK-MERCHANT-5: Operational alerts and workflow completion.
+## Gate 8 — Final release
 
-Exit criteria:
-- A pilot merchant can operate daily sales, stock, purchasing and customer workflows without direct database intervention.
+**Status: NOT STARTED AS FINAL GATE**
 
-### Gate 3 — Financial/payment completion
-Tasks:
-- TASK-PAY-1: Provider adapter contract.
-- TASK-PAY-2: Webhook verification/idempotency.
-- TASK-PAY-3: Refunds/failed-payment lifecycle.
-- TASK-PAY-4: Settlement/reconciliation.
-- TASK-PAY-5: Production sandbox/live verification.
+Final release requires:
 
-Exit criteria:
-- Payment state is provider-verified and server-authoritative.
-- Duplicate provider events are harmless.
-- Refund and settlement states are auditable.
+- lint;
+- production build;
+- complete automated suite;
+- security review;
+- tenant-boundary assessment;
+- accessibility review;
+- staging smoke test;
+- backup restore test;
+- representative performance/load evidence;
+- pilot merchant acceptance;
+- no open P0/P1 defects;
+- production deployment procedure;
+- rollback procedure;
+- incident response documentation;
+- release sign-off.
 
-### Gate 4 — Reporting/analytics
-Tasks:
-- TASK-REPORT-1: Reporting service.
-- TASK-REPORT-2: Merchant dashboards.
-- TASK-REPORT-3: Platform analytics.
-- TASK-REPORT-4: Discovery/search analytics.
-- TASK-REPORT-5: Secure exports.
+---
 
-Exit criteria:
-- Reports are server-aggregated, tenant-scoped and correct on decimal/financial calculations.
+# 5. Pilot-readiness definition
 
-### Gate 5 — Communications/support
-Tasks:
-- TASK-COMMS-1: Notification domain.
-- TASK-COMMS-2: Email.
-- TASK-COMMS-3: SMS/push.
-- TASK-SUPPORT-1: Support tickets.
-- TASK-SUPPORT-2: Support operator workspace.
+AbaCha is **not yet declared pilot-ready** until a real merchant can complete this path without engineering/database intervention:
 
-Exit criteria:
-- Critical operational events produce reliable, observable notifications.
-
-### Gate 6 — Integrations
-Tasks:
-- TASK-INTEGRATION-1: Payments.
-- TASK-INTEGRATION-2: POS hardware.
-- TASK-INTEGRATION-3: Messaging.
-- TASK-INTEGRATION-4: Logistics/delivery.
-
-Exit criteria:
-- Each production integration has explicit adapter contracts, retries, idempotency, observability and failure handling.
-
-### Gate 7 — Production operations
-Tasks:
-- TASK-OPS-1: Backup/restore.
-- TASK-OPS-2: Monitoring/alerting.
-- TASK-OPS-3: Staging/production deployment.
-- TASK-OPS-4: Disaster recovery.
-- TASK-OPS-5: Operational runbooks.
-
-Exit criteria:
-- Production failure scenarios have tested recovery procedures.
-
-### Gate 8 — Final release
-Task: TASK-RELEASE-1
-
-Required:
-- lint passes.
-- build passes.
-- complete automated suite passes.
-- security review passes.
-- accessibility review passes.
-- staging smoke test passes.
-- backup restore test passes.
-- pilot acceptance passes.
-- no open P0/P1 defects.
-- production deployment and rollback procedures documented.
-
-## 5. Pilot definition
-
-AbaCha should be considered pilot-ready when a real merchant can complete this path:
-
-Business onboarding
-→ Tenant/store setup
-→ Users & permissions
-→ Locations
-→ Products
-→ Opening stock
-→ POS sale
-→ E-commerce sale
-→ Inventory movement
-→ Customer/order history
-→ Payment confirmation
-→ Refund/return
-→ Shift reconciliation
-→ Reports
-→ Discovery listing
+Business onboarding  
+→ Tenant/store setup  
+→ Users & permissions  
+→ Locations  
+→ Products  
+→ Opening stock  
+→ POS sale  
+→ E-commerce sale  
+→ Inventory movement  
+→ Customer/order history  
+→ Payment confirmation  
+→ Refund/return  
+→ Shift reconciliation  
+→ Reports  
+→ Discovery listing  
 → Customer discovery/search
 
-No step should require developer/database intervention.
+### Current pilot-path assessment
 
-## 6. Full-production definition
+| Capability | Current state |
+|---|---|
+| Business onboarding | **IMPLEMENTED** |
+| Tenant/store setup | **IMPLEMENTED** |
+| Users & permissions | **FOUNDATION IMPLEMENTED; UX completion remains** |
+| Locations | **IMPLEMENTED; management UX remains** |
+| Products | **IMPLEMENTED** |
+| Opening stock | **IMPLEMENTED and regression-covered** |
+| POS sale | **IMPLEMENTED** |
+| E-commerce sale | **CORE PATH IMPLEMENTED; production payment integration remains** |
+| Inventory movement | **IMPLEMENTED** |
+| Customer/order history | **FOUNDATION IMPLEMENTED; broader CRM/reporting remains** |
+| Payment confirmation | **FOUNDATION IMPLEMENTED; provider verification remains** |
+| Refund/return | **REMAINING** |
+| Shift reconciliation | **REMAINING** |
+| Reports | **REMAINING** |
+| Discovery listing | **IMPLEMENTED** |
+| Customer discovery/search | **IMPLEMENTED; final productization remains** |
+
+**Pilot readiness conclusion: NOT YET READY.**
+
+The principal blockers are now merchant operating workflows, payment lifecycle, returns/refunds, shift reconciliation and reporting—not the Discovery/store/catalog foundation.
+
+---
+
+# 6. Full-production definition
 
 Full production additionally requires:
+
 - verified live payment providers;
 - verified communications providers;
 - production backups and restore drills;
 - monitoring and alerting;
 - security assessment;
 - accessibility assessment;
-- load/performance testing;
+- representative load/performance evidence;
 - documented incident response;
 - documented rollback;
 - merchant support workflow;
@@ -430,39 +603,88 @@ Full production additionally requires:
 - pilot evidence;
 - release sign-off.
 
-## 7. Current priority order
+---
 
-1. TASK-SEARCH-7 — Search quality/governance/merchant management.
-2. TASK-DISC-8/9 — Complete Discovery marketplace workflows.
-3. TASK-MERCHANT-1..5 — Complete merchant operating workflows.
-4. TASK-PAY-1..5 — Production payment lifecycle.
-5. TASK-REPORT-1..5 — Reporting and analytics.
-6. TASK-COMMS/SUPPORT — Notifications and support.
-7. TASK-INTEGRATION — External providers/hardware/logistics.
-8. TASK-OPS — Production operations and disaster recovery.
-9. TASK-RELEASE-1 — Final security, QA, accessibility, pilot and production gate.
+# 7. Current execution order
 
-## 8. Important architectural rule for remaining work
+The active sequence is now:
+
+1. **Roadmap reconciliation — COMPLETE with this document.**
+2. **Gate 2 / TASK-MERCHANT-1 — Merchant workspace consolidation.**
+3. TASK-MERCHANT-2 — Users, locations, CRM and suppliers.
+4. TASK-MERCHANT-3 — Purchasing and receiving.
+5. TASK-MERCHANT-4 — Returns/exchanges and shift/cash reconciliation.
+6. TASK-MERCHANT-5 — Operational alerts and merchant workflow completion.
+7. Gate 3 — Payment lifecycle and financial operations.
+8. Gate 4 — Reporting/analytics.
+9. Gate 5 — Communications/support.
+10. Gate 6 — External integrations.
+11. Gate 7 — Production operations and disaster recovery.
+12. Gate 8 — Final security, QA, accessibility, pilot and release assurance.
+
+Discovery/Search hardening should continue as targeted parallel maintenance, but it should not displace the merchant operating-system work unless a regression or production blocker is discovered.
+
+---
+
+# 8. Immediate next task
+
+## TASK-MERCHANT-1 — Merchant Workspace Consolidation
+
+The next implementation workstream is to make the merchant experience operationally coherent around one business/store workspace.
+
+### Required outcomes
+
+- unified merchant dashboard;
+- business/store readiness state;
+- catalog readiness;
+- inventory readiness;
+- storefront readiness;
+- Discovery listing status;
+- operational KPIs;
+- quick actions;
+- outstanding setup tasks;
+- navigation to Products, Inventory, Orders, Customers, Locations, Discovery and Storefront;
+- staff/user administration entry point;
+- settings/security entry point;
+- consistent loading, error and empty states;
+- tenant/business authorization preserved end-to-end.
+
+### Acceptance principle
+
+A merchant owner should be able to open the merchant workspace and immediately understand:
+
+1. which business/store they are operating;
+2. whether the store is ready to sell;
+3. whether inventory is ready;
+4. whether the storefront is ready;
+5. whether the Discovery listing is ready;
+6. what requires attention;
+7. how to perform the next operational action.
+
+---
+
+# 9. Architectural invariant for all remaining work
 
 Do not regress to client-authoritative behavior.
 
-For every new workflow:
+Every new workflow must follow:
 
-UI
-↓
-Validated API
-↓
-Authorized service
-↓
-Tenant-scoped repository
-↓
-Transactional database mutation
-↓
-Audit/event where required
-↓
+UI  
+↓  
+Validated API  
+↓  
+Authorized service  
+↓  
+Tenant-scoped repository  
+↓  
+Transactional database mutation  
+↓  
+Audit/event where required  
+↓  
 Canonical response
 
-The following must remain server-authoritative:
+The following remain strictly server-authoritative:
+
 - prices;
 - inventory;
 - stock reservations;
@@ -476,28 +698,59 @@ The following must remain server-authoritative:
 - Discovery publication/visibility;
 - moderation decisions.
 
-## 9. Definition of completion
+---
 
-AbaCha is complete only when all of the following are true:
-- Core modules are implemented.
-- All critical workflows are server-authoritative.
-- Tenant boundaries are verified.
-- Real payment lifecycle works.
-- Merchant daily operations work end-to-end.
-- Customer storefront and Discovery work end-to-end.
-- Notifications/support work operationally.
-- Reports reconcile to transactional data.
-- External integrations are production verified.
-- Backup/restore is tested.
-- Monitoring/alerting is active.
-- Security/accessibility audits pass.
-- Full regression remains green.
-- A real pilot merchant can operate without engineering intervention.
+# 10. Evidence ledger
 
-## 10. Immediate next task
+The following implementation evidence is part of the current roadmap baseline:
 
-TASK-DISC-8.1 is now implemented on main: authenticated service requests, explicit request state transitions, request history, provider matching, quote submission, quote acceptance/decline, cancellation/closure, and database-level single-accepted-quote integrity. TASK-SEARCH-7 remains in progress with conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI remaining. (API client, merchant UI, authorization-preserving backend endpoints already present). Remaining TASK-SEARCH-7 increments are conversion attribution, ranking controls, abuse controls, performance/load verification, and richer admin UI. Platform/admin alias governance and baseline search-quality analytics APIs are now implemented.
+| Area | Evidence |
+|---|---|
+| Discovery → Store → Catalog → Inventory → Storefront lifecycle | `bac74c05`, `a0e199ac`, `8c200127`, `884750d4` |
+| Product edit persistence | `6175beba`, `7dd23ca1`, `a61a0a6b`, `5599389f`, `eadea7f4` |
+| Variant lifecycle hardening | `fbdbe841`, `2e80cc88`, `35dd8e02`, `ec0b1ba8`, `d40a144e` |
+| Current test correction | `24d2aa29` |
+| Latest verified CI | Run `36339508911` — SUCCESS |
+| Latest main HEAD | `24d2aa29d3a392d6eea0d449aa8ffd2184d64b73` |
 
-Search productization increment is now implemented on main: search attribution/conversion telemetry, configurable ranking controls, and bounded public search/attribution abuse controls. Remaining Search work is representative load/performance verification and richer platform/admin UI for ranking/analytics management.
+---
 
-The master roadmap should be treated as the controlling completion sequence from this checkpoint. TASK-DISC-8.2 is now implemented on main: the business listing onboarding flow supports Discovery Only and Discovery + Store modes, server-persisted drafts, resume, governed category assignment, contact/location capture, interactive map precision, optional service offerings, readiness checks, and submission into moderation. Unbound Discovery-only owners can self-manage drafts without tenant middleware; tenant-bound store mode remains organization-scoped. TASK-DISC-9 trust/verification workflow is implemented on main, including the platform moderation workspace and merchant trust center; final regression verification remains part of the release gates. Existing historical roadmap documents remain historical references unless explicitly reconciled with this document.
+# 11. Definition of complete
+
+AbaCha is complete only when:
+
+- core modules are implemented;
+- all critical workflows are server-authoritative;
+- tenant boundaries are verified;
+- real payment lifecycle works;
+- merchant daily operations work end-to-end;
+- customer Storefront and Discovery work end-to-end;
+- returns/refunds work;
+- shift/cash reconciliation works;
+- reports reconcile to transactional data;
+- notifications/support operate reliably;
+- external integrations are production verified;
+- backup/restore is tested;
+- monitoring/alerting is active;
+- security/accessibility audits pass;
+- representative performance testing passes;
+- full regression remains green;
+- a real pilot merchant can operate without engineering intervention;
+- production deployment and rollback are documented and tested.
+
+---
+
+## 12. Roadmap governance rule
+
+This file is the **active completion sequence**.
+
+When a feature is implemented:
+
+1. update its gate/task status;
+2. record the relevant commit or CI evidence;
+3. remove stale "next task" statements;
+4. distinguish API implementation from complete UX/productization;
+5. distinguish automated regression evidence from production verification;
+6. never mark a release gate complete solely because a local test passes.
+
+Historical task logs such as `.ai/TASK_QUEUE.md` remain useful evidence, but this roadmap is the controlling current-state summary and must be reconciled whenever major implementation work changes the completion sequence.
