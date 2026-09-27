@@ -413,7 +413,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 locationId,
                 variantId: createdVariant.id,
                 quantity: openingQuantity,
-                unitCost: sourceVariant.costPrice,
+                unitCost: Number(sourceVariant.costPrice).toFixed(2),
                 idempotencyKey: `opening:${response.data.id}:${createdVariant.id}:${locationId}`,
                 notes: 'Merchant catalog onboarding opening stock',
               })
