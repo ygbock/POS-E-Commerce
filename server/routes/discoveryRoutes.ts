@@ -210,6 +210,105 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   });
 
   // ------------------------------------------------------------------
+  // Store onboarding readiness
+  // ------------------------------------------------------------------
+  router.get('/businesses/:id/store-readiness', requireAuth(), async (req, res, next) => {
+    try {
+      const businessId = String(req.params.id || '').trim();
+      await requireBusinessPermission(req, businessId, 'business.listing.manage');
+
+      const businessRes = await db.query<any>(
+        `SELECT b.id, b.name, b.slug, b.business_mode, b.organization_id, b.listing_status,
+                b.is_discoverable, o.name AS organization_name, o.slug AS tenant_slug,
+                o.is_active AS organization_active, o.currency_code, o.currency_symbol,
+                COALESCE(o.branding->>'storeName', o.name) AS store_name,
+                COALESCE((o.feature_flags->>'guestCheckoutEnabled')::boolean, false) AS online_checkout_enabled,
+                COALESCE((o.feature_flags->>'inventoryLedgerEnabled')::boolean, false) AS inventory_ledger_enabled
+           FROM discovery_businesses b
+           LEFT JOIN organizations o ON o.id = b.organization_id
+          WHERE b.id = $1
+          LIMIT 1`,
+        [businessId],
+      );
+      const business = businessRes.rows[0];
+      if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
+
+      const [locationRes, categoryRes, productRes, variantRes] = await Promise.all([
+        db.query(
+          `SELECT id, name, is_pos_enabled
+             FROM locations
+            WHERE organization_id = $1 AND is_active = TRUE
+            ORDER BY created_at ASC, id ASC`,
+          [business.organization_id],
+        ),
+        db.query(
+          `SELECT COUNT(*)::int AS count
+             FROM categories
+            WHERE organization_id = $1`,
+          [business.organization_id],
+        ),
+        db.query(
+          `SELECT COUNT(*)::int AS count
+             FROM products
+            WHERE organization_id = $1
+              AND status = 'active'
+              AND channels_ecommerce = TRUE`,
+          [business.organization_id],
+        ),
+        db.query(
+          `SELECT COUNT(*)::int AS count
+             FROM product_variants
+            WHERE organization_id = $1`,
+          [business.organization_id],
+        ),
+      ]);
+
+      const locations = locationRes.rows;
+      const activeLocation = locations[0] || null;
+      const connected = business.business_mode === 'DISCOVERY_AND_STORE'
+        && Boolean(business.organization_id)
+        && Boolean(business.tenant_slug)
+        && business.organization_active === true;
+      const steps = [
+        { key: 'connected', label: 'Store connected', complete: connected, required: true },
+        { key: 'location', label: 'Commerce location', complete: Boolean(activeLocation), required: true },
+        { key: 'catalog', label: 'Catalog categories', complete: Number(categoryRes.rows[0]?.count || 0) > 0, required: false },
+        { key: 'products', label: 'Store products', complete: Number(productRes.rows[0]?.count || 0) > 0, required: false },
+        { key: 'checkout', label: 'Online checkout', complete: Boolean(business.online_checkout_enabled), required: false },
+        { key: 'inventory', label: 'Inventory ledger', complete: Boolean(business.inventory_ledger_enabled), required: false },
+      ];
+
+      res.json({
+        success: true,
+        data: {
+          businessId: business.id,
+          businessName: business.name,
+          businessSlug: business.slug,
+          listingStatus: business.listing_status,
+          discoverable: Boolean(business.is_discoverable),
+          organizationId: business.organization_id,
+          organizationName: business.organization_name,
+          tenantSlug: business.tenant_slug,
+          storeName: business.store_name,
+          currency: { code: business.currency_code, symbol: business.currency_symbol },
+          onlineCheckoutEnabled: Boolean(business.online_checkout_enabled),
+          inventoryLedgerEnabled: Boolean(business.inventory_ledger_enabled),
+          locations,
+          counts: {
+            categories: Number(categoryRes.rows[0]?.count || 0),
+            products: Number(productRes.rows[0]?.count || 0),
+            variants: Number(variantRes.rows[0]?.count || 0),
+          },
+          steps,
+          ready: connected && Boolean(activeLocation),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ------------------------------------------------------------------
   // DISC-011: authenticated customer favorites
   // ------------------------------------------------------------------
   // Customer ownership-claim workspace. Only the authenticated claimant's own records are exposed.
