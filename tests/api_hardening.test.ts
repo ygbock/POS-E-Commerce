@@ -449,6 +449,76 @@ async function runApiHardeningTests() {
       assert.strictEqual(persistedBalance.rows[0].on_hand, '12.0000');
       assert.strictEqual(persistedBalance.rows[0].reserved, '0.0000');
 
+      // A variant with inventory/transaction history must not be hard-deleted.
+      const addReferencedVariant = await fetch(`${baseUrl}/api/products/${persistedProduct!.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          variants: [
+            {
+              id: persistedVariants[0].id, sku: 'HTTP-ONBOARD-001', barcode: '8809123456789',
+              name: 'Standard Updated', costPrice: '11.00', retailPrice: '27.00',
+              wholesalePrice: '21.00', memberPrice: '23.00', minSellingPrice: '16.00', lowStockThreshold: 5,
+            },
+            {
+              id: 'var_http_update_3', sku: 'HTTP-ONBOARD-003', barcode: '8809123456791',
+              name: 'Referenced Variant', costPrice: '18.00', retailPrice: '40.00',
+              wholesalePrice: '32.00', memberPrice: '35.00', minSellingPrice: '25.00', lowStockThreshold: 5,
+            },
+          ],
+        }),
+      });
+      assert.strictEqual(addReferencedVariant.status, 200);
+
+      const referencedVariant = await catalogRepo.findVariantsByProductId(persistedProduct!.id, 'org_api_alpha');
+      const referencedVariantId = referencedVariant.find((v) => v.id === 'var_http_update_3')?.id;
+      assert.strictEqual(referencedVariantId, 'var_http_update_3');
+
+      const referencedOpeningBalance = await fetch(`${baseUrl}/api/inventory/opening-balance`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          location_id: 'loc_api_onboarding',
+          variant_id: referencedVariantId,
+          quantity: '4',
+          unit_cost: '18.00',
+          idempotency_key: 'api-onboarding-referenced-variant-1',
+          notes: 'Referenced variant lifecycle protection',
+        }),
+      });
+      assert.strictEqual(referencedOpeningBalance.status, 201);
+
+      const removeReferencedVariant = await fetch(`${baseUrl}/api/products/${persistedProduct!.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          variants: [{
+            id: persistedVariants[0].id, sku: 'HTTP-ONBOARD-001', barcode: '8809123456789',
+            name: 'Standard Updated', costPrice: '11.00', retailPrice: '27.00',
+            wholesalePrice: '21.00', memberPrice: '23.00', minSellingPrice: '16.00', lowStockThreshold: 5,
+          }],
+        }),
+      });
+      assert.strictEqual(removeReferencedVariant.status, 409);
+      const removalBody = await removeReferencedVariant.json();
+      assert.strictEqual(removalBody.success, false);
+      assert.strictEqual(removalBody.error.code, 'VARIANT_IN_USE');
+
+      const protectedVariantRow = await db.query(
+        `SELECT id FROM product_variants
+          WHERE id = $1 AND organization_id = $2`,
+        ['var_http_update_3', 'org_api_alpha']
+      );
+      assert.strictEqual(protectedVariantRow.rows.length, 1);
     } catch (err) {
       markFailed('3. Catalog DTO Validation (Categories, Brands, Attributes)', err);
     }
