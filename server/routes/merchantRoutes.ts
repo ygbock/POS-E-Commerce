@@ -428,9 +428,10 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
 
       const business = await db.query(
         `SELECT b.id,b.name,b.slug,b.business_mode,b.listing_status,b.verification_status,
-                b.is_discoverable,b.organization_id,b.tenant_slug
+                b.is_discoverable,b.organization_id,o.slug AS tenant_slug
            FROM discovery_business_memberships m
            JOIN discovery_businesses b ON b.id=m.business_id
+           LEFT JOIN organizations o ON o.id=b.organization_id
           WHERE m.business_id=$1 AND m.user_id=$2 AND m.is_active=TRUE
           LIMIT 1`,
         [businessId, req.auth!.userId],
@@ -470,8 +471,8 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         ),
         db.query(
           `SELECT
-             COUNT(*) FILTER (WHERE status IN ('OPEN','MATCHED','QUOTED','ACCEPTED'))::int AS open_count,
-             COUNT(*) FILTER (WHERE status='QUOTED')::int AS quoted_count
+             COUNT(DISTINCT r.id) FILTER (WHERE r.status IN ('OPEN','MATCHED','QUOTED','ACCEPTED'))::int AS open_count,
+             COUNT(DISTINCT r.id) FILTER (WHERE r.status='QUOTED')::int AS quoted_count
              FROM discovery_service_requests r
              JOIN discovery_service_request_matches m ON m.request_id=r.id
             WHERE m.business_id=$1`,
