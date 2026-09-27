@@ -11,6 +11,7 @@ import { DiscoveryBusinessService } from '../server/services/discoveryBusinessSe
 import { createDiscoveryRouter } from '../server/routes/discoveryRoutes';
 import { createDiscoveryBusinessRouter } from '../server/routes/discoveryBusinessRoutes';
 import { createMerchantRouter } from '../server/routes/merchantRoutes';
+import { createStorefrontRouter } from '../server/routes/storefrontRoutes';
 
 type Actor = {
   userId: string;
@@ -100,6 +101,7 @@ async function main() {
   app.use('/api/merchant', createMerchantRouter(db, auth));
   app.use('/api/discovery', createDiscoveryBusinessRouter(db));
   app.use('/api/discovery', createDiscoveryRouter(db));
+  app.use('/api/storefront', createStorefrontRouter(db));
   app.use((err: any, _req: any, res: any, _next: any) => {
     const raw = String(err?.message || 'error');
     const code = raw.split(':')[0];
@@ -209,6 +211,24 @@ async function main() {
     const ownerOrg = await db.query('SELECT slug FROM organizations WHERE id=$1', [actors.ownerA.organizationId]);
     assert.strictEqual(publicProfileBody?.data?.business?.tenant_slug, ownerOrg.rows[0]?.slug);
     assert.ok(publicProfileBody?.data?.business?.tenant_slug);
+
+    // The canonical tenant slug exposed by Discovery must resolve to the same
+    // tenant-scoped storefront context and catalog API without authentication.
+    const tenantSlug = String(publicProfileBody.data.business.tenant_slug);
+    const storefrontContext = await fetch(baseUrl + '/api/storefront/' + encodeURIComponent(tenantSlug) + '/context');
+    const storefrontContextBody = await storefrontContext.json();
+    assert.strictEqual(storefrontContext.status, 200);
+    assert.strictEqual(storefrontContextBody?.data?.tenant?.id, actors.ownerA.organizationId);
+    assert.strictEqual(storefrontContextBody?.data?.tenant?.slug, tenantSlug);
+
+    const storefrontProducts = await fetch(baseUrl + '/api/storefront/' + encodeURIComponent(tenantSlug) + '/products?limit=10');
+    const storefrontProductsBody = await storefrontProducts.json();
+    assert.strictEqual(storefrontProducts.status, 200);
+    assert.strictEqual(storefrontProductsBody?.count, 0);
+    assert.deepStrictEqual(storefrontProductsBody?.data, []);
+
+    const invalidStorefront = await fetch(baseUrl + '/api/storefront/' + encodeURIComponent(tenantSlug + '-invalid') + '/context');
+    assert.strictEqual(invalidStorefront.status, 404);
 
     const crossStoreReadiness = await requestJson(baseUrl, '/api/discovery/businesses/' + ownerB.business.id + '/store-readiness', actors.ownerA);
     assert.strictEqual(crossStoreReadiness.status, 403, 'cross-business store readiness must be denied');
