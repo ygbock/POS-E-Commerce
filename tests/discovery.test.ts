@@ -138,6 +138,12 @@ async function main() {
     }, owner),
     /STORE_CONVERSION_REQUIRED:/,
   );
+  await db.query(
+    `INSERT INTO discovery_business_locations
+      (id,business_id,name,location_type,city,region,country,latitude,longitude,is_primary,is_active)
+     VALUES ('disc_upgrade_loc',$1,'Upgrade Main Location','STORE','Freetown','Western Area','Sierra Leone',8.4840,-13.2299,TRUE,TRUE)`,
+    [discoveryOnly.id],
+  );
   const convertedProvision = await provisioning.provisionForDiscoveryBusiness(
     discoveryOnly.id,
     'disc_test_org',
