@@ -71,7 +71,13 @@ export class DiscoveryBusinessRepository {
   }
 
   async findById(id: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord | null> {
-    const result = await this.db(client).query<DiscoveryBusinessRecord>('SELECT * FROM discovery_businesses WHERE id = $1', [id]);
+    const result = await this.db(client).query<DiscoveryBusinessRecord>(
+      `SELECT b.*, o.slug AS tenant_slug
+         FROM discovery_businesses b
+         LEFT JOIN organizations o ON o.id = b.organization_id
+        WHERE b.id = $1`,
+      [id],
+    );
     return result.rows[0] || null;
   }
   async findByPublicId(publicId: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord | null> {
