@@ -190,6 +190,8 @@ async function main() {
     assert.strictEqual(storeReadiness.body?.data?.inventoryLedgerEnabled, true);
     assert.strictEqual(storeReadiness.body?.data?.onlineCheckoutEnabled, true);
     assert.strictEqual(storeReadiness.body?.data?.counts?.products, 0);
+    assert.strictEqual(storeReadiness.body?.data?.catalogReady, false);
+    assert.strictEqual(storeReadiness.body?.data?.storefrontReady, false);
     assert.ok(Array.isArray(storeReadiness.body?.data?.steps));
 
     // Registration creates a DRAFT, non-discoverable listing. Public profile access is
