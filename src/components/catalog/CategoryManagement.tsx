@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Category } from '../../types';
 import { useCommerce } from '../../context/CommerceContext';
+import { productService } from '../../services/productService';
 
 const ICON_OPTIONS = [
   { name: 'Headphones', icon: Headphones },
@@ -92,40 +93,48 @@ export const CategoryManagement: React.FC = () => {
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const subs = subcategoriesInput
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
 
-    if (editingCategory) {
-      updateCategory({
-        ...editingCategory,
-        name,
-        slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
-        description,
-        iconName,
-        accentColor,
-        subcategories: subs,
-        displayOrder,
-        isPosQuickAccess,
-      });
-    } else {
-      const newCat: Category = {
-        id: `cat-${Date.now().toString(36)}`,
-        name,
-        slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
-        description,
-        iconName,
-        accentColor,
-        subcategories: subs,
-        displayOrder,
-        isPosQuickAccess,
-      };
-      addCategory(newCat);
+    try {
+      if (editingCategory) {
+        // Category editing remains local until the server exposes the matching
+        // tenant-scoped update route; creation is persisted immediately.
+        updateCategory({
+          ...editingCategory,
+          name,
+          slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
+          description,
+          iconName,
+          accentColor,
+          subcategories: subs,
+          displayOrder,
+          isPosQuickAccess,
+        });
+      } else {
+        const response = await productService.createCategory({
+          name: name.trim(),
+          slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
+          description,
+          subcategories: subs,
+          displayOrder,
+          isPosQuickAccess,
+        });
+        const created = response.data as Category;
+        addCategory({
+          ...created,
+          iconName,
+          accentColor,
+        });
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to save category. Please try again.');
     }
-    setIsModalOpen(false);
   };
 
   const getProductCountForCategory = (catName: string) => {
