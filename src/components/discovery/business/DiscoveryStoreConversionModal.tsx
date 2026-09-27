@@ -43,13 +43,13 @@ export const DiscoveryStoreConversionModal: React.FC<DiscoveryStoreConversionMod
     setError(null);
 
     try {
-      await discoveryApi.updateBusiness(business.id, {
-        name: storeName.trim() || business.name,
-        businessMode: 'DISCOVERY_AND_STORE',
+      const updatedBusiness = await discoveryApi.convertBusinessToStore(business.id, {
+        storeName: storeName.trim() || business.name,
+        currency: currency as 'SLE' | 'USD',
+        enableOnlineCheckout,
+        enablePOS,
+        enableInventoryLedger,
       });
-
-      // Update business mode in local state
-      const updatedBusiness: DiscoveryBusiness = { ...business, name: storeName.trim() || business.name, business_mode: 'DISCOVERY_AND_STORE' };
 
       onConverted(updatedBusiness);
       onClose();
