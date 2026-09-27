@@ -1285,30 +1285,58 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);} });
 
   router.get('/service-requests/:id', requireAuth(), async(req,res,next)=>{try{
+    // Keep the customer detail read to a single database round-trip. This matters
+    // for the concurrent request-detail workload because embedded PGlite serializes
+    // database access through one mutex; three sequential queries amplify queue time.
     const r=await db.query(
-      `SELECT r.*,COALESCE(json_agg(json_build_object('businessId',m.business_id,'businessName',b.name,'score',m.match_score,'reason',m.match_reason))
-        FILTER(WHERE m.business_id IS NOT NULL),'[]'::json) AS matches
+      `SELECT r.*,
+          COALESCE(
+            (
+              SELECT json_agg(
+                json_build_object(
+                  'businessId',m.business_id,
+                  'businessName',b.name,
+                  'score',m.match_score,
+                  'reason',m.match_reason
+                )
+                ORDER BY m.created_at ASC, m.business_id ASC
+              )
+              FROM discovery_service_request_matches m
+              LEFT JOIN discovery_businesses b ON b.id=m.business_id
+              WHERE m.request_id=r.id
+            ),
+            '[]'::json
+          ) AS matches,
+          COALESCE(
+            (
+              SELECT json_agg(q ORDER BY q.created_at DESC, q.id DESC)
+              FROM (
+                SELECT q.*,b.name AS business_name,s.name AS service_name
+                FROM discovery_service_quotes q
+                JOIN discovery_businesses b ON b.id=q.business_id
+                LEFT JOIN discovery_services s ON s.id=q.service_id
+                WHERE q.request_id=r.id
+              ) q
+            ),
+            '[]'::json
+          ) AS quotes,
+          COALESCE(
+            (
+              SELECT json_agg(e ORDER BY e.created_at ASC, e.id ASC)
+              FROM (
+                SELECT id,request_id,event_type,from_status,to_status,actor_user_id,business_id,quote_id,note,metadata,created_at
+                FROM discovery_service_request_events
+                WHERE request_id=r.id
+              ) e
+            ),
+            '[]'::json
+          ) AS events
        FROM discovery_service_requests r
-       LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id
-       LEFT JOIN discovery_businesses b ON b.id=m.business_id
-       WHERE r.id=$1 AND r.customer_user_id=$2
-       GROUP BY r.id`,
+       WHERE r.id=$1 AND r.customer_user_id=$2`,
       [req.params.id,req.auth!.userId],
     );
     if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
-    const quotes=await db.query(
-      `SELECT q.*,b.name AS business_name,s.name AS service_name
-       FROM discovery_service_quotes q JOIN discovery_businesses b ON b.id=q.business_id
-       LEFT JOIN discovery_services s ON s.id=q.service_id
-       WHERE q.request_id=$1 ORDER BY q.created_at DESC`,
-      [req.params.id],
-    );
-    const events=await db.query(
-      `SELECT id,request_id,event_type,from_status,to_status,actor_user_id,business_id,quote_id,note,metadata,created_at
-       FROM discovery_service_request_events WHERE request_id=$1 ORDER BY created_at ASC,id ASC`,
-      [req.params.id],
-    );
-    res.json({success:true,data:{...r.rows[0],quotes:quotes.rows,events:events.rows}});
+    res.json({success:true,data:r.rows[0]});
   }catch(err){next(err);} });
 
   router.get('/notifications', requireAuth(), async(req,res,next)=>{try{
