@@ -269,11 +269,17 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         && Boolean(business.organization_id)
         && Boolean(business.tenant_slug)
         && business.organization_active === true;
+      const categoryCount = Number(categoryRes.rows[0]?.count || 0);
+      const productCount = Number(productRes.rows[0]?.count || 0);
+      const variantCount = Number(variantRes.rows[0]?.count || 0);
+      const infrastructureReady = connected && Boolean(activeLocation);
+      const catalogReady = productCount > 0 && variantCount > 0;
+      const storefrontReady = infrastructureReady && catalogReady;
       const steps = [
         { key: 'connected', label: 'Store connected', complete: connected, required: true },
         { key: 'location', label: 'Commerce location', complete: Boolean(activeLocation), required: true },
-        { key: 'catalog', label: 'Catalog categories', complete: Number(categoryRes.rows[0]?.count || 0) > 0, required: false },
-        { key: 'products', label: 'Store products', complete: Number(productRes.rows[0]?.count || 0) > 0, required: false },
+        { key: 'catalog', label: 'Catalog categories', complete: categoryCount > 0, required: false },
+        { key: 'products', label: 'Store products', complete: productCount > 0, required: false },
         { key: 'checkout', label: 'Online checkout', complete: Boolean(business.online_checkout_enabled), required: false },
         { key: 'inventory', label: 'Inventory ledger', complete: Boolean(business.inventory_ledger_enabled), required: false },
       ];
