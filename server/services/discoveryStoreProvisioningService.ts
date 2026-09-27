@@ -189,7 +189,7 @@ export class DiscoveryStoreProvisioningService {
                   true
                 ),
                 updated_at = CURRENT_TIMESTAMP
-          WHERE id = $5`,
+          WHERE id = $6`,
         [
           options.currency === 'USD' ? 'USD' : 'SLE',
           options.currency === 'USD' ? '$' : 'Le',
