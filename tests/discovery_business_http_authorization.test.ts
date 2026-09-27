@@ -153,6 +153,46 @@ async function main() {
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.role, 'OWNER');
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.is_active, true);
 
+    await db.query(
+      `INSERT INTO discovery_business_locations
+        (id,business_id,name,location_type,city,region,country,latitude,longitude,is_primary,is_active)
+       VALUES ('http_conversion_loc',$1,'Conversion Main Location','STORE','Freetown','Western Area','Sierra Leone',8.4840,-13.2299,TRUE,TRUE)`,
+      [ownerA.business.id],
+    );
+    const converted = await requestJson(baseUrl, `/api/discovery/businesses/${ownerA.business.id}/convert-to-store`, actors.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({
+        storeName: 'HTTP Conversion Store',
+        currency: 'SLE',
+        enableOnlineCheckout: true,
+        enablePOS: true,
+        enableInventoryLedger: true,
+      }),
+    });
+    assert.strictEqual(converted.status, 200);
+    assert.strictEqual(converted.body?.store?.provisioned, true);
+    assert.ok(converted.body?.store?.locationId);
+    assert.strictEqual(converted.body?.data?.business_mode, 'DISCOVERY_AND_STORE');
+    const convertedLocation = await db.query(
+      `SELECT id,name,is_pos_enabled FROM locations WHERE organization_id=$1 AND is_active=TRUE`,
+      [actors.ownerA.organizationId],
+    );
+    assert.strictEqual(convertedLocation.rows.length, 1);
+    assert.strictEqual(convertedLocation.rows[0].name, 'HTTP Conversion Store');
+    assert.strictEqual(convertedLocation.rows[0].is_pos_enabled, true);
+
+    // Repeating the same conversion must not create another commerce location.
+    const replayConversion = await requestJson(baseUrl, `/api/discovery/businesses/${ownerA.business.id}/convert-to-store`, actors.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ storeName: 'HTTP Conversion Store', currency: 'SLE' }),
+    });
+    assert.strictEqual(replayConversion.status, 200);
+    const replayLocations = await db.query(
+      `SELECT COUNT(*)::int AS count FROM locations WHERE organization_id=$1 AND is_active=TRUE`,
+      [actors.ownerA.organizationId],
+    );
+    assert.strictEqual(Number(replayLocations.rows[0].count), 1);
+
     // Store-mode creation must bind to the authenticated owner's organization.
     const createdStore = await requestJson(baseUrl, '/api/discovery/businesses', actors.ownerA, {
       method: 'POST',
