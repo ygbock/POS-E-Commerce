@@ -1002,8 +1002,6 @@ export async function createApp(options: CreateAppOptions = {}) {
         updatedAt: new Date().toISOString(),
       };
 
-      masterProductsStore.unshift(newProduct);
-
       // Persist the catalog record in PostgreSQL as the authoritative storefront source.
       // The legacy in-memory store remains populated during the migration window for
       // existing POS/catalog consumers, but tenant storefront data is no longer ephemeral.
@@ -1072,6 +1070,10 @@ export async function createApp(options: CreateAppOptions = {}) {
         low_stock_threshold: variant.lowStockThreshold,
         image_url: variant.image,
       })));
+
+      // Keep the transitional in-memory catalog in sync only after the
+      // authoritative database write succeeds.
+      masterProductsStore.unshift(newProduct);
 
       syncAuditLogs.push({
         id: `sync-${Date.now()}`,
