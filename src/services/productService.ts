@@ -217,6 +217,36 @@ class ProductService {
     return res.json();
   }
 
+  /** Fetch tenant-scoped catalog categories. */
+  async getCategories(): Promise<{ success: boolean; count: number; data: any[] }> {
+    const res = await fetch(`${this.baseUrl}/categories`, {
+      headers: authClient.getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch categories');
+    return res.json();
+  }
+
+  /** Create a tenant-scoped catalog category. */
+  async createCategory(category: {
+    name: string;
+    slug?: string;
+    description?: string;
+    subcategories?: string[];
+    displayOrder?: number;
+    isPosQuickAccess?: boolean;
+  }): Promise<{ success: boolean; data: any }> {
+    const res = await fetch(`${this.baseUrl}/categories`, {
+      method: 'POST',
+      headers: authClient.getAuthHeaders(),
+      body: JSON.stringify(category),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to create category');
+    }
+    return res.json();
+  }
+
   /**
    * Create new catalog attribute
    */
