@@ -181,6 +181,18 @@ async function main() {
     assert.strictEqual(convertedLocation.rows[0].name, 'HTTP Conversion Store');
     assert.strictEqual(convertedLocation.rows[0].is_pos_enabled, true);
 
+    const storeReadiness = await requestJson(baseUrl, '/api/discovery/businesses/' + ownerA.business.id + '/store-readiness', actors.ownerA);
+    assert.strictEqual(storeReadiness.status, 200);
+    assert.strictEqual(storeReadiness.body?.data?.ready, true);
+    assert.ok(storeReadiness.body?.data?.tenantSlug);
+    assert.strictEqual(storeReadiness.body?.data?.inventoryLedgerEnabled, true);
+    assert.strictEqual(storeReadiness.body?.data?.onlineCheckoutEnabled, true);
+    assert.strictEqual(storeReadiness.body?.data?.counts?.products, 0);
+    assert.ok(Array.isArray(storeReadiness.body?.data?.steps));
+
+    const crossStoreReadiness = await requestJson(baseUrl, '/api/discovery/businesses/' + ownerB.business.id + '/store-readiness', actors.ownerA);
+    assert.strictEqual(crossStoreReadiness.status, 403, 'cross-business store readiness must be denied');
+
     // Repeating the same conversion must not create another commerce location.
     const replayConversion = await requestJson(baseUrl, `/api/discovery/businesses/${ownerA.business.id}/convert-to-store`, actors.ownerA, {
       method: 'POST',
