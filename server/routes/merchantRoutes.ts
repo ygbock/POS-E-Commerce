@@ -674,5 +674,95 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
+  // Tenant-scoped supplier directory used by the merchant workspace and CRM tests.
+  router.get('/suppliers', requireAuth(), async (req, res) => {
+    try {
+      const orgId=req.auth?.organizationId;
+      if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const result=await db.query(`SELECT s.id,s.organization_id,s.name,s.contact_person,s.email,s.phone,s.address,s.payment_terms,s.rating,s.lead_time_days,s.is_active,s.created_at,s.updated_at,
+        COUNT(DISTINCT poi.variant_id)::int AS supplied_variant_count,COUNT(DISTINCT po.id)::int AS purchase_order_count,MAX(po.created_at) AS last_purchase_order_at
+        FROM suppliers s LEFT JOIN purchase_orders po ON po.supplier_id=s.id AND po.organization_id=s.organization_id
+        LEFT JOIN purchase_order_items poi ON poi.purchase_order_id=po.id WHERE s.organization_id=$1
+        GROUP BY s.id ORDER BY s.is_active DESC,s.name ASC`,[orgId]);
+      return res.json({success:true,count:result.rows.length,data:result.rows});
+    } catch(err){ return fail(res,err); }
+  });
+
+  router.get('/suppliers/:id', requireAuth(), async (req,res) => {
+    try {
+      const orgId=req.auth?.organizationId;
+      if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const supplier=await db.query(`SELECT id,organization_id,name,contact_person,email,phone,address,payment_terms,rating,lead_time_days,is_active,created_at,updated_at
+        FROM suppliers WHERE id=$1 AND organization_id=$2 LIMIT 1`,[req.params.id,orgId]);
+      if(!supplier.rows[0]){
+        const other=await db.query('SELECT 1 FROM suppliers WHERE id=$1 AND organization_id<>$2 LIMIT 1',[req.params.id,orgId]);
+        if(other.rows[0]) throw new Error('TENANT_ACCESS_DENIED:Cross-tenant supplier access forbidden.');
+        throw new Error('NOT_FOUND:Supplier not found.');
+      }
+      return res.json({success:true,data:{supplier:supplier.rows[0],products:[],purchaseOrders:[]}});
+    } catch(err){ return fail(res,err); }
+  });
+
+  router.post('/suppliers', requireAuth(), async (req,res) => {
+    try {
+      const orgId=req.auth?.organizationId;
+      if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const name=String(req.body?.name||'').trim();
+      if(!name) throw new Error('VALIDATION_ERROR:Supplier name is required.');
+      const rating=Number(req.body?.rating ?? 5);
+      const lead=Number(req.body?.leadTimeDays ?? req.body?.lead_time_days ?? 7);
+      if(!Number.isFinite(rating)||rating<0||rating>5||!Number.isInteger(lead)||lead<0||lead>365) throw new Error('VALIDATION_ERROR:Invalid supplier rating or lead time.');
+      const id=`sup-${randomUUID()}`;
+      const result=await db.query(`INSERT INTO suppliers(id,organization_id,name,contact_person,email,phone,address,payment_terms,rating,lead_time_days,is_active)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        [id,orgId,name,req.body?.contactPerson??req.body?.contact_person??null,req.body?.email??null,req.body?.phone??null,req.body?.address??null,req.body?.paymentTerms??req.body?.payment_terms??'Net 30',rating,lead,req.body?.isActive!==false]);
+      await audit.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:req.auth!.userId,actor_role:req.auth!.role,action:'CREATE_SUPPLIER',entity_type:'SUPPLIER',entity_id:id,after_state:result.rows[0]});
+      return res.status(201).json({success:true,data:result.rows[0]});
+    } catch(err){ return fail(res,err); }
+  });
+
+  router.put('/suppliers/:id', requireAuth(), async (req,res) => {
+    try {
+      const orgId=req.auth?.organizationId;
+      if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const existing=await db.query('SELECT * FROM suppliers WHERE id=$1 AND organization_id=$2',[req.params.id,orgId]);
+      if(!existing.rows[0]){
+        const other=await db.query('SELECT 1 FROM suppliers WHERE id=$1 AND organization_id<>$2 LIMIT 1',[req.params.id,orgId]);
+        if(other.rows[0]) throw new Error('TENANT_ACCESS_DENIED:Cross-tenant supplier modification forbidden.');
+        throw new Error('NOT_FOUND:Supplier not found.');
+      }
+      const fields=['name','contact_person','email','phone','address','payment_terms','rating','lead_time_days','is_active'];
+      const sets:string[]=[]; const values:any[]=[];
+      for(const field of fields){
+        const camel=field.replace(/_([a-z])/g,(_,x)=>x.toUpperCase());
+        if(Object.prototype.hasOwnProperty.call(req.body,field)||Object.prototype.hasOwnProperty.call(req.body,camel)){
+          const value=Object.prototype.hasOwnProperty.call(req.body,field)?req.body[field]:req.body[camel];
+          values.push(value===undefined?'':value); sets.push(field+' = $'+values.length);
+        }
+      }
+      if(!sets.length) throw new Error('VALIDATION_ERROR:At least one supplier field is required.');
+      values.push(req.params.id,orgId);
+      const result=await db.query(`UPDATE suppliers SET ${sets.join(', ')},updated_at=CURRENT_TIMESTAMP WHERE id=${values.length-1} AND organization_id=${values.length} RETURNING *`,values);
+      await audit.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:req.auth!.userId,actor_role:req.auth!.role,action:'UPDATE_SUPPLIER',entity_type:'SUPPLIER',entity_id:req.params.id,metadata:{changedFields:Object.keys(req.body)}});
+      return res.json({success:true,data:result.rows[0]});
+    } catch(err){ return fail(res,err); }
+  });
+
+  router.delete('/suppliers/:id', requireAuth(), async (req,res) => {
+    try {
+      const orgId=req.auth?.organizationId;
+      if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const existing=await db.query('SELECT * FROM suppliers WHERE id=$1 AND organization_id=$2',[req.params.id,orgId]);
+      if(!existing.rows[0]){
+        const other=await db.query('SELECT 1 FROM suppliers WHERE id=$1 AND organization_id<>$2 LIMIT 1',[req.params.id,orgId]);
+        if(other.rows[0]) throw new Error('TENANT_ACCESS_DENIED:Cross-tenant supplier deletion forbidden.');
+        throw new Error('NOT_FOUND:Supplier not found.');
+      }
+      const result=await db.query('UPDATE suppliers SET is_active=FALSE,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND organization_id=$2 RETURNING *',[req.params.id,orgId]);
+      await audit.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:req.auth!.userId,actor_role:req.auth!.role,action:'DELETE_SUPPLIER',entity_type:'SUPPLIER',entity_id:req.params.id,before_state:existing.rows[0],after_state:result.rows[0]});
+      return res.json({success:true,data:result.rows[0]});
+    } catch(err){ return fail(res,err); }
+  });
+
   return router;
 }
