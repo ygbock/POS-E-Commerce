@@ -142,7 +142,7 @@ export class DiscoveryStoreProvisioningService {
           ],
         );
 
-        locationRes = { rows: [{ id: locationId }] };
+        locationRes = { rows: [{ id: locationId }], rowCount: 1 };
         createdCommerceLocation = true;
       }
 
