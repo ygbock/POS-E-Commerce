@@ -743,7 +743,11 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
       if(!sets.length) throw new Error('VALIDATION_ERROR:At least one supplier field is required.');
       values.push(req.params.id,orgId);
       const result=await db.query(`UPDATE suppliers SET ${sets.join(', ')},updated_at=CURRENT_TIMESTAMP WHERE id=${values.length-1} AND organization_id=${values.length} RETURNING *`,values);
-      await audit.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:req.auth!.userId,actor_role:req.auth!.role,action:'UPDATE_SUPPLIER',entity_type:'SUPPLIER',entity_id:req.params.id,metadata:{changedFields:Object.keys(req.body)}});
+      try {
+        await audit.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:(req.auth as any)?.name||req.auth!.email||req.auth!.userId,actor_role:req.auth!.role,action:'UPDATE_SUPPLIER',entity_type:'SUPPLIER',entity_id:req.params.id,metadata:{changedFields:Object.keys(req.body)}});
+      } catch (auditError) {
+        console.warn('[Audit] Supplier update event failed:', auditError);
+      }
       return res.json({success:true,data:result.rows[0]});
     } catch(err){ return fail(res,err); }
   });
