@@ -100,6 +100,10 @@ async function main() {
   });
 
   app.use('/api/merchant', createMerchantRouter(db, auth));
+  // The legacy CRM customer endpoints are mounted at /api in the production server;
+  // expose the merchant router at that boundary in this isolated harness as well so
+  // /api/customers/:id/profile exercises the same tenant-scoped implementation.
+  app.use('/api', createMerchantRouter(db, auth));
   app.use('/api/discovery', createDiscoveryBusinessRouter(db));
   app.use('/api/discovery', createDiscoveryRouter(db));
   app.use('/api/storefront', createStorefrontRouter(db));
