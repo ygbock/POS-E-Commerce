@@ -333,8 +333,89 @@ async function runApiHardeningTests() {
       assert.strictEqual(persistedVariants.length, 1);
       assert.strictEqual(persistedVariants[0].retail_price, '25.00');
 
-      // Merchant onboarding stock must enter the authoritative inventory ledger.
-      await db.query(
+      // Product updates must preserve variant identity, add new variants, and
+      // reconcile variants removed from the submitted variant set.
+      const updateWithSecondVariant = await fetch(`${baseUrl}/api/products/${persistedProduct!.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          variants: [
+            {
+              id: persistedVariants[0].id,
+              sku: 'HTTP-ONBOARD-001',
+              barcode: '8809123456789',
+              name: 'Standard Updated',
+              costPrice: '11.00',
+              retailPrice: '27.00',
+              wholesalePrice: '21.00',
+              memberPrice: '23.00',
+              minSellingPrice: '16.00',
+              lowStockThreshold: 5,
+            },
+            {
+              id: 'var_http_update_2',
+              sku: 'HTTP-ONBOARD-002',
+              barcode: '8809123456790',
+              name: 'Premium',
+              costPrice: '15.00',
+              retailPrice: '35.00',
+              wholesalePrice: '28.00',
+              memberPrice: '30.00',
+              minSellingPrice: '20.00',
+              lowStockThreshold: 5,
+            },
+          ],
+        }),
+      });
+      assert.strictEqual(updateWithSecondVariant.status, 200);
+      const updatedCatalogBody = await updateWithSecondVariant.json();
+      assert.strictEqual(updatedCatalogBody.success, true);
+
+      const afterAddVariants = await catalogRepo.findVariantsByProductId(
+        persistedProduct!.id,
+        'org_api_alpha'
+      );
+      assert.strictEqual(afterAddVariants.length, 2);
+      assert.strictEqual(
+        afterAddVariants.find((v) => v.id === persistedVariants[0].id)?.retail_price,
+        '27.00'
+      );
+      assert.ok(afterAddVariants.some((v) => v.id === 'var_http_update_2'));
+
+      const removeUnreferencedVariant = await fetch(`${baseUrl}/api/products/${persistedProduct!.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${alphaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          variants: [{
+            id: persistedVariants[0].id,
+            sku: 'HTTP-ONBOARD-001',
+            barcode: '8809123456789',
+            name: 'Standard Updated',
+            costPrice: '11.00',
+            retailPrice: '27.00',
+            wholesalePrice: '21.00',
+            memberPrice: '23.00',
+            minSellingPrice: '16.00',
+            lowStockThreshold: 5,
+          }],
+        }),
+      });
+      assert.strictEqual(removeUnreferencedVariant.status, 200);
+
+      const afterRemovalVariants = await catalogRepo.findVariantsByProductId(
+        persistedProduct!.id,
+        'org_api_alpha'
+      );
+      assert.strictEqual(afterRemovalVariants.length, 1);
+      assert.strictEqual(afterRemovalVariants[0].id, persistedVariants[0].id);
+
+      // Merchant onboarding stock must enter the authoritative inventory ledger.      await db.query(
         `INSERT INTO locations (id, organization_id, code, name, type, is_pos_enabled, is_active)
          VALUES ('loc_api_onboarding', 'org_api_alpha', 'ONBOARD', 'Onboarding Store', 'Retail Store', TRUE, TRUE)
          ON CONFLICT (id) DO NOTHING`
