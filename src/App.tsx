@@ -80,8 +80,12 @@ const MainLayout: React.FC = () => {
   const isPlatform = isPlatformRole(currentRole);
 
   // Default initial active tab: platform control plane for platform operators, storefront for customer/tenant
+  const requestedWorkspace = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('workspace')
+    : null;
+  const workspaceTabs = new Set(['dashboard', 'catalog', 'inventory', 'orders', 'pos']);
   const [activeTab, setActiveTab] = useState<string>(() =>
-    isPlatform ? 'platform-dashboard' : 'storefront'
+    isPlatform ? 'platform-dashboard' : (requestedWorkspace && workspaceTabs.has(requestedWorkspace) ? requestedWorkspace : 'storefront')
   );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
@@ -205,6 +209,8 @@ export default function App() {
   const isMerchantPath = window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
   const isMerchantSignupPath = window.location.pathname === '/business/signup';
   const isMerchantSigninPath = window.location.pathname === '/business/signin';
+  const requestedWorkspace = new URLSearchParams(window.location.search).get('workspace');
+  const hasAuthenticatedWorkspaceRequest = ['dashboard', 'catalog', 'inventory', 'orders', 'pos'].includes(requestedWorkspace || '');
 
   if (isMerchantSignupPath) {
     return <BusinessOwnerSignup />;
@@ -232,7 +238,7 @@ export default function App() {
   }
 
   // Public storefront and Discovery routes must be previewable without an admin session.
-  if (!authLoading && !authUser && isPublicDiscoveryPath(window.location.pathname)) {
+  if (!authLoading && !authUser && isPublicDiscoveryPath(window.location.pathname) && !hasAuthenticatedWorkspaceRequest) {
     return (
       <ErrorBoundary>
         <ToastProvider>
@@ -278,7 +284,7 @@ export default function App() {
 
   // Discovery is the platform landing page. Authenticated users also start here;
   // tenant storefronts are entered explicitly from a business listing.
-  if (isPublicDiscoveryPath(window.location.pathname)) {
+  if (isPublicDiscoveryPath(window.location.pathname) && !hasAuthenticatedWorkspaceRequest) {
     return (
       <ErrorBoundary>
         <ToastProvider>
