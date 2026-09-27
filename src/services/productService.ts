@@ -1,6 +1,31 @@
 import { Product, ProductVariant, CatalogAttribute } from '../types';
 import { authClient } from './authClient';
 
+export interface ProductApiVariant {
+  id?: string;
+  sku: string;
+  barcode: string;
+  qrCode?: string;
+  name: string;
+  attributes?: Record<string, string>;
+  costPrice?: string;
+  retailPrice: string;
+  wholesalePrice?: string;
+  memberPrice?: string;
+  minSellingPrice?: string;
+  weightKg?: number;
+  dimensionsCm?: { length: number; width: number; height: number };
+  lowStockThreshold?: number;
+  image?: string;
+  stockByLocation?: Record<string, number>;
+  isActive?: boolean;
+  trackInventory?: boolean;
+}
+
+export type ProductApiPayload = Omit<Partial<Product>, 'variants'> & {
+  variants?: ProductApiVariant[];
+};
+
 export interface ProductListResponse {
   success: boolean;
   count: number;
@@ -99,7 +124,7 @@ class ProductService {
   /**
    * Create new product in master catalog
    */
-  async createProduct(product: Partial<Product>): Promise<{ success: boolean; message: string; data: Product }> {
+  async createProduct(product: ProductApiPayload): Promise<{ success: boolean; message: string; data: Product }> {
     const res = await fetch(`${this.baseUrl}/products`, {
       method: 'POST',
       headers: authClient.getAuthHeaders(),
@@ -115,7 +140,7 @@ class ProductService {
   /**
    * Update existing product details
    */
-  async updateProduct(id: string, product: Partial<Product>): Promise<{ success: boolean; message: string; data: Product }> {
+  async updateProduct(id: string, product: ProductApiPayload): Promise<{ success: boolean; message: string; data: Product }> {
     const res = await fetch(`${this.baseUrl}/products/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: authClient.getAuthHeaders(),
