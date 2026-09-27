@@ -153,6 +153,36 @@ class ProductService {
     return res.json();
   }
 
+
+  /** Record an authoritative opening stock balance for a newly created SKU at a tenant location. */
+  async recordOpeningBalance(input: {
+    locationId: string;
+    variantId: string;
+    quantity: number;
+    unitCost?: string;
+    idempotencyKey: string;
+    notes?: string;
+  }): Promise<{ success: boolean; data: unknown }> {
+    const res = await fetch(`${this.baseUrl}/inventory/opening-balance`, {
+      method: 'POST',
+      headers: authClient.getAuthHeaders(),
+      body: JSON.stringify({
+        location_id: input.locationId,
+        variant_id: input.variantId,
+        quantity: String(input.quantity),
+        unit_cost: input.unitCost,
+        notes: input.notes,
+        idempotency_key: input.idempotencyKey,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      const message = typeof err?.error === 'string' ? err.error : err?.error?.message;
+      throw new Error(message || 'Failed to record opening inventory balance');
+    }
+    return res.json();
+  }
+
   /**
    * Delete product from master catalog
    */
