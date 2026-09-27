@@ -233,7 +233,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const business = businessRes.rows[0];
       if (!business) throw new Error('NOT_FOUND:Discovery business not found.');
 
-      const [locationRes, categoryRes, productRes, variantRes] = await Promise.all([
+      const [locationRes, categoryRes, productRes, variantRes, inventoryRes] = await Promise.all([
         db.query(
           `SELECT id, name, is_pos_enabled
              FROM locations
@@ -261,6 +261,25 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             WHERE organization_id = $1`,
           [business.organization_id],
         ),
+        db.query(
+          `SELECT COALESCE(SUM(
+                    GREATEST(
+                      0,
+                      ib.on_hand - ib.reserved - ib.damaged - ib.expired
+                    )
+                  ), 0)::numeric AS available_stock
+             FROM inventory_balances ib
+             JOIN product_variants pv
+               ON pv.id = ib.variant_id
+              AND pv.organization_id = ib.organization_id
+             JOIN products p
+               ON p.id = pv.product_id
+              AND p.organization_id = pv.organization_id
+            WHERE ib.organization_id = $1
+              AND p.status = 'active'
+              AND p.channels_ecommerce = TRUE`,
+          [business.organization_id],
+        ),
       ]);
 
       const locations = locationRes.rows;
@@ -272,9 +291,11 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const categoryCount = Number(categoryRes.rows[0]?.count || 0);
       const productCount = Number(productRes.rows[0]?.count || 0);
       const variantCount = Number(variantRes.rows[0]?.count || 0);
+      const availableStock = String(inventoryRes.rows[0]?.available_stock || '0');
+      const inventoryReady = !Boolean(business.inventory_ledger_enabled) || Number(availableStock) > 0;
       const infrastructureReady = connected && Boolean(activeLocation);
       const catalogReady = productCount > 0 && variantCount > 0;
-      const storefrontReady = infrastructureReady && catalogReady;
+      const storefrontReady = infrastructureReady && catalogReady && inventoryReady;
       const steps = [
         { key: 'connected', label: 'Store connected', complete: connected, required: true },
         { key: 'location', label: 'Commerce location', complete: Boolean(activeLocation), required: true },
@@ -282,6 +303,12 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         { key: 'products', label: 'Store products', complete: productCount > 0, required: false },
         { key: 'checkout', label: 'Online checkout', complete: Boolean(business.online_checkout_enabled), required: false },
         { key: 'inventory', label: 'Inventory ledger', complete: Boolean(business.inventory_ledger_enabled), required: false },
+        {
+          key: 'opening_stock',
+          label: 'Opening stock',
+          complete: inventoryReady,
+          required: Boolean(business.inventory_ledger_enabled),
+        },
       ];
 
       res.json({
@@ -304,7 +331,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             categories: categoryCount,
             products: productCount,
             variants: variantCount,
+            availableStock,
           },
+          inventoryReady,
           steps,
           ready: infrastructureReady,
           catalogReady,
