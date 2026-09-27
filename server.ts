@@ -2915,6 +2915,35 @@ if (isMain && process.env.NODE_ENV !== 'test') {
     },
   );
 
+  // Tenant staff role changes remain server-authoritative and tenant-scoped.
+  app.patch(
+    '/api/users/:id/role',
+    requireAuth(),
+    requirePermission(PERMISSIONS.USERS_UPDATE),
+    requireTenantAccess(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const orgId = await resolveAuthorizedTenant(req, auditRepo, 'USER');
+        const allowedRoles = ['admin','manager','cashier','inventory_manager','purchasing_manager','sales_user','viewer'];
+        const role = String(req.body?.role || '').trim();
+        if (!allowedRoles.includes(role)) return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'The requested tenant role is not assignable.'}});
+        const existing = await userRepo.findById(req.params.id, orgId);
+        if (!existing) {
+          const other = await db.query('SELECT 1 FROM users WHERE id=$1 AND organization_id<>$2',[req.params.id,orgId]);
+          if (other.rows.length) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant user modification forbidden.'}});
+          return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'User not found.'}});
+        }
+        if (existing.id === req.auth!.userId) return res.status(403).json({success:false,error:{code:'SELF_ROLE_CHANGE_FORBIDDEN',message:'A user cannot change their own role.'}});
+        if (existing.role === 'admin' && role !== 'admin' && (await userRepo.countActiveAdmins(orgId)) <= 1) {
+          return res.status(403).json({success:false,error:{code:'OWNER_PROTECTION_VIOLATION',message:'The last active administrator cannot be demoted.'}});
+        }
+        const updated = await userRepo.updateUser(existing.id,orgId,{role:role as any});
+        await auditRepo.recordEvent({organization_id:orgId,actor_id:req.auth!.userId,actor_name:(req.auth as any)?.name||req.auth!.userId,actor_role:req.auth!.role,action:'USER_ROLE_CHANGED',entity_type:'USER',entity_id:existing.id,before_state:{role:existing.role},after_state:{role:updated?.role},metadata:{changedBy:req.auth!.userId}});
+        return res.json({success:true,data:{id:updated!.id,organizationId:updated!.organization_id,email:updated!.email,name:updated!.name,role:updated!.role,locationId:updated!.location_id,isActive:updated!.is_active,createdAt:updated!.created_at}});
+      } catch(err){ next(err); }
+    },
+  );
+
   // User Management
   app.get(
     '/api/users',
