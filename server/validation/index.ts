@@ -497,6 +497,7 @@ export function validateVariantPayload(body: any, isUpdate = false): Record<stri
   }
 
   const allowedKeys = [
+    ...(isUpdate ? ['id'] : []),
     'sku', 'barcode', 'qrCode', 'name', 'attributes',
     'costPrice', 'retailPrice', 'wholesalePrice', 'memberPrice', 'minSellingPrice',
     'weightKg', 'dimensionsCm', 'unit', 'stockByLocation', 'lowStockThreshold',
@@ -504,6 +505,10 @@ export function validateVariantPayload(body: any, isUpdate = false): Record<stri
   ];
 
   const allowlistErrors = assertAllowedKeys(body, allowedKeys, 'variant payload');
+
+  if (isUpdate && body.id !== undefined && (typeof body.id !== 'string' || body.id.trim().length === 0)) {
+    errors.push({ field: 'id', message: 'id must be a non-empty string when supplied for variant updates' });
+  }
   if (allowlistErrors.length > 0) {
     errors.push(...allowlistErrors);
   }
