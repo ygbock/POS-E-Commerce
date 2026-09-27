@@ -420,8 +420,27 @@ export class CatalogRepository {
             variant.low_stock_threshold ?? 10, variant.image_url || null,
           ]
         );
-        if (varRes.rows.length === 0) throw new Error('VARIANT_NOT_FOUND_OR_TENANT_MISMATCH');
-        updatedVariants.push(varRes.rows[0]);
+        if (varRes.rows.length === 0) {
+          const insertRes = await tx.query<ProductVariantRecord>(
+            `INSERT INTO product_variants (
+               id, organization_id, product_id, sku, barcode, qr_code, name, attributes,
+               cost_price, retail_price, wholesale_price, member_price, min_selling_price,
+               weight_kg, dimensions, low_stock_threshold, image_url
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+             RETURNING *`,
+            [
+              variant.id, validOrg, product.id, variant.sku, variant.barcode, variant.qr_code || null,
+              variant.name, JSON.stringify(variant.attributes || {}), variant.cost_price, variant.retail_price,
+              variant.wholesale_price ?? variant.retail_price, variant.member_price ?? variant.retail_price,
+              variant.min_selling_price ?? variant.cost_price, variant.weight_kg ?? null,
+              variant.dimensions ? JSON.stringify(variant.dimensions) : null,
+              variant.low_stock_threshold ?? 10, variant.image_url || null,
+            ]
+          );
+          updatedVariants.push(insertRes.rows[0]);
+        } else {
+          updatedVariants.push(varRes.rows[0]);
+        }
       }
 
       return { product: prodRes.rows[0], variants: updatedVariants };
