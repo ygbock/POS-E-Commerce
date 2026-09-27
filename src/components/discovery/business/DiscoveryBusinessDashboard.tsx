@@ -13,6 +13,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
+import { authClient } from '../../../services/authClient';
 import type {
   DiscoveryAnalyticsSummary,
   DiscoveryBusiness,
@@ -50,25 +51,46 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
   const [analytics, setAnalytics] = useState<DiscoveryAnalyticsSummary | null>(null);
   const [workspace, setWorkspace] = useState<DiscoveryListingManagementWorkspace | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [operating, setOperating] = useState<{
+    business: { business_mode: string; tenant_slug?: string | null };
+    discovery: {
+      openRequests: number; quotedRequests: number; openContacts: number;
+      pendingReviews: number; publishedReviews: number; rating: string;
+    };
+    commerce: {
+      products: number; variants: number; activeProducts: number;
+      availableStock: string; outOfStockVariants: number;
+      orders30d: number; openOrders: number; grossSales30d: string; customers: number;
+    } | null;
+    readiness: { listing: boolean; catalog: boolean; inventory: boolean; storefront: boolean };
+  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
     const load = async () => {
       try {
-        const [analyticsResponse, managementWorkspace] = await Promise.all([
+        const [analyticsResponse, managementWorkspace, operatingResponse] = await Promise.all([
+
           discoveryApi.getBusinessAnalytics(business.id, 30),
           discoveryApi.getListingManagementWorkspace(business.id),
+          fetch(`/api/merchant/businesses/${encodeURIComponent(business.id)}/overview`, { headers: authClient.getAuthHeaders() }).then(async (response) => {
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(payload?.error?.message || 'Unable to load merchant operating summary.');
+            return payload?.data;
+          }),
         ]);
 
         if (!mounted) return;
         setAnalytics(analyticsResponse.data?.[0] || null);
         setWorkspace(managementWorkspace);
+        setOperating(operatingResponse || null);
         setError(null);
       } catch (err) {
         if (!mounted) return;
         setAnalytics(null);
         setWorkspace(null);
+        setOperating(null);
         setError(
           err instanceof DiscoveryApiError
             ? err.message
@@ -245,6 +267,66 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
               </button>
             </div>
           )}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Merchant operating snapshot</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Live business, sales, inventory and customer signals for this business.</p>
+          </div>
+          {operating?.commerce && (
+            <button type="button" onClick={() => onNavigateTab('store')} className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+              Open store workspace <ArrowRight className="ml-1 inline h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {[
+            ['Orders (30d)', operating?.commerce?.orders30d ?? 0, 'orders'],
+            ['Open orders', operating?.commerce?.openOrders ?? 0, 'orders'],
+            ['Customers', operating?.commerce?.customers ?? 0, 'crm'],
+            ['Available stock', operating?.commerce?.availableStock ?? '0', 'inventory'],
+          ].map(([label, value, tab]) => (
+            <button key={String(label)} type="button" onClick={() => onNavigateTab(String(tab))}
+              className="rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{String(label)}</span>
+              <div className="mt-1 font-mono text-2xl font-black text-slate-900 dark:text-white">{String(value)}</div>
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Readiness</h3>
+              <span className="text-[10px] font-semibold text-slate-400">Server-authoritative</span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {Object.entries(operating?.readiness || {}).map(([key, ready]) => (
+                <div key={key} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${ready ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                  {ready ? '✓' : '•'} {key.replace(/([A-Z])/g, ' $1')}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/20">
+            <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">Needs attention</h3>
+            <div className="mt-3 space-y-2 text-xs text-amber-800 dark:text-amber-200">
+              <button type="button" onClick={() => onNavigateTab('quotes')} className="flex w-full justify-between rounded-lg bg-white/60 px-3 py-2 text-left">
+                <span>Open service requests</span><b>{operating?.discovery.openRequests ?? 0}</b>
+              </button>
+              <button type="button" onClick={() => onNavigateTab('contacts')} className="flex w-full justify-between rounded-lg bg-white/60 px-3 py-2 text-left">
+                <span>Open customer messages</span><b>{operating?.discovery.openContacts ?? 0}</b>
+              </button>
+              <button type="button" onClick={() => onNavigateTab('reviews')} className="flex w-full justify-between rounded-lg bg-white/60 px-3 py-2 text-left">
+                <span>Pending reviews</span><b>{operating?.discovery.pendingReviews ?? 0}</b>
+              </button>
+              <button type="button" onClick={() => onNavigateTab('inventory')} className="flex w-full justify-between rounded-lg bg-white/60 px-3 py-2 text-left">
+                <span>Out-of-stock variants</span><b>{operating?.commerce?.outOfStockVariants ?? 0}</b>
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
