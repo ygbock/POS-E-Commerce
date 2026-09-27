@@ -316,6 +316,10 @@ async function main() {
 
     // Inactive membership loses authorization immediately.
     await db.query(
+      `UPDATE discovery_businesses SET listing_status='DRAFT', is_discoverable=FALSE WHERE id=$1`,
+      [ownerA.business.id],
+    );
+    await db.query(
       `UPDATE discovery_business_memberships SET is_active=FALSE WHERE business_id=$1 AND user_id=$2`,
       [ownerA.business.id, actors.managerA.userId],
     );
