@@ -178,9 +178,14 @@ export class DiscoveryStoreProvisioningService {
                   true
                 ),
                 feature_flags = jsonb_set(
-                  COALESCE(feature_flags, '{}'::jsonb),
-                  '{guestCheckoutEnabled}',
-                  to_jsonb($4::boolean),
+                  jsonb_set(
+                    COALESCE(feature_flags, '{}'::jsonb),
+                    '{guestCheckoutEnabled}',
+                    to_jsonb($4::boolean),
+                    true
+                  ),
+                  '{inventoryLedgerEnabled}',
+                  to_jsonb($5::boolean),
                   true
                 ),
                 updated_at = CURRENT_TIMESTAMP
@@ -190,6 +195,7 @@ export class DiscoveryStoreProvisioningService {
           options.currency === 'USD' ? '$' : 'Le',
           String(options.storeName || businessName).trim().slice(0, 255),
           options.enableOnlineCheckout !== false,
+          options.enableInventoryLedger !== false,
           organizationId,
         ],
       );
