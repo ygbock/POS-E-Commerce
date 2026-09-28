@@ -1,17 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ShoppingCart,
   X,
   Plus,
   Minus,
   Trash2,
-  Tag,
   ArrowRight,
   Truck,
-  Sparkles,
-  Check,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
+import { storefrontApi, type StorefrontCartValidation } from '../../services/storefrontApi';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
@@ -26,48 +23,73 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
   onClose,
   onProceedToCheckout,
 }) => {
-  const {
-    appliedCoupon,
-    applyCoupon,
-    removeCoupon,
-  } = useCommerce();
-  const { storeCart, updateStoreCartQty, removeFromStoreCart, formatCurrency } = useStorefrontContext();
+  const { tenant, storeCart, updateStoreCartQty, removeFromStoreCart, formatCurrency } = useStorefrontContext();
 
-  const [couponInput, setCouponInput] = useState('');
-  const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [cartValidation, setCartValidation] = useState<StorefrontCartValidation | null>(null);
+  const [cartValidationError, setCartValidationError] = useState<string | null>(null);
+  const [isValidatingCart, setIsValidatingCart] = useState(false);
 
   const drawerRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, drawerRef);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isOpen || !tenant?.slug || storeCart.length === 0) {
+      setCartValidation(null);
+      setCartValidationError(null);
+      setIsValidatingCart(false);
+      return;
+    }
+
+    setIsValidatingCart(true);
+    setCartValidationError(null);
+
+    storefrontApi
+      .validateCart(
+        tenant.slug,
+        storeCart.map((item) => ({ variantId: item.variantId, quantity: item.quantity })),
+      )
+      .then((validation) => {
+        if (cancelled) return;
+        setCartValidation(validation);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCartValidation(null);
+        setCartValidationError(error instanceof Error ? error.message : 'Unable to validate your cart.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsValidatingCart(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, tenant?.slug, storeCart]);
+
   if (!isOpen) return null;
 
-  // Cart math
-  let cartSubtotal = 0;
-  let cartItemsCount = 0;
-  storeCart.forEach((item) => {
-    cartSubtotal += item.price * item.quantity;
-    cartItemsCount += item.quantity;
-  });
-
-  let couponDiscount = 0;
-  if (appliedCoupon) {
-    couponDiscount =
-      appliedCoupon.discountType === 'fixed'
-        ? appliedCoupon.value
-        : (cartSubtotal * appliedCoupon.value) / 100;
-  }
-
-  const freeShippingThreshold = 75;
-  const amountToFreeShipping = Math.max(0, freeShippingThreshold - cartSubtotal);
-  const freeShippingProgress = Math.min(100, (cartSubtotal / freeShippingThreshold) * 100);
-
-  const handleApplyCoupon = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!couponInput.trim()) return;
-    const res = applyCoupon(couponInput.trim());
-    setCouponMsg({ text: res.message, isError: !res.success });
-    if (res.success) setCouponInput('');
-  };
+  const cartItemsCount = storeCart.reduce((count, item) => count + item.quantity, 0);
+  const serverItemsByVariant = new Map(
+    (cartValidation?.items || []).map((item) => [item.variantId, item]),
+  );
+  const cartSubtotal = Number(cartValidation?.subtotal || 0);
+  const shippingFee = Number(cartValidation?.shippingFee || 0);
+  const cartTax = Number(cartValidation?.tax || 0);
+  const cartTotal = Number(cartValidation?.total || 0);
+  const amountToFreeShipping = Number(cartValidation?.amountToFreeShipping || 0);
+  const freeShippingThreshold = Number(cartValidation?.freeShippingThreshold || 0);
+  const freeShippingProgress =
+    freeShippingThreshold > 0
+      ? Math.min(100, Math.max(0, (cartSubtotal / freeShippingThreshold) * 100))
+      : 0;
+  const canProceedToCheckout =
+    storeCart.length > 0 &&
+    !isValidatingCart &&
+    !!cartValidation &&
+    !cartValidationError &&
+    cartValidation.items.every((item) => item.isAvailable);
 
   return (
     <div
@@ -149,7 +171,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                   <h4 className="font-semibold text-slate-900 dark:text-white truncate text-xs">{item.productName || item.name}</h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{item.variantName}</p>
                   <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                    {formatCurrency(item.price)}
+                    {formatCurrency(Number(serverItemsByVariant.get(item.variantId)?.unitPrice || item.price))}
                   </p>
                 </div>
 
@@ -185,69 +207,17 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
         {/* Cart Drawer Footer */}
         {storeCart.length > 0 && (
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
-            {/* Coupon Code Form & Quick Selectors */}
-            <form onSubmit={handleApplyCoupon} className="space-y-1.5">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Coupon code (e.g. WELCOME20, GUEST5)"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                  className="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs text-slate-900 dark:text-white uppercase placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-                <button
-                  type="submit"
-                  className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-900 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors"
-                >
-                  Apply
-                </button>
-              </div>
-
-              {/* Quick Coupon Chips */}
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <span className="text-[10px] text-slate-500 font-semibold">Available:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCouponInput('WELCOME20');
-                    applyCoupon('WELCOME20');
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 border border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-bold transition-colors"
-                >
-                  WELCOME20 ($20 OFF)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCouponInput('GUEST5');
-                    applyCoupon('GUEST5');
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 border border-emerald-300 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold transition-colors"
-                >
-                  GUEST5 ($5 OFF)
-                </button>
-              </div>
-
-              {appliedCoupon && (
-                <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-500/30 px-3 py-1.5 rounded-xl">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>
-                      Coupon <strong>{appliedCoupon.code}</strong> applied (-{formatCurrency(couponDiscount)})
-                    </span>
-                  </span>
-                  <button type="button" onClick={removeCoupon} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {couponMsg && !appliedCoupon && (
-                <p className={`text-[11px] ${couponMsg.isError ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                  {couponMsg.text}
-                </p>
-              )}
-            </form>
+            {isValidatingCart && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Validating prices, stock, tax, and shipping…</p>
+            )}
+            {cartValidationError && (
+              <p className="text-[11px] text-rose-500 dark:text-rose-400">{cartValidationError}</p>
+            )}
+            {cartValidation && !cartValidationError && cartValidation.items.some((item) => !item.isAvailable) && (
+              <p className="text-[11px] text-rose-500 dark:text-rose-400">
+                One or more items are no longer available in the requested quantity. Update your cart before checkout.
+              </p>
+            )}
 
             {/* Totals Breakdown */}
             <div className="space-y-1.5 text-xs bg-slate-50 dark:bg-slate-850 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -255,28 +225,30 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                 <span>Cart Subtotal</span>
                 <span className="font-semibold text-slate-900 dark:text-white">{formatCurrency(cartSubtotal)}</span>
               </div>
-              {couponDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
-                  <span>Coupon Savings</span>
-                  <span>-{formatCurrency(couponDiscount)}</span>
-                </div>
-              )}
+              <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                <span>Shipping</span>
+                <span className="font-semibold text-slate-900 dark:text-white">{formatCurrency(shippingFee)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                <span>Tax</span>
+                <span className="font-semibold text-slate-900 dark:text-white">{formatCurrency(cartTax)}</span>
+              </div>
               <div className="flex justify-between text-sm font-black text-slate-900 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-800">
-                <span>Estimated Total</span>
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(Math.max(0, cartSubtotal - couponDiscount))}
-                </span>
+                <span>Server-Calculated Total</span>
+                <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(cartTotal)}</span>
               </div>
             </div>
 
             {/* Checkout Action */}
             <button
               id="btn-store-proceed-checkout"
+              disabled={!canProceedToCheckout}
               onClick={() => {
+                if (!canProceedToCheckout) return;
                 onClose();
                 onProceedToCheckout();
               }}
-              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all"
+              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all"
             >
               <span>Proceed to Checkout</span>
               <ArrowRight className="w-4 h-4" />
