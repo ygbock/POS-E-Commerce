@@ -17,6 +17,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { authClient } from '../../services/authClient';
+import { DiscoveryBusinessContainer } from '../discovery/business/DiscoveryBusinessContainer';
 
 type Business = {
   id: string;
@@ -161,6 +162,7 @@ export const BusinessOwnerPortal: React.FC = () => {
   }, [data?.businesses]);
 
   const businesses = data?.businesses || [];
+  const onboardingRequested = new URLSearchParams(window.location.search).get('onboarding') === '1';
 
   const portfolio = useMemo(() => {
     const summaries = businesses.map((business) => overviews[business.id]).filter(Boolean);
@@ -173,6 +175,10 @@ export const BusinessOwnerPortal: React.FC = () => {
       outOfStock: summaries.reduce((sum, item) => sum + (item.commerce?.outOfStockVariants || 0), 0),
     };
   }, [businesses, overviews]);
+
+  if (onboardingRequested || businesses.length === 0) {
+    return <DiscoveryBusinessContainer openOnboarding={onboardingRequested || businesses.length === 0} />;
+  }
 
   const handleRefresh = async () => {
     await load();
@@ -296,7 +302,7 @@ export const BusinessOwnerPortal: React.FC = () => {
             </p>
             <button
               type="button"
-              onClick={() => window.location.assign('/business/new?onboarding=1')}
+              onClick={() => window.location.assign('/business?onboarding=1')}
               className="mt-6 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700"
             >
               Create business
@@ -311,7 +317,7 @@ export const BusinessOwnerPortal: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => window.location.assign('/business/new?onboarding=1')}
+                onClick={() => window.location.assign('/business?onboarding=1')}
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <Building2 className="h-4 w-4 text-indigo-600" /> Add business
