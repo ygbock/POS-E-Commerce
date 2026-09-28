@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react';
 interface StoreCheckoutSummaryProps { checkout: Record<string, any>; }
 
 export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ checkout }) => {
-  const { fulfillmentMethod, couponInput, setCouponInput, couponMsg, discountCode, setDiscountCode, setCouponMsg, storeCart, total, subtotal, tax, shippingFee, discount, displayCurrency, handleApplyCoupon } = checkout;
+  const { fulfillmentMethod, couponInput, setCouponInput, couponMsg, discountCode, setDiscountCode, setCouponMsg, storeCart, total, subtotal, tax, shippingFee, discount, cartValidation, displayCurrency, handleApplyCoupon } = checkout;
   return (<div className="lg:col-span-5 p-5 sm:p-7 bg-slate-50/80 dark:bg-slate-950/50 space-y-6 flex flex-col justify-between">
               
               <div className="space-y-5">
@@ -15,7 +15,7 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                     <span>Order Summary ({storeCart.reduce((s, i) => s + i.quantity, 0)} Items)</span>
                   </h4>
                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                    Live Reserved
+                    Availability verified
                   </span>
                 </div>
 
@@ -51,11 +51,11 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                       {/* Line Price */}
                       <div className="text-right flex-shrink-0 text-xs">
                         <p className="font-bold text-slate-900 dark:text-white">
-                          {displayCurrency(item.price * item.quantity)}
+                          {displayCurrency(Number(cartValidation?.items.find((validated) => validated.variantId === item.variantId)?.lineTotal || item.price * item.quantity))}
                         </p>
                         {item.quantity > 1 && (
                           <p className="text-[10px] text-slate-400">
-                            {displayCurrency(item.price)} ea
+                            {displayCurrency(Number(cartValidation?.items.find((validated) => validated.variantId === item.variantId)?.unitPrice || item.price))} ea
                           </p>
                         )}
                       </div>
@@ -84,31 +84,6 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                       className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
                     >
                       Apply
-                    </button>
-                  </div>
-
-                  {/* Available Vouchers Chips */}
-                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                    <span className="text-[10px] text-slate-400 font-semibold">Examples:</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCouponInput('WELCOME20');
-
-                      }}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold transition-colors cursor-pointer"
-                    >
-                      WELCOME20 ($20 OFF)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCouponInput('FREESHIP');
-
-                      }}
-                      className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-600 dark:text-sky-400 text-[10px] font-bold transition-colors cursor-pointer"
-                    >
-                      FREESHIP
                     </button>
                   </div>
 
