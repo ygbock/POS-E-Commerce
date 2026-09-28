@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react';
 interface StoreCheckoutFormProps { checkout: Record<string, any>; }
 
 export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }) => {
-  const { activeCustomerUser, customers, setActiveCustomerUser, isGuestMode, setIsGuestMode, customerName, setCustomerName, customerEmail, setCustomerEmail, customerPhone, setCustomerPhone, street, setStreet, apartment, setApartment, city, setCity, state, setState, zip, setZip, setCountry, selectedAddressIndex, setSelectedAddressIndex, fulfillmentMethod, setFulfillmentMethod, paymentMethod, setPaymentMethod, cardNumber, setCardNumber, cardHolder, setCardHolder, cardExpiry, setCardExpiry, cardCvc, setCardCvc, saveCard, setSaveCard, discountCode, smsOptIn, setSmsOptIn, whatsappOptIn, setWhatsappOptIn, isGift, setIsGift, giftMessage, setGiftMessage, orderNotes, setOrderNotes, agreeTerms, setAgreeTerms, isSubmitting, errorMsg, storeCart, total, subtotal, displayCurrency, currentBrand, handleExpressPay, handleSubmit } = checkout;
+  const { activeCustomerUser, customers, setActiveCustomerUser, isGuestMode, setIsGuestMode, customerName, setCustomerName, customerEmail, setCustomerEmail, customerPhone, setCustomerPhone, street, setStreet, apartment, setApartment, city, setCity, state, setState, zip, setZip, setCountry, selectedAddressIndex, setSelectedAddressIndex, fulfillmentMethod, setFulfillmentMethod, paymentMethod, setPaymentMethod, cardNumber, setCardNumber, cardHolder, setCardHolder, cardExpiry, setCardExpiry, cardCvc, setCardCvc, saveCard, setSaveCard, discountCode, smsOptIn, setSmsOptIn, whatsappOptIn, setWhatsappOptIn, isGift, setIsGift, giftMessage, setGiftMessage, orderNotes, setOrderNotes, agreeTerms, setAgreeTerms, isSubmitting, errorMsg, storeCart, total, subtotal, shippingFee, displayCurrency, currentBrand, handleExpressPay, handleSubmit } = checkout;
   return (
             <form onSubmit={handleSubmit} className="lg:col-span-7 p-5 sm:p-7 space-y-7 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800">
               
@@ -15,7 +15,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                     <Icons.Zap className="w-4 h-4 text-amber-500" />
                     <span>Express One-Touch Checkout</span>
                   </span>
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500">Fastest checkout</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">Available payment options</span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2.5">
@@ -196,7 +196,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                   </h4>
                   <span className="text-xs text-slate-400 flex items-center gap-1">
                     <Icons.MapPin className="w-3.5 h-3.5 text-sky-500" />
-                    <span>Deliver to door</span>
+                    <span>Fulfillment selected at checkout</span>
                   </span>
                 </div>
 
@@ -317,7 +317,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                   <span className="w-6 h-6 rounded-full bg-sky-500 text-white flex items-center justify-center text-xs font-black shadow-sm">
                     3
                   </span>
-                  <span>Delivery Speed & Speed Options</span>
+                  <span>Delivery & Fulfillment Options</span>
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -338,13 +338,9 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                       </div>
                       {fulfillmentMethod === 'Standard Delivery' && <Icons.Check className="w-4 h-4 text-sky-500" />}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">3–5 Business Days</p>
-                    <span className="text-xs font-bold">
-                      {subtotal >= 75 || discountCode?.code === 'FREESHIP' ? (
-                        <strong className="text-emerald-600 dark:text-emerald-400">FREE Dispatch</strong>
-                      ) : (
-                        '$5.00 Flat Rate'
-                      )}
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Availability and timing depend on store policy</p>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      {fulfillmentMethod === 'Standard Delivery' ? displayCurrency(shippingFee) : 'Server-calculated'}
                     </span>
                   </button>
 
@@ -365,8 +361,10 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                       </div>
                       {fulfillmentMethod === 'Express Delivery' && <Icons.Check className="w-4 h-4 text-sky-500" />}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">1–2 Business Days</p>
-                    <span className="text-xs font-bold text-slate-900 dark:text-white">$15.00 Priority</span>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Availability and timing depend on store policy</p>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      {fulfillmentMethod === 'Express Delivery' ? displayCurrency(shippingFee) : 'Server-calculated'}
+                    </span>
                   </button>
 
                   {/* In-Store Pickup */}
@@ -386,8 +384,8 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                       </div>
                       {fulfillmentMethod === 'In-Store Pickup' && <Icons.Check className="w-4 h-4 text-sky-500" />}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Ready in 2 Hours</p>
-                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">FREE Collection</span>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Pickup timing depends on store policy</p>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Server-calculated</span>
                   </button>
                 </div>
               </div>
@@ -542,7 +540,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                       <span>Klarna & Afterpay 4 Interest-Free Installments</span>
                     </p>
                     <p className="text-slate-600 dark:text-slate-300">
-                      Pay 4 equal bi-weekly payments of <strong>{displayCurrency(total / 4)}</strong> with zero fees when paid on time. First payment due today.
+                      Installment availability and terms are determined by the selected payment provider.
                     </p>
                   </div>
                 )}
@@ -571,7 +569,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                       className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0 cursor-pointer"
                     />
                     <Icons.Gift className="w-4 h-4 text-sky-500" />
-                    <span>This order contains a gift (Free Gift Wrap & Greeting Card)</span>
+                    <span>This order contains a gift</span>
                   </label>
                 </div>
 
