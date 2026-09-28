@@ -22,6 +22,8 @@ import {
   BarChart3,
   Settings,
   ShoppingBag,
+  Package,
+  ClipboardList,
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
 import type { DiscoveryBusiness } from '../../../types/discovery';
