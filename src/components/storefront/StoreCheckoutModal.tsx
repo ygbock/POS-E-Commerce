@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { Customer, Order } from '../../types';
 import { useStorefrontContext } from '../../context/StorefrontContext';
-import { storefrontApi } from '../../services/storefrontApi';
+import { storefrontApi, type StorefrontCartValidation } from '../../services/storefrontApi';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import { StoreCheckoutHeader } from './StoreCheckoutHeader';
 import { StoreCheckoutForm } from './StoreCheckoutForm';
@@ -76,6 +76,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   // Submitting state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [cartValidation, setCartValidation] = useState<StorefrontCartValidation | null>(null);
 
   // Live Timer (15 minutes countdown)
   const [timeLeftSeconds, setTimeLeftSeconds] = useState(899);
@@ -140,7 +141,10 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         variantId: item.variantId,
         quantity: item.quantity,
       })),
+      undefined,
+      fulfillmentMethod,
     );
+    setCartValidation(validation);
 
     const unavailable = validation.items.filter((item) => !item.isAvailable);
     if (unavailable.length > 0) {
@@ -156,29 +160,12 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   };
 
 
-  // Calculate totals
-  let subtotal = 0;
-  let tax = 0;
-  storeCart.forEach((item) => {
-    const line = item.price * item.quantity;
-    subtotal += line;
-    tax += line * ((item.taxRate || 0) / 100);
-  });
-
-  // Prices, discounts, tax and shipping are authoritative on the server.
-  // The browser only displays a provisional estimate until checkout validation.
+  // Cart pricing, tax, shipping and availability are server-authoritative.
+  const subtotal = Number(cartValidation?.subtotal || 0);
+  const tax = Number(cartValidation?.tax || 0);
+  const shippingFee = Number(cartValidation?.shippingFee || 0);
   const discount = 0;
-
-  const shippingFee =
-    fulfillmentMethod === 'Express Delivery'
-      ? 15
-      : fulfillmentMethod === 'Standard Delivery'
-      ? subtotal >= 75
-        ? 0
-        : 5
-      : 0;
-
-  const total = Math.max(0, subtotal - discount + tax + shippingFee);
+  const total = Number(cartValidation?.total || 0);
   const displayCurrency = formatTenantCurrency;
 
   const handleApplyCoupon = (e: React.FormEvent) => {
