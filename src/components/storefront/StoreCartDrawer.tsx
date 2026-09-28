@@ -71,7 +71,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
   if (!isOpen) return null;
 
   const cartItemsCount = storeCart.reduce((count, item) => count + item.quantity, 0);
-  const serverItemsByVariant = new Map(
+  const serverItemsByVariant = new Map<string, StorefrontCartValidation['items'][number]>(
     (cartValidation?.items || []).map((item) => [item.variantId, item]),
   );
   const cartSubtotal = Number(cartValidation?.subtotal || 0);
