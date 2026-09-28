@@ -12,7 +12,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
               <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Zap className="w-4 h-4 text-amber-500" />
+                    <Icons.Zap className="w-4 h-4 text-amber-500" />
                     <span>Express One-Touch Checkout</span>
                   </span>
                   <span className="text-[11px] text-slate-400 dark:text-slate-500">Fastest checkout</span>
@@ -94,7 +94,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                 <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 rounded-xl bg-sky-500/15 text-sky-500 dark:text-sky-400 flex items-center justify-center font-bold">
-                      {isGuestMode ? <User className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                      {isGuestMode ? <Icons.User className="w-4 h-4" /> : <Icons.UserCheck className="w-4 h-4" />}
                     </div>
                     <div>
                       <p className="font-bold text-slate-900 dark:text-white">
@@ -195,7 +195,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                     <span>Shipping Destination</span>
                   </h4>
                   <span className="text-xs text-slate-400 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-sky-500" />
+                    <Icons.MapPin className="w-3.5 h-3.5 text-sky-500" />
                     <span>Deliver to door</span>
                   </span>
                 </div>
@@ -227,7 +227,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                         >
                           <div className="flex items-center justify-between font-bold text-slate-900 dark:text-white mb-0.5">
                             <span>{addr.isDefault ? 'Primary Address' : `Saved Address #${idx + 1}`}</span>
-                            {selectedAddressIndex === idx && <Check className="w-3.5 h-3.5 text-sky-500" />}
+                            {selectedAddressIndex === idx && <Icons.Check className="w-3.5 h-3.5 text-sky-500" />}
                           </div>
                           <p className="truncate text-[11px]">{addr.street}</p>
                           <p className="text-[11px] text-slate-500">{addr.city}, {addr.zip}</p>
@@ -333,10 +333,10 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-                        <Truck className="w-4 h-4 text-sky-500" />
+                        <Icons.Truck className="w-4 h-4 text-sky-500" />
                         <span>Standard Courier</span>
                       </div>
-                      {fulfillmentMethod === 'Standard Delivery' && <Check className="w-4 h-4 text-sky-500" />}
+                      {fulfillmentMethod === 'Standard Delivery' && <Icons.Check className="w-4 h-4 text-sky-500" />}
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">3–5 Business Days</p>
                     <span className="text-xs font-bold">
@@ -360,10 +360,10 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-                        <Flame className="w-4 h-4 text-amber-500" />
+                        <Icons.Flame className="w-4 h-4 text-amber-500" />
                         <span>Priority Overnight</span>
                       </div>
-                      {fulfillmentMethod === 'Express Delivery' && <Check className="w-4 h-4 text-sky-500" />}
+                      {fulfillmentMethod === 'Express Delivery' && <Icons.Check className="w-4 h-4 text-sky-500" />}
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">1–2 Business Days</p>
                     <span className="text-xs font-bold text-slate-900 dark:text-white">$15.00 Priority</span>
@@ -381,10 +381,10 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-                        <Building2 className="w-4 h-4 text-emerald-500" />
+                        <Icons.Building2 className="w-4 h-4 text-emerald-500" />
                         <span>In-Store Pickup</span>
                       </div>
-                      {fulfillmentMethod === 'In-Store Pickup' && <Check className="w-4 h-4 text-sky-500" />}
+                      {fulfillmentMethod === 'In-Store Pickup' && <Icons.Check className="w-4 h-4 text-sky-500" />}
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Ready in 2 Hours</p>
                     <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">FREE Collection</span>
@@ -412,7 +412,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                         : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                     }`}
                   >
-                    <CreditCard className="w-4 h-4 text-sky-500" />
+                    <Icons.CreditCard className="w-4 h-4 text-sky-500" />
                     <span>Credit Card</span>
                   </button>
 
@@ -425,7 +425,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                         : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                     }`}
                   >
-                    <Sparkles className="w-4 h-4 text-pink-500" />
+                    <Icons.Sparkles className="w-4 h-4 text-pink-500" />
                     <span>BNPL Pay 4</span>
                   </button>
 
@@ -438,7 +438,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                         : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                     }`}
                   >
-                    <Smartphone className="w-4 h-4 text-emerald-500" />
+                    <Icons.Smartphone className="w-4 h-4 text-emerald-500" />
                     <span>Mobile Pay</span>
                   </button>
 
@@ -452,7 +452,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                         : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                     }`}
                   >
-                    <Gift className="w-4 h-4 text-amber-500" />
+                    <Icons.Gift className="w-4 h-4 text-amber-500" />
                     <span>Store Credit</span>
                   </button>
                 </div>
@@ -476,7 +476,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                           placeholder="4242 •••• •••• 4242"
                           className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-mono text-slate-900 dark:text-white focus:outline-none focus:border-sky-500"
                         />
-                        <CreditCard className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                        <Icons.CreditCard className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
                       </div>
                     </div>
 
@@ -527,7 +527,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                         <span className="text-[11px]">Save encrypted card for future 1-click orders</span>
                       </label>
                       <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                        <Lock className="w-3 h-3" />
+                        <Icons.Lock className="w-3 h-3" />
                         <span>PCI-DSS Level 1</span>
                       </span>
                     </div>
@@ -538,7 +538,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                 {paymentMethod === 'BNPL' && (
                   <div className="p-4 bg-pink-500/10 border border-pink-500/30 rounded-2xl text-xs space-y-2">
                     <p className="font-bold text-pink-700 dark:text-pink-300 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-pink-500" />
+                      <Icons.Sparkles className="w-4 h-4 text-pink-500" />
                       <span>Klarna & Afterpay 4 Interest-Free Installments</span>
                     </p>
                     <p className="text-slate-600 dark:text-slate-300">
@@ -570,7 +570,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                       onChange={(e) => setIsGift(e.target.checked)}
                       className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0 cursor-pointer"
                     />
-                    <Gift className="w-4 h-4 text-sky-500" />
+                    <Icons.Gift className="w-4 h-4 text-sky-500" />
                     <span>This order contains a gift (Free Gift Wrap & Greeting Card)</span>
                   </label>
                 </div>
@@ -617,7 +617,7 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
 
               {errorMsg && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-2 text-rose-600 dark:text-rose-400 text-xs">
-                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <Icons.Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
               )}
@@ -629,9 +629,9 @@ export const StoreCheckoutForm: React.FC<StoreCheckoutFormProps> = ({ checkout }
                   disabled={isSubmitting || !agreeTerms || storeCart.length === 0}
                   className="w-full py-4 bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-600 hover:opacity-95 text-white rounded-2xl text-sm font-black shadow-xl shadow-sky-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <Lock className="w-4 h-4" />
+                  <Icons.Lock className="w-4 h-4" />
                   <span>{isSubmitting ? 'Processing Secure Checkout...' : `Confirm & Pay ${displayCurrency(total)}`}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <Icons.ArrowRight className="w-4 h-4" />
                 </button>
               </div>
 
