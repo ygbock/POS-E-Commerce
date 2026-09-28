@@ -11,7 +11,12 @@ export interface StorefrontStateProps { onOpenAdmin?: () => void; onOpenPos?: ()
 export function useStorefrontState() {
   const { route, navigate } = useStorefrontRoute();
   const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency, storeCart, addToStoreCart, wishlistIds } = useStorefrontContext();
-  const { products, getTotalStockForVariant, orders, isDarkMode, toggleTheme } = useCommerce();
+  const { orders, isDarkMode, toggleTheme } = useCommerce();
+
+  // Storefront catalog data is loaded exclusively from the tenant-scoped
+  // storefront API. Never fall back to CommerceContext's in-memory catalog.
+  const getTotalStockForVariant = (variant: ProductVariant): number =>
+    Object.values(variant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   const wishlist = wishlistIds;
   // Navigation & View state
   const [activeSection, setActiveSection] = useState<'home' | 'catalog'>('home');
