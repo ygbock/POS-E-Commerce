@@ -32,3 +32,24 @@ assert.match(cartDrawer, /disabled=\{!canProceedToCheckout\}/);
 assert.doesNotMatch(cartDrawer, /useCommerce/);
 assert.doesNotMatch(cartDrawer, /freeShippingThreshold = 75/);
 assert.doesNotMatch(cartDrawer, /appliedCoupon|applyCoupon|removeCoupon/);
+
+const checkoutModal = read('src/components/storefront/StoreCheckoutModal.tsx');
+assert.match(checkoutModal, /StoreCheckoutHeader/);
+assert.match(checkoutModal, /StoreCheckoutForm/);
+assert.match(checkoutModal, /StoreCheckoutSummary/);
+assert.doesNotMatch(checkoutModal, /useCommerce/);
+assert.doesNotMatch(checkoutModal, /<form onSubmit=\{handleSubmit\}/);
+
+const checkoutForm = read('src/components/storefront/StoreCheckoutForm.tsx');
+assert.match(checkoutForm, /handleSubmit/);
+assert.match(checkoutForm, /handleExpressPay/);
+assert.match(checkoutForm, /setFulfillmentMethod/);
+
+const checkoutSummary = read('src/components/storefront/StoreCheckoutSummary.tsx');
+assert.match(checkoutSummary, /Order Summary/);
+assert.match(checkoutSummary, /discountCode/);
+assert.match(checkoutSummary, /Total Amount/);
+
+const checkoutHeader = read('src/components/storefront/StoreCheckoutHeader.tsx');
+assert.match(checkoutHeader, /Secure Checkout/);
+assert.match(checkoutHeader, /timerDisplay/);
