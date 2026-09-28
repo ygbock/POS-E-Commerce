@@ -463,6 +463,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         config,
         items: req.body?.items,
         fulfillmentLocationId: req.body?.fulfillmentLocationId,
+        fulfillmentMethod: req.body?.fulfillmentMethod,
       });
 
       res.json({ success: true, data: result });
