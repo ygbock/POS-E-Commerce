@@ -196,7 +196,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     fulfillmentMethod === 'Express Delivery'
       ? 15
       : fulfillmentMethod === 'Standard Delivery'
-      ? subtotal >= 75 || appliedCoupon?.code === 'FREESHIP'
+      ? subtotal >= 75
         ? 0
         : 5
       : 0;
@@ -723,7 +723,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">3–5 Business Days</p>
                     <span className="text-xs font-bold">
-                      {subtotal >= 75 || appliedCoupon?.code === 'FREESHIP' ? (
+                      {subtotal >= 75 || discountCode?.code === 'FREESHIP' ? (
                         <strong className="text-emerald-600 dark:text-emerald-400">FREE Dispatch</strong>
                       ) : (
                         '$5.00 Flat Rate'
