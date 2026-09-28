@@ -73,7 +73,7 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="e.g. WELCOME20, FREESHIP"
+                      placeholder="Enter promo code or voucher"
                       value={couponInput}
                       onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                       className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white uppercase placeholder:text-slate-400 font-mono text-xs focus:outline-none focus:border-sky-500"
