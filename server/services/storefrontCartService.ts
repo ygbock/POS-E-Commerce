@@ -101,8 +101,13 @@ export class StorefrontCartService {
     config: TenantStorefrontConfig;
     items: StorefrontCartItemInput[];
     fulfillmentLocationId?: unknown;
+    fulfillmentMethod?: unknown;
   }): Promise<StorefrontCartValidationResult> {
     const { organizationId, config, items } = params;
+    const fulfillmentMethod = params.fulfillmentMethod ?? 'Standard Delivery';
+    if (!['Standard Delivery', 'Express Delivery', 'In-Store Pickup'].includes(String(fulfillmentMethod))) {
+      throw new StorefrontCartValidationError('INVALID_FULFILLMENT_METHOD', 'The selected fulfillment method is unavailable.');
+    }
 
     if (!organizationId) {
       throw new StorefrontCartValidationError('TENANT_REQUIRED', 'Storefront tenant context is required.', 403);
@@ -251,10 +256,18 @@ export class StorefrontCartService {
       config.policies.standardShippingFee,
       'standardShippingFee'
     );
+    const expressShippingCents = policyMoney(
+      config.policies.expressShippingFee ?? config.policies.standardShippingFee,
+      'expressShippingFee'
+    );
 
-    const shippingCents = subtotalCents >= freeShippingThresholdCents
+    const shippingCents = fulfillmentMethod === 'In-Store Pickup'
       ? 0n
-      : standardShippingCents;
+      : fulfillmentMethod === 'Express Delivery'
+      ? expressShippingCents
+      : subtotalCents >= freeShippingThresholdCents
+        ? 0n
+        : standardShippingCents;
 
     const totalCents = subtotalCents + taxCents + shippingCents;
     const amountToFreeShippingCents =
