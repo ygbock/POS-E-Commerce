@@ -768,5 +768,105 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     } catch(err){ return fail(res,err); }
   });
 
+  // Tenant-scoped locations
+  router.get('/locations', requireAuth(), async (req, res) => {
+    try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const result = await db.query(
+        `SELECT id,organization_id,code,name,type,address,phone,manager_name,is_pos_enabled,is_active,is_primary,created_at,updated_at
+           FROM locations
+          WHERE organization_id=$1
+          ORDER BY is_primary DESC, name ASC`,
+        [orgId]
+      );
+      return res.json({ success: true, count: result.rows.length, data: result.rows });
+    } catch (err) {
+      return fail(res, err);
+    }
+  });
+
+  router.post('/locations', requireAuth(), async (req, res) => {
+    try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const { code, name, type } = req.body;
+      if (!code || !name || !type) throw new Error('VALIDATION_ERROR:Location code, name, and type are required.');
+      
+      const id = `loc_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      const isActive = req.body.is_active !== false && req.body.isActive !== false;
+      const isPrimary = req.body.is_primary === true || req.body.isPrimary === true;
+
+      await db.query('BEGIN');
+      try {
+        if (isPrimary) {
+          await db.query(`UPDATE locations SET is_primary=FALSE WHERE organization_id=$1`, [orgId]);
+        }
+        const result = await db.query(
+          `INSERT INTO locations (id, organization_id, code, name, type, is_active, is_primary)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+          [id, orgId, code, name, type, isActive, isPrimary]
+        );
+        await db.query('COMMIT');
+        return res.status(201).json({ success: true, data: result.rows[0] });
+      } catch (e) {
+        await db.query('ROLLBACK');
+        throw e;
+      }
+    } catch (err) {
+      return fail(res, err);
+    }
+  });
+
+  router.put('/locations/:id', requireAuth(), async (req, res) => {
+    try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      
+      const existing = await db.query('SELECT * FROM locations WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+      if (!existing.rows[0]) {
+        const other = await db.query('SELECT 1 FROM locations WHERE id=$1 AND organization_id<>$2 LIMIT 1', [req.params.id, orgId]);
+        if (other.rows[0]) throw new Error('TENANT_ACCESS_DENIED:Cross-tenant location modification forbidden.');
+        throw new Error('NOT_FOUND:Location not found.');
+      }
+
+      await db.query('BEGIN');
+      try {
+        const isPrimary = req.body.is_primary === true || req.body.isPrimary === true;
+        if (isPrimary) {
+          await db.query(`UPDATE locations SET is_primary=FALSE WHERE organization_id=$1`, [orgId]);
+        }
+
+        const fields = ['code', 'name', 'type', 'address', 'phone', 'manager_name', 'is_pos_enabled', 'is_active', 'is_primary'];
+        const sets: string[] = [];
+        const values: any[] = [];
+        for (const field of fields) {
+          const camel = field.replace(/_([a-z])/g, (_, x) => x.toUpperCase());
+          if (Object.prototype.hasOwnProperty.call(req.body, field) || Object.prototype.hasOwnProperty.call(req.body, camel)) {
+            const value = Object.prototype.hasOwnProperty.call(req.body, field) ? req.body[field] : req.body[camel];
+            values.push(value === undefined ? '' : value);
+            sets.push(field + ' = $' + values.length);
+          }
+        }
+        
+        if (!sets.length) throw new Error('VALIDATION_ERROR:At least one location field is required.');
+        values.push(req.params.id, orgId);
+        
+        const result = await db.query(
+          `UPDATE locations SET ${sets.join(', ')}, updated_at=CURRENT_TIMESTAMP WHERE id=$${values.length - 1} AND organization_id=$${values.length} RETURNING *`,
+          values
+        );
+
+        await db.query('COMMIT');
+        return res.json({ success: true, data: result.rows[0] });
+      } catch (e) {
+        await db.query('ROLLBACK');
+        throw e;
+      }
+    } catch (err) {
+      return fail(res, err);
+    }
+  });
+
   return router;
 }
