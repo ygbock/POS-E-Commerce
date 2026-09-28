@@ -233,7 +233,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
         idempotency_key: crypto.randomUUID(),
         ...(discountCode ? { discount_code: discountCode } : {}),
-        ...(discountCode ? { discount_code: discountCode } : {}),
       });
       const rawOrder = response?.order || response;
       const order = {
@@ -293,6 +292,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         whatsappOptIn,
         cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
         idempotency_key: crypto.randomUUID(),
+        ...(discountCode ? { discount_code: discountCode } : {}),
       });
       const rawOrder = response?.order || response;
       const order = {
