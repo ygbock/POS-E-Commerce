@@ -16,7 +16,7 @@ export const LocationManagementView:React.FC=()=>{
  const [form,setForm]=useState({code:'',name:'',type:'Retail Store',address:'',phone:'',manager_name:'',is_pos_enabled:false,is_active:true,is_primary:false});
  const load=async()=>{setLoading(true);setError('');try{const r=await fetch('/api/locations',{headers:authClient.getAuthHeaders()});const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Unable to load locations.');setRows(d.data||[]);}catch(e:any){setError(e?.message||'Unable to load locations.');}finally{setLoading(false);}};
  useEffect(()=>{void load();},[]);
- const create=()=>{setEditing(null);setForm({code:'',name:'',type:'Retail Store',address:'',phone:'',manager_name:'',is_pos_enabled:false,is_active:true});setOpen(true);};
+ const create=()=>{setEditing(null);setForm({code:'',name:'',type:'Retail Store',address:'',phone:'',manager_name:'',is_pos_enabled:false,is_active:true,is_primary:false});setOpen(true);};
  const edit=(r:Location)=>{setEditing(r);setForm({code:r.code,name:r.name,type:r.type,address:r.address||'',phone:r.phone||'',manager_name:r.manager_name||'',is_pos_enabled:r.is_pos_enabled,is_active:r.is_active,is_primary:r.is_primary});setOpen(true);};
  const save=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setError('');try{const method=editing?'PUT':'POST';const url=editing?'/api/locations/'+editing.id:'/api/locations';const r=await fetch(url,{method,headers:authClient.getAuthHeaders(),body:JSON.stringify(form)});const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Unable to save location.');setOpen(false);await load();}catch(e:any){setError(e?.message||'Unable to save location.');}finally{setSaving(false);}};
  const columns:Column<Location>[]=[
