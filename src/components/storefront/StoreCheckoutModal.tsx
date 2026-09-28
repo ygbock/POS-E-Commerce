@@ -61,9 +61,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [street, setStreet] = useState(activeCustomerUser?.addresses[0]?.street || '');
   const [apartment, setApartment] = useState('');
   const [city, setCity] = useState(activeCustomerUser?.addresses[0]?.city || '');
-  const [state, setState] = useState(activeCustomerUser?.addresses[0]?.state || '');
+  const [state, setState] = useState('');
   const [zip, setZip] = useState(activeCustomerUser?.addresses[0]?.zip || '');
-  const [country, setCountry] = useState(activeCustomerUser?.addresses[0]?.country || '');
+  const [country, setCountry] = useState('');
 
   // Selected Saved Address Index
   const [selectedAddressIndex, setSelectedAddressIndex] = useState<number>(0);
@@ -122,9 +122,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         const addr = activeCustomerUser.addresses[selectedAddressIndex] || activeCustomerUser.addresses[0];
         setStreet(addr.street);
         setCity(addr.city);
-        setState(addr.state);
+        setState('');
         setZip(addr.zip);
-        setCountry(addr.country);
+        setCountry('');
       }
       setIsGuestMode(false);
     }
@@ -827,7 +827,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
                   <button
                     type="button"
-                    disabled={!activeCustomerUser || (activeCustomerUser.storeCredit || 0) < 1}
+                    disabled={!activeCustomerUser || (activeCustomerUser.storeCreditBalance || 0) < 1}
                     onClick={() => setPaymentMethod('Store Credit')}
                     className={`p-3 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 ${
                       paymentMethod === 'Store Credit'
@@ -934,7 +934,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 {paymentMethod === 'Store Credit' && activeCustomerUser && (
                   <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs space-y-1">
                     <p className="font-bold text-amber-700 dark:text-amber-300">
-                      Store Credit Balance: {displayCurrency(activeCustomerUser.storeCredit || 0)}
+                      Store Credit Balance: {displayCurrency(activeCustomerUser.storeCreditBalance || 0)}
                     </p>
                     <p className="text-slate-600 dark:text-slate-300 text-[11px]">
                       Your order total of {displayCurrency(total)} will be deducted directly from your store credit balance upon confirmation.
