@@ -132,6 +132,7 @@ export interface StorefrontCartValidation {
   amountToFreeShipping: string;
   fulfillmentLocationId: string | null;
   stockSnapshotAt: string;
+  fulfillmentMethod?: 'Standard Delivery' | 'Express Delivery' | 'In-Store Pickup';
 }
 export class StorefrontApiError extends Error {
   readonly code: string;
@@ -219,7 +220,7 @@ export const storefrontApi = {
     );
   },
 
-  validateCart(tenantSlug: string, items: StorefrontCartItem[], fulfillmentLocationId?: string) {
+  validateCart(tenantSlug: string, items: StorefrontCartItem[], fulfillmentLocationId?: string, fulfillmentMethod: 'Standard Delivery' | 'Express Delivery' | 'In-Store Pickup' = 'Standard Delivery') {
     return request<StorefrontCartValidation>(
       `${tenantBase(tenantSlug)}/cart/validate`,
       {
@@ -231,6 +232,7 @@ export const storefrontApi = {
             quantity: String(item.quantity),
           })),
           ...(fulfillmentLocationId ? { fulfillmentLocationId } : {}),
+          fulfillmentMethod,
         }),
       },
     );
