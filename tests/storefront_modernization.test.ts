@@ -53,3 +53,20 @@ assert.match(checkoutSummary, /Total Amount/);
 const checkoutHeader = read('src/components/storefront/StoreCheckoutHeader.tsx');
 assert.match(checkoutHeader, /Secure Checkout/);
 assert.match(checkoutHeader, /timerDisplay/);
+
+assert.doesNotMatch(checkoutForm, /subtotal >= 75/);
+assert.doesNotMatch(checkoutForm, /\$5\.00 Flat Rate|\$15\.00 Priority/);
+assert.doesNotMatch(checkoutForm, /FREE Dispatch|FREE Collection|Free Gift Wrap/);
+assert.doesNotMatch(checkoutForm, /WELCOME20|FREESHIP/);
+assert.match(checkoutForm, /shippingFee/);
+
+assert.doesNotMatch(checkoutSummary, /WELCOME20|FREESHIP/);
+assert.match(checkoutSummary, /cartValidation/);
+
+const cartService = read('server/services/storefrontCartService.ts');
+assert.match(cartService, /fulfillmentMethod/);
+assert.match(cartService, /expressShippingFee/);
+assert.doesNotMatch(cartService, /75\.00/);
+
+const storefrontApi = read('src/services/storefrontApi.ts');
+assert.match(storefrontApi, /fulfillmentMethod/);
