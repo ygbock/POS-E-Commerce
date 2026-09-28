@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import {
   CreditCard,
@@ -28,7 +27,7 @@ import {
   Zap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Order } from '../../types';
+import { Customer, Order } from '../../types';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 import { storefrontApi } from '../../services/storefrontApi';
 
@@ -43,16 +42,14 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   onClose,
   onOrderSuccess,
 }) => {
-  const {
-    appliedCoupon,
-    formatCurrency,
-    customers,
-    activeCustomerUser,
-    setActiveCustomerUser,
-    applyCoupon,
-    removeCoupon,
-  } = useCommerce();
   const { tenant, storeCart, clearStoreCart, formatCurrency: formatTenantCurrency } = useStorefrontContext();
+
+  // Public storefront checkout is deliberately guest-first. Customer account
+  // state belongs to the authenticated account portal, not the back-office
+  // CommerceContext. Account claiming/tracking remains available after order placement.
+  const activeCustomerUser: Customer | null = null;
+  const customers: Customer[] = [];
+  const setActiveCustomerUser = (_customer: Customer | null) => {};
 
   // Mode: Guest checkout vs Customer Account
   const [isGuestMode, setIsGuestMode] = useState<boolean>(!activeCustomerUser);
@@ -64,9 +61,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [street, setStreet] = useState(activeCustomerUser?.addresses[0]?.street || '');
   const [apartment, setApartment] = useState('');
   const [city, setCity] = useState(activeCustomerUser?.addresses[0]?.city || '');
-  const [state, setState] = useState(activeCustomerUser?.addresses[0]?.state || '');
+  const [state, setState] = useState('');
   const [zip, setZip] = useState(activeCustomerUser?.addresses[0]?.zip || '');
-  const [country, setCountry] = useState(activeCustomerUser?.addresses[0]?.country || '');
+  const [country, setCountry] = useState('');
 
   // Selected Saved Address Index
   const [selectedAddressIndex, setSelectedAddressIndex] = useState<number>(0);
@@ -89,6 +86,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   // Coupon & Extras
   const [couponInput, setCouponInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [discountCode, setDiscountCode] = useState('');
   const [smsOptIn, setSmsOptIn] = useState(true);
   const [whatsappOptIn, setWhatsappOptIn] = useState(true);
 
@@ -124,9 +122,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         const addr = activeCustomerUser.addresses[selectedAddressIndex] || activeCustomerUser.addresses[0];
         setStreet(addr.street);
         setCity(addr.city);
-        setState(addr.state);
+        setState('');
         setZip(addr.zip);
-        setCountry(addr.country);
+        setCountry('');
       }
       setIsGuestMode(false);
     }
@@ -190,19 +188,15 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     tax += line * ((item.taxRate || 0) / 100);
   });
 
-  let discount = 0;
-  if (appliedCoupon) {
-    discount =
-      appliedCoupon.discountType === 'fixed'
-        ? appliedCoupon.value
-        : (subtotal * appliedCoupon.value) / 100;
-  }
+  // Prices, discounts, tax and shipping are authoritative on the server.
+  // The browser only displays a provisional estimate until checkout validation.
+  const discount = 0;
 
   const shippingFee =
     fulfillmentMethod === 'Express Delivery'
       ? 15
       : fulfillmentMethod === 'Standard Delivery'
-      ? subtotal >= 75 || appliedCoupon?.code === 'FREESHIP'
+      ? subtotal >= 75
         ? 0
         : 5
       : 0;
@@ -212,10 +206,11 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
   const handleApplyCoupon = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!couponInput.trim()) return;
-    const res = applyCoupon(couponInput.trim());
-    setCouponMsg({ text: res.message, isError: !res.success });
-    if (res.success) setCouponInput('');
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setDiscountCode(code);
+    setCouponInput('');
+    setCouponMsg({ text: 'Coupon will be validated securely by the server at checkout.', isError: false });
   };
 
   const handleExpressPay = async (provider: string) => {
@@ -237,6 +232,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         whatsappOptIn,
         cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
         idempotency_key: crypto.randomUUID(),
+        ...(discountCode ? { discount_code: discountCode } : {}),
       });
       const rawOrder = response?.order || response;
       const order = {
@@ -296,6 +292,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         whatsappOptIn,
         cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
         idempotency_key: crypto.randomUUID(),
+        ...(discountCode ? { discount_code: discountCode } : {}),
       });
       const rawOrder = response?.order || response;
       const order = {
@@ -601,9 +598,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                             setSelectedAddressIndex(idx);
                             setStreet(addr.street);
                             setCity(addr.city);
-                            setState(addr.state);
+                            setState('');
                             setZip(addr.zip);
-                            setCountry(addr.country);
+                            setCountry('');
                           }}
                           className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
                             selectedAddressIndex === idx
@@ -616,7 +613,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                             {selectedAddressIndex === idx && <Check className="w-3.5 h-3.5 text-sky-500" />}
                           </div>
                           <p className="truncate text-[11px]">{addr.street}</p>
-                          <p className="text-[11px] text-slate-500">{addr.city}, {addr.state} {addr.zip}</p>
+                          <p className="text-[11px] text-slate-500">{addr.city}, {addr.zip}</p>
                         </button>
                       ))}
                     </div>
@@ -726,7 +723,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">3–5 Business Days</p>
                     <span className="text-xs font-bold">
-                      {subtotal >= 75 || appliedCoupon?.code === 'FREESHIP' ? (
+                      {subtotal >= 75 || discountCode?.code === 'FREESHIP' ? (
                         <strong className="text-emerald-600 dark:text-emerald-400">FREE Dispatch</strong>
                       ) : (
                         '$5.00 Flat Rate'
@@ -830,7 +827,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
                   <button
                     type="button"
-                    disabled={!activeCustomerUser || (activeCustomerUser.storeCredit || 0) < 1}
+                    disabled={!activeCustomerUser || (activeCustomerUser.storeCreditBalance || 0) < 1}
                     onClick={() => setPaymentMethod('Store Credit')}
                     className={`p-3 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 ${
                       paymentMethod === 'Store Credit'
@@ -937,7 +934,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 {paymentMethod === 'Store Credit' && activeCustomerUser && (
                   <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs space-y-1">
                     <p className="font-bold text-amber-700 dark:text-amber-300">
-                      Store Credit Balance: {displayCurrency(activeCustomerUser.storeCredit || 0)}
+                      Store Credit Balance: {displayCurrency(activeCustomerUser.storeCreditBalance || 0)}
                     </p>
                     <p className="text-slate-600 dark:text-slate-300 text-[11px]">
                       Your order total of {displayCurrency(total)} will be deducted directly from your store credit balance upon confirmation.
@@ -1086,7 +1083,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">Promo Code or Voucher</span>
-                    <span className="text-[10px] text-sky-500 font-semibold">1 Coupon per order</span>
+                    <span className="text-[10px] text-sky-500 font-semibold">Validated at checkout</span>
                   </div>
 
                   <div className="flex gap-2">
@@ -1108,12 +1105,12 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
                   {/* Available Vouchers Chips */}
                   <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                    <span className="text-[10px] text-slate-400 font-semibold">Available:</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">Examples:</span>
                     <button
                       type="button"
                       onClick={() => {
                         setCouponInput('WELCOME20');
-                        applyCoupon('WELCOME20');
+
                       }}
                       className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold transition-colors cursor-pointer"
                     >
@@ -1123,7 +1120,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       type="button"
                       onClick={() => {
                         setCouponInput('FREESHIP');
-                        applyCoupon('FREESHIP');
+
                       }}
                       className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-600 dark:text-sky-400 text-[10px] font-bold transition-colors cursor-pointer"
                     >
@@ -1132,14 +1129,14 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                   </div>
 
                   {/* Applied Coupon Banner */}
-                  {appliedCoupon && (
+                  {discountCode && (
                     <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 font-semibold">
                       <span>
-                        Coupon <strong>{appliedCoupon.code}</strong> applied (-{displayCurrency(discount)})
+                        Coupon <strong>{discountCode}</strong> submitted for server validation
                       </span>
                       <button
                         type="button"
-                        onClick={removeCoupon}
+                        onClick={() => { setDiscountCode(''); setCouponMsg(null); }}
                         className="text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer ml-2"
                         aria-label="Remove Coupon"
                       >
@@ -1148,7 +1145,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                     </div>
                   )}
 
-                  {couponMsg && !appliedCoupon && (
+                  {couponMsg && (
                     <p className={`text-[11px] ${couponMsg.isError ? 'text-rose-500' : 'text-emerald-500'}`}>
                       {couponMsg.text}
                     </p>
