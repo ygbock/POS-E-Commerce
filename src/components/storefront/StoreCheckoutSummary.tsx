@@ -5,15 +5,13 @@ interface StoreCheckoutSummaryProps { checkout: Record<string, any>; }
 
 export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ checkout }) => {
   const { fulfillmentMethod, couponInput, setCouponInput, couponMsg, discountCode, setDiscountCode, setCouponMsg, storeCart, total, subtotal, tax, shippingFee, displayCurrency, handleApplyCoupon } = checkout;
-  return (
-            {/* RIGHT COLUMN: Sticky Order Summary & Coupon Engine (5 cols on lg) */}
-            <div className="lg:col-span-5 p-5 sm:p-7 bg-slate-50/80 dark:bg-slate-950/50 space-y-6 flex flex-col justify-between">
+  return (<div className="lg:col-span-5 p-5 sm:p-7 bg-slate-50/80 dark:bg-slate-950/50 space-y-6 flex flex-col justify-between">
               
               <div className="space-y-5">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
                   <h4 className="font-black text-sm text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-sky-500" />
+                    <Icons.Tag className="w-4 h-4 text-sky-500" />
                     <span>Order Summary ({storeCart.reduce((s, i) => s + i.quantity, 0)} Items)</span>
                   </h4>
                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
@@ -155,7 +153,7 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
                     <span className="flex items-center gap-1">
                       <span>Estimated Sales Tax</span>
-                      <Info className="w-3.5 h-3.5 text-slate-400" />
+                      <Icons.Info className="w-3.5 h-3.5 text-slate-400" />
                     </span>
                     <span>{displayCurrency(tax)}</span>
                   </div>
@@ -187,19 +185,19 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5 text-[11px] text-slate-500 dark:text-slate-400">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <Icons.ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                     <span>30-Day Money Back</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Truck className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                    <Icons.Truck className="w-4 h-4 text-sky-500 flex-shrink-0" />
                     <span>Same-Day Dispatch</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                    <Icons.Lock className="w-4 h-4 text-indigo-500 flex-shrink-0" />
                     <span>256-Bit SSL Security</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                    <Icons.CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0" />
                     <span>Authentic Guarantee</span>
                   </div>
                 </div>
