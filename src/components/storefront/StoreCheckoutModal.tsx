@@ -598,9 +598,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                             setSelectedAddressIndex(idx);
                             setStreet(addr.street);
                             setCity(addr.city);
-                            setState(addr.state);
+                            setState('');
                             setZip(addr.zip);
-                            setCountry(addr.country);
+                            setCountry('');
                           }}
                           className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
                             selectedAddressIndex === idx
@@ -613,7 +613,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                             {selectedAddressIndex === idx && <Check className="w-3.5 h-3.5 text-sky-500" />}
                           </div>
                           <p className="truncate text-[11px]">{addr.street}</p>
-                          <p className="text-[11px] text-slate-500">{addr.city}, {addr.state} {addr.zip}</p>
+                          <p className="text-[11px] text-slate-500">{addr.city}, {addr.zip}</p>
                         </button>
                       ))}
                     </div>
