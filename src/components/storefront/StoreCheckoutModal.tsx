@@ -160,6 +160,23 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   };
 
 
+  useEffect(() => {
+    if (!isOpen || !tenant?.slug || storeCart.length === 0) {
+      setCartValidation(null);
+      return;
+    }
+
+    let cancelled = false;
+    validateServerCart()
+      .catch(() => {
+        if (!cancelled) setCartValidation(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, tenant?.slug, fulfillmentMethod, storeCart]);
+
   // Cart pricing, tax, shipping and availability are server-authoritative.
   const subtotal = Number(cartValidation?.subtotal || 0);
   const tax = Number(cartValidation?.tax || 0);
