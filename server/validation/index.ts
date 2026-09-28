@@ -336,7 +336,7 @@ export function validateLocationPayload(body: any, isUpdate = false): Record<str
     throw new ValidationError('Request body must be a valid JSON object', [{ field: 'body', message: 'Object required' }]);
   }
 
-  const allowedKeys = ['code', 'name', 'type', 'address', 'phone', 'manager_name', 'is_pos_enabled', 'is_active'];
+  const allowedKeys = ['code', 'name', 'type', 'address', 'phone', 'manager_name', 'is_pos_enabled', 'is_active', 'is_primary'];
   errors.push(...assertAllowedKeys(body, allowedKeys, 'location payload'));
 
   const types = ['Warehouse', 'Retail Store', 'Distribution Center'];
@@ -360,7 +360,7 @@ export function validateLocationPayload(body: any, isUpdate = false): Record<str
       errors.push({ field, message: `${field} must be a string or null` });
     }
   }
-  for (const field of ['is_pos_enabled', 'is_active'] as const) {
+  for (const field of ['is_pos_enabled', 'is_active', 'is_primary'] as const) {
     if (body[field] !== undefined && typeof body[field] !== 'boolean') {
       errors.push({ field, message: `${field} must be boolean` });
     }
