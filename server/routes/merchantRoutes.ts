@@ -5,6 +5,7 @@ import { AuthService } from '../services/authService.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { AuditRepository } from '../repositories/auditRepository.ts';
 import { assertBusinessPermission } from '../services/discoveryBusinessAccess.ts';
+import { getPermissionsForRole } from '../auth/roles.ts';
 
 export function createMerchantRouter(db: DatabaseClient, authService: AuthService) {
   const router = express.Router();
@@ -863,6 +864,28 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         await db.query('ROLLBACK');
         throw e;
       }
+    } catch (err) {
+      return fail(res, err);
+    }
+  });
+
+  // Tenant-scoped users
+  router.get('/users', requireAuth(), async (req, res) => {
+    try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const result = await db.query(
+        `SELECT id, name, email, role, is_active, created_at, updated_at
+           FROM users
+          WHERE organization_id=$1
+          ORDER BY name ASC`,
+        [orgId]
+      );
+      const data = result.rows.map((row: any) => ({
+        ...row,
+        permissions: getPermissionsForRole(row.role)
+      }));
+      return res.json({ success: true, count: data.length, data });
     } catch (err) {
       return fail(res, err);
     }
