@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw, Shield } from 'lucide-react';
+import { Plus, RefreshCw, Shield, Eye } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -7,7 +7,7 @@ import { Modal } from '../ui/Modal';
 import { Table, Column } from '../ui/Table';
 import { authClient } from '../../services/authClient';
 
-type UserRow = { id:string; email:string; name:string; role:string; locationId?:string|null; isActive:boolean; createdAt:string };
+type UserRow = { id:string; email:string; name:string; role:string; locationId?:string|null; isActive:boolean; createdAt:string; permissions:string[] };
 type LocationRow = { id:string; name:string; code:string; isActive:boolean };
 const roleOptions = [
   { value:'admin', label:'Administrator' }, { value:'manager', label:'Store Manager' }, { value:'cashier', label:'Cashier' },
@@ -18,7 +18,7 @@ const roleOptions = [
 export const UserManagementView: React.FC = () => {
   const [users,setUsers]=useState<UserRow[]>([]), [locations,setLocations]=useState<LocationRow[]>([]);
   const [loading,setLoading]=useState(true), [error,setError]=useState(''), [query,setQuery]=useState('');
-  const [open,setOpen]=useState(false), [saving,setSaving]=useState(false);
+  const [open,setOpen]=useState(false), [saving,setSaving]=useState(false), [accessUser,setAccessUser]=useState<UserRow|null>(null);
   const [form,setForm]=useState({name:'',email:'',password:'',role:'viewer',locationId:''});
 
   const load=async()=>{
@@ -63,7 +63,7 @@ export const UserManagementView: React.FC = () => {
     {header:'Role',accessor:r=><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold">{r.role.replaceAll('_',' ')}</span>},
     {header:'Status',accessor:r=><span className={r.isActive?'ui-status-success':'ui-status-danger'}>{r.isActive?'Active':'Inactive'}</span>},
     {header:'Location',accessor:r=>locations.find(l=>l.id===r.locationId)?.name||'Unassigned'},
-    {header:'Role & Access',accessor:r=><div className="flex items-center gap-2"><select aria-label={'Role for '+r.name} value={r.role} onChange={e=>void updateRole(r,e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"><option value="admin">Administrator</option><option value="manager">Store Manager</option><option value="cashier">Cashier</option><option value="inventory_manager">Inventory Manager</option><option value="purchasing_manager">Purchasing Manager</option><option value="sales_user">Sales User</option><option value="viewer">Viewer</option></select><Button size="sm" variant="ghost" onClick={()=>void updateStatus(r)}>{r.isActive?'Deactivate':'Activate'}</Button></div>},
+    {header:'Role & Access',accessor:r=><div className="flex items-center gap-2"><Button size="sm" variant="ghost" onClick={()=>setAccessUser(r)} leftIcon={<Eye className="h-4 w-4"/>}>Access</Button><select aria-label={'Role for '+r.name} value={r.role} onChange={e=>void updateRole(r,e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"><option value="admin">Administrator</option><option value="manager">Store Manager</option><option value="cashier">Cashier</option><option value="inventory_manager">Inventory Manager</option><option value="purchasing_manager">Purchasing Manager</option><option value="sales_user">Sales User</option><option value="viewer">Viewer</option></select><Button size="sm" variant="ghost" onClick={()=>void updateStatus(r)}>{r.isActive?'Deactivate':'Activate'}</Button></div>},
     
   ];
 
@@ -78,6 +78,14 @@ export const UserManagementView: React.FC = () => {
     {error&&<div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
     <div className="ui-surface p-4 mb-4"><Input aria-label="Search users" placeholder="Search name, email or role…" value={query} onChange={e=>setQuery(e.target.value)} /></div>
     <Table data={filtered} columns={columns} caption="Tenant users" isLoading={loading} emptyStateMessage="No tenant users found." getRowKey={u=>u.id}/>
+    <Modal isOpen={Boolean(accessUser)} onClose={()=>setAccessUser(null)} title={accessUser ? `${accessUser.name} — Effective Access` : 'Effective Access'} footer={<Button variant="outline" onClick={()=>setAccessUser(null)}>Close</Button>}>
+      {accessUser && <div className="space-y-4">
+        <div className="rounded-xl bg-slate-50 p-3 text-sm"><strong>{accessUser.role.replaceAll('_',' ')}</strong><span className="text-slate-500"> · permissions are derived server-side from the assigned role.</span></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {accessUser.permissions.map(permission=><div key={permission} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700">{permission}</div>)}
+        </div>
+      </div>}
+    </Modal>
     <Modal isOpen={open} onClose={()=>setOpen(false)} title="Create Tenant User" footer={<><Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button><Button type="submit" form="user-form" isLoading={saving}>Create User</Button></>}>
       <form id="user-form" onSubmit={save} className="ui-form-grid ui-form-grid--wide">
         <Input label="Full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required />
