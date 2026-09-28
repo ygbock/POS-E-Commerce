@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react';
 interface StoreCheckoutSummaryProps { checkout: Record<string, any>; }
 
 export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ checkout }) => {
-  const { fulfillmentMethod, couponInput, setCouponInput, couponMsg, discountCode, setDiscountCode, setCouponMsg, storeCart, total, subtotal, tax, shippingFee, displayCurrency, handleApplyCoupon } = checkout;
+  const { fulfillmentMethod, couponInput, setCouponInput, couponMsg, discountCode, setDiscountCode, setCouponMsg, storeCart, total, subtotal, tax, shippingFee, discount, displayCurrency, handleApplyCoupon } = checkout;
   return (<div className="lg:col-span-5 p-5 sm:p-7 bg-slate-50/80 dark:bg-slate-950/50 space-y-6 flex flex-col justify-between">
               
               <div className="space-y-5">
