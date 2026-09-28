@@ -1749,7 +1749,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
 
         const result = await db.query(
-          'SELECT id, organization_id, code, name, type, address, phone, is_pos_enabled, is_active FROM locations WHERE organization_id = $1 ORDER BY name ASC',
+          'SELECT id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, is_primary FROM locations WHERE organization_id = $1 ORDER BY is_primary DESC, name ASC',
           [orgId]
         );
         res.json({ success: true, count: result.rows.length, data: result.rows });
@@ -1771,15 +1771,31 @@ export async function createApp(options: CreateAppOptions = {}) {
         const orgId = await resolveAuthorizedTenant(req, auditRepo, 'LOCATION');
         // Subscription plan location limit & multi-location feature gating (TASK-5.6.2)
         await subscriptionService.assertCanCreateLocation(orgId, db);
-        const { code, name, type, address, phone, manager_name, is_pos_enabled, is_active } = req.body;
+        const { code, name, type, address, phone, manager_name, is_pos_enabled, is_active, is_primary } = req.body;
         const id = `loc-${randomUUID()}`;
-        const result = await db.query(
-          `INSERT INTO locations
-            (id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-           RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, created_at, updated_at`,
-          [id, orgId, code, name, type, address ?? null, phone ?? null, manager_name ?? null, is_pos_enabled ?? false, is_active ?? true]
+        const primaryCheck = await db.query(
+          'SELECT 1 FROM locations WHERE organization_id=$1 AND is_primary=TRUE LIMIT 1',
+          [orgId],
         );
+        const shouldBePrimary = is_primary === true || primaryCheck.rows.length === 0;
+        await db.query('BEGIN');
+        let result;
+        try {
+          if (shouldBePrimary) {
+            await db.query('UPDATE locations SET is_primary=FALSE WHERE organization_id=$1', [orgId]);
+          }
+          result = await db.query(
+            `INSERT INTO locations
+              (id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, is_primary)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, is_primary, created_at, updated_at`,
+            [id, orgId, code, name, type, address ?? null, phone ?? null, manager_name ?? null, is_pos_enabled ?? false, is_active ?? true, shouldBePrimary],
+          );
+          await db.query('COMMIT');
+        } catch (error) {
+          await db.query('ROLLBACK');
+          throw error;
+        }
         const created = result.rows[0];
         await auditRepo.recordEvent({
           organization_id: orgId, actor_id: req.auth!.userId,
@@ -1815,7 +1831,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
           return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Location not found.' } });
         }
-        const allowed = ['code','name','type','address','phone','manager_name','is_pos_enabled','is_active'];
+        const allowed = ['code','name','type','address','phone','manager_name','is_pos_enabled','is_active','is_primary'];
         const sets: string[] = [];
         const values: any[] = [];
         for (const key of allowed) {
@@ -1825,13 +1841,25 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
         }
         if (sets.length === 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least one mutable location field is required.' } });
+        const wantsPrimary = req.body.is_primary === true;
         values.push(req.params.id, orgId);
-        const result = await db.query(
-          `UPDATE locations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
-           WHERE id = ${values.length - 1} AND organization_id = ${values.length}
-           RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, created_at, updated_at`,
-          values
-        );
+        await db.query('BEGIN');
+        let result;
+        try {
+          if (wantsPrimary) {
+            await db.query('UPDATE locations SET is_primary=FALSE WHERE organization_id=$1 AND id<>$2', [orgId, req.params.id]);
+          }
+          result = await db.query(
+            `UPDATE locations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ${values.length - 1} AND organization_id = ${values.length}
+             RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, is_primary, created_at, updated_at`,
+            values
+          );
+          await db.query('COMMIT');
+        } catch (error) {
+          await db.query('ROLLBACK');
+          throw error;
+        }
         const updated = result.rows[0];
         await auditRepo.recordEvent({
           organization_id: orgId, actor_id: req.auth!.userId,
@@ -2439,6 +2467,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           locationId: u.location_id,
           isActive: u.is_active,
           createdAt: u.created_at,
+          permissions: ROLE_PERMISSIONS[u.role] || ROLE_PERMISSIONS.viewer,
         }));
 
         res.json({ success: true, count: sanitized.length, data: sanitized });
