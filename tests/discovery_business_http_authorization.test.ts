@@ -324,6 +324,40 @@ async function main() {
     const ownerTeam = await requestJson(baseUrl, `/api/merchant/businesses/${ownerA.business.id}/team`, actors.ownerA);
     assert.strictEqual(ownerTeam.status, 200);
 
+    // TASK-MERCHANT-2: commerce locations have one authoritative tenant primary.
+    const secondLocation = await requestJson(baseUrl, '/api/locations', actors.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({
+        code: 'HTTP-SECONDARY',
+        name: 'HTTP Secondary Location',
+        type: 'Warehouse',
+        is_active: true,
+      }),
+    });
+    assert.strictEqual(secondLocation.status, 201);
+    assert.strictEqual(secondLocation.body?.data?.is_primary, false);
+
+    const primaryLocation = await requestJson(baseUrl, '/api/locations/' + secondLocation.body.data.id, actors.ownerA, {
+      method: 'PUT',
+      body: JSON.stringify({ is_primary: true }),
+    });
+    assert.strictEqual(primaryLocation.status, 200);
+    assert.strictEqual(primaryLocation.body?.data?.is_primary, true);
+
+    const locationRows = await db.query(
+      `SELECT id,is_primary FROM locations WHERE organization_id=$1 ORDER BY is_primary DESC,id ASC`,
+      [actors.ownerA.organizationId],
+    );
+    assert.strictEqual(locationRows.rows.filter((row: any) => row.is_primary === true).length, 1);
+    assert.strictEqual(locationRows.rows[0].id, secondLocation.body.data.id);
+
+    // Staff access is server-derived from the assigned tenant role.
+    const tenantUsers = await requestJson(baseUrl, '/api/users', actors.ownerA);
+    assert.strictEqual(tenantUsers.status, 200);
+    const ownerUser = tenantUsers.body?.data?.find((user: any) => user.id === actors.ownerA.userId);
+    assert.ok(Array.isArray(ownerUser?.permissions));
+    assert.ok(ownerUser.permissions.includes('business.manage') || ownerUser.permissions.includes('*'));
+
     const ownerPatch = await requestJson(baseUrl, `/api/discovery/businesses/${ownerA.business.id}`, actors.ownerA, {
       method: 'PATCH',
       body: JSON.stringify({ shortDescription: 'Updated through HTTP authorization matrix.' }),
