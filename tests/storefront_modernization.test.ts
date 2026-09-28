@@ -25,7 +25,7 @@ assert.doesNotMatch(tracking, /orders\.find\(/);
 console.log('Storefront modernization contracts: PASS');
 
 const cartDrawer = read('src/components/storefront/StoreCartDrawer.tsx');
-assert.match(cartDrawer, /storefrontApi\.validateCart/);
+assert.match(cartDrawer, /storefrontApi\s*\.\s*validateCart/);
 assert.match(cartDrawer, /StorefrontCartValidation/);
 assert.match(cartDrawer, /Server-Calculated Total/);
 assert.match(cartDrawer, /disabled=\{!canProceedToCheckout\}/);
