@@ -42,6 +42,8 @@ import { DiscoveryStoreConversionModal } from './DiscoveryStoreConversionModal';
 import { DiscoveryOnboardingWizard } from './DiscoveryOnboardingWizard';
 import { DiscoveryListingManagementWorkspace } from './DiscoveryListingManagementWorkspace';
 import { DiscoveryBusinessTeamPanel } from './DiscoveryBusinessTeamPanel';
+import { CustomerManagementView } from '../../crm/CustomerManagementView';
+import { PurchasingManagement } from '../../purchasing/PurchasingManagement';
 import { DiscoveryStoreWorkspace } from './DiscoveryStoreWorkspace';
 
 interface DiscoveryBusinessContainerProps {
@@ -54,8 +56,8 @@ interface DiscoveryBusinessContainerProps {
 type BusinessRole = 'OWNER' | 'MANAGER' | 'STAFF';
 
 const ROLE_TAB_ACCESS: Record<BusinessRole, string[]> = {
-  OWNER: ['dashboard','store','listing','submission','locations','hours','services','quotes','contacts','reviews','verification','trust','analytics','settings','team','search'],
-  MANAGER: ['dashboard','listing','submission','locations','hours','services','quotes','contacts','reviews','analytics','search'],
+  OWNER: ['dashboard','store','listing','submission','locations','hours','services','quotes','contacts','reviews','verification','trust','analytics','customers','purchasing','settings','team','search'],
+  MANAGER: ['dashboard','listing','submission','locations','hours','services','quotes','contacts','reviews','analytics','customers','purchasing','search'],
   STAFF: ['dashboard','services','quotes','contacts','reviews','analytics'],
 };
 
@@ -73,6 +75,8 @@ const TABS = [
   { id: 'verification', label: 'Verification', icon: ShieldCheck, group: 'growth' },
   { id: 'trust', label: 'Trust', icon: UserCheck, group: 'growth' },
   { id: 'analytics', label: 'Analytics', icon: TrendingUp, group: 'growth' },
+  { id: 'customers', label: 'Customers', icon: Users, group: 'operations' },
+  { id: 'purchasing', label: 'Purchasing & Suppliers', icon: Package, group: 'operations' },
   { id: 'search', label: 'Search', icon: Sparkles, group: 'growth' },
   { id: 'team', label: 'Team', icon: Users, group: 'team' },
   { id: 'settings', label: 'Settings', icon: Sliders, group: 'settings' },
@@ -353,6 +357,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
             ['Business', 'business', Building2],
             ['Customers', 'customers', Users],
             ['Growth', 'growth', BarChart3],
+            ['Operations', 'operations', ClipboardList],
           ].map(([label, group, Icon]) => {
             const groupTabs = visibleTabs.filter((tab) => tab.group === group);
             if (!groupTabs.length) return null;
@@ -468,6 +473,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
         {activeTab === 'settings' && (
           <DiscoverySettingsPanel business={selectedBusiness} />
         )}
+
+        {activeTab === 'customers' && <CustomerManagementView />}
+
+        {activeTab === 'purchasing' && <PurchasingManagement />}
 
         {activeTab === 'team' && (
           <DiscoveryBusinessTeamPanel businessId={selectedBusiness.id} />
