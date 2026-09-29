@@ -238,6 +238,8 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
           claimModalEmail={claimModalEmail}
           isCartDrawerOpen={isCartDrawerOpen}
           setIsCartDrawerOpen={setIsCartDrawerOpen}
+          goHome={goHome}
+          goShop={goShop}
           goCart={goCart}
           goCheckout={goCheckout}
           isWishlistDrawerOpen={isWishlistDrawerOpen}
@@ -287,8 +289,8 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
           setActiveSection={setActiveSection}
           onNavigateHome={() => { setActiveSection('home'); setSelectedCategory('All'); setSelectedBrand('All'); setSearchQuery(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
           onNavigateCatalog={() => { setActiveSection('catalog'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-          onOpenCart={() => setIsCartDrawerOpen(true)}
-          onOpenAccount={() => { setAccountPortalTab('profile'); setIsAccountModalOpen(true); }}
+          onOpenCart={goCart}
+          onOpenAccount={() => goAccount('profile')}
           onOpenFilterDrawer={() => setIsMobileFilterOpen(true)}
           hasActiveFilters={hasActiveFilters}
         />
