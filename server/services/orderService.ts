@@ -467,21 +467,27 @@ export class OrderService {
             ? JSON.parse(orgPolicyRes.rows[0].policies)
             : (orgPolicyRes.rows[0].policies || {});
 
-        const freeThreshold = this.localParseMoneyToCents(
-          String(rawPolicies.freeShippingThreshold ?? '75.00')
-        );
+        const requiredPolicyMoney = (field: string): bigint => {
+          const value = rawPolicies[field];
+          if (value === undefined || value === null || String(value).trim() === '') {
+            throw new DomainError('STORE_POLICY_MISSING', `Store shipping policy '${field}' is not configured.`);
+          }
+          try {
+            return this.localParseMoneyToCents(String(value));
+          } catch {
+            throw new DomainError('STORE_POLICY_INVALID', `Store shipping policy '${field}' is invalid.`);
+          }
+        };
+
+        const freeThreshold = requiredPolicyMoney('freeShippingThreshold');
         let shippingFeeCents = 0n;
         if (fulfillment_method === 'Express Delivery') {
-          shippingFeeCents = this.localParseMoneyToCents(
-            String(rawPolicies.expressShippingFee ?? '19.99')
-          );
+          shippingFeeCents = requiredPolicyMoney('expressShippingFee');
         } else if (fulfillment_method === 'Standard Delivery') {
           shippingFeeCents =
             totalSubtotalCents >= freeThreshold
               ? 0n
-              : this.localParseMoneyToCents(
-                  String(rawPolicies.standardShippingFee ?? '9.99')
-                );
+              : requiredPolicyMoney('standardShippingFee');
         }
 
         const finalTotalCents = totalSubtotalCents + totalTaxCents + shippingFeeCents;
