@@ -70,3 +70,8 @@ assert.doesNotMatch(cartService, /75\.00/);
 
 const storefrontApi = read('src/services/storefrontApi.ts');
 assert.match(storefrontApi, /fulfillmentMethod/);
+
+const orderService = read('server/services/orderService.ts');
+assert.doesNotMatch(orderService, /75\.00|19\.99|9\.99/);
+assert.match(orderService, /STORE_POLICY_MISSING/);
+assert.match(orderService, /requiredPolicyMoney/);
