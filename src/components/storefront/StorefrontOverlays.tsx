@@ -29,6 +29,8 @@ export interface StorefrontOverlaysProps {
   claimModalEmail: string;
   isCartDrawerOpen: boolean;
   setIsCartDrawerOpen: (open: boolean) => void;
+  goHome: () => void;
+  goShop: () => void;
   goCart: () => void;
   goCheckout: () => void;
   isWishlistDrawerOpen: boolean;
@@ -53,7 +55,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
   isOrderTrackingOpen, setIsOrderTrackingOpen, initialTrackingNumber, initialTrackingEmail,
   isNotificationHubOpen, setIsNotificationHubOpen, selectedNotificationOrder, setSelectedNotificationOrder,
   isClaimModalOpen, setIsClaimModalOpen, claimModalEmail,
-  isCartDrawerOpen, setIsCartDrawerOpen, goCart, goCheckout,
+  isCartDrawerOpen, setIsCartDrawerOpen, goHome, goShop, goCart, goCheckout,
   isWishlistDrawerOpen, setIsWishlistDrawerOpen,
   isAccountModalOpen, setIsAccountModalOpen, accountPortalTab, setAccountPortalTab,
   isCheckoutOpen, setIsCheckoutOpen, isSuccessModalOpen, setIsSuccessModalOpen, successOrder, setSuccessOrder,
@@ -108,7 +110,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
     {selectedDetailProduct && (
       <ProductDetailModal
         product={selectedDetailProduct}
-        onClose={() => setSelectedDetailProduct(null)}
+        onClose={() => goShop()}
         onAddToCart={addToStoreCart}
         onBuyNow={onBuyNow}
         onSelectRelatedProduct={(rel) => setSelectedDetailProduct(rel)}
@@ -118,7 +120,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
     {/* Cart Drawer */}
     <StoreCartDrawer
       isOpen={isCartDrawerOpen}
-      onClose={() => setIsCartDrawerOpen(false)}
+      onClose={() => goHome()}
       onProceedToCheckout={goCheckout}
     />
 
@@ -133,7 +135,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
     {/* Customer Account Portal Modal with integrated Tracking & Wishlist */}
     <CustomerAccountModal
       isOpen={isAccountModalOpen}
-      onClose={() => setIsAccountModalOpen(false)}
+      onClose={() => goHome()}
       initialTab={accountPortalTab}
       initialOrderNumber={initialTrackingNumber}
       initialTrackingEmail={initialTrackingEmail}
@@ -152,7 +154,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
     {/* Checkout Modal */}
     <StoreCheckoutModal
       isOpen={isCheckoutOpen}
-      onClose={() => setIsCheckoutOpen(false)}
+      onClose={() => goCart()}
       onOrderSuccess={(order) => {
         setSuccessOrder(order);
         setIsSuccessModalOpen(true);
