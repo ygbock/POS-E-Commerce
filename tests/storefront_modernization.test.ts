@@ -75,3 +75,14 @@ const orderService = read('server/services/orderService.ts');
 assert.doesNotMatch(orderService, /75\.00|19\.99|9\.99/);
 assert.match(orderService, /STORE_POLICY_MISSING/);
 assert.match(orderService, /requiredPolicyMoney/);
+
+const overlays = read('src/components/storefront/StorefrontOverlays.tsx');
+assert.match(overlays, /onClose=\{\(\) => goHome\(\)\}/);
+assert.match(overlays, /onClose=\{\(\) => goCart\(\)\}/);
+assert.match(overlays, /onClose=\{\(\) => goShop\(\)\}/);
+assert.match(overlays, /goHome: \(\) => void/);
+assert.match(overlays, /goShop: \(\) => void/);
+
+const storefront = read('src/components/storefront/Storefront.tsx');
+assert.match(storefront, /onOpenCart=\{goCart\}/);
+assert.match(storefront, /onOpenAccount=\{\(\) => goAccount\('profile'\)\}/);
