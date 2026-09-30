@@ -9,6 +9,7 @@ const route = read('server/routes/merchantStorePolicyRoutes.ts');
 const api = read('src/services/discoveryApi.ts');
 const settings = read('src/components/discovery/business/DiscoverySettingsPanel.tsx');
 const server = read('server.ts');
+const resolver = read('server/services/tenantResolver.ts');
 
 assert.match(route, /GET.*store-policies|store-policies/);
 assert.match(route, /PATCH.*store-policies|store-policies/);
