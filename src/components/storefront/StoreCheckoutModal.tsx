@@ -60,10 +60,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [cardCvc, setCardCvc] = useState('');
   const [saveCard, setSaveCard] = useState(true);
 
-  // Coupon & Extras
-  const [couponInput, setCouponInput] = useState('');
-  const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
-  const [discountCode, setDiscountCode] = useState('');
+  // Checkout extras
   const [smsOptIn, setSmsOptIn] = useState(true);
   const [whatsappOptIn, setWhatsappOptIn] = useState(true);
 
@@ -185,15 +182,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const total = Number(cartValidation?.total || 0);
   const displayCurrency = formatTenantCurrency;
 
-  const handleApplyCoupon = (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = couponInput.trim().toUpperCase();
-    if (!code) return;
-    setDiscountCode(code);
-    setCouponInput('');
-    setCouponMsg({ text: 'Coupon will be validated securely by the server at checkout.', isError: false });
-  };
-
   const handleExpressPay = async (provider: string) => {
     setIsSubmitting(true);
     setErrorMsg('');
@@ -213,7 +201,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         whatsappOptIn,
         cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
         idempotency_key: crypto.randomUUID(),
-        ...(discountCode ? { discount_code: discountCode } : {}),
       });
       const rawOrder = response?.order || response;
       const order = {
@@ -273,7 +260,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         whatsappOptIn,
         cart_items: storeCart.map((item) => ({ variantId: item.variantId, quantity: String(item.quantity) })),
         idempotency_key: crypto.randomUUID(),
-        ...(discountCode ? { discount_code: discountCode } : {}),
       });
       const rawOrder = response?.order || response;
       const order = {
@@ -308,7 +294,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   };
 
 
-  const checkout = { activeCustomerUser, customers, setActiveCustomerUser, isGuestMode, setIsGuestMode, customerName, setCustomerName, customerEmail, setCustomerEmail, customerPhone, setCustomerPhone, street, setStreet, apartment, setApartment, city, setCity, state, setState, zip, setZip, country, setCountry, selectedAddressIndex, setSelectedAddressIndex, fulfillmentMethod, setFulfillmentMethod, paymentMethod, setPaymentMethod, cardNumber, setCardNumber, cardHolder, setCardHolder, cardExpiry, setCardExpiry, cardCvc, setCardCvc, saveCard, setSaveCard, couponInput, setCouponInput, couponMsg, discountCode, setDiscountCode, setCouponMsg, smsOptIn, setSmsOptIn, whatsappOptIn, setWhatsappOptIn, isGift, setIsGift, giftMessage, setGiftMessage, orderNotes, setOrderNotes, agreeTerms, setAgreeTerms, isSubmitting, errorMsg, storeCart, total, subtotal, tax, shippingFee, discount, cartValidation, displayCurrency, currentBrand, handleApplyCoupon, handleExpressPay, handleSubmit };
+  const checkout = { activeCustomerUser, customers, setActiveCustomerUser, isGuestMode, setIsGuestMode, customerName, setCustomerName, customerEmail, setCustomerEmail, customerPhone, setCustomerPhone, street, setStreet, apartment, setApartment, city, setCity, state, setState, zip, setZip, country, setCountry, selectedAddressIndex, setSelectedAddressIndex, fulfillmentMethod, setFulfillmentMethod, paymentMethod, setPaymentMethod, cardNumber, setCardNumber, cardHolder, setCardHolder, cardExpiry, setCardExpiry, cardCvc, setCardCvc, saveCard, setSaveCard, smsOptIn, setSmsOptIn, whatsappOptIn, setWhatsappOptIn, isGift, setIsGift, giftMessage, setGiftMessage, orderNotes, setOrderNotes, agreeTerms, setAgreeTerms, isSubmitting, errorMsg, storeCart, total, subtotal, tax, shippingFee, discount, cartValidation, displayCurrency, currentBrand, handleApplyCoupon, handleExpressPay, handleSubmit };
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200" onClick={(e) => { if (!isSubmitting && e.target === e.currentTarget) onClose(); }}>
       <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="store-checkout-modal-title" tabIndex={-1} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden animate-in zoom-in-95 text-slate-900 dark:text-white max-h-[94vh] flex flex-col focus:outline-none">
