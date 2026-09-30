@@ -22,6 +22,7 @@ import { createPlatformRouter } from './server/routes/platformRoutes.ts';
 import { createDiscoveryBusinessRouter } from './server/routes/discoveryBusinessRoutes.ts';
 import { createDiscoveryRouter } from './server/routes/discoveryRoutes.ts';
 import { createMerchantRouter } from './server/routes/merchantRoutes.ts';
+import { createMerchantStorePolicyRouter } from './server/routes/merchantStorePolicyRoutes.ts';
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
@@ -403,6 +404,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Business-owner identity, merchant workspace, and business ownership API.
   app.use('/api/merchant', createMerchantRouter(db, authService));
+  app.use('/api/merchant', createMerchantStorePolicyRouter(db));
 
   // Discovery business directory and listing lifecycle API.
   app.use('/api/discovery', createDiscoveryBusinessRouter(db));
