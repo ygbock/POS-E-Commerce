@@ -75,6 +75,11 @@ assert.match(tenantResolver, /STORE_POLICY_INVALID/);
 assert.doesNotMatch(tenantResolver, /freeShippingThreshold: Number\\(rawPolicies\\.freeShippingThreshold \\?\\? 75\\.00\\)/);
 assert.doesNotMatch(tenantResolver, /standardShippingFee: Number\\(rawPolicies\\.standardShippingFee \\?\\? 9\\.99\\)/);
 assert.doesNotMatch(tenantResolver, /expressShippingFee: Number\\(rawPolicies\\.expressShippingFee \\?\\? 19\\.99\\)/);
+assert.doesNotMatch(tenantResolver, /Standard shipping delivers within 3-5 business days/);
+assert.doesNotMatch(tenantResolver, /Returns accepted within 30 days of receipt/);
+assert.doesNotMatch(tenantResolver, /Standard 1-year manufacturer warranty/);
+assert.doesNotMatch(tenantResolver, /Orders placed before 2 PM dispatch same-day/);
+assert.doesNotMatch(tenantResolver, /Ready for pickup within 2 hours/);
 
 const policyMigration = read('server/db/migrations/045_storefront_policy_defaults_fail_closed.sql');
 assert.match(policyMigration, /ALTER COLUMN policies SET DEFAULT '\{\}'::jsonb/);
