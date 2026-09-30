@@ -76,6 +76,10 @@ assert.doesNotMatch(tenantResolver, /freeShippingThreshold: Number\\(rawPolicies
 assert.doesNotMatch(tenantResolver, /standardShippingFee: Number\\(rawPolicies\\.standardShippingFee \\?\\? 9\\.99\\)/);
 assert.doesNotMatch(tenantResolver, /expressShippingFee: Number\\(rawPolicies\\.expressShippingFee \\?\\? 19\\.99\\)/);
 
+const policyMigration = read('server/db/migrations/045_storefront_policy_defaults_fail_closed.sql');
+assert.match(policyMigration, /ALTER COLUMN policies SET DEFAULT '\{\}'::jsonb/);
+assert.doesNotMatch(policyMigration, /75\\.00|9\\.99|19\\.99/);
+
 const storefrontApi = read('src/services/storefrontApi.ts');
 assert.match(storefrontApi, /fulfillmentMethod/);
 
