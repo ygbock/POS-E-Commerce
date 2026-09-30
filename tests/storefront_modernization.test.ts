@@ -86,3 +86,12 @@ assert.match(overlays, /goShop: \(\) => void/);
 const storefront = read('src/components/storefront/Storefront.tsx');
 assert.match(storefront, /onOpenCart=\{goCart\}/);
 assert.match(storefront, /onOpenAccount=\{\(\) => goAccount\('profile'\)\}/);
+
+const checkoutModalCouponGuard = read('src/components/storefront/StoreCheckoutModal.tsx');
+assert.doesNotMatch(checkoutModalCouponGuard, /discount_code/);
+assert.doesNotMatch(checkoutModalCouponGuard, /handleApplyCoupon|couponInput|discountCode/);
+assert.doesNotMatch(checkoutModalCouponGuard, /WELCOME20|FREESHIP/);
+
+const checkoutSummaryPolicyGuard = read('src/components/storefront/StoreCheckoutSummary.tsx');
+assert.doesNotMatch(checkoutSummaryPolicyGuard, /Promo Code or Voucher|Coupon Code Engine|Same-Day Dispatch|30-Day Money Back/);
+assert.match(checkoutSummaryPolicyGuard, /Checkout pricing, availability, and fulfillment fees are verified by the store server/);
