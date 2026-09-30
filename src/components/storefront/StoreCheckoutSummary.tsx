@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react';
 interface StoreCheckoutSummaryProps { checkout: Record<string, any>; }
 
 export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ checkout }) => {
-  const { fulfillmentMethod, couponInput, setCouponInput, couponMsg, discountCode, setDiscountCode, setCouponMsg, storeCart, total, subtotal, tax, shippingFee, discount, cartValidation, displayCurrency, handleApplyCoupon } = checkout;
+  const { fulfillmentMethod, storeCart, total, subtotal, tax, shippingFee, discount, cartValidation, displayCurrency, handleApplyCoupon } = checkout;
   return (<div className="lg:col-span-5 p-5 sm:p-7 bg-slate-50/80 dark:bg-slate-950/50 space-y-6 flex flex-col justify-between">
               
               <div className="space-y-5">
@@ -63,54 +63,6 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                   ))}
                 </div>
 
-                {/* Coupon Code Engine */}
-                <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">Promo Code or Voucher</span>
-                    <span className="text-[10px] text-sky-500 font-semibold">Validated at checkout</span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Enter promo code or voucher"
-                      value={couponInput}
-                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                      className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white uppercase placeholder:text-slate-400 font-mono text-xs focus:outline-none focus:border-sky-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyCoupon}
-                      className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
-                    >
-                      Apply
-                    </button>
-                  </div>
-
-                  {/* Applied Coupon Banner */}
-                  {discountCode && (
-                    <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 font-semibold">
-                      <span>
-                        Coupon <strong>{discountCode}</strong> submitted for server validation
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setDiscountCode(''); setCouponMsg(null); }}
-                        className="text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer ml-2"
-                        aria-label="Remove Coupon"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {couponMsg && (
-                    <p className={`text-[11px] ${couponMsg.isError ? 'text-rose-500' : 'text-emerald-500'}`}>
-                      {couponMsg.text}
-                    </p>
-                  )}
-                </div>
-
                 {/* Costs Breakdown */}
                 <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
@@ -156,13 +108,14 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                 </div>
               </div>
 
-              {/* Guarantees & Trust Footnote */}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5 text-[11px] text-slate-500 dark:text-slate-400">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center gap-2">
-                    <Icons.ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                    <span>30-Day Money Back</span>
-                  </div>
+              {/* Store policy note */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                  <Icons.ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  <span>Checkout pricing, availability, and fulfillment fees are verified by the store server.</span>
+                </div>
+              </div>
+            </div>
                   <div className="flex items-center gap-2">
                     <Icons.Truck className="w-4 h-4 text-sky-500 flex-shrink-0" />
                     <span>Same-Day Dispatch</span>
