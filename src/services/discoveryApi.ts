@@ -668,6 +668,41 @@ export const discoveryApi = {
   },
 
   /**
+   * Tenant storefront commercial policy management.
+   */
+  async getStorePolicies(businessId: string): Promise<{
+    organizationId: string;
+    freeShippingThreshold: string | number | null;
+    standardShippingFee: string | number | null;
+    expressShippingFee: string | number | null;
+    shippingPolicy: string;
+    returnPolicy: string;
+    warrantyPolicy: string;
+    deliveryPromise: string;
+    pickupEnabled: boolean;
+    pickupInstructions: string;
+  }> {
+    return request(`/api/merchant/businesses/${encodeURIComponent(businessId)}/store-policies`);
+  },
+
+  async updateStorePolicies(businessId: string, policies: {
+    freeShippingThreshold?: string | number;
+    standardShippingFee?: string | number;
+    expressShippingFee?: string | number;
+    shippingPolicy?: string;
+    returnPolicy?: string;
+    warrantyPolicy?: string;
+    deliveryPromise?: string;
+    pickupEnabled?: boolean;
+    pickupInstructions?: string;
+  }): Promise<unknown> {
+    return request(`/api/merchant/businesses/${encodeURIComponent(businessId)}/store-policies`, {
+      method: 'PATCH',
+      body: JSON.stringify(policies),
+    });
+  },
+
+  /**
    * Settings management
    */
   async updateSettings(businessId: string, settings: Partial<DiscoveryBusinessSettings>): Promise<DiscoveryBusinessSettings> {
