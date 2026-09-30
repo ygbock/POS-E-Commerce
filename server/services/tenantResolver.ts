@@ -323,6 +323,21 @@ export async function resolveStorefrontTenant(
   const rawCatalogPolicy = typeof orgRow.catalog_policy === 'string' ? JSON.parse(orgRow.catalog_policy) : (orgRow.catalog_policy || {});
   const rawFeatureFlags = typeof orgRow.feature_flags === 'string' ? JSON.parse(orgRow.feature_flags) : (orgRow.feature_flags || {});
 
+  // Commercial pricing is tenant-owned configuration. Never synthesize a price
+  // in the resolver: missing or invalid policy must fail closed before the
+  // storefront can display or use an invented shipping amount.
+  const requiredPolicyMoney = (field: string): number => {
+    const value = rawPolicies[field];
+    if (value === undefined || value === null || String(value).trim() === '') {
+      throw new ApiError('STORE_POLICY_MISSING', `Store shipping policy '${field}' is not configured.`, 500);
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      throw new ApiError('STORE_POLICY_INVALID', `Store shipping policy '${field}' is invalid.`, 500);
+    }
+    return numeric;
+  };
+
   return {
     tenant: {
       id: orgRow.id,
@@ -353,9 +368,9 @@ export async function resolveStorefrontTenant(
       timezone: orgRow.timezone || 'UTC',
     },
     policies: {
-      freeShippingThreshold: Number(rawPolicies.freeShippingThreshold ?? 75.00),
-      standardShippingFee: Number(rawPolicies.standardShippingFee ?? 9.99),
-      expressShippingFee: Number(rawPolicies.expressShippingFee ?? 19.99),
+      freeShippingThreshold: requiredPolicyMoney('freeShippingThreshold'),
+      standardShippingFee: requiredPolicyMoney('standardShippingFee'),
+      expressShippingFee: requiredPolicyMoney('expressShippingFee'),
       shippingPolicy: rawPolicies.shippingPolicy || 'Standard shipping delivers within 3-5 business days.',
       returnPolicy: rawPolicies.returnPolicy || 'Returns accepted within 30 days of receipt in original condition.',
       warrantyPolicy: rawPolicies.warrantyPolicy || 'Standard 1-year manufacturer warranty applies to all electronics.',
