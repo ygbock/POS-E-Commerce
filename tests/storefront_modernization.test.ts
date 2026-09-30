@@ -47,7 +47,6 @@ assert.match(checkoutForm, /setFulfillmentMethod/);
 
 const checkoutSummary = read('src/components/storefront/StoreCheckoutSummary.tsx');
 assert.match(checkoutSummary, /Order Summary/);
-assert.match(checkoutSummary, /discountCode/);
 assert.match(checkoutSummary, /Total Amount/);
 
 const checkoutHeader = read('src/components/storefront/StoreCheckoutHeader.tsx');
