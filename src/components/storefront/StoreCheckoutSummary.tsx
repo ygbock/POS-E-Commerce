@@ -116,21 +116,5 @@ export const StoreCheckoutSummary: React.FC<StoreCheckoutSummaryProps> = ({ chec
                 </div>
               </div>
             </div>
-                  <div className="flex items-center gap-2">
-                    <Icons.Truck className="w-4 h-4 text-sky-500 flex-shrink-0" />
-                    <span>Same-Day Dispatch</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Icons.Lock className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                    <span>256-Bit SSL Security</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Icons.CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                    <span>Authentic Guarantee</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
   );
 };
