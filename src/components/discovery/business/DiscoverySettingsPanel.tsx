@@ -45,6 +45,73 @@ export const DiscoverySettingsPanel: React.FC<DiscoverySettingsPanelProps> = ({
   const [saving, setSaving] = useState<boolean>(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [storePolicies, setStorePolicies] = useState({
+    freeShippingThreshold: '',
+    standardShippingFee: '',
+    expressShippingFee: '',
+    shippingPolicy: '',
+    returnPolicy: '',
+    warrantyPolicy: '',
+    deliveryPromise: '',
+    pickupEnabled: false,
+    pickupInstructions: '',
+  });
+  const [storePolicyLoading, setStorePolicyLoading] = useState<boolean>(true);
+  const [storePolicySaving, setStorePolicySaving] = useState<boolean>(false);
+  const [storePolicySuccess, setStorePolicySuccess] = useState<string | null>(null);
+  const [storePolicyError, setStorePolicyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStorePolicyLoading(true);
+    discoveryApi.getStorePolicies(business.id)
+      .then((data) => {
+        if (cancelled) return;
+        setStorePolicies({
+          freeShippingThreshold: data.freeShippingThreshold == null ? '' : String(data.freeShippingThreshold),
+          standardShippingFee: data.standardShippingFee == null ? '' : String(data.standardShippingFee),
+          expressShippingFee: data.expressShippingFee == null ? '' : String(data.expressShippingFee),
+          shippingPolicy: data.shippingPolicy || '',
+          returnPolicy: data.returnPolicy || '',
+          warrantyPolicy: data.warrantyPolicy || '',
+          deliveryPromise: data.deliveryPromise || '',
+          pickupEnabled: data.pickupEnabled === true,
+          pickupInstructions: data.pickupInstructions || '',
+        });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setStorePolicyError(err instanceof Error ? err.message : 'Unable to load store policies.');
+      })
+      .finally(() => {
+        if (!cancelled) setStorePolicyLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [business.id]);
+
+  const handleStorePolicySave = async () => {
+    setStorePolicySaving(true);
+    setStorePolicySuccess(null);
+    setStorePolicyError(null);
+    try {
+      await discoveryApi.updateStorePolicies(business.id, {
+        freeShippingThreshold: storePolicies.freeShippingThreshold,
+        standardShippingFee: storePolicies.standardShippingFee,
+        expressShippingFee: storePolicies.expressShippingFee,
+        shippingPolicy: storePolicies.shippingPolicy,
+        returnPolicy: storePolicies.returnPolicy,
+        warrantyPolicy: storePolicies.warrantyPolicy,
+        deliveryPromise: storePolicies.deliveryPromise,
+        pickupEnabled: storePolicies.pickupEnabled,
+        pickupInstructions: storePolicies.pickupInstructions,
+      });
+      setStorePolicySuccess('Store pricing and fulfillment policies updated.');
+      setTimeout(() => setStorePolicySuccess(null), 4000);
+    } catch (err: unknown) {
+      setStorePolicyError(err instanceof Error ? err.message : 'Failed to update store policies.');
+    } finally {
+      setStorePolicySaving(false);
+    }
+  };
 
   const handleToggle = (key: keyof DiscoveryBusinessSettings) => {
     setSettings((prev) => ({
@@ -316,6 +383,93 @@ export const DiscoverySettingsPanel: React.FC<DiscoverySettingsPanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Storefront Commercial Policies */}
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm">
+        <div className="pb-6 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Sliders className="w-5 h-5 text-indigo-600" />
+            Store Pricing & Fulfillment Policies
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            These tenant-owned values are used by the server to calculate checkout shipping and fulfillment charges. No platform defaults are applied.
+          </p>
+        </div>
+
+        {storePolicySuccess && <div className="mt-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 text-sm">{storePolicySuccess}</div>}
+        {storePolicyError && <div className="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-sm">{storePolicyError}</div>}
+
+        {storePolicyLoading ? (
+          <div className="py-8 text-sm text-slate-500">Loading store policy configuration…</div>
+        ) : (
+          <div className="space-y-6 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                ['freeShippingThreshold', 'Free-shipping threshold'],
+                ['standardShippingFee', 'Standard delivery fee'],
+                ['expressShippingFee', 'Express delivery fee'],
+              ].map(([key, label]) => (
+                <label key={key} className="space-y-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{label}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={storePolicies[key as keyof typeof storePolicies] as string}
+                    onChange={(e) => setStorePolicies((prev) => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm text-slate-900 dark:text-white"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                ['shippingPolicy', 'Shipping policy'],
+                ['returnPolicy', 'Return policy'],
+                ['warrantyPolicy', 'Warranty policy'],
+                ['deliveryPromise', 'Delivery promise'],
+                ['pickupInstructions', 'Pickup instructions'],
+              ].map(([key, label]) => (
+                <label key={key} className="space-y-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{label}</span>
+                  <textarea
+                    rows={3}
+                    value={storePolicies[key as keyof typeof storePolicies] as string}
+                    onChange={(e) => setStorePolicies((prev) => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm text-slate-900 dark:text-white"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <label className="flex items-start justify-between gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div>
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200 block">Enable in-store pickup</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Customers can select pickup when an eligible location is available.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={storePolicies.pickupEnabled}
+                onChange={(e) => setStorePolicies((prev) => ({ ...prev, pickupEnabled: e.target.checked }))}
+                className="w-4 h-4 mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+              />
+            </label>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleStorePolicySave}
+                disabled={storePolicyLoading || storePolicySaving}
+                className="px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+              >
+                {storePolicySaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>{storePolicySaving ? 'Saving Store Policies...' : 'Save Store Policies'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Save Button */}
       <div className="flex justify-end">
