@@ -257,7 +257,7 @@ export class StorefrontCartService {
       'standardShippingFee'
     );
     const expressShippingCents = policyMoney(
-      config.policies.expressShippingFee ?? config.policies.standardShippingFee,
+      config.policies.expressShippingFee,
       'expressShippingFee'
     );
 
