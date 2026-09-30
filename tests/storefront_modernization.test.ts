@@ -65,7 +65,16 @@ assert.match(checkoutSummary, /cartValidation/);
 const cartService = read('server/services/storefrontCartService.ts');
 assert.match(cartService, /fulfillmentMethod/);
 assert.match(cartService, /expressShippingFee/);
+assert.doesNotMatch(cartService, /expressShippingFee\\?\\? config\\.policies\\.standardShippingFee/);
 assert.doesNotMatch(cartService, /75\.00/);
+
+const tenantResolver = read('server/services/tenantResolver.ts');
+assert.match(tenantResolver, /requiredPolicyMoney/);
+assert.match(tenantResolver, /STORE_POLICY_MISSING/);
+assert.match(tenantResolver, /STORE_POLICY_INVALID/);
+assert.doesNotMatch(tenantResolver, /freeShippingThreshold: Number\\(rawPolicies\\.freeShippingThreshold \\?\\? 75\\.00\\)/);
+assert.doesNotMatch(tenantResolver, /standardShippingFee: Number\\(rawPolicies\\.standardShippingFee \\?\\? 9\\.99\\)/);
+assert.doesNotMatch(tenantResolver, /expressShippingFee: Number\\(rawPolicies\\.expressShippingFee \\?\\? 19\\.99\\)/);
 
 const storefrontApi = read('src/services/storefrontApi.ts');
 assert.match(storefrontApi, /fulfillmentMethod/);
