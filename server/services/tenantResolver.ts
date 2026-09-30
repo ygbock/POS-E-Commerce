@@ -355,11 +355,7 @@ export async function resolveStorefrontTenant(
       accentColor: rawBranding.accentColor || '#f59e0b',
       heroTitle: rawBranding.heroTitle || 'Modern Unified Commerce',
       heroSubtitle: rawBranding.heroSubtitle || 'Engineered for speed, reliability, and precision inventory.',
-      trustBadges: Array.isArray(rawBranding.trustBadges) ? rawBranding.trustBadges : [
-        { icon: 'Truck', title: 'Free Delivery', subtitle: 'On qualifying orders' },
-        { icon: 'ShieldCheck', title: 'Official Warranty', subtitle: 'Guaranteed quality' },
-        { icon: 'RotateCcw', title: 'Hassle-Free Returns', subtitle: 'Customer first policy' },
-      ],
+      trustBadges: Array.isArray(rawBranding.trustBadges) ? rawBranding.trustBadges : [],
     },
     localization: {
       currencyCode: orgRow.currency_code || 'USD',
@@ -387,7 +383,7 @@ export async function resolveStorefrontTenant(
     featureFlags: {
       reviewsEnabled: Boolean(rawFeatureFlags.reviewsEnabled ?? true),
       wishlistEnabled: Boolean(rawFeatureFlags.wishlistEnabled ?? true),
-      couponsEnabled: Boolean(rawFeatureFlags.couponsEnabled ?? true),
+      // Coupon/promotion checkout is not currently database-backed; fail closed until a coupon schema exists.\n      couponsEnabled: Boolean(rawFeatureFlags.couponsEnabled ?? false),
       pickupEnabled: Boolean(rawFeatureFlags.pickupEnabled ?? true),
       guestCheckoutEnabled: Boolean(rawFeatureFlags.guestCheckoutEnabled ?? true),
       orderTrackingEnabled: Boolean(rawFeatureFlags.orderTrackingEnabled ?? true),
