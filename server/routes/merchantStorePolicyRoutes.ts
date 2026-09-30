@@ -105,43 +105,47 @@ export function createMerchantStorePolicyRouter(db: DatabaseClient) {
   router.patch('/businesses/:id/store-policies', requireAuth(), async (req, res) => {
     try {
       const business = await authorizeBusiness(req, req.params.id);
-      const current = await db.query('SELECT policies FROM organizations WHERE id=$1 FOR UPDATE', [business.organization_id]);
-      if (!current.rows[0]) throw new Error('NOT_FOUND:Organization not found.');
+      const result = await db.withTransaction(async (tx) => {
+        const current = await tx.query('SELECT policies FROM organizations WHERE id=$1 FOR UPDATE', [business.organization_id]);
+        if (!current.rows[0]) throw new Error('NOT_FOUND:Organization not found.');
 
-      const existing = typeof current.rows[0].policies === 'string'
-        ? JSON.parse(current.rows[0].policies)
-        : (current.rows[0].policies || {});
-      const next = { ...existing };
+        const existing = typeof current.rows[0].policies === 'string'
+          ? JSON.parse(current.rows[0].policies)
+          : (current.rows[0].policies || {});
+        const next = { ...existing };
 
-      for (const field of MONEY_FIELDS) {
-        if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
-          next[field] = parseMoney(req.body[field], field);
+        for (const field of MONEY_FIELDS) {
+          if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+            next[field] = parseMoney(req.body[field], field);
+          }
         }
-      }
-      for (const field of TEXT_FIELDS) {
-        if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
-          next[field] = parseText(req.body[field], field);
+        for (const field of TEXT_FIELDS) {
+          if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+            next[field] = parseText(req.body[field], field);
+          }
         }
-      }
-      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'pickupEnabled')) {
-        if (typeof req.body.pickupEnabled !== 'boolean') {
-          throw new Error('VALIDATION_ERROR:pickupEnabled must be a boolean.');
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, 'pickupEnabled')) {
+          if (typeof req.body.pickupEnabled !== 'boolean') {
+            throw new Error('VALIDATION_ERROR:pickupEnabled must be a boolean.');
+          }
+          next.pickupEnabled = req.body.pickupEnabled;
         }
-        next.pickupEnabled = req.body.pickupEnabled;
-      }
 
-      const missing = MONEY_FIELDS.filter((field) => {
-        const value = next[field];
-        return value === undefined || value === null || String(value).trim() === '';
+        const missing = MONEY_FIELDS.filter((field) => {
+          const value = next[field];
+          return value === undefined || value === null || String(value).trim() === '';
+        });
+        if (missing.length) {
+          throw new Error(`VALIDATION_ERROR:Configure all required shipping amounts before saving: ${missing.join(', ')}.`);
+        }
+
+        const updated = await tx.query(
+          'UPDATE organizations SET policies=$1::jsonb, updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING policies',
+          [JSON.stringify(next), business.organization_id],
+        );
+
+        return { next, policies: updated.rows[0]?.policies || next };
       });
-      if (missing.length) {
-        throw new Error(`VALIDATION_ERROR:Configure all required shipping amounts before saving: ${missing.join(', ')}.`);
-      }
-
-      await db.query(
-        'UPDATE organizations SET policies=$1::jsonb, updated_at=CURRENT_TIMESTAMP WHERE id=$2',
-        [JSON.stringify(next), business.organization_id],
-      );
 
       await audit.recordEvent({
         organization_id: business.organization_id,
@@ -156,13 +160,14 @@ export function createMerchantStorePolicyRouter(db: DatabaseClient) {
         result: 'SUCCESS',
       });
 
+      const policies = result.policies as any;
       res.json({
         success: true,
         data: {
           organizationId: business.organization_id,
-          ...Object.fromEntries(MONEY_FIELDS.map((field) => [field, next[field]])),
-          ...Object.fromEntries(TEXT_FIELDS.map((field) => [field, next[field] || ''])),
-          pickupEnabled: next.pickupEnabled === true,
+          ...Object.fromEntries(MONEY_FIELDS.map((field) => [field, policies[field]])),
+          ...Object.fromEntries(TEXT_FIELDS.map((field) => [field, policies[field] || ''])),
+          pickupEnabled: policies.pickupEnabled === true,
         },
       });
     } catch (err) {
