@@ -35,7 +35,7 @@ interface StorefrontContextValue {
   removeFromStoreCart: (variantId: string) => void;
   clearStoreCart: () => void;
   cartCount: number;
-  wishlistIds: string[]; setWishlistIds: React.Dispatch<React.SetStateAction<string[]>>;
+  wishlistIds: string[]; setWishlistIds: React.Dispatch<React.SetStateAction<string[]>>; toggleWishlist: (productId: string) => void;
   formatCurrency: (amount: number) => string; reloadTenant: () => Promise<void>;
 }
 const Context = createContext<StorefrontContextValue | undefined>(undefined);
@@ -138,12 +138,18 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
 
   const cartCount = useMemo(() => storeCart.reduce((sum, item) => sum + item.quantity, 0), [storeCart]);
 
+  const toggleWishlist = useCallback((productId: string) => {
+    setWishlistIds(current => current.includes(productId)
+      ? current.filter(id => id !== productId)
+      : [...current, productId]);
+  }, []);
+
   const formatCurrency = useCallback((amount: number) => new Intl.NumberFormat(tenant?.locale || 'en-US', { style: 'currency', currency: tenant?.currency?.code || 'USD' }).format(amount), [tenant]);
   const value = useMemo(() => ({
     tenant, loading, error, cartToken, setCartToken, storeCart,
     addToStoreCart, updateStoreCartQty, removeFromStoreCart, clearStoreCart, cartCount,
-    wishlistIds, setWishlistIds, formatCurrency, reloadTenant,
-  }), [tenant, loading, error, cartToken, setCartToken, storeCart, addToStoreCart, updateStoreCartQty, removeFromStoreCart, clearStoreCart, cartCount, wishlistIds, formatCurrency, reloadTenant]);
+    wishlistIds, setWishlistIds, toggleWishlist, formatCurrency, reloadTenant,
+  }), [tenant, loading, error, cartToken, setCartToken, storeCart, addToStoreCart, updateStoreCartQty, removeFromStoreCart, clearStoreCart, cartCount, wishlistIds, toggleWishlist, formatCurrency, reloadTenant]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 };
 export function useStorefrontContext(): StorefrontContextValue {
