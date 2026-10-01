@@ -180,6 +180,16 @@ async function main() {
     assert.strictEqual(converted.body?.store?.provisioned, true);
     assert.ok(converted.body?.store?.locationId);
     assert.strictEqual(converted.body?.data?.business_mode, 'DISCOVERY_AND_STORE');
+
+    // Storefront context requires explicit tenant-owned commercial policy. Migration 053
+    // intentionally leaves new organizations without platform-wide shipping defaults.
+    await db.query(
+      `UPDATE organizations
+          SET policies = COALESCE(policies, '{}'::jsonb) ||
+            '{"freeShippingThreshold":100,"standardShippingFee":5,"expressShippingFee":10}'::jsonb
+        WHERE id=$1`,
+      [actors.ownerA.organizationId],
+    );
     const convertedLocation = await db.query(
       `SELECT id,name,is_pos_enabled FROM locations WHERE organization_id=$1 AND is_active=TRUE`,
       [actors.ownerA.organizationId],
