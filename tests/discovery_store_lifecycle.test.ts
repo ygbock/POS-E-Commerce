@@ -67,6 +67,16 @@ async function main() {
     assert.strictEqual(conversion.response.status, 200);
     assert.strictEqual(conversion.body?.store?.provisioned, true);
 
+    // Migration 053 requires explicit tenant-owned shipping policy before public
+    // storefront context can resolve commercial configuration.
+    await db.query(
+      `UPDATE organizations
+          SET policies = COALESCE(policies, '{}'::jsonb) ||
+            '{"freeShippingThreshold":100,"standardShippingFee":5,"expressShippingFee":10}'::jsonb
+        WHERE id=$1`,
+      [owner.user.organizationId],
+    );
+
     const tenantSlug = String(conversion.body?.store?.tenantSlug || '');
     const locationId = String(conversion.body?.store?.locationId || '');
     assert.ok(tenantSlug, 'store conversion must provision a canonical tenant slug');
