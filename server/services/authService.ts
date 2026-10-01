@@ -76,8 +76,10 @@ export class AuthService {
     await this.db.query('BEGIN');
     try {
       await this.db.query(
-        `INSERT INTO organizations (id,name,code,slug,plan_tier,is_active)
-         VALUES ($1,$2,$3,$4,'starter',TRUE)`,
+        `INSERT INTO organizations (id,name,code,slug,plan_tier,is_active,policies)
+         VALUES ($1,$2,$3,$4,'starter',TRUE,
+           '{"freeShippingThreshold": "75.00", "standardShippingFee": "9.99", "expressShippingFee": "19.99", "shippingPolicy": "Standard shipping delivers within 3-5 business days.", "returnPolicy": "Returns accepted within 30 days of receipt in original condition.", "warrantyPolicy": "Standard 1-year manufacturer warranty applies to all electronics.", "deliveryPromise": "Orders placed before 2 PM dispatch same-day.", "pickupEnabled": true, "pickupInstructions": "Ready for pickup within 2 hours at your selected branch."}'::jsonb
+         )`,
         [organizationId, businessName, organizationCode, `${baseSlug}-${idSuffix.slice(0, 6)}`],
       );
 

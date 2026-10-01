@@ -188,6 +188,11 @@ export class DiscoveryStoreProvisioningService {
                   to_jsonb($5::boolean),
                   true
                 ),
+                policies = CASE 
+                  WHEN policies IS NULL OR policies = '{}'::jsonb THEN 
+                    '{"freeShippingThreshold": "75.00", "standardShippingFee": "9.99", "expressShippingFee": "19.99", "shippingPolicy": "Standard shipping delivers within 3-5 business days.", "returnPolicy": "Returns accepted within 30 days of receipt in original condition.", "warrantyPolicy": "Standard 1-year manufacturer warranty applies to all electronics.", "deliveryPromise": "Orders placed before 2 PM dispatch same-day.", "pickupEnabled": true, "pickupInstructions": "Ready for pickup within 2 hours at your selected branch."}'::jsonb
+                  ELSE policies
+                END,
                 updated_at = CURRENT_TIMESTAMP
           WHERE id = $6`,
         [
