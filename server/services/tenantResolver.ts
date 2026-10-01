@@ -383,7 +383,8 @@ export async function resolveStorefrontTenant(
     featureFlags: {
       reviewsEnabled: Boolean(rawFeatureFlags.reviewsEnabled ?? true),
       wishlistEnabled: Boolean(rawFeatureFlags.wishlistEnabled ?? true),
-      // Coupon/promotion checkout is not currently database-backed; fail closed until a coupon schema exists.\n      couponsEnabled: Boolean(rawFeatureFlags.couponsEnabled ?? false),
+      // Coupon/promotion checkout is not currently database-backed; fail closed until a coupon schema exists.
+      couponsEnabled: Boolean(rawFeatureFlags.couponsEnabled ?? false),
       pickupEnabled: Boolean(rawFeatureFlags.pickupEnabled ?? true),
       guestCheckoutEnabled: Boolean(rawFeatureFlags.guestCheckoutEnabled ?? true),
       orderTrackingEnabled: Boolean(rawFeatureFlags.orderTrackingEnabled ?? true),
