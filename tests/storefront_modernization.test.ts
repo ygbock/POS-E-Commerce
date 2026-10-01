@@ -112,3 +112,13 @@ assert.doesNotMatch(checkoutModalCouponGuard, /WELCOME20|FREESHIP/);
 const checkoutSummaryPolicyGuard = read('src/components/storefront/StoreCheckoutSummary.tsx');
 assert.doesNotMatch(checkoutSummaryPolicyGuard, /Promo Code or Voucher|Coupon Code Engine|Same-Day Dispatch|30-Day Money Back/);
 assert.match(checkoutSummaryPolicyGuard, /Checkout pricing, availability, and fulfillment fees are verified by the store server/);
+
+
+const productCard = read('src/components/storefront/ProductCard.tsx');
+assert.doesNotMatch(productCard, /useCommerce/);
+assert.match(productCard, /useStorefrontContext/);
+
+const mobileBottomNav = read('src/components/storefront/MobileBottomNav.tsx');
+assert.doesNotMatch(mobileBottomNav, /useCommerce/);
+assert.match(mobileBottomNav, /useStorefrontContext/);
+assert.match(context, /toggleWishlist/);
