@@ -11,7 +11,6 @@ import {
   Zap,
 } from 'lucide-react';
 import { Product, ProductVariant } from '../../types';
-import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface ProductCardProps {
@@ -27,24 +26,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onQuickView,
   onQuickAdd,
 }) => {
-  const {
-    formatCurrency,
-    getTotalStockForVariant,
-    addToStoreCart,
-    wishlist,
-    toggleWishlist,
-    isInWishlist,
-  } = useCommerce();
-  const { formatCurrency: formatStorefrontCurrency } = useStorefrontContext();
+  const { formatCurrency: formatStorefrontCurrency, addToStoreCart, wishlistIds, toggleWishlist } = useStorefrontContext();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
 
   const primaryVariant = product.variants[0];
-  const totalStock = getTotalStockForVariant(primaryVariant);
+  const totalStock = Object.values(primaryVariant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   const isOutOfStock = totalStock <= 0;
-  const isWishlisted = isInWishlist(product.id);
+  const isWishlisted = wishlistIds.includes(product.id);
 
   // Price calculations
   const price = primaryVariant.retailPrice;
