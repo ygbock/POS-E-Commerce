@@ -9,7 +9,7 @@ import {
   Sparkles,
   Tag,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface MobileBottomNavProps {
   activeSection: string;
@@ -38,9 +38,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   hasActiveFilters,
   activeFilterCount = 0,
 }) => {
-  const { storeCart, wishlist, activeCustomerUser } = useCommerce();
-  const cartItemsCount = storeCart.reduce((sum, item) => sum + item.quantity, 0);
-  const wishlistCount = wishlist.length;
+  const { cartCount: cartItemsCount, wishlistIds } = useStorefrontContext();
+  const wishlistCount = wishlistIds.length;
 
   const handleHomeClick = () => {
     if (onNavigateHome) {
