@@ -44,6 +44,7 @@ export interface StorefrontOverlaysProps {
   isSuccessModalOpen: boolean;
   setIsSuccessModalOpen: (open: boolean) => void;
   successOrder: Order | null;
+  products: Product[];
   setSuccessOrder: (order: Order | null) => void;
   setInitialTrackingNumber: (value: string) => void;
   setInitialTrackingEmail: (value: string) => void;
@@ -130,6 +131,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
       onClose={() => setIsWishlistDrawerOpen(false)}
       onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
       onOpenCart={goCart}
+      products={products}
     />
 
     {/* Customer Account Portal Modal with integrated Tracking & Wishlist */}
