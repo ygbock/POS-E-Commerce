@@ -28,7 +28,6 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
   products,
 }) => {
   const {
-    storeCart,
     wishlistIds,
     toggleWishlist,
     addToStoreCart,
