@@ -280,6 +280,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
           onMinRatingChange={setMinRating}
           onClearFilters={handleClearAllFilters}
           hasActiveFilters={hasActiveFilters}
+          products={products}
           totalProductsCount={products.length}
           matchedCount={sortedProducts.length}
         />
