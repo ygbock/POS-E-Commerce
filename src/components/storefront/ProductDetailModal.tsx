@@ -4,13 +4,11 @@ import {
   ProductVariant,
   ProductReview,
 } from '../../types';
-import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import {
   Star,
   CheckCircle2,
-  ShieldCheck,
-  Truck,
   ArrowRight,
   X,
   ShoppingCart,
@@ -40,6 +38,7 @@ import {
 
 interface ProductDetailModalProps {
   product: Product | null;
+  products: Product[];
   onClose: () => void;
   onAddToCart: (product: Product, variant: ProductVariant, qty: number) => void;
   onBuyNow: (product: Product, variant: ProductVariant, qty: number) => void;
@@ -48,6 +47,7 @@ interface ProductDetailModalProps {
 
 interface ProductDetailModalContentProps {
   product: Product;
+  products: Product[];
   onClose: () => void;
   onAddToCart: (product: Product, variant: ProductVariant, qty: number) => void;
   onBuyNow: (product: Product, variant: ProductVariant, qty: number) => void;
@@ -56,23 +56,19 @@ interface ProductDetailModalContentProps {
 
 const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   product,
+  products,
   onClose,
-  onAddToCart,
+  products,
+  onAddToCart:
   onBuyNow,
   onSelectRelatedProduct,
 }) => {
   const {
     formatCurrency,
-    getTotalStockForVariant,
-    getLocationStockForVariant,
-    locations,
-    currentRole,
-    products,
+    tenant,
+    wishlistIds,
     toggleWishlist,
-    isInWishlist,
-    activeCustomerUser,
-    addProductReview,
-  } = useCommerce();
+  } = useStorefrontContext();
 
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant>(
     product.variants && product.variants.length > 0 ? product.variants[0] : ({} as ProductVariant)
@@ -88,13 +84,6 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const [shippingEstimate, setShippingEstimate] = useState<string | null>(null);
   const [helpfulVotes, setHelpfulVotes] = useState<{ [reviewId: string]: boolean }>({});
 
-  // Review form state
-  const [isWritingReview, setIsWritingReview] = useState(false);
-  const [reviewerName, setReviewerName] = useState(activeCustomerUser?.name || 'Verified Customer');
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewTitle, setReviewTitle] = useState('');
-  const [reviewComment, setReviewComment] = useState('');
-  const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
   const modalRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(true, onClose, modalRef);
@@ -106,19 +95,15 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       setSelectedImage(product.images?.[0] || '');
       setQuantity(1);
       setShippingEstimate(null);
-      setIsWritingReview(false);
     }
   }, [product?.id]);
 
-  const availableStock = selectedVariant?.id ? getTotalStockForVariant(selectedVariant) : 0;
+  const availableStock = selectedVariant?.id ? Object.values(selectedVariant.stockByLocation || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0) : 0;
   const isOutOfStock = availableStock <= 0;
-  const isWishlisted = isInWishlist(product.id);
+  const isWishlisted = wishlistIds.includes(product.id);
 
   // Price calculations
-  const priceToDisplay =
-    currentRole === 'E-commerce Customer'
-      ? selectedVariant?.retailPrice || 0
-      : selectedVariant?.memberPrice || selectedVariant?.retailPrice || 0;
+  const priceToDisplay = selectedVariant?.retailPrice || 0;
 
   const compareAtPrice = selectedVariant?.compareAtPrice || (product.compareAtPrice ? product.compareAtPrice : null);
   const discountPercent =
@@ -167,28 +152,6 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     } catch {
       // Ignore clipboard write errors
     }
-  };
-
-  // Review submission
-  const handleReviewSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reviewTitle.trim() || !reviewComment.trim()) return;
-
-    addProductReview(product.id, {
-      author: reviewerName.trim() || 'Verified Customer',
-      rating: reviewRating,
-      title: reviewTitle.trim(),
-      comment: reviewComment.trim(),
-      verifiedPurchase: true,
-    });
-
-    setReviewSubmitted(true);
-    setReviewTitle('');
-    setReviewComment('');
-    setTimeout(() => {
-      setIsWritingReview(false);
-      setReviewSubmitted(false);
-    }, 2000);
   };
 
   // Toggle helpful vote
@@ -423,12 +386,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     <div className="flex-1" />
                   )}
 
-                  {/* Assurance & Trust Badges - In the same row as gallery */}
-                  <div className="flex items-center justify-end flex-nowrap gap-2.5 sm:gap-4 text-[10px] sm:text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap flex-shrink-0 ml-auto">
-                    <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-                      <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500 dark:text-sky-400 flex-shrink-0" />
-                      <span>Free Express Dispatch</span>
-                    </div>
+                </div>
                     <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
                       <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
                       <span>2-Year Warranty</span>
@@ -590,7 +548,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                         {product.variants.map((v) => {
-                          const vStock = getTotalStockForVariant(v);
+                          const vStock = Object.values(v.stockByLocation || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0);
                           const isSelected = selectedVariant.id === v.id;
                           return (
                             <button
@@ -882,118 +840,12 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                       })}
                     </div>
 
-                    {/* Write Review Trigger */}
                     <div className="md:col-span-3 flex justify-center md:justify-end">
-                      <button
-                        onClick={() => setIsWritingReview(!isWritingReview)}
-                        className="px-5 py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-black shadow-md flex items-center gap-2 transition-all cursor-pointer"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                        <span>{isWritingReview ? 'Cancel Review' : 'Write a Review'}</span>
-                      </button>
+                      <div className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold text-center">
+                        Product reviews are displayed from the store catalog.
+                      </div>
                     </div>
                   </div>
-
-                  {/* Interactive Review Form */}
-                  {isWritingReview && (
-                    <form
-                      onSubmit={handleReviewSubmit}
-                      className="p-5 sm:p-6 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-sky-500/30 dark:border-sky-500/40 space-y-4 text-xs animate-in fade-in duration-150"
-                    >
-                      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700/80 pb-3">
-                        <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                          Write a Verified Review
-                        </h4>
-                        <span className="text-slate-500 dark:text-slate-400 text-[11px]">Instant live sync</span>
-                      </div>
-
-                      {reviewSubmitted ? (
-                        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-700 dark:text-emerald-300 flex items-center gap-2 font-bold">
-                          <Check className="w-4 h-4" />
-                          <span>Thank you! Your verified review has been published.</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                Your Display Name
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={reviewerName}
-                                onChange={(e) => setReviewerName(e.target.value)}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-none"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                Star Rating
-                              </label>
-                              <div className="flex items-center space-x-1 pt-1.5">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                  <button
-                                    type="button"
-                                    key={star}
-                                    onClick={() => setReviewRating(star)}
-                                    className="p-1 text-amber-400 hover:scale-125 transition-transform cursor-pointer"
-                                    aria-label={`Rate ${star} star`}
-                                  >
-                                    <Star
-                                      className={`w-6 h-6 ${
-                                        star <= reviewRating
-                                          ? 'fill-amber-400 text-amber-400'
-                                          : 'text-slate-300 dark:text-slate-700'
-                                      }`}
-                                    />
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                Headline / Summary
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="e.g. Flawless performance and outstanding craftsmanship"
-                              value={reviewTitle}
-                              onChange={(e) => setReviewTitle(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                              Detailed Feedback
-                            </label>
-                            <textarea
-                              rows={3}
-                              required
-                              placeholder="Share your practical experience on build quality, reliability, and value..."
-                              value={reviewComment}
-                              onChange={(e) => setReviewComment(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-none"
-                            />
-                          </div>
-
-                          <div className="flex justify-end pt-1">
-                            <button
-                              type="submit"
-                              className="px-6 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold transition-all shadow-md active:scale-95 cursor-pointer"
-                            >
-                              Submit Review
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </form>
-                  )}
 
                   {/* Reviews List */}
                   <div className="space-y-3.5">
@@ -1099,7 +951,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
                       <p className="font-bold text-slate-900 dark:text-white text-xs">Standard & Express Dispatch</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Orders placed before 2:00 PM EST qualify for same-day dispatch from our central distribution network.
+                        Delivery timing and fulfillment options are determined by the store's configured policies and confirmed at checkout.
                       </p>
                     </div>
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
@@ -1301,6 +1153,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   return (
     <ProductDetailModalContent
       product={product}
+      products={products}
       onClose={onClose}
       onAddToCart={onAddToCart}
       onBuyNow={onBuyNow}
