@@ -191,7 +191,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         >
           <div className="relative">
             <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-sky-400">
-              {activeCustomerUser ? activeCustomerUser.name.charAt(0) : <User className="w-3.5 h-3.5" />}
+              <User className="w-3.5 h-3.5" />
             </div>
             {wishlistCount > 0 && (
               <span className="absolute -top-1 -right-1.5 bg-rose-500 text-slate-900 dark:text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
@@ -200,7 +200,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             )}
           </div>
           <span className="text-[10px] mt-1 tracking-tight truncate max-w-[60px]">
-            {activeCustomerUser ? activeCustomerUser.name.split(' ')[0] : 'Account'}
+            Account
           </span>
         </button>
       </div>
