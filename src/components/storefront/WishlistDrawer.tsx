@@ -46,7 +46,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
   const handleMoveAllToCart = () => {
     wishlistedProducts.forEach((p) => {
       const variant = p.variants[0];
-      const stock = Object.values(variant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+      const stock = Object.values(variant.stockByLocation || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0);
       if (stock > 0) {
         addToStoreCart(p, variant, 1);
       }
@@ -101,7 +101,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
           ) : (
             wishlistedProducts.map((product) => {
               const primaryVariant = product.variants[0];
-              const totalStock = Object.values(primaryVariant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+              const totalStock = Object.values(primaryVariant.stockByLocation || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0);
               const isOutOfStock = totalStock <= 0;
 
               return (
