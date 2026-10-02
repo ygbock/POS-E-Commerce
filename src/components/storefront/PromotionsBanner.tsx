@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React from 'react';
 import {
   Tag,
   Copy,
@@ -11,75 +11,14 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 
-interface PromotionsBannerProps {
-  onOpenCart?: () => void;
-}
+interface PromotionsBannerProps {}
 
-const ACTIVE_COUPONS = [
-  {
-    code: 'WELCOME20',
-    title: '$20 OFF First Order',
-    description: 'Valid on storewide orders above $100',
-    type: 'fixed',
-    value: '$20',
-    color: 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/40',
-  },
-  {
-    code: 'VIP15',
-    title: '15% OFF Member Orders',
-    description: 'Exclusive tier savings on orders above $150',
-    type: 'percentage',
-    value: '15%',
-    color: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/40',
-  },
-  {
-    code: 'FREESHIP',
-    title: 'Free Express Dispatch',
-    description: 'Zero shipping fee across all domestic orders',
-    type: 'fixed',
-    value: 'Free Shipping',
-    color: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/40',
-  },
-  {
-    code: 'AUDIO10',
-    title: '10% OFF Acoustic Gear',
-    description: 'Save on studio headphones, speakers & DACs',
-    type: 'percentage',
-    value: '10%',
-    color: 'bg-sky-50 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-500/40',
-  },
-  {
-    code: 'GUEST5',
-    title: '$5 Fast Checkout Voucher',
-    description: 'Instant discount valid on any cart size',
-    type: 'fixed',
-    value: '$5',
-    color: 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-500/40',
-  },
-];
-
-export const PromotionsBanner: React.FC<PromotionsBannerProps> = ({ onOpenCart }) => {
-  const { applyCoupon, appliedCoupon } = useCommerce();
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+export const PromotionsBanner: React.FC<PromotionsBannerProps> = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
-  const checkScroll = useCallback(() => {
-    if (!scrollRef.current) return;
-    const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-    setCanScrollLeft(scrollLeft > 4);
-    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 4);
-  }, []);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    checkScroll();
-
-    el.addEventListener('scroll', checkScroll, { passive: true });
-    window.addEventListener('resize', checkScroll);
-    return () => {
+  return () => {
       el.removeEventListener('scroll', checkScroll);
       window.removeEventListener('resize', checkScroll);
     };
@@ -233,3 +172,17 @@ export const PromotionsBanner: React.FC<PromotionsBannerProps> = ({ onOpenCart }
   );
 };
 
+  return (
+    <section id="store-promotions" className="space-y-4">
+      <div className="flex items-start gap-3 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
+          <ShieldCheck className="w-5 h-5" />
+        </div>
+        <div>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">Store Offers</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Eligible promotions and fulfillment offers are verified by the store server during checkout.</p>
+        </div>
+      </div>
+    </section>
+  );
+};
