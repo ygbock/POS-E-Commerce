@@ -483,13 +483,12 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Advance the order through its fulfillment lifecycle. Each milestone automatically dispatches realistic text alerts to the customer’s mobile number with active tracking URLs.
+                    Advance the order through its fulfillment lifecycle. Each milestone automatically dispatches server-rendered notification content for the customer’s mobile channel.
                   </p>
 
                   <button
                     type="button"
                     onClick={handleSimulateAdvance}
-                    disabled={isSimulating}
                     className="w-full py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-sky-600/25 flex items-center justify-center gap-2 transition-all min-h-[42px] cursor-pointer active:scale-98"
                   >
                     <Play className="w-4 h-4 fill-white" />
@@ -604,7 +603,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Rich messaging with verified badges, real-time map links, and instant interactive customer service replies.
+                    Preview the configured WhatsApp notification content. Delivery is handled by the server notification pipeline.
                   </p>
 
                   <button
