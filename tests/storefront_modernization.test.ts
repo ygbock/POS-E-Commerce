@@ -156,3 +156,13 @@ assert.doesNotMatch(quickView, /useCommerce/);
 assert.match(quickView, /useStorefrontContext/);
 assert.match(quickView, /wishlistIds/);
 assert.match(quickView, /pickupLocations/);
+
+
+const productDetail = read('src/components/storefront/ProductDetailModal.tsx');
+assert.doesNotMatch(productDetail, /useCommerce/);
+assert.match(productDetail, /useStorefrontContext/);
+assert.match(productDetail, /wishlistIds/);
+assert.match(productDetail, /pickupLocations/);
+assert.doesNotMatch(productDetail, /Free Express Dispatch|2-Year Warranty|same-day dispatch|2 hours or less/);
+assert.doesNotMatch(productDetail, /addProductReview|Instant live sync|verified review has been published/);
+assert.match(productDetail, /products: Product\[\]/);
