@@ -11,11 +11,12 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
+import { Product } from '../../types';
 
 interface CategoryShowcaseProps {
   onSelectCategory: (category: string) => void;
   selectedCategory: string;
+  products: Product[];
 }
 
 const CATEGORIES_METADATA = [
@@ -72,8 +73,8 @@ const CATEGORIES_METADATA = [
 export const CategoryShowcase: React.FC<CategoryShowcaseProps> = ({
   onSelectCategory,
   selectedCategory,
+  products,
 }) => {
-  const { products } = useCommerce();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
