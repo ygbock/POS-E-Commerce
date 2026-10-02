@@ -15,7 +15,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Order } from '../../types';
-import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface OrderSuccessModalProps {
@@ -35,7 +35,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
   onOpenNotificationHub,
   onOpenClaimModal,
 }) => {
-  const { formatCurrency, activeCustomerUser } = useCommerce();
+  const { formatCurrency } = useStorefrontContext();
   const [copiedLink, setCopiedLink] = useState(false);
 
   const modalRef = useRef<HTMLDivElement>(null);
@@ -52,7 +52,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const isGuest = !activeCustomerUser || order.customerName.includes('(Guest)');
+  const isGuest = order.customerName.includes('(Guest)') || !order.customerEmail;
 
   return (
     <div
