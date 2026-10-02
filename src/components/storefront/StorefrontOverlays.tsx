@@ -112,6 +112,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
     {selectedDetailProduct && (
       <ProductDetailModal
         product={selectedDetailProduct}
+        products={products}
         onClose={() => goShop()}
         onAddToCart={addToStoreCart}
         onBuyNow={onBuyNow}
