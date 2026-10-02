@@ -243,6 +243,43 @@ export class OrderRepository {
     });
   }
 
+  async listOrdersForCustomerAuthUser(
+    organizationId: string,
+    authUserId: string,
+    limit = 50,
+    client?: DatabaseClient,
+  ): Promise<Array<{ order: OrderRecord; items: OrderItemRecord[]; customer: { id: string; name: string; email: string | null; phone: string | null; tier: string | null } }>> {
+    if (!organizationId || !authUserId) throw new Error('AUTH_REQUIRED: organization and authenticated user are required.');
+    const db = this.getClient(client);
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const orderRes = await db.query<any>(
+      `SELECT o.id, o.organization_id, o.location_id, o.customer_id, o.order_number,
+              o.source, o.channel, o.fulfillment_method, o.subtotal, o.discount_amount, o.discount_code,
+              o.tax_amount, o.shipping_fee, o.total_amount, o.total_cost_amount, o.payment_status, o.status,
+              o.cashier_name, o.tracking_number, o.carrier_name, o.notes, o.created_at, o.updated_at,
+              c.id AS customer_id_ref, c.name AS customer_name, c.email AS customer_email,
+              c.phone AS customer_phone, c.tier AS customer_tier
+       FROM orders o JOIN customers c ON c.id = o.customer_id AND c.organization_id = o.organization_id
+       WHERE o.organization_id = $1 AND c.auth_user_id = $2
+       ORDER BY o.created_at DESC LIMIT $3`,
+      [organizationId, authUserId, safeLimit],
+    );
+    const results: Array<{ order: OrderRecord; items: OrderItemRecord[]; customer: { id: string; name: string; email: string | null; phone: string | null; tier: string | null } }> = [];
+    for (const row of orderRes.rows) {
+      const itemsRes = await db.query<any>(
+        `SELECT oi.id, oi.order_id, oi.variant_id, oi.product_name, oi.variant_name, oi.sku,
+                oi.unit_price, oi.cost_price, oi.quantity, oi.discount_amount, oi.tax_rate, oi.total_amount, oi.created_at
+         FROM order_items oi WHERE oi.order_id = $1 ORDER BY oi.created_at ASC`,
+        [row.id],
+      );
+      results.push({ order: mapOrderRow(row), items: itemsRes.rows.map(mapOrderItemRow), customer: {
+        id: row.customer_id_ref, name: row.customer_name, email: row.customer_email ?? null,
+        phone: row.customer_phone ?? null, tier: row.customer_tier ?? null,
+      }});
+    }
+    return results;
+  }
+
   async findOrderById(
     id: string,
     organizationId: string,
