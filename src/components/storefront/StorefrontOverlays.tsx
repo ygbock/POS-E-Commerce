@@ -60,6 +60,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
   isWishlistDrawerOpen, setIsWishlistDrawerOpen,
   isAccountModalOpen, setIsAccountModalOpen, accountPortalTab, setAccountPortalTab,
   isCheckoutOpen, setIsCheckoutOpen, isSuccessModalOpen, setIsSuccessModalOpen, successOrder, setSuccessOrder,
+  products,
   setInitialTrackingNumber, setInitialTrackingEmail, setClaimModalEmail,
 }) => (
   <>
