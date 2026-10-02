@@ -124,6 +124,16 @@ try {
   assert.equal(new URL(calls[0].url, 'https://shop.abacha.com').pathname, '/api/storefront/alpha/orders/ORD-1001');
   assert.equal(new URL(calls[0].url, 'https://shop.abacha.com').searchParams.get('contact'), 'guest@example.com');
 
+  calls.length = 0;
+  globalThis.fetch = (async (input, init) => {
+    calls.push({ url: String(input), init });
+    return new Response(JSON.stringify({ data: { id: 'ord-1', orderNumber: 'ORD-1001', status: 'Delivered', items: [], payments: [] } }), { status: 200 });
+  }) as typeof fetch;
+  const customerOrder = await storefrontApi.getCustomerOrder('alpha', 'ORD-1001');
+  assert.equal(customerOrder.orderNumber, 'ORD-1001');
+  assert.equal(new URL(calls[0].url, 'https://shop.abacha.com').pathname, '/api/storefront/alpha/account/orders/ORD-1001');
+  assert.equal(new URL(calls[0].url, 'https://shop.abacha.com').search, '');
+
   globalThis.fetch = (async () => new Response(JSON.stringify({
     error: { code: 'TENANT_NOT_FOUND', message: 'Store Not Found' },
   }), { status: 404, headers: { 'content-type': 'application/json' } })) as typeof fetch;
