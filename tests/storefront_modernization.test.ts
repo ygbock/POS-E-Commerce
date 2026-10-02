@@ -4,6 +4,10 @@ import fs from 'node:fs';
 const read = (path: string) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const context = read('src/context/StorefrontContext.tsx');
+const accountModal = read('src/components/storefront/CustomerAccountModal.tsx');
+const notificationHub = read('src/components/storefront/OrderNotificationHubModal.tsx');
+const orderSuccess = read('src/components/storefront/OrderSuccessModal.tsx');
+
 const storefrontState = read('src/components/storefront/useStorefrontState.ts');
 assert.match(context, /storefront:\$\{encodeURIComponent\(slug\)\}:cart/);
 assert.match(context, /export interface StoreCartItem/);
@@ -13,6 +17,16 @@ assert.match(context, /isDarkMode: boolean/);
 assert.match(context, /toggleTheme/);
 assert.doesNotMatch(storefrontState, /useCommerce/);
 assert.match(storefrontState, /useStorefrontContext/);
+assert.doesNotMatch(accountModal, /useCommerce/);
+assert.match(accountModal, /useStorefrontContext/);
+assert.match(accountModal, /authClient\.login/);
+assert.doesNotMatch(accountModal, /WELCOME20|applyCoupon|registerNewCustomer|simulateAdvanceOrderStatus/);
+assert.doesNotMatch(notificationHub, /useCommerce/);
+assert.match(notificationHub, /useStorefrontContext/);
+assert.doesNotMatch(notificationHub, /sendCustomerAlert|simulateAdvanceOrderStatus/);
+assert.doesNotMatch(orderSuccess, /useCommerce/);
+assert.match(orderSuccess, /useStorefrontContext/);
+
 
 const router = read('server/routes/storefrontRoutes.ts');
 assert.match(router, /p\.channels_ecommerce = true/);
