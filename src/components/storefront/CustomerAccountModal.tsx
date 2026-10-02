@@ -538,7 +538,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <span>Account Creation Special Offer</span>
                         </div>
                         <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-                          Create an Account & Get $20 OFF with <span className="text-amber-300 underline underline-offset-4 decoration-amber-400">server-verified promotion</span>
+                          Create an account to access your authenticated customer workspace
                         </h3>
                         <p className="text-xs text-slate-700 dark:text-slate-300 max-w-xl">
                           Sign up in 30 seconds to unlock your $20 welcome voucher, earn 50 reward points, track orders in real-time, and link previous guest purchases automatically.
