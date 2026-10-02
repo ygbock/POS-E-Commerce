@@ -664,29 +664,72 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
       if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin') {
-        return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Customer account is not authorized for this storefront.' } });
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'TENANT_ACCESS_DENIED',
+            message: 'Customer account is not authorized for this storefront.',
+          },
+        });
       }
-      const customerOrders = await orders.listOrdersForCustomerAuthUser(config.tenant.id, req.auth!.userId);
-      const data = customerOrders.map(({ order, items, customer }) => ({
-        id: order.id, orderNumber: order.order_number, source: order.source, channel: order.channel,
-        locationId: order.location_id, locationName: '', customerId: customer.id, customerName: customer.name,
-        customerEmail: customer.email || undefined, customerPhone: customer.phone || undefined,
-        customerTier: customer.tier as any, fulfillmentMethod: order.fulfillment_method,
-        items: items.map(item => ({ productId: '', variantId: item.variant_id, productName: item.product_name,
-          variantName: item.variant_name, sku: item.sku, price: Number(item.unit_price), costPrice: Number(item.cost_price),
-          quantity: Number(item.quantity), taxRate: Number(item.tax_rate), unit: 'each' })),
-        subtotal: Number(order.subtotal), discountAmount: Number(order.discount_amount),
-        discountCode: order.discount_code || undefined, taxAmount: Number(order.tax_amount),
-        shippingFee: Number(order.shipping_fee), totalAmount: Number(order.total_amount),
-        totalCostAmount: Number(order.total_cost_amount || 0), payments: [],
-        paymentStatus: order.payment_status === 'Partial' ? 'Pending' : order.payment_status, status: order.status,
-        cashierName: order.cashier_name || undefined, trackingNumber: order.tracking_number || undefined,
-        carrierName: order.carrier_name || undefined, notes: order.notes || undefined,
-        createdAt: order.created_at || '', updatedAt: order.updated_at || '', loyaltyPointsEarned: 0, loyaltyPointsRedeemed: 0,
+
+      const customerOrders = await orders.listOrdersForCustomerAuthUser(
+        config.tenant.id,
+        req.auth!.userId,
+      );
+
+      const data = customerOrders.map(({ order, items, payments, location, customer }) => ({
+        id: order.id,
+        orderNumber: order.order_number,
+        source: order.source,
+        channel: order.channel,
+        locationId: location.id,
+        locationName: location.name,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerEmail: customer.email || undefined,
+        customerPhone: customer.phone || undefined,
+        customerTier: customer.tier as any,
+        fulfillmentMethod: order.fulfillment_method,
+        items: items.map(item => ({
+          productId: item.product_id,
+          variantId: item.variant_id,
+          productName: item.product_name,
+          variantName: item.variant_name,
+          sku: item.sku,
+          price: Number(item.unit_price),
+          quantity: Number(item.quantity),
+          taxRate: Number(item.tax_rate),
+          unit: 'each',
+        })),
+        subtotal: Number(order.subtotal),
+        discountAmount: Number(order.discount_amount),
+        discountCode: order.discount_code || undefined,
+        taxAmount: Number(order.tax_amount),
+        shippingFee: Number(order.shipping_fee),
+        totalAmount: Number(order.total_amount),
+        paymentStatus: order.payment_status === 'Partial' ? 'Pending' : order.payment_status,
+        status: order.status,
+        trackingNumber: order.tracking_number || undefined,
+        carrierName: order.carrier_name || undefined,
+        createdAt: order.created_at || '',
+        updatedAt: order.updated_at || '',
+        payments: payments.map(payment => ({
+          method: payment.payment_method,
+          amount: Number(payment.amount),
+          currency: payment.currency,
+          status: payment.status,
+          reference: payment.reference || undefined,
+          timestamp: payment.created_at || '',
+        })),
       }));
+
       return res.json({ success: true, count: data.length, data });
-    } catch (err) { handleStorefrontError(res, err); }
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
   });
+
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED ADMIN ORDER LIFECYCLE
   // --------------------------------------------------------------------------
