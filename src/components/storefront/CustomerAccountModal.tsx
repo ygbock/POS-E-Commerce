@@ -460,49 +460,22 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             <div className="space-y-6">
               {activeCustomerUser ? (
                 <>
-                  {/* Tier & Loyalty Perks Card */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 border border-slate-200 dark:border-slate-800 relative overflow-hidden">
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          <Award className="w-3 h-3" />
-                          <span>{activeCustomerUser.tier} Membership Tier</span>
-                        </span>
-                        <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white pt-1">
-                          {activeCustomerUser.name}
-                        </h4>
-                        <p className="text-slate-600 dark:text-slate-400 text-xs">
-                          {activeCustomerUser.notes || 'Authenticated customer account information is shown here. Order history is loaded from the server.'}
-                        </p>
-                      </div>
-
-                      <div className="text-left sm:text-right bg-slate-100/80 dark:bg-slate-900/80 sm:bg-transparent p-3 sm:p-0 rounded-xl border border-slate-200 dark:border-slate-800 sm:border-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 block">Reward Points</span>
-                        <span className="text-xl sm:text-2xl font-black text-sky-400">
-                          {activeCustomerUser.loyaltyPoints.toLocaleString()} pts
-                        </span>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400">Reward balance is managed by the store server.</p>
-                      </div>
+                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Customer account</span>
+                      <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">{activeCustomerUser.name}</h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">{activeCustomerUser.email}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-500">Account details and order history are provided from the authenticated store session.</p>
                     </div>
+                  </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800/80">
+                  {/* Server-verified promotion notice */}
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+                    <div className="flex items-center gap-3">
+                      <Gift className="w-5 h-5 text-slate-500" />
                       <div>
-                        <span className="text-[10px] text-slate-600 dark:text-slate-400 block">Total Lifetime Spend</span>
-                        <span className="text-xs sm:text-sm font-bold text-emerald-400">
-                          {formatCurrency(activeCustomerUser.totalSpent)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-600 dark:text-slate-400 block">Store Credit Balance</span>
-                        <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                          {formatCurrency(activeCustomerUser.storeCredit)}
-                        </span>
-                      </div>
-                      <div className="col-span-2 sm:col-span-1">
-                        <span className="text-[10px] text-slate-600 dark:text-slate-400 block">Customer ID</span>
-                        <span className="text-xs font-mono text-slate-700 dark:text-slate-300">
-                          {activeCustomerUser.id}
-                        </span>
+                        <p className="font-bold text-slate-900 dark:text-white text-xs">Store promotions</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Eligible promotions and fulfillment offers are verified by the store server during checkout.</p>
                       </div>
                     </div>
                   </div>
