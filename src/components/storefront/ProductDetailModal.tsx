@@ -18,6 +18,7 @@ import {
   Flame,
   Check,
   Building2,
+  Truck,
   Layers,
   FileText,
   MessageSquare,
@@ -480,9 +481,9 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                         Omnichannel Stock Availability:
                       </p>
                       <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-2 pt-0.5">
-                        {locations && locations.length > 0 ? (
-                          locations.map((loc) => {
-                            const locQty = getLocationStockForVariant(selectedVariant, loc.id);
+                        {tenant?.pickupLocations && tenant.pickupLocations.length > 0 ? (
+                          tenant.pickupLocations.map((loc) => {
+                            const locQty = selectedVariant?.stockByLocation?.[loc.id] || 0;
                             return (
                               <div
                                 key={loc.id}
@@ -949,7 +950,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
                       <p className="font-bold text-slate-900 dark:text-white text-xs">Free Local In-Store Pickup</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Select "In-Store Pickup" during checkout to collect your items from any nearby retail store in 2 hours or less.
+                        Select "In-Store Pickup" during checkout to collect your items from any nearby retail store based on configured pickup availability.
                       </p>
                     </div>
                   </div>
