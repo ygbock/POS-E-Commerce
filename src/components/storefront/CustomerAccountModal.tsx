@@ -491,7 +491,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         <p className="text-[11px] text-slate-500 mt-1">Eligible promotions and fulfillment offers are verified by the store server during checkout.</p>
                       </div>
                     </div>
-                  </div></div>
+                  </div>
 
                   {/* Contact & Address Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -511,19 +511,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
                     <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-2">
                       <p className="font-bold uppercase tracking-wider text-[10px] text-slate-600 dark:text-slate-400">Default Shipping Address</p>
-                      {activeCustomerUser.addresses[0] ? (
-                        <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                          <MapPin className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p>{activeCustomerUser.addresses[0].street}</p>
-                            <p>
-                              {activeCustomerUser.addresses[0].city}, {activeCustomerUser.addresses[0].state} {activeCustomerUser.addresses[0].zip}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-slate-500">No saved address yet.</p>
-                      )}
+                      <p className="text-slate-500">Address details are available when provided by the authenticated customer account.</p>
                     </div>
                   </div>
 
