@@ -1,24 +1,11 @@
 import React, { useState } from 'react';
-import {
-  Mail,
-  Sparkles,
-  CheckCircle2,
-  Gift,
-  ArrowRight,
-  ShieldCheck,
-  Tag,
-  Copy,
-  Check,
-  AlertCircle,
-  BellRing,
-} from 'lucide-react';
+import { Mail, Sparkles, CheckCircle2, ShieldCheck, AlertCircle, BellRing } from 'lucide-react';
 
 export interface NewsletterSectionProps {
   onExploreDeals?: () => void;
 }
 
 export const NewsletterSection: React.FC<NewsletterSectionProps> = ({ onExploreDeals }) => {
-
   const [email, setEmail] = useState('');
   const [preference, setPreference] = useState<'all' | 'tech' | 'deals'>('all');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,33 +15,18 @@ export const NewsletterSection: React.FC<NewsletterSectionProps> = ({ onExploreD
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-
     const cleanEmail = email.trim();
-    if (!cleanEmail) {
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setErrorMsg('Please enter a valid email address.');
       return;
     }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
-      setErrorMsg('Please enter a valid email format (e.g. name@example.com).');
-      return;
-    }
-
     setIsLoading(true);
-
     try {
-      // Mock API endpoint call simulation
-      // In production, this would call /api/newsletter/subscribe
-      await new Promise((resolve) => setTimeout(resolve, 850));
-
-      // Save email to local storage subscription list for persistence
       const currentList: string[] = JSON.parse(localStorage.getItem('abacha_newsletter_subscribers') || '[]');
       if (!currentList.includes(cleanEmail.toLowerCase())) {
         currentList.push(cleanEmail.toLowerCase());
         localStorage.setItem('abacha_newsletter_subscribers', JSON.stringify(currentList));
       }
-
       setIsSubscribed(true);
       setEmail('');
     } catch {
@@ -64,149 +36,68 @@ export const NewsletterSection: React.FC<NewsletterSectionProps> = ({ onExploreD
     }
   };
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(DISCOUNT_CODE);
-    setCouponCopied(true);
-    setTimeout(() => setCouponCopied(false), 2000);
-  };
-
-  const handleApplyToCart = () => {
-    applyCoupon(DISCOUNT_CODE);
-    setCouponApplied(true);
-    setTimeout(() => setCouponApplied(false), 3000);
-  };
-
   return (
     <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 border border-slate-800 p-6 sm:p-10 shadow-2xl text-white">
-      {/* Background ambient elements */}
-      <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
-
       <div className="relative z-10 max-w-4xl mx-auto">
         {!isSubscribed ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Left pitch */}
             <div className="lg:col-span-6 space-y-3 text-left">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-300 text-xs font-bold">
-                <Gift className="w-3.5 h-3.5 text-amber-400" />
-                <span>Join AbaCha VIP Club</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Store Updates</span>
               </div>
-
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
                 Stay Ahead of New Arrivals & Offers
               </h2>
-
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Subscribe to our newsletter for product updates, new arrivals, store announcements, and verified offers.
+                Subscribe for product updates, new arrivals, store announcements, and verified offers.
               </p>
-
-              <div className="flex flex-wrap items-center gap-4 text-slate-400 text-xs pt-1">
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Store updates
-                </span>
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> No Spam, Ever
-                </span>
+              <div className="flex items-center gap-4 text-slate-200 text-xs">
+                <span className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-amber-300" /> Store updates</span>
+                <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> No spam</span>
               </div>
             </div>
 
-            {/* Right Form */}
             <div className="lg:col-span-6">
               <form onSubmit={handleSubmit} className="bg-slate-900/90 backdrop-blur p-5 sm:p-6 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                    Your Email Address <span className="text-rose-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      id="input-newsletter-email"
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your personal or work email..."
-                      className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-indigo-500 rounded-xl py-2.5 pl-10 pr-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
-                    />
-                  </div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Your Email Address <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input id="input-newsletter-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your personal or work email..."
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl py-2.5 pl-10 pr-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
                 </div>
 
-                {/* Preference tags */}
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">
-                    Topics of Interest:
-                  </label>
-                  <div className="flex gap-2 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setPreference('all')}
-                      className={`px-3 py-1 rounded-lg border transition-all ${
-                        preference === 'all'
-                          ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/60 font-bold'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
-                      }`}
-                    >
-                      All Updates
+                <div className="flex gap-2 text-[11px]">
+                  {(['all', 'tech', 'deals'] as const).map((value) => (
+                    <button key={value} type="button" onClick={() => setPreference(value)}
+                      className={`px-3 py-1 rounded-lg border transition-all ${preference === value ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/60 font-bold' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>
+                      {value === 'all' ? 'All Updates' : value === 'tech' ? 'Tech & Hardware' : 'Offers'}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreference('tech')}
-                      className={`px-3 py-1 rounded-lg border transition-all ${
-                        preference === 'tech'
-                          ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/60 font-bold'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
-                      }`}
-                    >
-                      Tech & Hardware
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreference('deals')}
-                      className={`px-3 py-1 rounded-lg border transition-all ${
-                        preference === 'deals'
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-400/50 font-bold'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
-                      }`}
-                    >
-                      Flash Deals Only
-                    </button>
-                  </div>
+                  ))}
                 </div>
 
                 {errorMsg && (
                   <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>{errorMsg}</span>
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" /><span>{errorMsg}</span>
                   </div>
                 )}
 
-                <button
-                  id="btn-newsletter-subscribe"
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Connecting to Subscription API...</span>
-                    </>
-                  ) : (
-                    <>
-                      <BellRing className="w-4 h-4" />
-                      <span>Subscribe to Store Updates</span>
-                    </>
-                  )}
+                <button id="btn-newsletter-subscribe" type="submit" disabled={isLoading}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+                  <BellRing className="w-4 h-4" />
+                  <span>{isLoading ? 'Saving Subscription...' : 'Subscribe to Store Updates'}</span>
                 </button>
-
                 <p className="text-[10px] text-slate-400 text-center leading-tight">
-                  By subscribing, you agree to receive marketing updates from AbaCha Store. You can unsubscribe anytime with 1-click.
+                  By subscribing, you agree to receive store updates. You can unsubscribe anytime.
                 </p>
               </form>
             </div>
           </div>
         ) : (
-          <div className="text-center py-8 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="text-center py-8 space-y-4">
             <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto ring-8 ring-emerald-500/10">
               <CheckCircle2 className="w-8 h-8" />
             </div>
@@ -216,15 +107,14 @@ export const NewsletterSection: React.FC<NewsletterSectionProps> = ({ onExploreD
               <p className="text-xs text-slate-300 max-w-md mx-auto mt-1">We’ll send product updates and verified store offers to your inbox.</p>
             </div>
             {onExploreDeals && (
-              <button type="button" onClick={onExploreDeals} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all">
+              <button type="button" onClick={onExploreDeals} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold">
                 Explore Current Products
               </button>
             )}
-            <button type="button" onClick={() => setIsSubscribed(false)} className="text-xs text-slate-400 hover:text-white underline decoration-slate-600 transition-colors pt-2">
+            <button type="button" onClick={() => setIsSubscribed(false)} className="text-xs text-slate-400 hover:text-white underline">
               Subscribe with another email
             </button>
           </div>
-        </div>
         )}
       </div>
     </section>
