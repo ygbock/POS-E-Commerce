@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 import { authClient, AuthUser } from '../../services/authClient';
+import { storefrontApi } from '../../services/storefrontApi';
 import { Customer, Order, OrderStatus, Product, ProductVariant } from '../../types';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
@@ -156,23 +157,32 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     }
   }, [isOpen, initialTab]);
 
-  // Sync initialOrderNumber
+  // Resolve initial order detail from the server; never search the in-memory order collection.
   useEffect(() => {
-    if (isOpen && initialOrderNumber) {
-      setOrderQuery(initialOrderNumber);
-      const found = orders.find(
-        (o) =>
-          o.orderNumber.toLowerCase() === initialOrderNumber.trim().toLowerCase() ||
-          o.id.toLowerCase() === initialOrderNumber.trim().toLowerCase()
-      );
-      if (found) {
-        setSearchedOrder(found);
-        if (found.customerEmail) setEmailQuery(found.customerEmail);
-        setHasSearched(true);
-      }
-    }
-  }, [isOpen, initialOrderNumber, orders]);
+    if (!isOpen || !initialOrderNumber || !tenant?.slug) return;
+    setOrderQuery(initialOrderNumber);
+    const contact = initialTrackingEmail || activeCustomerUser?.email || '';
+    if (contact) setEmailQuery(contact);
 
+    void (activeCustomerUser
+      ? storefrontApi.getCustomerOrder(tenant.slug, initialOrderNumber)
+      : storefrontApi.trackOrder(tenant.slug, initialOrderNumber, contact || undefined)
+    ).then((data: any) => {
+      const source = data?.data || data;
+      const mapped: Order = {
+        ...source,
+        items: Array.isArray(source?.items) ? source.items : [],
+      } as Order;
+      setSearchedOrder(mapped);
+      if (mapped.customerEmail) setEmailQuery(mapped.customerEmail);
+      setHasSearched(true);
+      setTrackingErrorMessage('');
+    }).catch(() => {
+      setSearchedOrder(null);
+      setHasSearched(true);
+      setTrackingErrorMessage('Order not found or customer verification failed.');
+    });
+  }, [isOpen, initialOrderNumber, initialTrackingEmail, tenant?.slug, activeCustomerUser]);
   // Update emailQuery default when activeCustomerUser changes
   useEffect(() => {
     if (activeCustomerUser?.email) {
@@ -236,49 +246,47 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     }
   };
 
-  const handleSearchTracking = (e?: React.FormEvent) => {
+  const handleSearchTracking = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setTrackingErrorMessage('');
-    const cleanOrder = orderQuery.trim().toLowerCase();
-    const cleanEmail = emailQuery.trim().toLowerCase();
+    const cleanOrder = orderQuery.trim();
+    const cleanEmail = emailQuery.trim();
 
     if (!cleanOrder) {
       setTrackingErrorMessage('Please enter a valid Order Number (e.g. ORD-2026-001)');
       return;
     }
-
-    const matchingOrder = orders.find(
-      (o) => o.orderNumber.toLowerCase() === cleanOrder || o.id.toLowerCase() === cleanOrder
-    );
-
-    if (!matchingOrder) {
-      setHasSearched(true);
-      setSearchedOrder(null);
-      setTrackingErrorMessage(`No order found matching "${orderQuery.trim()}". Please verify your order number.`);
+    if (!activeCustomerUser && !cleanEmail) {
+      setTrackingErrorMessage('Please enter the email or phone used at checkout.');
+      return;
+    }
+    if (!tenant?.slug) {
+      setTrackingErrorMessage('Storefront context is unavailable. Please try again.');
       return;
     }
 
-    // Dual email check if provided
-    if (cleanEmail && matchingOrder.customerEmail) {
-      const orderEmail = matchingOrder.customerEmail.toLowerCase().trim();
-      if (!orderEmail.includes(cleanEmail) && !cleanEmail.includes(orderEmail)) {
-        setHasSearched(true);
-        setSearchedOrder(null);
-        setTrackingErrorMessage(
-          `Security & Privacy: The email "${emailQuery.trim()}" does not match the billing email on file for ${matchingOrder.orderNumber}.`
-        );
-        return;
-      }
+    setHasSearched(false);
+    try {
+      const response = activeCustomerUser
+        ? await storefrontApi.getCustomerOrder(tenant.slug, cleanOrder)
+        : await storefrontApi.trackOrder(tenant.slug, cleanOrder, cleanEmail);
+      const source = response?.data || response;
+      setSearchedOrder({
+        ...source,
+        items: Array.isArray(source?.items) ? source.items : [],
+      } as Order);
+      setHasSearched(true);
+      setTrackingErrorMessage('');
+    } catch {
+      setHasSearched(true);
+      setSearchedOrder(null);
+      setTrackingErrorMessage('Order not found or customer verification failed.');
     }
-
-    setHasSearched(true);
-    setSearchedOrder(matchingOrder);
-    setTrackingErrorMessage('');
   };
 
   const handleTrackSpecificOrder = (order: Order) => {
     setOrderQuery(order.orderNumber);
-    setEmailQuery(order.customerEmail || '');
+    setEmailQuery(order.customerEmail || activeCustomerUser?.email || '');
     setSearchedOrder(order);
     setHasSearched(true);
     setTrackingErrorMessage('');
