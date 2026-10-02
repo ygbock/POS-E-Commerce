@@ -8,7 +8,7 @@ import {
   Plus,
   Check,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { Product } from '../../types';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
@@ -17,6 +17,7 @@ interface WishlistDrawerProps {
   onClose: () => void;
   onSelectProduct: (product: Product) => void;
   onOpenCart: () => void;
+  products: Product[];
 }
 
 export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
@@ -24,27 +25,29 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
   onClose,
   onSelectProduct,
   onOpenCart,
+  products,
 }) => {
   const {
-    wishlist,
-    products,
+    storeCart,
+    wishlistIds,
     toggleWishlist,
     addToStoreCart,
-    getTotalStockForVariant,
     formatCurrency,
-  } = useCommerce();
+  } = useStorefrontContext();
+
+
 
   const drawerRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, drawerRef);
 
   if (!isOpen) return null;
 
-  const wishlistedProducts = products.filter((p) => wishlist.includes(p.id));
+  const wishlistedProducts = products.filter((p) => wishlistIds.includes(p.id));
 
   const handleMoveAllToCart = () => {
     wishlistedProducts.forEach((p) => {
       const variant = p.variants[0];
-      const stock = getTotalStockForVariant(variant);
+      const stock = Object.values(variant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
       if (stock > 0) {
         addToStoreCart(p, variant, 1);
       }
@@ -99,7 +102,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
           ) : (
             wishlistedProducts.map((product) => {
               const primaryVariant = product.variants[0];
-              const totalStock = getTotalStockForVariant(primaryVariant);
+              const totalStock = Object.values(primaryVariant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
               const isOutOfStock = totalStock <= 0;
 
               return (
