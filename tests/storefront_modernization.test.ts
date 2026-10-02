@@ -149,3 +149,10 @@ const wishlistDrawer = read('src/components/storefront/WishlistDrawer.tsx');
 assert.doesNotMatch(wishlistDrawer, /useCommerce/);
 assert.match(wishlistDrawer, /useStorefrontContext/);
 assert.match(wishlistDrawer, /wishlistIds/);
+
+
+const quickView = read('src/components/storefront/QuickViewModal.tsx');
+assert.doesNotMatch(quickView, /useCommerce/);
+assert.match(quickView, /useStorefrontContext/);
+assert.match(quickView, /wishlistIds/);
+assert.match(quickView, /pickupLocations/);
