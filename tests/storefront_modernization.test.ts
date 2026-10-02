@@ -5,6 +5,9 @@ const read = (path: string) => fs.readFileSync(new URL(`../${path}`, import.meta
 
 const context = read('src/context/StorefrontContext.tsx');
 const accountModal = read('src/components/storefront/CustomerAccountModal.tsx');
+assert.doesNotMatch(accountModal, /orders\.find\(/);
+assert.match(accountModal, /storefrontApi\.getCustomerOrder/);
+assert.match(accountModal, /storefrontApi\.trackOrder/);
 const notificationHub = read('src/components/storefront/OrderNotificationHubModal.tsx');
 const orderSuccess = read('src/components/storefront/OrderSuccessModal.tsx');
 
