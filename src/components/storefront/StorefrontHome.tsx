@@ -15,6 +15,7 @@ export interface StorefrontHomeProps {
   bestSellers: Product[];
   newArrivals: Product[];
   recommendedProducts: Product[];
+  products: Product[];
   goShop: () => void;
   goCategory: (slug: string) => void;
   goBrand: (slug: string) => void;
@@ -28,7 +29,7 @@ export interface StorefrontHomeProps {
 
 export const StorefrontHome: React.FC<StorefrontHomeProps> = ({
   selectedCategory, selectedBrand, featuredProducts, bestSellers, newArrivals,
-  recommendedProducts, goShop, goCategory, goBrand, goProduct, setOnSaleOnly,
+  recommendedProducts, products, goShop, goCategory, goBrand, goProduct, setOnSaleOnly,
   setSortBy, setMinRating, setActiveSection, onOpenCart,
 }) => (
   <div className="space-y-10 sm:space-y-14">
@@ -65,7 +66,7 @@ export const StorefrontHome: React.FC<StorefrontHomeProps> = ({
       ))}
     </div>
 
-    <CategoryShowcase selectedCategory={selectedCategory} onSelectCategory={goCategory} />
+    <CategoryShowcase products={products} selectedCategory={selectedCategory} onSelectCategory={goCategory} />
 
     <ProductCarouselSection
       id="store-featured-products"
@@ -79,7 +80,7 @@ export const StorefrontHome: React.FC<StorefrontHomeProps> = ({
       actionButton={{ text: 'View All Products', onClick: goShop, colorClass: 'text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300' }}
     />
 
-    <PromotionsBanner onOpenCart={onOpenCart} />
+    <PromotionsBanner />
 
     <ProductCarouselSection
       id="store-best-sellers"
@@ -117,7 +118,7 @@ export const StorefrontHome: React.FC<StorefrontHomeProps> = ({
       actionButton={{ text: 'Explore Top Rated', onClick: () => { setMinRating(4.5); goShop(); }, colorClass: 'text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300' }}
     />
 
-    <BrandShowcase selectedBrand={selectedBrand} onSelectBrand={goBrand} />
+    <BrandShowcase products={products} selectedBrand={selectedBrand} onSelectBrand={goBrand} />
 
     <NewsletterSection onExploreDeals={() => { setOnSaleOnly(true); setActiveSection('catalog'); }} />
   </div>
