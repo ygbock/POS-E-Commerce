@@ -52,6 +52,12 @@ assert.match(storefrontRoutes, /router\.get\('\/:tenantSlug\/account\/orders'/);
 assert.match(storefrontRoutes, /requireAuth\(\)/);
 assert.match(storefrontRoutes, /listOrdersForCustomerAuthUser/);
 assert.match(storefrontRoutes, /TENANT_ACCESS_DENIED/);
+assert.match(storefrontRoutes, /locationName: location\.name/);
+assert.match(storefrontRoutes, /productId: item\.product_id/);
+assert.match(storefrontRoutes, /payments: payments\.map/);
+assert.doesNotMatch(storefrontRoutes, /costPrice: Number\(item\.cost_price\)/);
+assert.doesNotMatch(storefrontRoutes, /totalCostAmount: Number\(order\.total_cost_amount/);
+assert.doesNotMatch(storefrontRoutes, /loyaltyPointsEarned: 0|loyaltyPointsRedeemed: 0/);
 
 const storefrontApiSource = read('src/services/storefrontApi.ts');
 assert.match(storefrontApiSource, /getCustomerOrders\(tenantSlug/);
