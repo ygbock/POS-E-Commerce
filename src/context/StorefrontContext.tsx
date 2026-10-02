@@ -110,14 +110,14 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
     if (!wishKey) { setWishlistIds([]); setOrders([]); return; }
     try { const parsed: unknown = JSON.parse(window.localStorage.getItem(wishKey) || '[]'); setWishlistIds(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []); }
     catch { setWishlistIds([]); }
-    void fetch('/api/orders', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
-      .then(async response => {
-        if (!response.ok) return [] as Order[];
-        const body = await response.json().catch(() => null);
-        return Array.isArray(body?.data) ? body.data as Order[] : [];
-      })
-      .then(setOrders)
-      .catch(() => setOrders([]));
+    if (!slug) { setOrders([]); return; }
+    void fetch(`/api/storefront/${encodeURIComponent(slug)}/account/orders`, {
+      headers: { Accept: 'application/json' }, credentials: 'same-origin',
+    }).then(async response => {
+      if (!response.ok) return [] as Order[];
+      const body = await response.json().catch(() => null);
+      return Array.isArray(body?.data) ? body.data as Order[] : [];
+    }).then(setOrders).catch(() => setOrders([]));
   }, [reloadTenant, slug]);
 
   const setCartToken = useCallback((token: string | null) => {
