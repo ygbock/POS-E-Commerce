@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontRoute } from '../../router/StorefrontRouter';
 import { Product, ProductVariant, Order } from '../../types';
 import { filterStorefrontProducts, sortStorefrontProducts } from './storefrontCatalog';
@@ -10,8 +9,7 @@ import { AccountPortalTab } from './CustomerAccountModal';
 export interface StorefrontStateProps { onOpenAdmin?: () => void; onOpenPos?: () => void; }
 export function useStorefrontState() {
   const { route, navigate } = useStorefrontRoute();
-  const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency, storeCart, addToStoreCart, wishlistIds } = useStorefrontContext();
-  const { orders, isDarkMode, toggleTheme } = useCommerce();
+  const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency, storeCart, addToStoreCart, wishlistIds, orders, isDarkMode, toggleTheme } = useStorefrontContext();
 
   // Storefront catalog data is loaded exclusively from the tenant-scoped
   // storefront API. Never fall back to CommerceContext's in-memory catalog.
