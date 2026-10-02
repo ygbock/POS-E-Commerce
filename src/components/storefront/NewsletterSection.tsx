@@ -12,20 +12,18 @@ import {
   AlertCircle,
   BellRing,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
 
-export const NewsletterSection: React.FC = () => {
-  const { applyCoupon } = useCommerce();
+export interface NewsletterSectionProps {
+  onExploreDeals?: () => void;
+}
+
+export const NewsletterSection: React.FC<NewsletterSectionProps> = ({ onExploreDeals }) => {
 
   const [email, setEmail] = useState('');
   const [preference, setPreference] = useState<'all' | 'tech' | 'deals'>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [couponCopied, setCouponCopied] = useState(false);
-  const [couponApplied, setCouponApplied] = useState(false);
-
-  const DISCOUNT_CODE = 'WELCOME15';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,16 +93,16 @@ export const NewsletterSection: React.FC = () => {
               </div>
 
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
-                Get 15% Off Your Next Order
+                Stay Ahead of New Arrivals & Offers
               </h2>
 
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Subscribe to our newsletter for exclusive flash deals, early product drops, member-only discounts, and tech insights.
+                Subscribe to our newsletter for product updates, new arrivals, store announcements, and verified offers.
               </p>
 
               <div className="flex flex-wrap items-center gap-4 text-slate-400 text-xs pt-1">
                 <span className="flex items-center gap-1.5 text-slate-200">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Instant Coupon Code
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Store updates
                 </span>
                 <span className="flex items-center gap-1.5 text-slate-200">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> No Spam, Ever
@@ -196,7 +194,7 @@ export const NewsletterSection: React.FC = () => {
                   ) : (
                     <>
                       <BellRing className="w-4 h-4" />
-                      <span>Subscribe & Unlock 15% OFF</span>
+                      <span>Subscribe to Store Updates</span>
                     </>
                   )}
                 </button>
@@ -208,65 +206,25 @@ export const NewsletterSection: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* Subscription Confirmation View */
-          <div className="text-center py-6 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="text-center py-8 space-y-4 animate-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto ring-8 ring-emerald-500/10">
               <CheckCircle2 className="w-8 h-8" />
             </div>
-
             <div>
               <span className="text-xs font-black uppercase tracking-wider text-emerald-400">Subscription Confirmed</span>
-              <h3 className="text-2xl font-black text-white mt-1">Welcome to AbaCha VIP Club!</h3>
-              <p className="text-xs text-slate-300 max-w-md mx-auto mt-1">
-                Your email has been registered. Here is your exclusive 15% welcome discount code:
-              </p>
+              <h3 className="text-2xl font-black text-white mt-1">You’re subscribed to store updates.</h3>
+              <p className="text-xs text-slate-300 max-w-md mx-auto mt-1">We’ll send product updates and verified store offers to your inbox.</p>
             </div>
-
-            {/* Coupon Card */}
-            <div className="max-w-md mx-auto p-4 bg-slate-900 rounded-2xl border border-indigo-500/40 shadow-xl flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                  <Tag className="w-5 h-5" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">VIP Discount Code</p>
-                  <p className="text-base font-black text-indigo-300 font-mono">{DISCOUNT_CODE}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
-                  title="Copy code"
-                >
-                  {couponCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{couponCopied ? 'Copied' : 'Copy'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleApplyToCart}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    couponApplied
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
-                  }`}
-                >
-                  {couponApplied ? 'Applied to Cart!' : 'Apply Now'}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsSubscribed(false)}
-              className="text-xs text-slate-400 hover:text-white underline decoration-slate-600 transition-colors pt-2"
-            >
+            {onExploreDeals && (
+              <button type="button" onClick={onExploreDeals} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all">
+                Explore Current Products
+              </button>
+            )}
+            <button type="button" onClick={() => setIsSubscribed(false)} className="text-xs text-slate-400 hover:text-white underline decoration-slate-600 transition-colors pt-2">
               Subscribe with another email
             </button>
           </div>
+        </div>
         )}
       </div>
     </section>
