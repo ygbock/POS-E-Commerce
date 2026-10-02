@@ -4,9 +4,15 @@ import fs from 'node:fs';
 const read = (path: string) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const context = read('src/context/StorefrontContext.tsx');
+const storefrontState = read('src/components/storefront/useStorefrontState.ts');
 assert.match(context, /storefront:\$\{encodeURIComponent\(slug\)\}:cart/);
 assert.match(context, /export interface StoreCartItem/);
 assert.match(context, /clearStoreCart/);
+assert.match(context, /orders: Order\[\]/);
+assert.match(context, /isDarkMode: boolean/);
+assert.match(context, /toggleTheme/);
+assert.doesNotMatch(storefrontState, /useCommerce/);
+assert.match(storefrontState, /useStorefrontContext/);
 
 const router = read('server/routes/storefrontRoutes.ts');
 assert.match(router, /p\.channels_ecommerce = true/);
