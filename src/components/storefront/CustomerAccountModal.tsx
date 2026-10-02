@@ -52,6 +52,7 @@ interface CustomerAccountModalProps {
   initialOrderNumber?: string;
   initialTrackingEmail?: string;
   onSelectProduct?: (product: Product) => void;
+  products: Product[];
   onOpenCart?: () => void;
   onOpenNotificationHub?: (order: Order) => void;
   onOpenClaimModal?: (email: string) => void;
@@ -75,13 +76,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   onOpenCart,
   onOpenNotificationHub,
   onOpenClaimModal,
+  products,
 }) => {
   const {
     tenant,
     orders,
     formatCurrency,
     wishlistIds: wishlist,
-    products,
     toggleWishlist,
     addToStoreCart,
   } = useStorefrontContext();
@@ -905,24 +906,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         <span>Sign In</span>
                       </button>
 
-                      {/* Instant Autofill Helper for Testing */}
                       <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-center">
-                        <p className="text-[10px] text-slate-500 mb-1.5">Quick Demo Sign-In (Registered Customers):</p>
-                        <div className="flex flex-wrap items-center justify-center gap-2">
-                          {customers.slice(0, 3).map((cust) => (
-                            <button
-                              key={cust.id}
-                              type="button"
-                              onClick={() => {
-                                setActiveCustomerUser(cust);
-                                setSigninEmail('');
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 text-[10px] font-medium transition-colors"
-                            >
-                              {cust.name} ({cust.tier})
-                            </button>
-                          ))}
-                        </div>
+                        <p className="text-[10px] text-slate-500">Customer demo accounts are no longer loaded from client-side fixtures. Sign in with a server-authenticated customer account.</p>
                       </div>
                     </form>
                   )}
