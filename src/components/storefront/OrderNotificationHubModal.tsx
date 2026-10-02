@@ -609,7 +609,6 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                   <button
                     type="button"
                     onClick={handleSimulateAdvance}
-                    disabled={isSimulating}
                     className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all min-h-[42px] cursor-pointer active:scale-98"
                   >
                     <Play className="w-4 h-4 fill-white" />
