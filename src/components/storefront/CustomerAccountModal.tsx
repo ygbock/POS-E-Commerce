@@ -38,7 +38,8 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
+import { authClient, AuthUser } from '../../services/authClient';
 import { Customer, Order, OrderStatus, Product, ProductVariant } from '../../types';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
@@ -76,21 +77,42 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   onOpenClaimModal,
 }) => {
   const {
-    customers,
-    activeCustomerUser,
-    setActiveCustomerUser,
+    tenant,
     orders,
     formatCurrency,
-    wishlist,
+    wishlistIds: wishlist,
     products,
     toggleWishlist,
     addToStoreCart,
-    getTotalStockForVariant,
-    simulateAdvanceOrderStatus,
-    registerNewCustomer,
-    applyCoupon,
-    appliedCoupon,
-  } = useCommerce();
+  } = useStorefrontContext();
+
+  type StorefrontCustomerSession = {
+    id: string;
+    name: string;
+    email: string;
+    tier: string;
+    loyaltyPoints: number;
+    phone?: string;
+  };
+
+  const mapAuthUser = (user: AuthUser | null): StorefrontCustomerSession | null => {
+    if (!user || !/customer/i.test(user.role)) return null;
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      tier: 'Customer',
+      loyaltyPoints: 0,
+      phone: undefined,
+    };
+  };
+
+  const [activeCustomerUser, setActiveCustomerUser] = useState<StorefrontCustomerSession | null>(() =>
+    mapAuthUser(authClient.getUser())
+  );
+
+  const getTotalStockForVariant = (variant: ProductVariant) =>
+    Object.values(variant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
 
   const [selectedTab, setSelectedTab] = useState<AccountPortalTab>(initialTab);
 
@@ -124,9 +146,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [hasSearched, setHasSearched] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [copiedMagicLink, setCopiedMagicLink] = useState(false);
-  const [copiedCouponCode, setCopiedCouponCode] = useState(false);
   const [trackingErrorMessage, setTrackingErrorMessage] = useState('');
-  const [isSimulating, setIsSimulating] = useState(false);
 
   // Sync initialTab when props change
   useEffect(() => {
@@ -179,95 +199,46 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
   // --- Handlers ---
   const handleLogout = () => {
-    setActiveCustomerUser(null);
-    setSignupSuccessMsg('');
-    setSignupError('');
-    setSigninError('');
+    void authClient.logout().finally(() => {
+      setActiveCustomerUser(null);
+      setSignupSuccessMsg('');
+      setSignupError('');
+      setSigninError('');
+      window.location.reload();
+    });
   };
 
   const handleCreateAccount = (e: React.FormEvent) => {
     e.preventDefault();
     setSignupError('');
-    setSignupSuccessMsg('');
-
-    if (!signupName.trim()) {
-      setSignupError('Please enter your full name');
-      return;
-    }
-    if (!signupEmail.trim() || !signupEmail.includes('@')) {
-      setSignupError('Please enter a valid email address');
-      return;
-    }
-    if (!signupPhone.trim()) {
-      setSignupError('Please enter your phone number for delivery and order notifications');
-      return;
-    }
-
-    // Check if customer email is already registered
-    const existing = customers.find((c) => c.email.toLowerCase() === signupEmail.trim().toLowerCase());
-    if (existing) {
-      setActiveCustomerUser(existing);
-      setSignupSuccessMsg(`Welcome back, ${existing.name}! Switched to your registered account.`);
-      applyCoupon('WELCOME20');
-      return;
-    }
-
-    // Create the customer
-    const result = registerNewCustomer({
-      name: signupName.trim(),
-      email: signupEmail.trim(),
-      phone: signupPhone.trim(),
-      street: signupStreet.trim() || '100 Commerce Way',
-      city: signupCity.trim() || 'Seattle',
-      state: signupState.trim() || 'WA',
-      zip: signupZip.trim() || '98101',
-      country: signupCountry || 'USA',
-    });
-
-    // Auto-apply WELCOME20 coupon code to cart!
-    applyCoupon('WELCOME20');
-
     setSignupSuccessMsg(
-      `🎉 Welcome ${result.customer.name}! Account created with ${result.pointsAdded} reward points. Coupon WELCOME20 ($20 OFF) has been activated!`
+      'Customer self-registration is not yet exposed by the server. Use the authenticated customer sign-in flow when an account has been provisioned.'
     );
-
-    // Clear signup form
-    setSignupName('');
-    setSignupEmail('');
-    setSignupPhone('');
-    setSignupPassword('');
   };
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setSigninError('');
 
-    if (!signinEmail.trim()) {
-      setSigninError('Please enter your account email');
+    if (!signinEmail.trim() || !signinPassword) {
+      setSigninError('Please enter your account email and password.');
       return;
     }
 
-    const cleanEmail = signinEmail.trim().toLowerCase();
-    const found = customers.find((c) => c.email.toLowerCase() === cleanEmail);
-
-    if (found) {
-      setActiveCustomerUser(found);
+    try {
+      const user = await authClient.login(signinEmail.trim(), signinPassword, tenant?.id);
+      const session = mapAuthUser(user);
+      if (!session) {
+        await authClient.logout();
+        setSigninError('This account is not a customer account for the storefront.');
+        return;
+      }
+      setActiveCustomerUser(session);
       setSigninEmail('');
       setSigninPassword('');
-    } else {
-      // If not found in customers list, check if orders exist with this email
-      const matchingOrders = orders.filter((o) => o.customerEmail?.toLowerCase() === cleanEmail);
-      if (matchingOrders.length > 0) {
-        // Auto-register from existing guest orders
-        const reg = registerNewCustomer({
-          name: matchingOrders[0].customerName || 'Shopper',
-          email: cleanEmail,
-          phone: matchingOrders[0].customerPhone || '+1 (555) 019-2834',
-        });
-        setActiveCustomerUser(reg.customer);
-      } else {
-        setSigninError(`No customer found with email "${signinEmail}". Create an account below to claim WELCOME20!`);
-      }
+      window.location.reload();
+    } catch (error) {
+      setSigninError(error instanceof Error ? error.message : 'Unable to sign in. Please verify your credentials.');
     }
   };
 
@@ -320,27 +291,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     setSelectedTab('tracking');
   };
 
-  const handleAdvanceStatus = () => {
-    if (!searchedOrder) return;
-    setIsSimulating(true);
-    const updated = simulateAdvanceOrderStatus(searchedOrder.id);
-    if (updated) {
-      setSearchedOrder(updated);
-    }
-    setTimeout(() => setIsSimulating(false), 300);
-  };
-
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedTracking(true);
     setTimeout(() => setCopiedTracking(false), 2000);
-  };
-
-  const handleCopyCoupon = (code: string) => {
-    navigator.clipboard.writeText(code);
-    applyCoupon(code);
-    setCopiedCouponCode(true);
-    setTimeout(() => setCopiedCouponCode(false), 2000);
   };
 
   const handleMoveAllWishlistToCart = () => {
@@ -411,7 +365,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {activeCustomerUser
                   ? `${activeCustomerUser.email} • ${activeCustomerUser.loyaltyPoints.toLocaleString()} Reward Points`
-                  : 'Sign up to unlock WELCOME20 coupon ($20 OFF) or track guest orders'}
+                  : 'Sign in to access authenticated order history; guest orders can be tracked with order verification'}
               </p>
             </div>
           </div>
@@ -573,18 +527,12 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-700 dark:text-slate-300 mt-0.5">
-                          Claim your $20 discount at checkout. Applies automatically to active carts.
+                          Eligible promotions are verified by the store server during checkout.
                         </p>
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleCopyCoupon('WELCOME20')}
-                      className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all flex-shrink-0"
-                    >
-                      {copiedCouponCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedCouponCode ? 'Applied to Cart!' : 'Apply WELCOME20'}</span>
-                    </button>
+                    <span className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-500 border border-slate-200 dark:border-slate-700">Server-verified promotions</span>
                   </div>
 
                   {/* Portal Quick-Action Hub Cards */}
@@ -1110,15 +1058,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleAdvanceStatus}
-                        disabled={isSimulating || searchedOrder.status === 'Delivered'}
-                        className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 transition-colors"
-                        title="Simulate advance fulfillment milestone"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin text-sky-400' : ''}`} />
-                        <span>Advance Demo Milestone</span>
-                      </button>
+                      
 
                       {onOpenNotificationHub && (
                         <button
