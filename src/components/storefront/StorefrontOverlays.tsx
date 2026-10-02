@@ -143,6 +143,7 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
       initialTab={accountPortalTab}
       initialOrderNumber={initialTrackingNumber}
       initialTrackingEmail={initialTrackingEmail}
+      products={products}
       onSelectProduct={(prod) => setSelectedDetailProduct(prod)}
       onOpenCart={() => setIsCartDrawerOpen(true)}
       onOpenNotificationHub={(ord) => {
