@@ -250,6 +250,10 @@ export const storefrontApi = {
     return request<any[]>(`${tenantBase(tenantSlug)}/account/orders`);
   },
 
+  getCustomerOrder(tenantSlug: string, orderNumber: string) {
+    return request<any>(`${tenantBase(tenantSlug)}/account/orders/${encodeURIComponent(orderNumber)}`);
+  },
+
   trackOrder(tenantSlug: string | undefined, orderNumber: string, contact?: string) {
     const query = contact ? `?contact=${encodeURIComponent(contact)}` : '';
     return request<StorefrontTrackedOrder>(
