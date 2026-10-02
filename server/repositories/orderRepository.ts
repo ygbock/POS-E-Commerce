@@ -243,11 +243,24 @@ export class OrderRepository {
     });
   }
 
+
+  async getOrderForCustomerAuthUser(
+    organizationId: string,
+    authUserId: string,
+    orderNumber: string,
+    client?: DatabaseClient,
+  ) {
+    if (!orderNumber?.trim()) throw new Error('ORDER_NUMBER_REQUIRED: order number is required.');
+    const rows = await this.listOrdersForCustomerAuthUser(organizationId, authUserId, 1, client, orderNumber.trim());
+    return rows[0] ?? null;
+  }
+
   async listOrdersForCustomerAuthUser(
     organizationId: string,
     authUserId: string,
     limit = 50,
     client?: DatabaseClient,
+    orderNumber?: string,
   ): Promise<Array<{
     order: OrderRecord;
     items: Array<OrderItemRecord & { product_id: string }>;
