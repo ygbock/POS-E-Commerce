@@ -514,7 +514,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Member Coupon Voucher Highlight: WELCOME20 */}
+                  {/* Member Coupon Voucher Highlight: server-verified promotion */}
                   <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-indigo-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
@@ -522,7 +522,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 dark:text-white text-xs">Member Voucher: WELCOME20</span>
+                          <span className="font-bold text-slate-900 dark:text-white text-xs">Member Voucher: server-verified promotion</span>
                           <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-200">
                             $20 OFF ($100+ Orders)
                           </span>
@@ -636,7 +636,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <span>Account Creation Special Offer</span>
                         </div>
                         <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-                          Create an Account & Get $20 OFF with <span className="text-amber-300 underline underline-offset-4 decoration-amber-400">WELCOME20</span>
+                          Create an Account & Get $20 OFF with <span className="text-amber-300 underline underline-offset-4 decoration-amber-400">server-verified promotion</span>
                         </h3>
                         <p className="text-xs text-slate-700 dark:text-slate-300 max-w-xl">
                           Sign up in 30 seconds to unlock your $20 welcome voucher, earn 50 reward points, track orders in real-time, and link previous guest purchases automatically.
@@ -704,7 +704,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                         <div>
                           <h4 className="font-bold text-sm text-slate-900 dark:text-white">Create Customer Profile</h4>
-                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Unlock WELCOME20 coupon code and express checkout</p>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Unlock server-verified promotion coupon code and express checkout</p>
                         </div>
                         <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                           +50 Free Points
@@ -833,7 +833,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         className="w-full py-3.5 bg-gradient-to-r from-sky-500 via-indigo-600 to-sky-500 hover:opacity-95 text-slate-900 dark:text-white rounded-xl text-xs font-black shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 transition-all"
                       >
                         <Gift className="w-4 h-4 text-amber-300" />
-                        <span>Create Account & Unlock WELCOME20</span>
+                        <span>Create Account & Unlock server-verified promotion</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     </form>
