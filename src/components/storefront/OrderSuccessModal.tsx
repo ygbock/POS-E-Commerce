@@ -182,7 +182,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
                   <UserPlus className="w-4 h-4 text-amber-400" />
                   <span className="font-bold text-slate-900 dark:text-white text-xs">Method 4: Claim This Order</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
-                    +{order.loyaltyPointsEarned || 20} pts
+                    {typeof order.loyaltyPointsEarned === 'number' ? `+${order.loyaltyPointsEarned} pts` : 'Loyalty details unavailable'}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-700 dark:text-slate-300">
