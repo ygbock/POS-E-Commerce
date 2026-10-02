@@ -658,6 +658,83 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   );
 
   // --------------------------------------------------------------------------
+  // 5. AUTHENTICATED CUSTOMER ORDER DETAIL
+  // --------------------------------------------------------------------------
+  router.get('/:tenantSlug/account/orders/:orderNumber', requireAuth(), async (req: Request, res: Response) => {
+    try {
+      const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
+      if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin') {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'TENANT_ACCESS_DENIED', message: 'Customer account is not authorized for this storefront.' },
+        });
+      }
+      const aggregate = await orders.getOrderForCustomerAuthUser(
+        config.tenant.id,
+        req.auth!.userId,
+        req.params.orderNumber,
+      );
+      if (!aggregate) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ORDER_NOT_FOUND', message: 'Order not found for this customer account.' },
+        });
+      }
+      const { order, items, payments, location, customer } = aggregate;
+      return res.json({
+        success: true,
+        data: {
+          id: order.id,
+          orderNumber: order.order_number,
+          source: order.source,
+          channel: order.channel,
+          locationId: location.id,
+          locationName: location.name,
+          customerId: customer.id,
+          customerName: customer.name,
+          customerEmail: customer.email || undefined,
+          customerPhone: customer.phone || undefined,
+          customerTier: customer.tier || undefined,
+          fulfillmentMethod: order.fulfillment_method,
+          items: items.map(item => ({
+            productId: item.product_id,
+            variantId: item.variant_id,
+            productName: item.product_name,
+            variantName: item.variant_name,
+            sku: item.sku,
+            price: Number(item.unit_price),
+            quantity: Number(item.quantity),
+            taxRate: Number(item.tax_rate),
+            unit: 'each',
+          })),
+          subtotal: Number(order.subtotal),
+          discountAmount: Number(order.discount_amount),
+          discountCode: order.discount_code || undefined,
+          taxAmount: Number(order.tax_amount),
+          shippingFee: Number(order.shipping_fee),
+          totalAmount: Number(order.total_amount),
+          paymentStatus: order.payment_status === 'Partial' ? 'Pending' : order.payment_status,
+          status: order.status,
+          trackingNumber: order.tracking_number || undefined,
+          carrierName: order.carrier_name || undefined,
+          createdAt: order.created_at || '',
+          updatedAt: order.updated_at || '',
+          payments: payments.map(payment => ({
+            method: payment.payment_method,
+            amount: Number(payment.amount),
+            currency: payment.currency,
+            status: payment.status,
+            reference: payment.reference || undefined,
+            timestamp: payment.created_at || '',
+          })),
+        },
+      });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
+  // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER ORDER HISTORY
   // --------------------------------------------------------------------------
   router.get('/:tenantSlug/account/orders', requireAuth(), async (req: Request, res: Response) => {
