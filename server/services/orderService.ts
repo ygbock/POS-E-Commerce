@@ -1381,4 +1381,12 @@ export class OrderService {
     });
   }
 
+  async listOrdersForCustomerAuthUser(
+    organizationId: string,
+    authUserId: string,
+    limit = 50,
+  ) {
+    return this.orderRepo.listOrdersForCustomerAuthUser(organizationId, authUserId, limit);
+  }
+
 }

@@ -161,6 +161,9 @@ async function main() {
         notes: 'Store onboarding opening stock',
       }),
     });
+    if (openingBalance.response.status !== 201) {
+      console.error('Opening balance POST failed with status:', openingBalance.response.status, 'body:', JSON.stringify(openingBalance.body, null, 2));
+    }
     assert.strictEqual(openingBalance.response.status, 201);
     assert.strictEqual(openingBalance.body?.success, true);
     assert.strictEqual(openingBalance.body?.data?.balance?.on_hand, '12.0000');
