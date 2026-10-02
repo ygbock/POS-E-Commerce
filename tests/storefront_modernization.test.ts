@@ -58,6 +58,13 @@ assert.match(storefrontApiSource, /getCustomerOrders\(tenantSlug/);
 assert.match(context, /\/account\/orders/);
 assert.doesNotMatch(context, /fetch\('\/api\/orders'/);
 
+const customerAccount = read('src/components/storefront/CustomerAccountModal.tsx');
+assert.match(customerAccount, /const customerOrders = activeCustomerUser \? orders : \[\]/);
+assert.doesNotMatch(customerAccount, /orders\.filter\(/);
+assert.doesNotMatch(customerAccount, /orders\.slice\(0, 4\)/);
+assert.doesNotMatch(customerAccount, /\$20 OFF|same-day fulfillment|loyaltyPoints \* 0\.05|Exclusive member pricing/);
+assert.match(customerAccount, /Eligible promotions and fulfillment offers are verified by the store server/);
+
 console.log('Storefront modernization contracts: PASS');
 
 const cartDrawer = read('src/components/storefront/StoreCartDrawer.tsx');
