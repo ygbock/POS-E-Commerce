@@ -42,6 +42,22 @@ const tracking = read('src/components/storefront/OrderTrackingModal.tsx');
 assert.match(tracking, /storefrontApi\.trackOrder/);
 assert.doesNotMatch(tracking, /orders\.find\(/);
 
+const orderRepository = read('server/repositories/orderRepository.ts');
+assert.match(orderRepository, /listOrdersForCustomerAuthUser/);
+assert.match(orderRepository, /c\.auth_user_id = \$2/);
+assert.match(orderRepository, /o\.organization_id = \$1/);
+
+const storefrontRoutes = read('server/routes/storefrontRoutes.ts');
+assert.match(storefrontRoutes, /router\.get\('\/:tenantSlug\/account\/orders'/);
+assert.match(storefrontRoutes, /requireAuth\(\)/);
+assert.match(storefrontRoutes, /listOrdersForCustomerAuthUser/);
+assert.match(storefrontRoutes, /TENANT_ACCESS_DENIED/);
+
+const storefrontApiSource = read('src/services/storefrontApi.ts');
+assert.match(storefrontApiSource, /getCustomerOrders\(tenantSlug/);
+assert.match(context, /\/account\/orders/);
+assert.doesNotMatch(context, /fetch\('\/api\/orders'/);
+
 console.log('Storefront modernization contracts: PASS');
 
 const cartDrawer = read('src/components/storefront/StoreCartDrawer.tsx');
