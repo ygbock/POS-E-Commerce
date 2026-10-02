@@ -122,3 +122,24 @@ const mobileBottomNav = read('src/components/storefront/MobileBottomNav.tsx');
 assert.doesNotMatch(mobileBottomNav, /useCommerce/);
 assert.match(mobileBottomNav, /useStorefrontContext/);
 assert.match(context, /toggleWishlist/);
+
+
+const brandShowcase = read('src/components/storefront/BrandShowcase.tsx');
+assert.doesNotMatch(brandShowcase, /useCommerce/);
+assert.match(brandShowcase, /products: Product\[\]/);
+
+const categoryShowcase = read('src/components/storefront/CategoryShowcase.tsx');
+assert.doesNotMatch(categoryShowcase, /useCommerce/);
+assert.match(categoryShowcase, /products: Product\[\]/);
+
+const mobileFilters = read('src/components/storefront/MobileFilterDrawer.tsx');
+assert.doesNotMatch(mobileFilters, /useCommerce/);
+assert.match(mobileFilters, /products: Product\[\]/);
+
+const promotions = read('src/components/storefront/PromotionsBanner.tsx');
+assert.doesNotMatch(promotions, /useCommerce|WELCOME20|VIP15|FREESHIP|AUDIO10|GUEST5/);
+assert.match(promotions, /verified by the store server during checkout/);
+
+const newsletter = read('src/components/storefront/NewsletterSection.tsx');
+assert.doesNotMatch(newsletter, /useCommerce|WELCOME15|applyCoupon/);
+assert.match(newsletter, /NewsletterSectionProps/);
