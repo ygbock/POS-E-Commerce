@@ -10,8 +10,8 @@ import {
   Award,
   Sparkles,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
+import { Product } from '../../types';
 
 interface MobileFilterDrawerProps {
   isOpen: boolean;
@@ -44,6 +44,7 @@ interface MobileFilterDrawerProps {
   totalProductsCount?: number;
   totalFilteredCount?: number;
   matchedCount?: number;
+  products: Product[];
 }
 
 export const MobileFilterDrawer: React.FC<MobileFilterDrawerProps> = ({
@@ -73,8 +74,8 @@ export const MobileFilterDrawer: React.FC<MobileFilterDrawerProps> = ({
   onClearFilters,
   totalFilteredCount,
   matchedCount,
+  products,
 }) => {
-  const { products } = useCommerce();
 
   const drawerRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, drawerRef);
