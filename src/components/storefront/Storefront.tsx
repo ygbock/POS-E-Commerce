@@ -253,6 +253,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
           isSuccessModalOpen={isSuccessModalOpen}
           setIsSuccessModalOpen={setIsSuccessModalOpen}
           successOrder={successOrder}
+          products={products}
           setSuccessOrder={setSuccessOrder}
           setInitialTrackingNumber={setInitialTrackingNumber}
           setInitialTrackingEmail={setInitialTrackingEmail}
