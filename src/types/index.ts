@@ -457,8 +457,9 @@ export interface Order {
   isSyncFailed?: boolean;
   createdAt: string;
   updatedAt: string;
-  loyaltyPointsEarned: number;
-  loyaltyPointsRedeemed: number;
+  /** Present only when the server has an authoritative order-level loyalty ledger. */
+  loyaltyPointsEarned?: number;
+  loyaltyPointsRedeemed?: number;
 }
 
 export interface Customer {
