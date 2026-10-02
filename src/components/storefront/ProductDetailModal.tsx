@@ -58,8 +58,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   product,
   products,
   onClose,
-  products,
-  onAddToCart:
+  onAddToCart,
   onBuyNow,
   onSelectRelatedProduct,
 }) => {
@@ -356,7 +355,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                   )}
                 </div>
 
-                {/* Gallery Row: Thumbnails and Trust Badges in the exact same row */}
+                {/* Gallery Row: Product thumbnails */}
                 <div className="flex items-center justify-between gap-3 pt-1">
                   {/* Thumbnails Ribbon */}
                   {product.images.length > 1 ? (
@@ -385,13 +384,6 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                   ) : (
                     <div className="flex-1" />
                   )}
-
-                </div>
-                    <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-                      <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
-                      <span>2-Year Warranty</span>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -1143,6 +1135,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product,
+  products,
   onClose,
   onAddToCart,
   onBuyNow,
