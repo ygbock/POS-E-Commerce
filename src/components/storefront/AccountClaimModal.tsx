@@ -88,7 +88,7 @@ export const AccountClaimModal: React.FC<AccountClaimModalProps> = ({
 
   const totalMatchingSpent = matchingOrders.reduce((sum, o) => sum + o.totalAmount, 0);
   const totalMatchingPoints = matchingOrders.reduce(
-    (sum, o) => sum + (o.loyaltyPointsEarned || Math.floor(o.totalAmount / 10)),
+    (sum, o) => sum + (o.loyaltyPointsEarned || 0),
     0
   );
 
@@ -306,7 +306,7 @@ export const AccountClaimModal: React.FC<AccountClaimModalProps> = ({
                         <div className="text-right">
                           <span className="font-bold text-emerald-400">{formatCurrency(ord.totalAmount)}</span>
                           <span className="text-[10px] text-slate-600 dark:text-slate-400 ml-2">
-                            +{ord.loyaltyPointsEarned || Math.floor(ord.totalAmount / 10)} pts
+                            {typeof ord.loyaltyPointsEarned === 'number' ? `+${ord.loyaltyPointsEarned} pts` : 'Loyalty details unavailable'}
                           </span>
                         </div>
                       </div>
