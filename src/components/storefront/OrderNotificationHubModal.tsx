@@ -23,7 +23,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { Order } from '../../types';
-import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 interface OrderNotificationHubModalProps {
@@ -42,11 +42,8 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
   onOpenTracking,
   onOpenLiveTracking,
 }) => {
-  const {
-    formatCurrency,
-    simulateAdvanceOrderStatus,
-    sendCustomerAlert,
-  } = useCommerce();
+  const { formatCurrency } = useStorefrontContext();
+  const [previewNotice, setPreviewNotice] = useState('');
 
   const modalRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, modalRef);
@@ -60,9 +57,9 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
   const [activeTab, setActiveTab] = useState<'confirmation_email' | 'dispatch_email' | 'sms_simulator' | 'whatsapp_simulator'>('confirmation_email');
   const [copiedLink, setCopiedLink] = useState(false);
   const [customMsg, setCustomMsg] = useState('');
-  const [isSimulating, setIsSimulating] = useState(false);
 
   if (!isOpen || !order) return null;
+  const dismissPreviewNotice = () => setPreviewNotice('');
 
   const magicToken = order.trackingMagicToken || `tok_${order.id.slice(0, 8)}`;
   const magicLink = `https://store.abacha.io/orders/track?id=${order.orderNumber}&token=${magicToken}`;
@@ -75,16 +72,12 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
   };
 
   const handleSimulateAdvance = () => {
-    setIsSimulating(true);
-    simulateAdvanceOrderStatus(order.id);
-    setTimeout(() => {
-      setIsSimulating(false);
-    }, 400);
+    setPreviewNotice('Order status changes are server-managed. This notification hub is preview-only and does not mutate the order.');
   };
 
   const handleSendCustomerAlert = (channel: 'SMS' | 'WhatsApp') => {
     if (!customMsg.trim()) return;
-    sendCustomerAlert(order.id, channel, customMsg.trim());
+    setPreviewNotice(channel + ' delivery is server-managed. This preview does not send a live notification.');
     setCustomMsg('');
   };
 
@@ -125,7 +118,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                 </span>
               </div>
               <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 truncate">
-                Direct Magic Links & Live SMS / WhatsApp Alerts
+                Server-backed notification previews
               </p>
             </div>
           </div>
@@ -165,6 +158,15 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
             );
           })}
         </div>
+
+        {previewNotice && (
+          <div className="mx-3.5 sm:mx-6 mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs flex items-start justify-between gap-3">
+            <span>{previewNotice}</span>
+            <button type="button" onClick={dismissPreviewNotice} className="text-amber-300 hover:text-white" aria-label="Dismiss notification">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Modal Body */}
         <div className="p-3.5 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 flex-1 custom-scrollbar text-xs bg-white dark:bg-slate-900">
@@ -491,7 +493,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                     className="w-full py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-sky-600/25 flex items-center justify-center gap-2 transition-all min-h-[42px] cursor-pointer active:scale-98"
                   >
                     <Play className="w-4 h-4 fill-white" />
-                    <span>Advance Status & Trigger SMS Alert</span>
+                    <span>Preview Status Change</span>
                   </button>
                 </div>
 
@@ -499,7 +501,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                 <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
                   <span className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
                     <Send className="w-4 h-4 text-sky-400" />
-                    <span>Send Custom SMS Notification</span>
+                    <span>Preview SMS Notification</span>
                   </span>
 
                   <div className="space-y-2">
@@ -598,7 +600,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                       <span>WhatsApp Business Integration</span>
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
-                      Live Hook
+                      Preview Only
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
@@ -612,7 +614,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                     className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all min-h-[42px] cursor-pointer active:scale-98"
                   >
                     <Play className="w-4 h-4 fill-white" />
-                    <span>Advance Status & Trigger WhatsApp Alert</span>
+                    <span>Preview Status Change</span>
                   </button>
                 </div>
 
@@ -620,7 +622,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                 <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
                   <span className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
                     <Send className="w-4 h-4 text-emerald-400" />
-                    <span>Send Custom WhatsApp Notification</span>
+                    <span>Preview WhatsApp Notification</span>
                   </span>
 
                   <div className="space-y-2">
@@ -638,7 +640,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                       className="w-full sm:w-auto px-4 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors min-h-[38px] cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Send WhatsApp Alert</span>
+                      <span>Preview WhatsApp</span>
                     </button>
                   </div>
                 </div>
