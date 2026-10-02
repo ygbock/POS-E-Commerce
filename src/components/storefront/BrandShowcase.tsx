@@ -1,10 +1,11 @@
 import React from 'react';
 import { Award, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
+import { Product } from '../../types';
 
 interface BrandShowcaseProps {
   onSelectBrand: (brand: string) => void;
   selectedBrand: string;
+  products: Product[];
 }
 
 const BRANDS_METADATA = [
@@ -61,8 +62,8 @@ const BRANDS_METADATA = [
 export const BrandShowcase: React.FC<BrandShowcaseProps> = ({
   onSelectBrand,
   selectedBrand,
+  products,
 }) => {
-  const { products } = useCommerce();
 
   const getBrandCount = (brandName: string) => {
     return products.filter((p) => p.brand.toLowerCase() === brandName.toLowerCase() && p.status === 'active').length;
