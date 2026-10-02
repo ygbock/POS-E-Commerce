@@ -3,12 +3,10 @@ import {
   Product,
   ProductVariant,
 } from '../../types';
-import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import {
   Star,
-  ShieldCheck,
-  Truck,
   ArrowRight,
   X,
   ShoppingCart,
@@ -46,12 +44,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 }) => {
   const {
     formatCurrency,
-    getTotalStockForVariant,
-    locations,
-    wishlist,
+    tenant,
+    wishlistIds,
     toggleWishlist,
-    isInWishlist,
-  } = useCommerce();
+  } = useStorefrontContext();
 
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -73,9 +69,9 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
   if (!isOpen || !product || !selectedVariant) return null;
 
-  const availableStock = getTotalStockForVariant(selectedVariant);
+  const availableStock = Object.values(selectedVariant.stockByLocation || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0);
   const isOutOfStock = availableStock <= 0;
-  const isWishlisted = isInWishlist(product.id);
+  const isWishlisted = wishlistIds.includes(product.id);
 
   // Price calculations
   const price = selectedVariant.retailPrice;
@@ -209,17 +205,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   <div className="flex-1" />
                 )}
 
-                {/* Trust Badges - In the same row as gallery */}
-                <div className="flex items-center justify-end flex-nowrap gap-2.5 sm:gap-4 text-[10px] sm:text-[11px] font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap flex-shrink-0 ml-auto">
-                  <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-                    <Truck className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 flex-shrink-0" />
-                    <span>Free Express Dispatch</span>
-                  </div>
-                  <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
-                    <span>2-Year Warranty</span>
-                  </div>
-                </div>
+                <div className="flex-shrink-0 ml-auto" aria-hidden="true" />
               </div>
             </div>
 
@@ -295,7 +281,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     {product.variants.map((v) => {
-                      const vStock = getTotalStockForVariant(v);
+                      const vStock = Object.values(v.stockByLocation || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0);
                       const isSelected = selectedVariant.id === v.id;
                       return (
                         <button
@@ -332,7 +318,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   <span>Omnichannel Stock Availability</span>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-2 text-[11px]">
-                  {locations.map((loc) => {
+                  {(tenant?.pickupLocations || []).map((loc) => {
                     const stockAtLoc = selectedVariant.stockByLocation[loc.id] || 0;
                     return (
                       <div key={loc.id} className="flex items-center justify-between p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800/80 min-w-0">
