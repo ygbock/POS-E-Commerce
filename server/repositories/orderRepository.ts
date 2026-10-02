@@ -248,8 +248,16 @@ export class OrderRepository {
     authUserId: string,
     limit = 50,
     client?: DatabaseClient,
-  ): Promise<Array<{ order: OrderRecord; items: OrderItemRecord[]; customer: { id: string; name: string; email: string | null; phone: string | null; tier: string | null } }>> {
-    if (!organizationId || !authUserId) throw new Error('AUTH_REQUIRED: organization and authenticated user are required.');
+  ): Promise<Array<{
+    order: OrderRecord;
+    items: Array<OrderItemRecord & { product_id: string }>;
+    payments: PaymentRecord[];
+    location: { id: string; name: string };
+    customer: { id: string; name: string; email: string | null; phone: string | null; tier: string | null };
+  }>> {
+    if (!organizationId || !authUserId) {
+      throw new Error('AUTH_REQUIRED: organization and authenticated user are required.');
+    }
     const db = this.getClient(client);
     const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
     const orderRes = await db.query<any>(
@@ -257,25 +265,72 @@ export class OrderRepository {
               o.source, o.channel, o.fulfillment_method, o.subtotal, o.discount_amount, o.discount_code,
               o.tax_amount, o.shipping_fee, o.total_amount, o.total_cost_amount, o.payment_status, o.status,
               o.cashier_name, o.tracking_number, o.carrier_name, o.notes, o.created_at, o.updated_at,
+              l.id AS location_id_ref, l.name AS location_name,
               c.id AS customer_id_ref, c.name AS customer_name, c.email AS customer_email,
               c.phone AS customer_phone, c.tier AS customer_tier
-       FROM orders o JOIN customers c ON c.id = o.customer_id AND c.organization_id = o.organization_id
-       WHERE o.organization_id = $1 AND c.auth_user_id = $2
-       ORDER BY o.created_at DESC LIMIT $3`,
+       FROM orders o
+       JOIN customers c
+         ON c.id = o.customer_id
+        AND c.organization_id = o.organization_id
+       JOIN locations l
+         ON l.id = o.location_id
+        AND l.organization_id = o.organization_id
+       WHERE o.organization_id = $1
+         AND c.auth_user_id = $2
+       ORDER BY o.created_at DESC
+       LIMIT $3`,
       [organizationId, authUserId, safeLimit],
     );
-    const results: Array<{ order: OrderRecord; items: OrderItemRecord[]; customer: { id: string; name: string; email: string | null; phone: string | null; tier: string | null } }> = [];
+    const results: Array<{
+      order: OrderRecord;
+      items: Array<OrderItemRecord & { product_id: string }>;
+      payments: PaymentRecord[];
+      location: { id: string; name: string };
+      customer: { id: string; name: string; email: string | null; phone: string | null; tier: string | null };
+    }> = [];
+
     for (const row of orderRes.rows) {
       const itemsRes = await db.query<any>(
-        `SELECT oi.id, oi.order_id, oi.variant_id, oi.product_name, oi.variant_name, oi.sku,
-                oi.unit_price, oi.cost_price, oi.quantity, oi.discount_amount, oi.tax_rate, oi.total_amount, oi.created_at
-         FROM order_items oi WHERE oi.order_id = $1 ORDER BY oi.created_at ASC`,
-        [row.id],
+        `SELECT oi.id, oi.order_id, oi.variant_id, pv.product_id,
+                oi.product_name, oi.variant_name, oi.sku,
+                oi.unit_price, oi.cost_price, oi.quantity, oi.discount_amount,
+                oi.tax_rate, oi.total_amount, oi.created_at
+         FROM order_items oi
+         JOIN product_variants pv
+           ON pv.id = oi.variant_id
+          AND pv.organization_id = $1
+         JOIN products p
+           ON p.id = pv.product_id
+          AND p.organization_id = $1
+         WHERE oi.order_id = $2
+         ORDER BY oi.created_at ASC, oi.id ASC`,
+        [organizationId, row.id],
       );
-      results.push({ order: mapOrderRow(row), items: itemsRes.rows.map(mapOrderItemRow), customer: {
-        id: row.customer_id_ref, name: row.customer_name, email: row.customer_email ?? null,
-        phone: row.customer_phone ?? null, tier: row.customer_tier ?? null,
-      }});
+      const paymentsRes = await db.query<any>(
+        `SELECT id, organization_id, order_id, payment_method, amount, currency,
+                status, reference, provider, created_at
+         FROM payments
+         WHERE order_id = $1
+           AND organization_id = $2
+         ORDER BY created_at ASC, id ASC`,
+        [row.id, organizationId],
+      );
+      results.push({
+        order: mapOrderRow(row),
+        items: itemsRes.rows.map(mapOrderItemRow).map((item, index) => ({
+          ...item,
+          product_id: String(itemsRes.rows[index].product_id),
+        })),
+        payments: paymentsRes.rows.map(mapPaymentRow),
+        location: { id: row.location_id_ref, name: row.location_name },
+        customer: {
+          id: row.customer_id_ref,
+          name: row.customer_name,
+          email: row.customer_email ?? null,
+          phone: row.customer_phone ?? null,
+          tier: row.customer_tier ?? null,
+        },
+      });
     }
     return results;
   }
