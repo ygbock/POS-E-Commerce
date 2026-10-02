@@ -33,7 +33,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const [justAdded, setJustAdded] = useState(false);
 
   const primaryVariant = product.variants[0];
-  const totalStock = Object.values(primaryVariant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  const totalStock = Object.values(primaryVariant.stockByLocation || {}).reduce((sum: number, value: unknown) => sum + Number(value || 0), 0);
   const isOutOfStock = totalStock <= 0;
   const isWishlisted = wishlistIds.includes(product.id);
 
