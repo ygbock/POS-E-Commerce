@@ -143,3 +143,9 @@ assert.match(promotions, /verified by the store server during checkout/);
 const newsletter = read('src/components/storefront/NewsletterSection.tsx');
 assert.doesNotMatch(newsletter, /useCommerce|WELCOME15|applyCoupon/);
 assert.match(newsletter, /NewsletterSectionProps/);
+
+
+const wishlistDrawer = read('src/components/storefront/WishlistDrawer.tsx');
+assert.doesNotMatch(wishlistDrawer, /useCommerce/);
+assert.match(wishlistDrawer, /useStorefrontContext/);
+assert.match(wishlistDrawer, /wishlistIds/);
