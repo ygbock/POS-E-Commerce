@@ -1389,4 +1389,8 @@ export class OrderService {
     return this.orderRepo.listOrdersForCustomerAuthUser(organizationId, authUserId, limit);
   }
 
+  async getOrderForCustomerAuthUser(organizationId: string, authUserId: string, orderNumber: string) {
+    return this.orderRepo.getOrderForCustomerAuthUser(organizationId, authUserId, orderNumber);
+  }
+
 }
