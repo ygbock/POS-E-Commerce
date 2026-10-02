@@ -246,6 +246,10 @@ export const storefrontApi = {
     });
   },
   
+  getCustomerOrders(tenantSlug: string) {
+    return request<any[]>(`${tenantBase(tenantSlug)}/account/orders`);
+  },
+
   trackOrder(tenantSlug: string | undefined, orderNumber: string, contact?: string) {
     const query = contact ? `?contact=${encodeURIComponent(contact)}` : '';
     return request<StorefrontTrackedOrder>(
