@@ -136,9 +136,23 @@ async function runQaVerificationTests() {
   // Start HTTP Server
   const { app } = await createApp({ db, authService, skipVite: true });
   const server = http.createServer(app);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
-  const port = (server.address() as any).port;
-  const baseUrl = `http://127.0.0.1:${port}`;
+  let port = 0;
+  let baseUrl = '';
+  while (true) {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    port = (server.address() as any).port;
+    baseUrl = `http://127.0.0.1:${port}`;
+    try {
+      await fetch(baseUrl);
+      break;
+    } catch (err: any) {
+      if (err.message === 'bad port') {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        continue;
+      }
+      break;
+    }
+  }
 
   // =========================================================================
   // SECTION 1: IMMUTABLE INVENTORY LEDGER & CONSERVATION INVARIANTS

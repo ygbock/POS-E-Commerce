@@ -21,6 +21,8 @@ assert.deepEqual(validateLocationPayload({
 }), { code:'STORE-01', name:'Main Store', type:'Retail Store', is_pos_enabled:true, is_active:true });
 expectValidation(()=>validateLocationPayload({code:'x',name:'A',type:'Invalid'}),'invalid location must fail');
 expectValidation(()=>validateLocationPayload({code:'STORE-01',name:'Main Store',type:'Retail Store',organization_id:'other'}),'organization spoofing must fail');
+assert.equal(validateLocationPayload({is_primary:true}, true).is_primary, true);
+expectValidation(()=>validateLocationPayload({is_primary:'yes'}, true),'primary location flag must be boolean');
 
 assert.equal(validateCustomerPayload({name:'Jane Doe',email:'jane@example.com',store_credit_balance:'25.00'}).name,'Jane Doe');
 expectValidation(()=>validateCustomerPayload({name:'Jane',store_credit_balance:25}),'numeric money must fail');
@@ -36,6 +38,8 @@ assert.match(serverSource,/app\.post\(\s*['"]\/api\/customers['"]/);
 assert.match(serverSource,/app\.put\(\s*['"]\/api\/customers\/:id['"]/);
 assert.match(serverSource,/WHERE id = \$1 AND organization_id = \$2/);
 assert.match(serverSource,/DUPLICATE_LOCATION_CODE/);
+assert.match(serverSource,/is_primary/);
+assert.match(serverSource,/UPDATE locations SET is_primary = FALSE/);
 
 assert.ok(fs.existsSync(path.join(root,'src/components/admin/UserManagementView.tsx')));
 assert.ok(fs.existsSync(path.join(root,'src/components/admin/LocationManagementView.tsx')));

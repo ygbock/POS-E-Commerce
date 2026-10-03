@@ -14,6 +14,10 @@
 import crypto from 'crypto';
 import { hashPassword } from '../server/auth/password';
 
+function sqlLiteral(value: string): string {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
 export interface BootstrapUser {
   id: string;
   organizationId: string;
@@ -68,14 +72,14 @@ export function generateBootstrapSql(users: BootstrapUser[], organizations: { id
   // Organizations
   for (const org of organizations) {
     sql += `INSERT INTO organizations (id, name, code, is_active)\n`;
-    sql += `VALUES ('${org.id}', '${org.name.replace(/'/g, "''")}', '${org.code}', true)\n`;
+    sql += `VALUES (${sqlLiteral(org.id)}, ${sqlLiteral(org.name)}, ${sqlLiteral(org.code)}, true)\n`;
     sql += `ON CONFLICT (id) DO NOTHING;\n\n`;
   }
 
   // Locations
   for (const loc of locations) {
     sql += `INSERT INTO locations (id, organization_id, code, name, type, is_pos_enabled, is_active)\n`;
-    sql += `VALUES ('${loc.id}', '${loc.orgId}', '${loc.code}', '${loc.name.replace(/'/g, "''")}', 'Retail Store', true, true)\n`;
+    sql += `VALUES (${sqlLiteral(loc.id)}, ${sqlLiteral(loc.orgId)}, ${sqlLiteral(loc.code)}, ${sqlLiteral(loc.name)}, 'Retail Store', true, true)\n`;
     sql += `ON CONFLICT (id) DO NOTHING;\n\n`;
   }
 
@@ -83,19 +87,19 @@ export function generateBootstrapSql(users: BootstrapUser[], organizations: { id
   for (const u of users) {
     sql += `INSERT INTO users (id, organization_id, location_id, email, name, password_hash, password_salt, role, is_active)\n`;
     sql += `VALUES (\n`;
-    sql += `  '${u.id}',\n`;
-    sql += `  '${u.organizationId}',\n`;
-    sql += `  ${u.locationId ? `'${u.locationId}'` : 'NULL'},\n`;
-    sql += `  '${u.email}',\n`;
-    sql += `  '${u.name.replace(/'/g, "''")}',\n`;
-    sql += `  '${u.hash}',\n`;
-    sql += `  '${u.salt}',\n`;
-    sql += `  '${u.role}',\n`;
+    sql += `  ${sqlLiteral(u.id)},\n`;
+    sql += `  ${sqlLiteral(u.organizationId)},\n`;
+    sql += `  ${u.locationId ? sqlLiteral(u.locationId) : 'NULL'},\n`;
+    sql += `  ${sqlLiteral(u.email)},\n`;
+    sql += `  ${sqlLiteral(u.name)},\n`;
+    sql += `  ${sqlLiteral(u.hash)},\n`;
+    sql += `  ${sqlLiteral(u.salt)},\n`;
+    sql += `  ${sqlLiteral(u.role)},\n`;
     sql += `  true\n`;
     sql += `)\n`;
     sql += `ON CONFLICT (id) DO UPDATE SET\n`;
-    sql += `  password_hash = '${u.hash}',\n`;
-    sql += `  password_salt = '${u.salt}',\n`;
+    sql += `  password_hash = ${sqlLiteral(u.hash)},\n`;
+    sql += `  password_salt = ${sqlLiteral(u.salt)},\n`;
     sql += `  is_active = true;\n\n`;
   }
 
@@ -110,7 +114,7 @@ export function generateRevocationSql(userIds: string[]): string {
   sql += `-- ==========================================================================\n\n`;
   sql += `BEGIN;\n\n`;
   
-  const idList = userIds.map((id) => `'${id}'`).join(', ');
+  const idList = userIds.map(sqlLiteral).join(', ');
   sql += `-- 1. Deactivate User Accounts\n`;
   sql += `UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id IN (${idList});\n\n`;
 

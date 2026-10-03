@@ -19,6 +19,7 @@ import { CustomerManagementView } from './components/crm/CustomerManagementView'
 import { AuditLogsView } from './components/admin/AuditLogsView';
 import { PlatformDashboard } from './components/platform/PlatformDashboard.tsx';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
+import { SupportWorkspace } from './components/platform/SupportWorkspace';
 import { PlatformDiscoveryModerationView } from './components/platform/PlatformDiscoveryModerationView';
 import { TenantManagementView } from './components/platform/TenantManagementView';
 import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
@@ -156,7 +157,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'platform-dashboard' && <PlatformDashboard setActiveTab={setActiveTab} />}
             {activeTab === 'tenants' && <TenantManagementView />}
             {activeTab === 'subscriptions' && <SubscriptionsManagementView />}
-            {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
+            {activeTab === 'support' && (isPlatform ? <SupportWorkspace platform /> : <SupportWorkspace />)}
             {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'discovery-moderation' && <PlatformDiscoveryModerationView />}
             {activeTab === 'discovery-categories' && <PlatformDiscoveryCategoriesView />}

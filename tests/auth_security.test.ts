@@ -1290,6 +1290,7 @@ async function main() {
         const rawBody = JSON.stringify(body);
         assert.strictEqual(rawBody.includes('[REDACTED_CONN_URI]'), false, 'Redacted internal diagnostics must not leak');
         assert.strictEqual(rawBody.includes('postgres://'), false, 'Database connection URI must not leak');
+        assert.strictEqual(rawBody.includes('SuperSecretSecretPassword'), false, 'Database password must not leak');
         assert.strictEqual(rawBody.includes('db.internal'), false, 'Internal database hostname must not leak');
         assert.strictEqual(rawBody.includes('CI-REDACTION-TEST'), false, 'Synthetic credential marker must not leak');
       } finally {

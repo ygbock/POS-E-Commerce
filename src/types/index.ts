@@ -414,6 +414,15 @@ export type OrderStatus =
   | 'Cancelled'
   | 'Refunded';
 
+export interface OrderStatusHistoryEvent {
+  id: string;
+  fromStatus?: OrderStatus | null;
+  status: OrderStatus;
+  label: string;
+  changedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;

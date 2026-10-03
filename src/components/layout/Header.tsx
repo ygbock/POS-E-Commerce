@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Store,
   Monitor,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Role } from '../../types';
+import { AppNotification, supportApi } from '../../services/supportApi';
 import { isPlatformRole } from '../platform/platformAccess';
 import { authClient } from '../../services/authClient';
 
@@ -56,9 +57,21 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifs, setShowNotifs] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showLocMenu, setShowLocMenu] = useState(false);
+  const [liveNotifications, setLiveNotifications] = useState<AppNotification[] | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  useEffect(() => {
+    let active = true;
+    void supportApi.listNotifications().then((items) => { if (active) setLiveNotifications(items); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  const notificationItems = liveNotifications ?? notificationItems.map((n) => ({
+    id: n.id, title: n.title, message: n.message,
+    severity: n.severity === 'ERROR' ? 'ERROR' : n.severity === 'WARNING' ? 'WARNING' : n.severity === 'SUCCESS' ? 'SUCCESS' : 'INFO',
+    read_at: n.isRead ? n.timestamp : null, created_at: n.timestamp, notification_type: 'LEGACY',
+  } as AppNotification));
+  const unreadCount = notificationItems.filter((n) => !n.read_at).length;
 
   const rolesList: Role[] = [
     'Super Admin',
@@ -300,9 +313,9 @@ export const Header: React.FC<HeaderProps> = ({
                   <h4 className="text-xs font-bold text-slate-900">System Alerts & Notifications</h4>
                   <p className="text-[11px] text-slate-500">{unreadCount} unread alerts</p>
                 </div>
-                {notifications.length > 0 && (
+                {notificationItems.length > 0 && (
                   <button
-                    onClick={clearAllNotifications}
+                    onClick={async () => { try { await supportApi.markAllNotificationsRead(); setLiveNotifications((prev) => prev ? prev.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })) : prev); } catch { clearAllNotifications(); } }}
                     className="text-[11px] text-blue-600 hover:underline transition-colors font-medium"
                   >
                     Clear All
@@ -311,16 +324,16 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
-                {notifications.length === 0 ? (
+                {notificationItems.length === 0 ? (
                   <div className="py-8 text-center text-slate-400 text-xs">No notifications right now</div>
                 ) : (
                   notifications.map((n) => (
                     <div
                       key={n.id}
                       onClick={() => {
-                        markNotificationAsRead(n.id);
-                        if (n.linkTab) {
-                          setActiveTab(n.linkTab);
+                        void supportApi.markNotificationRead(n.id).then(() => setLiveNotifications((prev) => prev ? prev.map((item) => item.id === n.id ? { ...item, read_at: new Date().toISOString() } : item) : prev)).catch(() => markNotificationAsRead(n.id));
+                        if (n.entity_type === 'SUPPORT_TICKET') {
+                          setActiveTab('support');
                           setShowNotifs(false);
                         }
                       }}
@@ -332,13 +345,13 @@ export const Header: React.FC<HeaderProps> = ({
                         {n.type === 'danger' && <AlertTriangle className="w-4 h-4 text-red-500" />}
                         {n.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-500" />}
                         {n.type === 'success' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-                        {n.type === 'info' && <Info className="w-4 h-4 text-blue-500" />}
+                        {n.severity === 'INFO' && <Info className="w-4 h-4 text-blue-500" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-slate-800 truncate">{n.title}</span>
                           <span className="text-[10px] text-slate-400 flex-shrink-0 ml-1">
-                            {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                         <p className="text-slate-600 text-[11px] mt-0.5 leading-snug">{n.message}</p>
