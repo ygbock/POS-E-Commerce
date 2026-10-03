@@ -13,7 +13,38 @@ import {
   Building2,
   Phone,
   Tag,
+  ChevronDown,
 } from 'lucide-react';
+
+// Structured Provinces/Regions for Sierra Leone
+const PROVINCES = [
+  'Western Area',
+  'Eastern Province',
+  'Northern Province',
+  'Southern Province',
+  'North West Province',
+];
+
+// Districts grouped by Province/Region
+const DISTRICTS_MAP: Record<string, string[]> = {
+  'Western Area': ['Western Area Urban', 'Western Area Rural'],
+  'Eastern Province': ['Kenema District', 'Kono District', 'Kailahun District'],
+  'Northern Province': ['Bombali District', 'Tonkolili District', 'Koinadugu District', 'Falaba District'],
+  'Southern Province': ['Bo District', 'Moyamba District', 'Pujehun District', 'Bonthe District'],
+  'North West Province': ['Port Loko District', 'Kambia District', 'Karene District'],
+};
+
+// Cities/Towns grouped by District
+const CITIES_MAP: Record<string, string[]> = {
+  'Western Area Urban': ['Freetown'],
+  'Western Area Rural': ['Waterloo'],
+  'Bo District': ['Bo'],
+  'Kenema District': ['Kenema'],
+  'Bombali District': ['Makeni'],
+  'Kono District': ['Koidu'],
+  'Port Loko District': ['Port Loko', 'Lunsar'],
+  'Koinadugu District': ['Kabala'],
+};
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
 import { DiscoveryLocationMapEditor } from './DiscoveryLocationMapEditor';
 import type {
@@ -72,6 +103,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
 }) => {
   const [step, setStep] = useState<WizardStep>(initialStep);
   const [form, setForm] = useState(emptyForm);
+  const [isCustomCityActive, setIsCustomCityActive] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(initialBusinessId || null);
   const [locationId, setLocationId] = useState<string | null>(null);
   const [serviceId, setServiceId] = useState<string | null>(null);
@@ -85,6 +117,30 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
   const [locationAccuracyM, setLocationAccuracyM] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  const availableDistrictsForWizard = useMemo(() => {
+    if (!form.region) return [];
+    return DISTRICTS_MAP[form.region] || [];
+  }, [form.region]);
+
+  const availableCitiesForWizard = useMemo(() => {
+    if (!form.district) return [];
+    return CITIES_MAP[form.district] || [];
+  }, [form.district]);
+
+  const handleRegionChangeInWizard = (region: string) => {
+    setForm((current) => ({ ...current, region, district: '', city: '' }));
+    setIsCustomCityActive(false);
+    setError(null);
+    setSavedMessage(null);
+  };
+
+  const handleDistrictChangeInWizard = (district: string) => {
+    setForm((current) => ({ ...current, district, city: '' }));
+    setIsCustomCityActive(false);
+    setError(null);
+    setSavedMessage(null);
+  };
 
   const getDraftStepKey = (id: string) => `${DRAFT_STEP_KEY_PREFIX}${id}`;
   const readSavedStep = (id: string): WizardStep => {
@@ -119,6 +175,9 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     const assignedIds = assignedCategories
       .filter((category) => category.is_active)
       .map((category) => category.id);
+
+    const isCustom = primary?.city && primary?.district && !(CITIES_MAP[primary.district] || []).includes(primary.city);
+    setIsCustomCityActive(Boolean(isCustom));
 
     setBusinessId(draft.id);
     // A targeted step supplied by the dashboard takes precedence. Otherwise,
@@ -259,7 +318,9 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     }
     if (currentStep === 4) {
       if (!form.locationName.trim()) return 'Location name is required.';
-      if (!form.city.trim()) return 'City is required.';
+      if (!form.region) return 'Region/Province selection is required.';
+      if (!form.district) return 'District selection is required.';
+      if (!form.city.trim()) return 'City/Town selection or custom name is required.';
       const lat = form.latitude.trim();
       const lng = form.longitude.trim();
       if ((lat && !lng) || (!lat && lng)) return 'Latitude and longitude must be supplied together.';
@@ -618,10 +679,97 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
             <input value={form.locationName} onChange={(e) => update('locationName', e.target.value)} placeholder="Location name *" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
             <input value={form.address} onChange={(e) => update('address', e.target.value)} placeholder="Street / address" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
             <div className="grid sm:grid-cols-3 gap-3">
-              <input value={form.city} onChange={(e) => update('city', e.target.value)} placeholder="City *" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
-              <input value={form.district} onChange={(e) => update('district', e.target.value)} placeholder="District" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
-              <input value={form.region} onChange={(e) => update('region', e.target.value)} placeholder="Region" className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm" />
+              {/* Region/Province Select */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Region / Province *</label>
+                <div className="relative">
+                  <select
+                    value={form.region}
+                    onChange={(e) => handleRegionChangeInWizard(e.target.value)}
+                    className="w-full px-3 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-8 text-slate-800 dark:text-slate-100 font-medium"
+                  >
+                    <option value="" className="text-slate-400">Select Region</option>
+                    {PROVINCES.map((prov) => (
+                      <option key={prov} value={prov} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
+                        {prov}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-2.5 top-4 pointer-events-none text-slate-400">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* District Select */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">District *</label>
+                <div className="relative">
+                  <select
+                    disabled={!form.region}
+                    value={form.district}
+                    onChange={(e) => handleDistrictChangeInWizard(e.target.value)}
+                    className="w-full px-3 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 appearance-none pr-8 text-slate-800 dark:text-slate-100 font-medium"
+                  >
+                    <option value="" className="text-slate-400">Select District</option>
+                    {availableDistrictsForWizard.map((dist) => (
+                      <option key={dist} value={dist} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
+                        {dist}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-2.5 top-4 pointer-events-none text-slate-400">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* City Select */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">City / Town *</label>
+                <div className="relative">
+                  <select
+                    disabled={!form.district}
+                    value={isCustomCityActive ? 'CUSTOM_CITY' : form.city}
+                    onChange={(e) => {
+                      if (e.target.value === 'CUSTOM_CITY') {
+                        setIsCustomCityActive(true);
+                        update('city', '');
+                      } else {
+                        setIsCustomCityActive(false);
+                        update('city', e.target.value);
+                      }
+                    }}
+                    className="w-full px-3 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 appearance-none pr-8 text-slate-800 dark:text-slate-100 font-medium"
+                  >
+                    <option value="" className="text-slate-400">Select City</option>
+                    {availableCitiesForWizard.map((cityName) => (
+                      <option key={cityName} value={cityName} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
+                        {cityName}
+                      </option>
+                    ))}
+                    {form.district && <option value="CUSTOM_CITY" className="text-indigo-600 font-semibold bg-white dark:bg-slate-900">Other (Type manually)...</option>}
+                  </select>
+                  <div className="absolute right-2.5 top-4 pointer-events-none text-slate-400">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Custom Manual City Input */}
+            {isCustomCityActive && (
+              <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider font-semibold">Type Custom City / Town Name *</label>
+                <input
+                  type="text"
+                  placeholder="Enter city or town name"
+                  value={form.city}
+                  onChange={(e) => update('city', e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-800/50 text-sm focus:ring-1 focus:ring-indigo-500 text-slate-850 dark:text-slate-100 font-medium"
+                />
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Pinpoint your business</p>

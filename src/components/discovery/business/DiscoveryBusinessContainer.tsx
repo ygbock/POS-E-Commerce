@@ -349,10 +349,35 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
         </div>
       </div>
 
-      {/* Grouped merchant navigation */}
-      <nav className="rounded-3xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900" aria-label="Business workspace">
+      {/* Mobile/Tablet Horizontal Sub-Navigation (visible on mobile, hidden on lg) */}
+      <nav className="lg:hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 animate-in fade-in" aria-label="Mobile business workspace">
+        <div className="flex flex-row items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 px-1 scroll-smooth snap-x snap-mandatory">
+          {visibleTabs.map((tab) => {
+            const TabIcon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition whitespace-nowrap shrink-0 snap-center active:scale-95 duration-100 cursor-pointer min-h-[38px] ${
+                  active
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-50 dark:text-slate-350 dark:hover:bg-slate-800/80'
+                }`}
+              >
+                <TabIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Desktop Grouped Navigation (hidden on mobile, visible on lg) */}
+      <nav className="hidden lg:block rounded-3xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 animate-in fade-in" aria-label="Desktop business workspace">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setActiveTab('dashboard')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+          <button type="button" onClick={() => setActiveTab('dashboard')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'} cursor-pointer min-h-[38px]`}>
             <LayoutDashboard className="h-4 w-4" /> Overview
           </button>
           {[
@@ -366,13 +391,13 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
             const activeInGroup = groupTabs.some((tab) => tab.id === activeTab);
             return (
               <details key={String(group)} className="relative">
-                <summary className={`list-none cursor-pointer rounded-2xl px-4 py-2.5 text-xs font-bold transition inline-flex items-center gap-2 ${activeInGroup ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+                <summary className={`list-none cursor-pointer rounded-2xl px-4 py-2.5 text-xs font-bold transition inline-flex items-center gap-2 ${activeInGroup ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'} min-h-[38px]`}>
                   <Icon className="h-4 w-4" /> {String(label)} <ChevronDown className="h-3.5 w-3.5" />
                 </summary>
                 <div className="absolute left-0 top-full z-30 mt-2 min-w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                   {groupTabs.map((tab) => {
                     const TabIcon = tab.icon;
-                    return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${activeTab === tab.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'}`}>
+                    return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${activeTab === tab.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'} cursor-pointer min-h-[36px]`}>
                       <TabIcon className="h-4 w-4" /> {tab.label}
                     </button>;
                   })}
@@ -380,10 +405,10 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
               </details>
             );
           })}
-          {visibleTabs.some((tab) => tab.group === 'team') && <button type="button" onClick={() => setActiveTab('team')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'team' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Users className="h-4 w-4" /> Team</button>}
-          {visibleTabs.some((tab) => tab.group === 'settings') && <button type="button" onClick={() => setActiveTab('settings')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4" /> Settings</button>}
+          {visibleTabs.some((tab) => tab.group === 'team') && <button type="button" onClick={() => setActiveTab('team')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'team' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'} cursor-pointer min-h-[38px]`}><Users className="h-4 w-4" /> Team</button>}
+          {visibleTabs.some((tab) => tab.group === 'settings') && <button type="button" onClick={() => setActiveTab('settings')} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition ${activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'} cursor-pointer min-h-[38px]`}><Settings className="h-4 w-4" /> Settings</button>}
           {selectedBusiness.business_mode === 'DISCOVERY_AND_STORE' && selectedBusiness.tenant_slug && (
-            <button type="button" onClick={() => window.location.assign(`/store/${encodeURIComponent(selectedBusiness.tenant_slug as string)}`)} className="ml-auto inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <button type="button" onClick={() => window.location.assign(`/store/${encodeURIComponent(selectedBusiness.tenant_slug as string)}`)} className="ml-auto inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300 cursor-pointer min-h-[38px]">
               <ShoppingBag className="h-4 w-4" /> Open Store <ExternalLink className="h-3.5 w-3.5" />
             </button>
           )}

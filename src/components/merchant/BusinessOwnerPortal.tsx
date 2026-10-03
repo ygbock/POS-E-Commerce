@@ -176,8 +176,15 @@ export const BusinessOwnerPortal: React.FC = () => {
     };
   }, [businesses, overviews]);
 
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const specificBusinessId = pathParts.length > 1 && pathParts[0] === 'business' && pathParts[1] !== 'signup' && pathParts[1] !== 'signin' ? pathParts[1] : null;
+
+  if (specificBusinessId) {
+    return <DiscoveryBusinessContainer initialBusinessId={specificBusinessId} openOnboarding={onboardingRequested} onNavigateCustomerDiscovery={(path) => window.location.assign(path)} />;
+  }
+
   if (onboardingRequested || businesses.length === 0) {
-    return <DiscoveryBusinessContainer openOnboarding={onboardingRequested || businesses.length === 0} />;
+    return <DiscoveryBusinessContainer openOnboarding={onboardingRequested || businesses.length === 0} onNavigateCustomerDiscovery={(path) => window.location.assign(path)} />;
   }
 
   const handleRefresh = async () => {

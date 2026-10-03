@@ -156,38 +156,40 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
 
   return (
     <div className="space-y-8">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
-        <div className="flex flex-col justify-between gap-6 md:flex-row">
-          <div className="flex items-start gap-4">
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900 animate-in fade-in">
+        <div className="flex flex-col justify-between gap-6 lg:flex-row">
+          <div className="flex flex-col sm:flex-row items-start gap-4">
             {business.logo_url ? (
               <img
                 src={business.logo_url}
                 alt={business.name}
-                className="h-16 w-16 rounded-2xl border border-slate-200 bg-white object-cover dark:border-slate-700"
+                className="h-16 w-16 rounded-2xl border border-slate-200 bg-white object-cover dark:border-slate-700 shrink-0"
               />
             ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 text-xl font-bold text-indigo-600 dark:border-indigo-800 dark:bg-indigo-950/60">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 text-xl font-bold text-indigo-600 dark:border-indigo-800 dark:bg-indigo-950/60 shrink-0">
                 {business.name.slice(0, 2).toUpperCase()}
               </div>
             )}
 
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white truncate">
                   {business.name}
                 </h1>
-                <ListingStatusBadge status={business.listing_status} />
-                <VerificationBadge status={business.verification_status} />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <ListingStatusBadge status={business.listing_status} />
+                  <VerificationBadge status={business.verification_status} />
+                </div>
               </div>
-              <p className="mt-1 max-w-2xl text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1.5 max-w-2xl text-xs text-slate-500 dark:text-slate-400">
                 {business.short_description || 'Manage your AbaCha Discovery presence.'}
               </p>
-              <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
+              <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400">
                 <span>
-                  Mode: <strong>{business.business_mode === 'DISCOVERY_AND_STORE' ? 'Discovery + Store' : 'Discovery only'}</strong>
+                  Mode: <strong className="text-slate-800 dark:text-slate-200">{business.business_mode === 'DISCOVERY_AND_STORE' ? 'Discovery + Store' : 'Discovery only'}</strong>
                 </span>
                 <span>
-                  Category: <strong>{business.business_type || 'Not specified'}</strong>
+                  Category: <strong className="text-slate-800 dark:text-slate-200">{business.business_type || 'Not specified'}</strong>
                 </span>
               </div>
             </div>
@@ -197,7 +199,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
             <button
               type="button"
               onClick={onViewPublicListing}
-              className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 flex-1 sm:flex-none cursor-pointer min-h-[40px] active:scale-95 duration-100"
             >
               <Eye className="h-4 w-4" />
               Preview
@@ -206,7 +208,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
               <button
                 type="button"
                 onClick={onOpenStoreConversion}
-                className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700"
+                className="inline-flex items-center justify-center gap-1.5 rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 flex-1 sm:flex-none cursor-pointer min-h-[40px] active:scale-95 duration-100"
               >
                 <Sparkles className="h-4 w-4" />
                 Upgrade to Store
@@ -282,7 +284,7 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           {[
             ['Orders (30d)', operating?.commerce?.orders30d ?? 0, 'store'],
             ['Open orders', operating?.commerce?.openOrders ?? 0, 'store'],
@@ -290,9 +292,9 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
             ['Available stock', operating?.commerce?.availableStock ?? '0', 'store'],
           ].map(([label, value, tab]) => (
             <button key={String(label)} type="button" onClick={() => onNavigateTab(String(tab))}
-              className="rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{String(label)}</span>
-              <div className="mt-1 font-mono text-2xl font-black text-slate-900 dark:text-white">{String(value)}</div>
+              className="rounded-3xl border border-slate-200 bg-white p-3.5 min-[400px]:p-5 text-left shadow-sm transition hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 active:scale-95 duration-100">
+              <span className="text-[10px] min-[400px]:text-xs font-medium text-slate-500 dark:text-slate-400 block truncate">{String(label)}</span>
+              <div className="mt-1 font-mono text-lg min-[400px]:text-2xl font-black text-slate-900 dark:text-white">{String(value)}</div>
             </button>
           ))}
         </div>
@@ -354,9 +356,9 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick actions</p>
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-1 min-[450px]:grid-cols-2 gap-2">
             {[
               ...(businessRole !== 'STAFF' ? [
                 ['Edit listing', 'listing', Building2],
@@ -366,8 +368,8 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
               ['View requests', 'quotes', FileText],
             ].map(([label, tab, Icon]) => (
               <button key={String(tab)} type="button" onClick={() => onNavigateTab(String(tab))}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-                <Icon className="h-4 w-4 text-indigo-600" /> {String(label)}
+                className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 active:scale-95 duration-100">
+                <Icon className="h-4 w-4 text-indigo-600 shrink-0" /> <span className="truncate">{String(label)}</span>
               </button>
             ))}
           </div>
@@ -391,17 +393,17 @@ export const DiscoveryBusinessDashboard: React.FC<DiscoveryBusinessDashboardProp
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           {[
             ['Search impressions', analytics?.impressions ?? 0],
             ['Profile visits', analytics?.profile_views ?? 0],
             ['Customer inquiries', (analytics?.phone_clicks ?? 0) + (analytics?.whatsapp_clicks ?? 0)],
             ['Store / route clicks', (analytics?.direction_clicks ?? 0) + (analytics?.store_visits ?? 0)],
           ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
-              <div className="mt-1 font-mono text-2xl font-black text-slate-900 dark:text-white">{value}</div>
-              <span className="mt-1 block text-[10px] text-slate-400">Last 30 days</span>
+            <div key={String(label)} className="rounded-3xl border border-slate-200 bg-white p-3.5 min-[400px]:p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <span className="text-[10px] min-[400px]:text-xs font-medium text-slate-500 dark:text-slate-400 block truncate">{label}</span>
+              <div className="mt-1 font-mono text-lg min-[400px]:text-2xl font-black text-slate-900 dark:text-white">{value}</div>
+              <span className="mt-1 block text-[9px] min-[400px]:text-[10px] text-slate-400">Last 30 days</span>
             </div>
           ))}
         </div>
