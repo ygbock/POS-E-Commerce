@@ -13,7 +13,9 @@ assert.match(accountModal, /<span>Order Details<\/span>/);
 assert.match(accountModal, /Fulfillment Status/);
 assert.match(accountModal, /Payment Summary/);
 assert.match(accountModal, /Fulfillment & Tracking/);
-assert.match(accountModal, /Customer & Order Information/);\nassert.match(accountModal, /searchedOrder\.statusHistory/);\nassert.match(accountModal, /new Date\(event\.changedAt\)\.toLocaleString\(\)/);
+assert.match(accountModal, /Customer & Order Information/);
+assert.match(accountModal, /searchedOrder\.statusHistory/);
+assert.match(accountModal, /new Date\(event\.changedAt\)\.toLocaleString\(\)/);
 assert.doesNotMatch(accountModal, /simulateAdvanceOrderStatus/);
 assert.doesNotMatch(accountModal, /Advance Demo Milestone/);
 assert.doesNotMatch(accountModal, /Date\.now\(\) \+ 86400000/);
@@ -46,7 +48,11 @@ const api = read('src/services/storefrontApi.ts');
 assert.match(api, /trackOrder\(tenantSlug/);
 assert.match(api, /encodeURIComponent\(orderNumber\)/);
 
-assert.match(api, /getCustomerOrders\(tenantSlug/);\nassert.match(api, /getCustomerOrder\(tenantSlug, orderNumber/);\n\nconst tracking = read('src/components/storefront/OrderTrackingModal.tsx');
+assert.match(api, /getCustomerOrders\(tenantSlug/);
+assert.match(api, /getCustomerOrder\(tenantSlug[^,]*,\s*orderNumber/);
+
+
+const tracking = read('src/components/storefront/OrderTrackingModal.tsx');
 assert.match(tracking, /storefrontApi\.trackOrder/);
 assert.doesNotMatch(tracking, /orders\.find\(/);
 

@@ -652,8 +652,90 @@ export class OrderService {
   }
 
   /**
+   * Confirm payment for a storefront order: transitions the order from
+   * 'Stock Reserved' → 'Payment Confirmed' and marks payment_status = 'Paid'.
+   * Updates the associated payments row with the provider reference.
+   * Idempotent: safe to call again if the order is already 'Payment Confirmed'.
+   */
+  async confirmStorefrontPayment(
+    organizationId: string,
+    orderId: string,
+    paymentReference: string,
+    transactionPayload: Record<string, any> = {},
+    actor = 'System'
+  ): Promise<{ order: OrderRecord }> {
+    return this.db.withTransaction(async (tx) => {
+      const orderRes = await tx.query<any>(
+        `SELECT * FROM orders
+         WHERE id = $1 AND organization_id = $2
+         FOR UPDATE`,
+        [orderId, organizationId]
+      );
+      if (orderRes.rows.length === 0) {
+        throw new DomainError('ORDER_NOT_FOUND', 'Order not found.');
+      }
+
+      const order = orderRes.rows[0];
+
+      // Idempotent: already confirmed
+      if (order.status === 'Payment Confirmed') {
+        return { order: order as OrderRecord };
+      }
+      if (order.status === 'Completed' || order.status === 'Fulfilled') {
+        return { order: order as OrderRecord };
+      }
+      if (order.status === 'Cancelled') {
+        throw new DomainError('INVALID_ORDER_STATE', 'A cancelled order cannot have payment confirmed.');
+      }
+      if (order.status !== 'Stock Reserved') {
+        throw new DomainError('INVALID_ORDER_STATE', `Payment can only be confirmed for orders in 'Stock Reserved' status. Current status: ${order.status}`);
+      }
+
+      // Transition order status and payment_status atomically
+      const updated = await tx.query<any>(
+        `UPDATE orders
+         SET status = 'Payment Confirmed',
+             payment_status = 'Paid',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2
+         RETURNING *`,
+        [orderId, organizationId]
+      );
+
+      // Update the associated payment record to 'Completed' with provider reference
+      await tx.query(
+        `UPDATE payments
+         SET status = 'Completed',
+             reference = $1,
+             transaction_payload = $2
+         WHERE order_id = $3 AND organization_id = $4`,
+        [
+          paymentReference,
+          JSON.stringify(transactionPayload),
+          orderId,
+          organizationId,
+        ]
+      );
+
+      await this.auditRepo.recordEvent({
+        organization_id: organizationId,
+        actor_name: actor,
+        actor_role: 'System',
+        action: 'storefront.payment_confirmed',
+        entity_type: 'orders',
+        entity_id: orderId,
+        metadata: { payment_reference: paymentReference, ...transactionPayload },
+        severity: 'Info',
+      }, tx);
+
+      return { order: updated.rows[0] as OrderRecord };
+    });
+  }
+
+  /**
    * Fulfill a storefront order atomically: every active reservation becomes
    * fulfilled and on_hand is reduced exactly once.
+   * Requires the order to be in 'Payment Confirmed' status.
    */
   async fulfillStorefrontOrder(
     organizationId: string,
@@ -672,11 +754,15 @@ export class OrderService {
       }
 
       const order = orderRes.rows[0];
-      if (order.status === 'Fulfilled' || order.status === 'Completed') {
+      if (order.status === 'Completed') {
+        // Idempotent: already fulfilled
         return order as OrderRecord;
       }
       if (order.status === 'Cancelled') {
         throw new DomainError('INVALID_ORDER_STATE', 'A cancelled order cannot be fulfilled.');
+      }
+      if (order.status !== 'Payment Confirmed') {
+        throw new DomainError('INVALID_ORDER_STATE', `Order must be in 'Payment Confirmed' status before fulfillment. Current status: ${order.status}`);
       }
 
       const reservations = await this.reservationService.listReservations(organizationId, {
