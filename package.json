@@ -44,7 +44,8 @@
     "test:storefront-api-client": "tsx tests/storefront_api_client.test.ts",
     "test:storefront-multi-tenant": "tsx tests/storefront_multi_tenant.test.ts",
     "test:billing": "tsx tests/billing.test.ts",
-    "test:reports": "tsx tests/reports.test.ts"
+    "test:reports": "tsx tests/reports.test.ts",
+    "test:support": "tsx tests/support_tickets.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
