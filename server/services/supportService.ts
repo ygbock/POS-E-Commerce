@@ -16,7 +16,7 @@ export class SupportService {
 
   private async writeAudit(organizationId: string, actorUserId: string, action: string, entityId: string, metadata: Record<string, unknown> = {}) {
     await this.db.query(
-      "INSERT INTO audit_events (id, organization_id, actor_user_id, action, entity_type, entity_id, result, metadata) VALUES ($1,$2,$3,$4,'SUPPORT_TICKET',$5,'SUCCESS',$6::jsonb)",
+      "INSERT INTO audit_events (id, organization_id, actor_id, actor_name, actor_role, action, entity_type, entity_id, metadata, severity, result) VALUES ($1,$2,$3,$3,'support',$4,'SUPPORT_TICKET',$5,$6::jsonb,'Medium','SUCCESS')",
       [makeId('audit'), organizationId, actorUserId, action, entityId, JSON.stringify(metadata)],
     ).catch(() => undefined);
   }
