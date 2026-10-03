@@ -229,9 +229,9 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
   - [ ] Automated backup verification script runs and confirms schema and data restoration.
   - [ ] Health and readiness probes fail closed if PostgreSQL disconnects.
   - [ ] CI/CD pipeline enforces all 4 production gates.
-- **Completion Status**: `IMPLEMENTED — PENDING LOCAL VERIFICATION`.
+- **Completion Status**: `VERIFIED LOCALLY — CI PENDING`.
 - **Implemented Foundation**: `scripts/verify_backup_restore.ts`, `scripts/operator_bootstrap.ts`, `/api/health`, `/api/ready`, staging release-tuple workflow, and four-stage production promotion gates (artifact, migration, deployment, revision/health verification).
-- **Verification Added**: `tests/production_operations.test.ts` validates local restore verification, operator password generation/hash separation, credential non-disclosure in generated bootstrap SQL, and revocation SQL generation. `npm run test:production-operations` is included in the full regression chain.
+- **Verification**: Local verification passed for the Phase 5.9 production-operations checks and the associated regression gates. `tests/production_operations.test.ts` validates local restore verification, operator password generation/hash separation, credential non-disclosure in generated bootstrap SQL, and revocation SQL generation. `npm run test:production-operations` is included in the full regression chain.
 - **Operational Boundary**: Local restore verification explicitly does not claim cloud-provider PITR capability. Customer staging/production restore rehearsals and external monitoring configuration remain deployment-operator activities.
 
 ---
