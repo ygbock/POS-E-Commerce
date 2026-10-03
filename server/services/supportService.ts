@@ -127,7 +127,7 @@ export class SupportService {
     if (!['LOW','NORMAL','HIGH','URGENT'].includes(priority)) throw new Error('INVALID_TICKET_PRIORITY');
     const assigned = patch.assignedToUserId === undefined ? current.assigned_to_user_id : patch.assignedToUserId;
     await this.db.query(
-      "UPDATE support_tickets SET status=$2, priority=$3, assigned_to_user_id=$4, resolved_at=CASE WHEN $2 IN ('RESOLVED','CLOSED') THEN COALESCE(resolved_at,CURRENT_TIMESTAMP) ELSE NULL END WHERE id=$1",
+      "UPDATE support_tickets SET status=$2::varchar, priority=$3::varchar, assigned_to_user_id=$4::varchar, resolved_at=CASE WHEN $2::varchar IN ('RESOLVED','CLOSED') THEN COALESCE(resolved_at,CURRENT_TIMESTAMP) ELSE NULL END WHERE id=$1",
       [ticketId, status, priority, assigned || null],
     );
     await this.writeAudit(current.organization_id, actorUserId, 'SUPPORT_TICKET_UPDATED', ticketId, { status, priority, assignedToUserId: assigned });
