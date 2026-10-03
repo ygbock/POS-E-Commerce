@@ -27,7 +27,7 @@ import {
   Zap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Order } from '../../types';
+import { Customer, Order } from '../../types';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 import { storefrontApi } from '../../services/storefrontApi';
 
@@ -43,9 +43,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   onOrderSuccess,
 }) => {
   const { tenant, storeCart, clearStoreCart, formatCurrency: formatTenantCurrency } = useStorefrontContext();
-  const activeCustomerUser = null;
-  const customers: never[] = [];
-  const setActiveCustomerUser = (_value: null) => undefined;
+  const activeCustomerUser: Customer | null = null;
+  const customers: Customer[] = [];
+  const setActiveCustomerUser = (_value: Customer | null) => undefined;
 
   // Mode: Guest checkout vs Customer Account
   const [isGuestMode, setIsGuestMode] = useState<boolean>(!activeCustomerUser);
