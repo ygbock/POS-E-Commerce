@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import {
   CreditCard,
@@ -43,16 +42,10 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   onClose,
   onOrderSuccess,
 }) => {
-  const {
-    appliedCoupon,
-    formatCurrency,
-    customers,
-    activeCustomerUser,
-    setActiveCustomerUser,
-    applyCoupon,
-    removeCoupon,
-  } = useCommerce();
   const { tenant, storeCart, clearStoreCart, formatCurrency: formatTenantCurrency } = useStorefrontContext();
+  const activeCustomerUser = null;
+  const customers: never[] = [];
+  const setActiveCustomerUser = (_value: null) => undefined;
 
   // Mode: Guest checkout vs Customer Account
   const [isGuestMode, setIsGuestMode] = useState<boolean>(!activeCustomerUser);
@@ -87,8 +80,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [saveCard, setSaveCard] = useState(true);
 
   // Coupon & Extras
-  const [couponInput, setCouponInput] = useState('');
-  const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
   const [smsOptIn, setSmsOptIn] = useState(true);
   const [whatsappOptIn, setWhatsappOptIn] = useState(true);
 
@@ -101,6 +92,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   // Submitting state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [serverTotals, setServerTotals] = useState<{ subtotal: string; tax: string; shippingFee: string; total: string; currency: string } | null>(null);
 
   // Live Timer (15 minutes countdown)
   const [timeLeftSeconds, setTimeLeftSeconds] = useState(899);
@@ -112,25 +104,6 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
     }, 1000);
     return () => clearInterval(interval);
   }, [isOpen]);
-
-  // Synchronize when activeCustomerUser changes
-  useEffect(() => {
-    if (activeCustomerUser) {
-      setCustomerName(activeCustomerUser.name);
-      setCustomerEmail(activeCustomerUser.email);
-      setCustomerPhone(activeCustomerUser.phone);
-      setCardHolder(activeCustomerUser.name);
-      if (activeCustomerUser.addresses && activeCustomerUser.addresses.length > 0) {
-        const addr = activeCustomerUser.addresses[selectedAddressIndex] || activeCustomerUser.addresses[0];
-        setStreet(addr.street);
-        setCity(addr.city);
-        setState(addr.state);
-        setZip(addr.zip);
-        setCountry(addr.country);
-      }
-      setIsGuestMode(false);
-    }
-  }, [activeCustomerUser, selectedAddressIndex]);
 
   const modalRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, modalRef, { closeOnEscape: !isSubmitting });
@@ -167,6 +140,8 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       })),
     );
 
+    setServerTotals({ subtotal: validation.subtotal, tax: validation.tax, shippingFee: validation.shippingFee, total: validation.total, currency: validation.currency });
+
     const unavailable = validation.items.filter((item) => !item.isAvailable);
     if (unavailable.length > 0) {
       const first = unavailable[0];
@@ -181,42 +156,14 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   };
 
 
-  // Calculate totals
-  let subtotal = 0;
-  let tax = 0;
-  storeCart.forEach((item) => {
-    const line = item.price * item.quantity;
-    subtotal += line;
-    tax += line * ((item.taxRate || 0) / 100);
-  });
-
-  let discount = 0;
-  if (appliedCoupon) {
-    discount =
-      appliedCoupon.discountType === 'fixed'
-        ? appliedCoupon.value
-        : (subtotal * appliedCoupon.value) / 100;
-  }
-
-  const shippingFee =
-    fulfillmentMethod === 'Express Delivery'
-      ? 15
-      : fulfillmentMethod === 'Standard Delivery'
-      ? subtotal >= 75 || appliedCoupon?.code === 'FREESHIP'
-        ? 0
-        : 5
-      : 0;
-
-  const total = Math.max(0, subtotal - discount + tax + shippingFee);
+  // Final commercial totals come exclusively from the server cart-validation response.
+  const subtotal = Number(serverTotals?.subtotal || 0);
+  const tax = Number(serverTotals?.tax || 0);
+  const shippingFee = Number(serverTotals?.shippingFee || 0);
+  const discount = 0;
+  const total = Number(serverTotals?.total || 0);
   const displayCurrency = formatTenantCurrency;
 
-  const handleApplyCoupon = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!couponInput.trim()) return;
-    const res = applyCoupon(couponInput.trim());
-    setCouponMsg({ text: res.message, isError: !res.success });
-    if (res.success) setCouponInput('');
-  };
 
   const handleExpressPay = async (provider: string) => {
     setIsSubmitting(true);
