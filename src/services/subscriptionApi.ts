@@ -48,6 +48,8 @@ export interface TenantSubscription {
 export interface BillingOverview {
   status: string;
   mrr: number;
+  arr: number;
+  churnRate30d: number;
   currency: string;
   activeCount: number;
   trialingCount: number;
@@ -63,6 +65,28 @@ export interface BillingOverview {
     trialingSubscriptions: number;
   }>;
   lastUpdated: string;
+}
+
+export interface BillingInvoice {
+  id: string;
+  organization_id: string;
+  subscription_id: string | null;
+  invoice_number: string;
+  status: 'draft' | 'open' | 'paid' | 'past_due' | 'void' | 'uncollectible';
+  subtotal: string;
+  tax: string;
+  total: string;
+  currency: string;
+  period_start: string;
+  period_end: string;
+  due_at: string | null;
+  paid_at: string | null;
+  provider: string | null;
+  provider_invoice_id: string | null;
+  line_items: Array<Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SubscriptionAuditRecord {
@@ -108,6 +132,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const subscriptionApi = {
   async getBillingOverview(): Promise<BillingOverview> {
     return request<BillingOverview>('/api/platform/billing');
+  },
+
+  async getInvoices(filters: { organizationId?: string; status?: string; limit?: number; offset?: number } = {}): Promise<BillingInvoice[]> {
+    const params = new URLSearchParams();
+    if (filters.organizationId) params.set('organizationId', filters.organizationId);
+    if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.offset) params.set('offset', String(filters.offset));
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return request<BillingInvoice[]>(`/api/platform/billing/invoices${query}`);
+  },
+
+  async createInvoice(organizationId: string, reason?: string): Promise<BillingInvoice> {
+    return request<BillingInvoice>(`/api/platform/billing/invoices/${encodeURIComponent(organizationId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   },
 
   async getPlans(includeInactive = true): Promise<SubscriptionPlan[]> {
