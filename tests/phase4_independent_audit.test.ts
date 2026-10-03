@@ -159,7 +159,7 @@ async function main() {
       tenant: { id: orgAlpha, name: 'Alpha Corp', code: 'ALPHA', slug: 'alpha-corp' },
       localization: { currencyCode: 'USD', currencySymbol: '$', locale: 'en-US', timezone: 'UTC' },
       branding: {},
-      policies: { standardShippingFee: '9.99', freeShippingThreshold: '100.00' },
+      policies: { standardShippingFee: '9.99', freeShippingThreshold: '100.00', expressShippingFee: '25.00' },
       catalogPolicy: {},
       featureFlags: {},
       pickupLocations: [],
@@ -210,7 +210,7 @@ async function main() {
       tenant: { id: orgAlpha, name: 'Alpha Corp', code: 'ALPHA', slug: 'alpha-corp' },
       localization: { currencyCode: 'USD', currencySymbol: '$', locale: 'en-US', timezone: 'UTC' },
       branding: {},
-      policies: { standardShippingFee: '9.99', freeShippingThreshold: '100.00' },
+      policies: { standardShippingFee: '9.99', freeShippingThreshold: '100.00', expressShippingFee: '25.00' },
       catalogPolicy: {},
       featureFlags: {},
       pickupLocations: [],
@@ -611,10 +611,12 @@ async function main() {
       `SELECT from_status, to_status, metadata FROM order_status_history WHERE organization_id = $1 AND order_id = $2 ORDER BY changed_at ASC, id ASC`,
       [orgAlpha, orderId]
     );
-    assert.ok(fulfillmentHistory.rows.length >= 2, 'Order status history must contain creation and fulfillment events');
+    assert.ok(fulfillmentHistory.rows.length >= 3, 'Order status history must contain creation, payment confirmation, and fulfillment events');
     assert.strictEqual(fulfillmentHistory.rows[0].to_status, 'Stock Reserved');
+    assert.strictEqual(fulfillmentHistory.rows[1].from_status, 'Stock Reserved');
+    assert.strictEqual(fulfillmentHistory.rows[1].to_status, 'Payment Confirmed');
     const fulfillmentEvent = fulfillmentHistory.rows[fulfillmentHistory.rows.length - 1];
-    assert.strictEqual(fulfillmentEvent.from_status, 'Stock Reserved');
+    assert.strictEqual(fulfillmentEvent.from_status, 'Payment Confirmed');
     assert.strictEqual(fulfillmentEvent.to_status, 'Completed');
     assert.strictEqual(fulfillmentEvent.metadata.source, 'orders_status_trigger');
 
