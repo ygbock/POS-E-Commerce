@@ -47,7 +47,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `IMPLEMENTED — VERIFIED LOCALLY` |
 | **Phase 5.6** | SaaS Subscriptions & Billing Engine | Subscription tiers, invoices, MRR/ARR, payment status | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
 | **Phase 5.7** | Reports & Analytics Engine | Server-aggregated sales, margin, inventory valuation reports | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
-| **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, durable in-app notifications, delivery ledger, activity log | `IMPLEMENTED — PENDING VERIFICATION` |
+| **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, durable in-app notifications, delivery ledger, activity log | `VERIFIED LOCALLY — CI PENDING` |
 | **Phase 5.9** | Production Operations Hardening | Disaster recovery scripts, backup verification, monitoring | `PLANNED` |
 | **Phase 5.10** | Final Security, QA & Release Gate | Penetration test, WCAG 2.2 AA audit, production handover | `PLANNED` |
 
@@ -90,7 +90,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
   - [ ] Shared primitives used consistently in `src/components/ui/`.
   - [ ] Standard page anatomy (title, primary actions, toolbar, data table, empty state) implemented.
   - [ ] WCAG 2.2 AA compliant focus states and color contrast verified.
-- **Completion Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`.
+- **Completion Status**: `IMPLEMENTED — VERIFIED LOCALLY; CI STATUS PENDING`.
 
 ---
 
@@ -199,16 +199,17 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 - **Files / Components**: `server/db/migrations/052_support_notifications.sql`, `server/services/supportService.ts`, `server/routes/supportRoutes.ts`, `src/services/supportApi.ts`, `src/components/platform/SupportWorkspace.tsx`, `src/components/layout/Header.tsx`.
 - **Backend / API Impact**: Tenant ticket list/create/detail/reply, platform ticket list/detail/status/reply, and authenticated notification list/read/read-all endpoints under `/api/support`.
 - **Database Impact**: Migration `052_support_notifications.sql` creating `support_tickets`, `support_ticket_messages`, `notifications`, and `notification_deliveries` with tenant/status indexes.
-- **UI Impact**: API foundation is complete; platform support workspace and tenant Help & Support UI consume the new endpoints in the next UI increment.
+- **UI Impact**: Platform Support and tenant Help & Support workspaces are wired into `App.tsx`/Sidebar; Header notification state consumes the durable notification API.
 - **RBAC**: `platform.support` for platform operators; `support.view`, `support.create`, and `support.reply` for tenant administrators.
 - **Security Requirements**: Authenticated tenant scoping, platform-support isolation, bounded payloads, parameterized SQL, and append-only support audit records. File uploads remain disabled until a dedicated secure attachment pipeline is implemented.
 - **Tests**: `tests/support_tickets.test.ts`, operational migration integrity gate.
 - **Implemented**: Durable ticket lifecycle, tenant/platform ticket APIs, ticket messages, in-app notification inbox, delivery ledger, read/unread operations, support audit events, and notification fan-out on ticket creation/status/message events.
+- **Verification**: Local `npx tsc --noEmit` passed; `npm run test:support`, `npm run test:operational`, `npm run test:auth-security`, and full `npm test` passed. Latest branch head has no GitHub Actions workflow/status record available through the repository integration, so CI is intentionally not marked green here.
 - **Dependencies**: `TASK-5.3.1`.
 - **Acceptance Criteria**:
-  - [ ] Tenants can submit support requests to the platform control plane.
-  - [ ] Platform Support operators can review and resolve tickets.
-  - [ ] In-app notification center surfaces unread event alerts.
+  - [x] Tenants can submit support requests to the platform control plane.
+  - [x] Platform Support operators can review and resolve tickets.
+  - [x] In-app notification center surfaces unread event alerts.
 - **Completion Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`.
 
 ---
