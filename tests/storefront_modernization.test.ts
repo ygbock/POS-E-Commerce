@@ -22,6 +22,11 @@ assert.match(router, /p\.channels_ecommerce = true/);
 assert.match(router, /ORDER_VERIFICATION_FAILED/);
 assert.match(router, /router\.get\('\/orders\/:orderNumber'/);
 assert.match(router, /router\.get\('\/:tenantSlug\/orders\/:orderNumber'/);
+assert.match(router, /router\.get\('\/:tenantSlug\/account\/orders', requireAuth\(\)/);
+assert.match(router, /router\.get\('\/:tenantSlug\/account\/orders\/\:orderNumber', requireAuth\(\)/);
+assert.match(router, /TENANT_ACCESS_DENIED/);
+assert.match(router, /getOrderForCustomerAuthUser/);
+
 
 const api = read('src/services/storefrontApi.ts');
 assert.match(api, /trackOrder\(tenantSlug/);
