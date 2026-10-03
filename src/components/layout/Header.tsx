@@ -66,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
     return () => { active = false; };
   }, []);
 
-  const notificationItems = liveNotifications ?? notificationItems.map((n) => ({
+  const notificationItems = liveNotifications ?? notifications.map((n) => ({
     id: n.id, title: n.title, message: n.message,
     severity: n.severity === 'ERROR' ? 'ERROR' : n.severity === 'WARNING' ? 'WARNING' : n.severity === 'SUCCESS' ? 'SUCCESS' : 'INFO',
     read_at: n.isRead ? n.timestamp : null, created_at: n.timestamp, notification_type: 'LEGACY',
