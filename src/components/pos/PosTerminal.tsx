@@ -120,7 +120,7 @@ export const PosTerminal: React.FC = () => {
   // Return Form State
   const [returnOrderNumber, setReturnOrderNumber] = useState('');
   const [foundReturnOrder, setFoundReturnOrder] = useState<Order | null>(null);
-  const [returnItemsState, setReturnItemsState] = useState<{ [variantId: string]: { qty: number; restock: boolean; reason: string } }>({});
+  const [returnItemsState, setReturnItemsState] = useState<{ [variantId: string]: { qty: number } }>({});
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [returnError, setReturnError] = useState<string | null>(null);
   const [returnRefundMethod, setReturnRefundMethod] = useState<'Cash' | 'Credit Card' | 'Mobile Money'>('Cash');
@@ -353,9 +353,9 @@ export const PosTerminal: React.FC = () => {
         items: Array.isArray(body.items) ? body.items : [],
       } as Order;
       setFoundReturnOrder(order);
-      const init: { [variantId: string]: { qty: number; restock: boolean; reason: string } } = {};
+      const init: { [variantId: string]: { qty: number } } = {};
       order.items.forEach((item) => {
-        init[item.variantId] = { qty: 0, restock: true, reason: 'Customer Return' };
+        init[item.variantId] = { qty: 0 };
       });
       setReturnItemsState(init);
     } catch (error) {
@@ -369,7 +369,7 @@ export const PosTerminal: React.FC = () => {
   const handleConfirmReturn = async () => {
     if (!foundReturnOrder || returnSubmitting) return;
     setReturnError(null);
-    const itemsToReturn = (Object.entries(returnItemsState) as [string, { qty: number; restock: boolean; reason: string }][])
+    const itemsToReturn = (Object.entries(returnItemsState) as [string, { qty: number }][])
       .filter(([_, data]) => data.qty > 0)
       .map(([variantId, data]) => ({
         variant_id: variantId,
@@ -1484,7 +1484,7 @@ export const PosTerminal: React.FC = () => {
                           const q = parseInt(e.target.value, 10);
                           setReturnItemsState((prev) => ({
                             ...prev,
-                            [item.variantId]: { ...prev[item.variantId], qty: q },
+                            [item.variantId]: { qty: q },
                           }));
                         }}
                         className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white text-xs font-bold"
@@ -1496,20 +1496,6 @@ export const PosTerminal: React.FC = () => {
                         ))}
                       </select>
 
-                      <label className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={returnItemsState[item.variantId]?.restock ?? true}
-                          onChange={(e) => {
-                            setReturnItemsState((prev) => ({
-                              ...prev,
-                              [item.variantId]: { ...prev[item.variantId], restock: e.target.checked },
-                            }));
-                          }}
-                          className="rounded"
-                        />
-                        <span>Restock</span>
-                      </label>
                     </div>
                   </div>
                 ))}
