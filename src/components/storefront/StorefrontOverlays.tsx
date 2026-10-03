@@ -4,7 +4,6 @@ import { Product, ProductVariant, Order } from '../../types';
 import { ProductDetailModal } from './ProductDetailModal';
 import { OrderTrackingModal } from './OrderTrackingModal';
 import { OrderNotificationHubModal } from './OrderNotificationHubModal';
-import { AccountClaimModal } from './AccountClaimModal';
 import { OrderSuccessModal } from './OrderSuccessModal';
 import { WishlistDrawer } from './WishlistDrawer';
 import { StoreCartDrawer } from './StoreCartDrawer';
@@ -70,10 +69,6 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
         setSelectedNotificationOrder(ord);
         setIsNotificationHubOpen(true);
       }}
-      onOpenClaimAccount={(email) => {
-        setClaimModalEmail(email || '');
-        setIsClaimModalOpen(true);
-      }}
     />
 
     {/* Order Notification & Magic Links Hub Modal (Method 2 & Method 3) */}
@@ -82,22 +77,6 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
       onClose={() => setIsNotificationHubOpen(false)}
       order={selectedNotificationOrder}
       onOpenLiveTracking={(orderNumber, email) => {
-        setInitialTrackingNumber(orderNumber);
-        setInitialTrackingEmail(email || '');
-        setIsOrderTrackingOpen(true);
-      }}
-      onOpenClaimModal={(email) => {
-        setClaimModalEmail(email || '');
-        setIsClaimModalOpen(true);
-      }}
-    />
-
-    {/* Retroactive Account Claim Modal (Method 4) */}
-    <AccountClaimModal
-      isOpen={isClaimModalOpen}
-      onClose={() => setIsClaimModalOpen(false)}
-      initialEmail={claimModalEmail}
-      onOpenOrderTracking={(orderNumber, email) => {
         setInitialTrackingNumber(orderNumber);
         setInitialTrackingEmail(email || '');
         setIsOrderTrackingOpen(true);
@@ -142,10 +121,6 @@ export const StorefrontOverlays: React.FC<StorefrontOverlaysProps> = ({
       onOpenNotificationHub={(ord) => {
         setSelectedNotificationOrder(ord);
         setIsNotificationHubOpen(true);
-      }}
-      onOpenClaimModal={(email) => {
-        setClaimModalEmail(email || '');
-        setIsClaimModalOpen(true);
       }}
     />
 
