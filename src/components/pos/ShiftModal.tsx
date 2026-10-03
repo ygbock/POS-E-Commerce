@@ -82,7 +82,6 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
 
   // Step 2: Second Count / Double Check
   const [secondCountInput, setSecondCountInput] = useState<string>('');
-  const [verifierNameInput, setVerifierNameInput] = useState<string>('Marcus Vance (Store Manager)');
   const [doubleCheckError, setDoubleCheckError] = useState<string>('');
 
   // Step 3: Variance Reason & Notes
@@ -619,18 +618,6 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                        Verifier / Secondary Cashier Name:
-                      </label>
-                      <input
-                        type="text"
-                        value={verifierNameInput}
-                        onChange={(e) => setVerifierNameInput(e.target.value)}
-                        placeholder="Name of secondary cashier or supervisor..."
-                        className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
                   </div>
 
                   {doubleCheckError && (
