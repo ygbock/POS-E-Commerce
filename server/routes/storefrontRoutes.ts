@@ -656,5 +656,136 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
     }
   });
 
+  // --------------------------------------------------------------------------
+  // 6. AUTHENTICATED CUSTOMER ORDER HISTORY & AUTHORITATIVE DETAILS
+  // --------------------------------------------------------------------------
+  const assertCustomerStorefrontAccess = async (req: Request, res: Response) => {
+    const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
+    if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin') {
+      res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Customer account is not authorized for this storefront.' } });
+      return null;
+    }
+    return config;
+  };
+
+  const mapCustomerOrder = (row: any) => ({
+    id: row.id, organizationId: row.organization_id, locationId: row.location_id, locationName: row.location_name || '',
+    customerId: row.customer_id || undefined, customerName: row.customer_name || 'Customer',
+    customerEmail: row.customer_email || undefined, customerPhone: row.customer_phone || undefined,
+    orderNumber: row.order_number, source: row.source, channel: row.channel,
+    fulfillmentMethod: row.fulfillment_method, subtotal: Number(row.subtotal || 0),
+    discountAmount: Number(row.discount_amount || 0), discountCode: row.discount_code || undefined,
+    taxAmount: Number(row.tax_amount || 0), shippingFee: Number(row.shipping_fee || 0),
+    totalAmount: Number(row.total_amount || 0), totalCostAmount: Number(row.total_cost_amount || 0),
+    paymentStatus: row.payment_status, status: row.status, cashierName: row.cashier_name || undefined,
+    trackingNumber: row.tracking_number || undefined, carrierName: row.carrier_name || undefined,
+    notes: row.notes || undefined, createdAt: row.created_at, updatedAt: row.updated_at,
+    loyaltyPointsEarned: 0, loyaltyPointsRedeemed: 0,
+  });
+
+  const loadCustomerOrderItems = async (organizationId: string, orderIds: string[]) => {
+    if (orderIds.length === 0) return new Map<string, any[]>();
+    const result = await db.query<any>(
+      `SELECT oi.id, oi.order_id, oi.variant_id, oi.product_name, oi.variant_name, oi.sku,
+              oi.unit_price, oi.quantity, oi.discount_amount, oi.tax_rate, oi.total_amount
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id AND o.organization_id = $1
+        WHERE oi.order_id = ANY($2::varchar[])
+        ORDER BY oi.created_at ASC, oi.id ASC`,
+      [organizationId, orderIds],
+    );
+    const grouped = new Map<string, any[]>();
+    for (const item of result.rows) {
+      const list = grouped.get(item.order_id) || [];
+      list.push({ id: item.id, orderId: item.order_id, variantId: item.variant_id, productName: item.product_name,
+        variantName: item.variant_name, sku: item.sku, price: Number(item.unit_price || 0),
+        quantity: Number(item.quantity || 0), discountAmount: Number(item.discount_amount || 0),
+        taxRate: Number(item.tax_rate || 0), totalAmount: Number(item.total_amount || 0) });
+      grouped.set(item.order_id, list);
+    }
+    return grouped;
+  };
+
+  router.get('/:tenantSlug/account/orders', requireAuth(), async (req: Request, res: Response) => {
+    try {
+      const config = await assertCustomerStorefrontAccess(req, res);
+      if (!config) return;
+      const result = await db.query<any>(
+        `SELECT o.id, o.organization_id, o.location_id, l.name AS location_name,
+                o.customer_id, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                o.order_number, o.source, o.channel, o.fulfillment_method, o.subtotal, o.discount_amount,
+                o.discount_code, o.tax_amount, o.shipping_fee, o.total_amount, o.total_cost_amount,
+                o.payment_status, o.status, o.cashier_name, o.tracking_number, o.carrier_name, o.notes,
+                o.created_at, o.updated_at
+           FROM orders o JOIN customers c ON c.id = o.customer_id
+           LEFT JOIN locations l ON l.id = o.location_id AND l.organization_id = o.organization_id
+          WHERE o.organization_id = $1 AND c.organization_id = $1 AND c.auth_user_id = $2
+          ORDER BY o.created_at DESC LIMIT 50`,
+        [config.tenant.id, req.auth!.userId],
+      );
+      const ordersData = result.rows.map(mapCustomerOrder);
+      const itemsByOrder = await loadCustomerOrderItems(config.tenant.id, ordersData.map((order: any) => order.id));
+      res.json({ success: true, data: ordersData.map((order: any) => ({ ...order, items: itemsByOrder.get(order.id) || [], payments: [] })) });
+    } catch (err) { handleStorefrontError(res, err); }
+  });
+
+  router.get('/:tenantSlug/account/orders/:orderNumber', requireAuth(), async (req: Request, res: Response) => {
+    try {
+      const config = await assertCustomerStorefrontAccess(req, res);
+      if (!config) return;
+      const orderResult = await db.query<any>(
+        `SELECT o.id, o.organization_id, o.location_id, l.name AS location_name,
+                o.customer_id, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                o.order_number, o.source, o.channel, o.fulfillment_method, o.subtotal, o.discount_amount,
+                o.discount_code, o.tax_amount, o.shipping_fee, o.total_amount, o.total_cost_amount,
+                o.payment_status, o.status, o.cashier_name, o.tracking_number, o.carrier_name, o.notes,
+                o.created_at, o.updated_at
+           FROM orders o JOIN customers c ON c.id = o.customer_id
+           LEFT JOIN locations l ON l.id = o.location_id AND l.organization_id = o.organization_id
+          WHERE o.organization_id = $1 AND c.organization_id = $1 AND c.auth_user_id = $2
+            AND (o.order_number = $3 OR o.id = $3) LIMIT 1`,
+        [config.tenant.id, req.auth!.userId, String(req.params.orderNumber || '').trim()],
+      );
+      if (orderResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found for this customer account.' } });
+      }
+      const order = mapCustomerOrder(orderResult.rows[0]);
+      const itemsByOrder = await loadCustomerOrderItems(config.tenant.id, [order.id]);
+      const paymentsResult = await db.query<any>(
+        `SELECT id, payment_method, amount, currency, status, reference, provider, created_at
+           FROM payments WHERE order_id = $1 AND organization_id = $2 ORDER BY created_at ASC, id ASC`,
+        [order.id, config.tenant.id],
+      );
+      const historyResult = await db.query<any>(
+        `SELECT id, from_status, to_status, changed_at, metadata
+           FROM order_status_history WHERE order_id = $1 AND organization_id = $2
+          ORDER BY changed_at ASC, id ASC`,
+        [order.id, config.tenant.id],
+      );
+      const statusLabels: Record<string, string> = {
+        Pending: 'Order Placed', 'Stock Reserved': 'Order Placed', 'Payment Confirmed': 'Processing',
+        Picking: 'Picking', Packed: 'Packed', Dispatched: 'In Transit', Delivered: 'Delivered',
+        Completed: 'Completed', Cancelled: 'Cancelled', Refunded: 'Refunded',
+      };
+      return res.json({
+        success: true,
+        data: {
+          ...order,
+          items: itemsByOrder.get(order.id) || [],
+          payments: paymentsResult.rows.map((payment: any) => ({
+            id: payment.id, method: payment.payment_method, amount: Number(payment.amount || 0),
+            currency: payment.currency, status: payment.status, reference: payment.reference || undefined,
+            provider: payment.provider || undefined, createdAt: payment.created_at,
+          })),
+          statusHistory: historyResult.rows.map((event: any) => ({
+            id: event.id, fromStatus: event.from_status || null, status: event.to_status,
+            label: statusLabels[event.to_status] || event.to_status, changedAt: event.changed_at,
+            metadata: event.metadata || {},
+          })),
+        },
+      });
+    } catch (err) { handleStorefrontError(res, err); }
+  });
+
   return router;
 }
