@@ -46,7 +46,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
   const [serverLoading, setServerLoading] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  const [openingCashInput, setOpeningCashInput] = useState<string>('300.00');
+  const [openingCashInput, setOpeningCashInput] = useState<string>('');
   const [cashierNameInput, setCashierNameInput] = useState<string>(posShift.cashierName || 'Elena Rostova');
 
   // Modal sub-states
@@ -89,10 +89,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
   const [varianceReason, setVarianceReason] = useState<PosShiftReconciliation['varianceReason']>('Balanced');
   const [closeNotes, setCloseNotes] = useState<string>('');
 
-  // Step 4: Supervisor Approval & Sign-Off
-  const [supervisorApproved, setSupervisorApproved] = useState<boolean>(true);
-  const [supervisorNameInput, setSupervisorNameInput] = useState<string>('Marcus Vance');
-  const [supervisorPin, setSupervisorPin] = useState<string>('');
+  // Step 4: Server authorization is enforced by the POS session endpoint; no client-side approval state is authoritative.
 
   // Selected History Shift Modal view
   const [viewHistoryShift, setViewHistoryShift] = useState<PosShift | null>(null);
@@ -796,42 +793,14 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
                     </div>
                   </div>
 
-                  {/* Supervisor Sign-Off Controls */}
-                  <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={supervisorApproved}
-                          onChange={(e) => setSupervisorApproved(e.target.checked)}
-                          className="w-4 h-4 text-blue-600 rounded"
-                        />
-                        <span>Supervisor Approval Signed Off</span>
-                      </label>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400">PIN Authorized</span>
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-white">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Server-Controlled Reconciliation</span>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500">Supervisor Name</label>
-                        <input
-                          type="text"
-                          value={supervisorNameInput}
-                          onChange={(e) => setSupervisorNameInput(e.target.value)}
-                          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded p-1.5 text-slate-900 dark:text-white text-xs font-semibold"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500">Supervisor PIN</label>
-                        <input
-                          type="password"
-                          maxLength={4}
-                          value={supervisorPin}
-                          onChange={(e) => setSupervisorPin(e.target.value)}
-                          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded p-1.5 text-slate-900 dark:text-white text-xs font-mono font-bold tracking-widest"
-                        />
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Closing authorization, expected cash, counted cash, variance, and session state are validated and recorded by the POS server. This screen does not fabricate supervisor approval or ledger postings.
+                    </p>
                   </div>
 
                   <div className="flex gap-2 pt-2">
