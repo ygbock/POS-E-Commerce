@@ -545,7 +545,7 @@ export function createPosRouter(db: DatabaseClient, posService: PosService, subs
           throw new Error(`SALE_NOT_FOUND: POS Sale with ID '${id}' was not found.`);
         }
 
-        const payment = (await orderRepo.findPaymentByOrderId(id, orgId)) || undefined;
+        const payment = (await orderRepo.findPaymentByOrderId(sale.order.id, orgId)) || undefined;
 
         res.json({
           success: true,
