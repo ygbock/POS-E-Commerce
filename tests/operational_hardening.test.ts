@@ -823,18 +823,19 @@ async function main() {
     // ------------------------------------------------------------------
     // 10. Migration Checksum Integrity
     // ------------------------------------------------------------------
-    await runTest('10.1. Migration files 001-014 and 016 exist with consistent checksums', () => {
+    await runTest('10.1. Required migration files exist with consistent checksums', () => {
       const migrationsDir = path.join(process.cwd(), 'server', 'db', 'migrations');
       const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+      const fileSet = new Set(files);
+      const requiredMigrations = [
+        '001_', '002_', '003_', '004_', '005_', '006_', '007_', '008_', '009_', '010_',
+        '011_', '012_', '013_', '014_', '015_', '016_', '017_', '025_', '052_', '053_',
+      ];
 
-      assert.ok(files.length >= 15, 'All migrations must exist');
-      assert.strictEqual(files[0].startsWith('001_'), true);
-      assert.strictEqual(files[9].startsWith('010_'), true);
-      assert.strictEqual(files[10].startsWith('011_'), true);
-      assert.strictEqual(files[11].startsWith('012_'), true);
-      assert.strictEqual(files[12].startsWith('013_'), true);
-      assert.strictEqual(files[13].startsWith('014_'), true);
-      assert.strictEqual(files[14].startsWith('016_'), true);
+      assert.ok(files.length >= requiredMigrations.length, 'All required migrations must exist');
+      for (const prefix of requiredMigrations) {
+        assert.ok([...fileSet].some((file) => file.startsWith(prefix)), `Required migration ${prefix}* must exist`);
+      }
 
       for (const file of files) {
         const content = fs.readFileSync(path.join(migrationsDir, file));
