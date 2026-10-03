@@ -37,6 +37,7 @@ import {
   Key,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 import { Customer, Order, OrderStatus, Product, ProductVariant } from '../../types';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 import { storefrontApi } from '../../services/storefrontApi';
@@ -74,6 +75,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   onOpenNotificationHub,
   onOpenClaimModal,
 }) => {
+  const { tenant } = useStorefrontContext();
   const {
     customers,
     activeCustomerUser,
