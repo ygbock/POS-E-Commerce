@@ -28,10 +28,30 @@ assert.match(historyMigration, /CREATE TRIGGER trg_orders_status_history/);
 assert.match(historyMigration, /NEW\.status IS DISTINCT FROM OLD\.status/);
 assert.match(historyMigration, /migration:017_backfill/);
 
+const storefrontState = read('src/components/storefront/useStorefrontState.ts');
+assert.doesNotMatch(storefrontState, /useCommerce/);
+assert.match(storefrontState, /useStorefrontContext/);
+
+const header = read('src/components/storefront/StoreHeader.tsx');
+assert.doesNotMatch(header, /useCommerce/);
+assert.match(header, /products: import\('\.\.\/types'\)\.Product\[\]/);
+
+const cartDrawer = read('src/components/storefront/StoreCartDrawer.tsx');
+assert.doesNotMatch(cartDrawer, /useCommerce/);
+assert.doesNotMatch(cartDrawer, /freeShippingThreshold|applyCoupon|couponDiscount/);
+
+const checkout = read('src/components/storefront/StoreCheckoutModal.tsx');
+assert.doesNotMatch(checkout, /useCommerce/);
+assert.match(checkout, /storefrontApi\.validateCart/);
+assert.match(checkout, /setServerTotals/);
+assert.match(checkout, /Final discounts and shipping are calculated and validated by the server/);
+
 const context = read('src/context/StorefrontContext.tsx');
 assert.match(context, /storefront:\$\{encodeURIComponent\(slug\)\}:cart/);
 assert.match(context, /export interface StoreCartItem/);
 assert.match(context, /clearStoreCart/);
+assert.match(context, /isDarkMode/);
+assert.match(context, /toggleTheme/);
 
 const router = read('server/routes/storefrontRoutes.ts');
 assert.match(router, /p\.channels_ecommerce = true/);
