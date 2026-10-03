@@ -279,23 +279,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setSigninEmail('');
       setSigninPassword('');
     } else {
-      // If not found in customers list, check if orders exist with this email
-      const matchingOrders = orders.filter((o) => o.customerEmail?.toLowerCase() === cleanEmail);
-      if (matchingOrders.length > 0) {
-        // Auto-register from existing guest orders
-        const reg = registerNewCustomer({
-          name: matchingOrders[0].customerName || 'Shopper',
-          email: cleanEmail,
-          phone: matchingOrders[0].customerPhone || '+1 (555) 019-2834',
-        });
-        setActiveCustomerUser(reg.customer);
-      } else {
-        setSigninError(`No customer found with email "${signinEmail}". Create an account below to claim WELCOME20!`);
-      }
+      setSigninError(`No customer found with email "${signinEmail}". Create an account below to claim WELCOME20!`);
     }
   };
 
-  const handleSearchTracking = (e?: React.FormEvent) => {
+  const handleSearchTracking = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setTrackingErrorMessage('');
     const cleanOrder = orderQuery.trim().toLowerCase();
@@ -306,33 +294,37 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       return;
     }
 
-    const matchingOrder = orders.find(
-      (o) => o.orderNumber.toLowerCase() === cleanOrder || o.id.toLowerCase() === cleanOrder
-    );
-
-    if (!matchingOrder) {
-      setHasSearched(true);
-      setSearchedOrder(null);
-      setTrackingErrorMessage(`No order found matching "${orderQuery.trim()}". Please verify your order number.`);
+    if (!tenant?.slug) {
+      setTrackingErrorMessage('Storefront context is unavailable. Please try again.');
       return;
     }
 
-    // Dual email check if provided
-    if (cleanEmail && matchingOrder.customerEmail) {
-      const orderEmail = matchingOrder.customerEmail.toLowerCase().trim();
-      if (!orderEmail.includes(cleanEmail) && !cleanEmail.includes(orderEmail)) {
-        setHasSearched(true);
-        setSearchedOrder(null);
-        setTrackingErrorMessage(
-          `Security & Privacy: The email "${emailQuery.trim()}" does not match the billing email on file for ${matchingOrder.orderNumber}.`
-        );
-        return;
-      }
-    }
+    try {
+      const response = await storefrontApi.trackOrder(tenant.slug, cleanOrder, cleanEmail || undefined);
+      const matchingOrder = (response as any)?.data || response;
+      if (!matchingOrder) throw new Error('Order not found');
 
-    setHasSearched(true);
-    setSearchedOrder(matchingOrder);
-    setTrackingErrorMessage('');
+      // Dual email check if provided
+      if (cleanEmail && matchingOrder.customerEmail) {
+        const orderEmail = matchingOrder.customerEmail.toLowerCase().trim();
+        if (!orderEmail.includes(cleanEmail) && !cleanEmail.includes(orderEmail)) {
+          setHasSearched(true);
+          setSearchedOrder(null);
+          setTrackingErrorMessage(
+            `Security & Privacy: The email "${emailQuery.trim()}" does not match the billing email on file for ${matchingOrder.orderNumber}.`
+          );
+          return;
+        }
+      }
+
+      setHasSearched(true);
+      setSearchedOrder(matchingOrder as Order);
+      setTrackingErrorMessage('');
+    } catch (err: any) {
+      setHasSearched(true);
+      setSearchedOrder(null);
+      setTrackingErrorMessage(`No order found matching "${orderQuery.trim()}". Please verify your order number and email.`);
+    }
   };
 
   const handleTrackSpecificOrder = async (order: Order) => {
