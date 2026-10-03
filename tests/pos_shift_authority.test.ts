@@ -11,4 +11,7 @@ assert.doesNotMatch(source,/closePosShift\(/);
 assert.doesNotMatch(source,/supervisorPin/);
 assert.doesNotMatch(source,/Marcus Vance/);
 assert.match(source,/Server-Controlled Reconciliation/);
-console.log('POS shift authority guard: 10/10 checks passed.');
+assert.match(source,/Save Reconciliation & Close Register/);
+assert.doesNotMatch(source,/General Ledger Auto-Posting Preview/);
+assert.doesNotMatch(source,/Post Reconciliation to Ledger & Close Register/);
+console.log('POS shift authority guard: 13/13 checks passed.');
