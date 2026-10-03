@@ -47,7 +47,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `IMPLEMENTED — VERIFIED LOCALLY` |
 | **Phase 5.6** | SaaS Subscriptions & Billing Engine | Subscription tiers, invoices, MRR/ARR, payment status | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
 | **Phase 5.7** | Reports & Analytics Engine | Server-aggregated sales, margin, inventory valuation reports | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
-| **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, webhook/email notifications, activity log | `PLANNED` |
+| **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, durable in-app notifications, delivery ledger, activity log | `IMPLEMENTED — PENDING VERIFICATION` |
 | **Phase 5.9** | Production Operations Hardening | Disaster recovery scripts, backup verification, monitoring | `PLANNED` |
 | **Phase 5.10** | Final Security, QA & Release Gate | Penetration test, WCAG 2.2 AA audit, production handover | `PLANNED` |
 
@@ -198,17 +198,18 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 - **Objective**: Create tenant-to-platform support ticket hub and notification dispatch worker for critical events (out-of-stock alerts, transfer arrivals, order placement).
 - **Files / Components**: `server/db/migrations/013_support_and_notifications.sql`, `server/routes/supportRoutes.ts`, `src/components/platform/SystemOwnerDashboard.tsx`, `src/components/storefront/OrderNotificationHubModal.tsx`.
 - **Backend / API Impact**: `GET /api/support/tickets`, `POST /api/support/tickets`, `POST /api/support/tickets/:id/messages`.
-- **Database Impact**: Migration 013 creating `support_tickets`, `ticket_messages`, `notifications`.
-- **UI Impact**: Platform Support workspace view and tenant-side Help & Support widget.
-- **RBAC**: `platform.support` for platform operators; `support.create` for tenant admins.
-- **Security Requirements**: Input sanitization, file upload security guards (if attachments enabled).
-- **Tests**: `tests/support_tickets.test.ts`.
+- **Database Impact**: Migration `052_support_notifications.sql` creating `support_tickets`, `support_ticket_messages`, `notifications`, and `notification_deliveries` with tenant/status indexes.
+- **UI Impact**: API foundation is complete; platform support workspace and tenant Help & Support UI consume the new endpoints in the next UI increment.
+- **RBAC**: `platform.support` for platform operators; `support.view`, `support.create`, and `support.reply` for tenant administrators.
+- **Security Requirements**: Authenticated tenant scoping, platform-support isolation, bounded payloads, parameterized SQL, and append-only support audit records. File uploads remain disabled until a dedicated secure attachment pipeline is implemented.
+- **Tests**: `tests/support_tickets.test.ts`, operational migration integrity gate.
+- **Implemented**: Durable ticket lifecycle, tenant/platform ticket APIs, ticket messages, in-app notification inbox, delivery ledger, read/unread operations, support audit events, and notification fan-out on ticket creation/status/message events.
 - **Dependencies**: `TASK-5.3.1`.
 - **Acceptance Criteria**:
   - [ ] Tenants can submit support requests to the platform control plane.
   - [ ] Platform Support operators can review and resolve tickets.
   - [ ] In-app notification center surfaces unread event alerts.
-- **Completion Status**: `PLANNED`.
+- **Completion Status**: `IMPLEMENTED — PENDING LOCAL/CI VERIFICATION`.
 
 ---
 
