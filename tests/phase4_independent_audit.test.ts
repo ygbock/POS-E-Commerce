@@ -115,7 +115,7 @@ async function main() {
       tenant: { id: orgAlpha, name: 'Alpha Corp', code: 'ALPHA', slug: 'alpha-corp' },
       localization: { currencyCode: 'USD', currencySymbol: '$', locale: 'en-US', timezone: 'UTC' },
       branding: {},
-      policies: { standardShippingFee: '9.99', freeShippingThreshold: '100.00' },
+      policies: { standardShippingFee: '9.99', freeShippingThreshold: '100.00', expressShippingFee: '25.00' },
       catalogPolicy: {},
       featureFlags: {},
       pickupLocations: [],
@@ -594,6 +594,16 @@ async function main() {
     const resBefore = Number(beforeFulfillBal.rows[0].reserved);
 
     // Fulfill order
+    const paymentConfirmed = await orderService.confirmStorefrontPayment(
+      orgAlpha,
+      orderId,
+      `AUDIT-PAY-${orderId}`,
+      { source: 'phase4-independent-audit' },
+      'Audit Payment System'
+    );
+    assert.strictEqual(paymentConfirmed.order.status, 'Payment Confirmed');
+    assert.strictEqual(paymentConfirmed.order.payment_status, 'Paid');
+
     const fulfilled = await orderService.fulfillStorefrontOrder(orgAlpha, orderId, 'Warehouse Dispatcher');
     assert.strictEqual(fulfilled.status, 'Completed');
 
