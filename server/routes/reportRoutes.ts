@@ -20,9 +20,9 @@ export function createReportRouter(db: DatabaseClient) {
     channel: typeof req.query.channel === 'string' ? req.query.channel as any : undefined,
   });
 
-  const handle = (fn: () => Promise<any>) => async (req: Request, res: Response) => {
+  const handle = (fn: (req: Request) => Promise<any>) => async (req: Request, res: Response) => {
     try {
-      const data = await fn();
+      const data = await fn(req);
       return res.json({ success: true, data });
     } catch (err: any) {
       if (err?.message === 'TENANT_REQUIRED') {
