@@ -791,8 +791,7 @@ export class SubscriptionService {
         AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
     `);
 
-    const distRes = await db.query<any>(
-      SELECT
+    const distRes = await db.query<any>(`\n      SELECT
         sp.code,
         sp.name,
         sp.amount::text AS amount,
