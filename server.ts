@@ -19,6 +19,9 @@ import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
 import { createPosRouter } from './server/routes/posRoutes.ts';
 import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
 import { createPlatformRouter } from './server/routes/platformRoutes.ts';
+import { createBillingRouter, createBillingWebhookRouter } from './server/routes/billingRoutes.ts';
+import { createReportRouter } from './server/routes/reportRoutes.ts';
+import { createSupportRouter } from './server/routes/supportRoutes.ts';
 import { createDiscoveryBusinessRouter } from './server/routes/discoveryBusinessRoutes.ts';
 import { createDiscoveryRouter } from './server/routes/discoveryRoutes.ts';
 import { createMerchantRouter } from './server/routes/merchantRoutes.ts';
@@ -283,7 +286,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   ];
 
   // Global API Middleware
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { (req as any).rawBody = Buffer.from(buf); } }));
 
   // Request / Correlation ID Middleware (API-001R1)
   app.use('/api', requestIdMiddleware);
@@ -401,6 +404,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // SaaS control-plane routes. Authorization is enforced inside the router.
   app.use('/api/platform', createPlatformRouter(db, subscriptionService));
+  app.use('/api/reports', createReportRouter(db));
+  app.use('/api/support', createSupportRouter(db));
+  app.use('/api/platform/billing', createBillingRouter(db));
+  app.use('/api/webhooks', createBillingWebhookRouter(db));
 
   // Business-owner identity, merchant workspace, and business ownership API.
   app.use('/api/merchant', createMerchantRouter(db, authService));
