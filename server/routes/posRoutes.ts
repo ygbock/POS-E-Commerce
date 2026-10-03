@@ -540,7 +540,7 @@ export function createPosRouter(db: DatabaseClient, posService: PosService, subs
         const orgId = req.auth!.organizationId;
         const { id } = req.params;
 
-        const sale = await orderRepo.findOrderById(id, orgId);
+        const sale = await orderRepo.findOrderByIdOrNumber(id, orgId);
         if (!sale) {
           throw new Error(`SALE_NOT_FOUND: POS Sale with ID '${id}' was not found.`);
         }
