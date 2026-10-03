@@ -99,7 +99,9 @@ export function classifyApiError(
     return {
       status: err.status,
       code: err.code,
-      message: err.message,
+      message: err.status >= 500
+        ? 'An unexpected internal error occurred. Please contact support.'
+        : sanitizeApiErrorMessage(err.message),
     };
   }
 
