@@ -1569,7 +1569,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
           return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Location not found.' } });
         }
-        const allowed = ['code','name','type','address','phone','manager_name','is_pos_enabled','is_active'];
+        const allowed = ['code','name','type','address','phone','manager_name','is_pos_enabled','is_active','is_primary'];
         const sets: string[] = [];
         const values: any[] = [];
         for (const key of allowed) {
@@ -1579,14 +1579,25 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
         }
         if (sets.length === 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least one mutable location field is required.' } });
-        values.push(req.params.id, orgId);
-        const result = await db.query(
-          `UPDATE locations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
-           WHERE id = ${values.length - 1} AND organization_id = ${values.length}
-           RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, created_at, updated_at`,
-          values
-        );
-        const updated = result.rows[0];
+
+        const client = await db.connect();
+        try {
+          await client.query('BEGIN');
+          if (req.body.is_primary === true) {
+            await client.query(
+              'UPDATE locations SET is_primary = FALSE, updated_at = CURRENT_TIMESTAMP WHERE organization_id = $1 AND id <> $2',
+              [orgId, req.params.id],
+            );
+          }
+          values.push(req.params.id, orgId);
+          const result = await client.query(
+            `UPDATE locations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ${values.length - 1} AND organization_id = ${values.length}
+             RETURNING id, organization_id, code, name, type, address, phone, manager_name, is_pos_enabled, is_active, is_primary, created_at, updated_at`,
+            values
+          );
+          await client.query('COMMIT');
+          const updated = result.rows[0];
         await auditRepo.recordEvent({
           organization_id: orgId, actor_id: req.auth!.userId,
           actor_name: (req.auth as any)?.name || req.auth!.userId,
@@ -1595,6 +1606,12 @@ export async function createApp(options: CreateAppOptions = {}) {
           metadata: { changedFields: Object.keys(req.body) }
         });
         return res.json({ success: true, data: updated });
+        } catch (transactionError) {
+          try { await client.query('ROLLBACK'); } catch {}
+          throw transactionError;
+        } finally {
+          client.release();
+        }
       } catch (err: any) {
         if (err?.code === '23505') {
           return res.status(409).json({ success: false, error: { code: 'DUPLICATE_LOCATION_CODE', message: 'A location with this code already exists in this tenant.' } });
