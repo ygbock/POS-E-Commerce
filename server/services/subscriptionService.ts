@@ -788,7 +788,7 @@ export class SubscriptionService {
         COUNT(DISTINCT organization_id)::int AS touched_tenants
       FROM audit_events
       WHERE action = 'PLATFORM_SUBSCRIPTION_CANCELLED'
-        AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+        AND timestamp >= CURRENT_TIMESTAMP - INTERVAL '30 days'
     `);
 
     const distRes = await db.query<any>(`\n      SELECT
