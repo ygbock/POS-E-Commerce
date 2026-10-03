@@ -1,0 +1,14 @@
+import assert from 'assert';
+import fs from 'fs';
+const source=fs.readFileSync('src/components/pos/ShiftModal.tsx','utf8');
+assert.match(source,/fetch\(\`\/api\/pos\/sessions\?locationId=/);
+assert.match(source,/fetch\(\`\/api\/pos\/sessions\/\\$\{encodeURIComponent\(posShift\.id\)\}\/close/);
+assert.match(source,/countedCash: activePrimaryCash/);
+assert.match(source,/expected_cash/);
+assert.match(source,/variance/);
+assert.doesNotMatch(source,/openPosShift\(/);
+assert.doesNotMatch(source,/closePosShift\(/);
+assert.doesNotMatch(source,/supervisorPin/);
+assert.doesNotMatch(source,/Marcus Vance/);
+assert.match(source,/Server-Controlled Reconciliation/);
+console.log('POS shift authority guard: 12/12 checks passed.');
