@@ -829,7 +829,7 @@ async function main() {
       const fileSet = new Set(files);
       const requiredMigrations = [
         '001_', '002_', '003_', '004_', '005_', '006_', '007_', '008_', '009_', '010_',
-        '011_', '012_', '013_', '014_', '015_', '016_', '017_', '025_',
+        '011_', '012_', '013_', '014_', '015_', '016_', '017_', '025_', '052_',
       ];
 
       assert.ok(files.length >= requiredMigrations.length, 'All required migrations must exist');
