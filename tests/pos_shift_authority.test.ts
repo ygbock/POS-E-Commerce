@@ -2,7 +2,7 @@ import assert from 'assert';
 import fs from 'fs';
 const source=fs.readFileSync('src/components/pos/ShiftModal.tsx','utf8');
 assert.match(source,/fetch\(\`\/api\/pos\/sessions\?locationId=/);
-assert.match(source,/fetch\(\`\/api\/pos\/sessions\/\\$\{encodeURIComponent\(posShift\.id\)\}\/close/);
+assert.match(source,/fetch\(\`\/api\/pos\/sessions\/\$\{encodeURIComponent\(posShift\.id\)\}\/close/);
 assert.match(source,/countedCash: activePrimaryCash/);
 assert.match(source,/expected_cash/);
 assert.match(source,/variance/);
