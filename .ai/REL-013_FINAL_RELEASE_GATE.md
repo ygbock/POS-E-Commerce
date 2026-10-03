@@ -1,7 +1,7 @@
 # Release Gate Report: REL-013 Final Release Candidate & Handover Gate
 
 > **Release Version**: 2.6.0-Enterprise
-> **Status**: IN PROGRESS
+> **Status**: CODE-LEVEL GATE PASSED — OPERATOR HANDOVER PENDING
 > **Working Branch**: `upgrade/v2.6/upg-001-platform-hardening`
 > **Gate Owner**: Senior Software Architect / Security & QA Review
 > **Purpose**: Final evidence-driven security, QA, accessibility, build, and production-handover gate.
@@ -33,10 +33,10 @@ The repository currently defines **28 test suites** in the `npm test` chain.
 | Migration integrity | PASS at tested gates | Operational migration integrity suite includes migrations through current Phase 5 additions |
 | Error-leak defense | PASS | Auth-security regression verifies generic 500 response and suppression of connection strings, credentials and stack traces |
 | Multi-tenant storefront isolation | Existing regression coverage | Storefront multi-tenant and API suites are part of the full regression chain |
-| Billing | Implemented; current final-gate verification required | Dedicated billing suite is in `npm test` |
-| Reporting | Implemented; current final-gate verification required | Dedicated reports suite is in `npm test` |
-| Production build | PENDING CURRENT GATE | Must be executed against current release candidate |
-| Accessibility/WCAG 2.2 AA | PENDING CURRENT GATE | Existing UX tests provide automated coverage; manual visual/accessibility review remains required |
+| Billing | VERIFIED IN FULL REGRESSION | Dedicated billing suite is in `npm test`; current `npm test` passed |
+| Reporting | VERIFIED IN FULL REGRESSION | Dedicated reports suite is in `npm test`; current `npm test` passed |
+| Production build | PASS | Current `npm run build` passed |
+| Accessibility/WCAG 2.2 AA | AUTOMATED GATE PASSED; MANUAL REVIEW PENDING | Current regression includes UX/accessibility tests; manual WCAG review remains required |
 | Cloud backup/PITR | OPERATOR VERIFICATION REQUIRED | Local restore test explicitly does not prove cloud-provider PITR |
 | External monitoring/alerts | OPERATOR VERIFICATION REQUIRED | Repository runbooks document the required operational configuration |
 
@@ -160,12 +160,12 @@ The full regression chain currently contains 28 suites:
 28. audit/security administration
 
 **Required release evidence:**
-- [ ] `npm test` passes completely.
-- [ ] `npx tsc --noEmit` passes.
-- [ ] `npm run build` passes.
-- [ ] No new migration checksum failures.
-- [ ] No P0/P1 security findings.
-- [ ] No known high-severity release-blocking defect.
+- [x] `npm test` passes completely.
+- [x] `npx tsc --noEmit` passes.
+- [x] `npm run build` passes.
+- [x] No new migration checksum failures were reported by the current regression run.
+- [ ] No P0/P1 security findings — requires final security review sign-off.
+- [ ] No known high-severity release-blocking defect — requires final review sign-off.
 
 ---
 
@@ -192,9 +192,9 @@ The full regression chain currently contains 28 suites:
 
 ## 9. Release Decision
 
-**Current classification: NOT YET RELEASED.**
+**Current classification: CODE-LEVEL RELEASE GATE PASSED; NOT YET RELEASED.**
 
-The codebase has substantial implemented security, tenancy, operational, billing, reporting, storefront and support controls. Final release approval requires current `npm test`, TypeScript/build evidence, completion of the accessibility/security review, and deployment-operator verification of cloud infrastructure items that cannot be proven by local tests.
+The codebase has substantial implemented security, tenancy, operational, billing, reporting, storefront and support controls. Current local verification establishes the TypeScript, full regression, and production-build gates. Final release approval still requires security review sign-off, manual WCAG/accessibility review, and deployment-operator verification of cloud infrastructure items that cannot be proven by local tests.
 
 No production readiness claim should be inferred from this document until the outstanding gates are explicitly checked.
 
