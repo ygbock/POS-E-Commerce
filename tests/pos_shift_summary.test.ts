@@ -28,6 +28,6 @@ assert.match(modal, /totalWalletSales: Number\(s\.summary\?\.total_wallet_sales/
 assert.match(modal, /totalRefunds: Number\(s\.summary\?\.total_refunds/);
 assert.match(modal, /cashInTotal: Number\(s\.summary\?\.cash_in_total/);
 assert.match(modal, /cashOutTotal: Number\(s\.summary\?\.cash_out_total/);
-assert.doesNotMatch(modal, /transactionsCount: 0,\s*totalCashSales: 0,\s*totalCardSales: 0/);
+assert.doesNotMatch(modal, /transactionsCount: 0,\s*totalSales: 0,\s*totalCashSales: 0,\s*totalCardSales: 0/);
 
 console.log('POS shift summary authority guard: 20/20 checks passed.');
