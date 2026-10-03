@@ -1,6 +1,8 @@
 -- AbaCha Unified Commerce
 -- Migration 015: billing invoices, invoice history, and payment settlement records (TASK-5.6.4)
 
+CREATE SEQUENCE IF NOT EXISTS billing_invoice_number_seq;
+
 CREATE TABLE IF NOT EXISTS billing_invoices (
   id VARCHAR(64) PRIMARY KEY,
   organization_id VARCHAR(64) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
