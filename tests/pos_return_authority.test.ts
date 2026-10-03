@@ -15,3 +15,6 @@ assert.doesNotMatch(source, /origItem\.price \* r\.quantity/);
 assert.doesNotMatch(source, /checked=\{returnItemsState\[item\.variantId\]\?\.restock/);
 
 console.log('POS return authority guard: 10/10 checks passed.');
+const posRoutes = fs.readFileSync('server/routes/posRoutes.ts', 'utf8');
+assert.match(posRoutes, /findPaymentByOrderId\(sale\.order\.id, orgId\)/);
+console.log('POS sale payment lookup guard: canonical order ID used.');
