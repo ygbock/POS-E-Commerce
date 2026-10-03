@@ -172,18 +172,18 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
             </button>
           </form>
 
-          {/* Quick Category Buttons: Touch-friendly horizontal scroller on mobile, centered wrap on tablet/desktop */}
-          <div className="pt-3.5 sm:pt-5">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory py-1.5 -mx-3.5 px-3.5 sm:mx-0 sm:px-0 sm:flex-wrap sm:justify-center sm:gap-2.5 text-xs font-semibold select-none">
+          {/* Quick Category Buttons: Centered single-line container with no borders, no background, and no scrolling */}
+          <div className="pt-3 sm:pt-4">
+            <div className="flex items-center justify-between sm:justify-center gap-0.5 min-[360px]:gap-1 sm:gap-3.5 py-1 w-full text-[8.5px] min-[360px]:text-[9.5px] sm:text-xs md:text-sm font-bold select-none flex-nowrap">
               <button
                 type="button"
                 onClick={() => {
                   onQueryChange('Restaurants');
                   onSearch('Restaurants');
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-xs border border-white/15 text-white transition-all whitespace-nowrap min-h-[44px] shrink-0 snap-start active:scale-95"
+                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
               >
-                <Utensils className="w-4 h-4 text-amber-400 shrink-0" />
+                <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Restaurants</span>
               </button>
               <button
@@ -192,9 +192,9 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   onQueryChange('Plumbers');
                   onSearch('Plumbers');
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-xs border border-white/15 text-white transition-all whitespace-nowrap min-h-[44px] shrink-0 snap-start active:scale-95"
+                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
               >
-                <Wrench className="w-4 h-4 text-amber-400 shrink-0" />
+                <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Plumbers</span>
               </button>
               <button
@@ -203,9 +203,9 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   onQueryChange('Nail Salons');
                   onSearch('Nail Salons');
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-xs border border-white/15 text-white transition-all whitespace-nowrap min-h-[44px] shrink-0 snap-start active:scale-95"
+                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
               >
-                <SparklesIcon className="w-4 h-4 text-amber-400 shrink-0" />
+                <SparklesIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Nail Salons</span>
               </button>
               <button
@@ -214,9 +214,9 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   onQueryChange('HVAC Contractors');
                   onSearch('HVAC Contractors');
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-xs border border-white/15 text-white transition-all whitespace-nowrap min-h-[44px] shrink-0 snap-start active:scale-95"
+                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
               >
-                <Wind className="w-4 h-4 text-amber-400 shrink-0" />
+                <Wind className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>HVAC Contractors</span>
               </button>
               <button
@@ -225,9 +225,9 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   onQueryChange('Electricians');
                   onSearch('Electricians');
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-xs border border-white/15 text-white transition-all whitespace-nowrap min-h-[44px] shrink-0 snap-start active:scale-95"
+                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
               >
-                <Plug className="w-4 h-4 text-amber-400 shrink-0" />
+                <Plug className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Electricians</span>
               </button>
               <button
@@ -236,9 +236,9 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   onQueryChange('General Contractors');
                   onSearch('General Contractors');
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-xs border border-white/15 text-white transition-all whitespace-nowrap min-h-[44px] shrink-0 snap-start active:scale-95"
+                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
               >
-                <Hammer className="w-4 h-4 text-amber-400 shrink-0" />
+                <Hammer className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>General Contractors</span>
               </button>
             </div>
