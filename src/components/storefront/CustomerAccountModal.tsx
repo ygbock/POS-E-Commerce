@@ -77,7 +77,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     customers,
     activeCustomerUser,
     setActiveCustomerUser,
-    orders,
     formatCurrency,
     wishlist,
     products,
@@ -122,6 +121,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [copiedMagicLink, setCopiedMagicLink] = useState(false);
   const [copiedCouponCode, setCopiedCouponCode] = useState(false);
   const [trackingErrorMessage, setTrackingErrorMessage] = useState('');
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [orderHistoryLoading, setOrderHistoryLoading] = useState(false);
+  const [orderHistoryError, setOrderHistoryError] = useState('');
   const [isSimulating, setIsSimulating] = useState(false);
 
   // Sync initialTab when props change
@@ -154,6 +156,39 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setEmailQuery(activeCustomerUser.email);
     }
   }, [activeCustomerUser]);
+
+  useEffect(() => {
+    if (!isOpen || !activeCustomerUser || !tenant?.slug) {
+      setCustomerOrders([]);
+      setOrderHistoryLoading(false);
+      setOrderHistoryError('');
+      return;
+    }
+
+    let cancelled = false;
+    setOrderHistoryLoading(true);
+    setOrderHistoryError('');
+
+    void storefrontApi.getCustomerOrders(tenant.slug)
+      .then((data: any) => {
+        if (cancelled) return;
+        const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        setCustomerOrders(rows.map((source: any) => ({
+          ...source,
+          items: Array.isArray(source?.items) ? source.items : [],
+        })) as Order[]);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCustomerOrders([]);
+        setOrderHistoryError(error instanceof Error ? error.message : 'Unable to load order history.');
+      })
+      .finally(() => {
+        if (!cancelled) setOrderHistoryLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, activeCustomerUser, tenant?.slug]);
 
   const modalRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, modalRef);
@@ -307,15 +342,34 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     setTrackingErrorMessage('');
   };
 
-  const handleTrackSpecificOrder = (order: Order) => {
+  const handleTrackSpecificOrder = async (order: Order) => {
     setOrderQuery(order.orderNumber);
-    setEmailQuery(order.customerEmail || '');
-    setSearchedOrder(order);
-    setHasSearched(true);
+    setEmailQuery(order.customerEmail || activeCustomerUser?.email || '');
     setTrackingErrorMessage('');
+    setHasSearched(false);
     setSelectedTab('tracking');
-  };
 
+    if (!tenant?.slug) {
+      setSearchedOrder(null);
+      setHasSearched(true);
+      setTrackingErrorMessage('Storefront context is unavailable. Please try again.');
+      return;
+    }
+
+    try {
+      const response = await storefrontApi.getCustomerOrder(tenant.slug, order.orderNumber);
+      const source = response?.data || response;
+      setSearchedOrder({
+        ...source,
+        items: Array.isArray(source?.items) ? source.items : [],
+      } as Order);
+      setHasSearched(true);
+    } catch {
+      setSearchedOrder(null);
+      setHasSearched(true);
+      setTrackingErrorMessage('Unable to load the selected order details.');
+    }
+  };
   const handleAdvanceStatus = () => {
     if (!searchedOrder) return;
     setIsSimulating(true);
@@ -461,7 +515,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             }`}
           >
             <Truck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Track Order</span>
+            <span>Order Details</span>
             {searchedOrder && (
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             )}
@@ -1406,7 +1460,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-slate-900 dark:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-sky-600/20 transition-all"
                           >
                             <Truck className="w-3.5 h-3.5" />
-                            <span>Track Live</span>
+                            <span>View Details</span>
                           </button>
                         </div>
                       </div>
