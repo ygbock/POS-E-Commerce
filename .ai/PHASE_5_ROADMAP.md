@@ -147,7 +147,9 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
   - [ ] Deep URLs resolve directly without page reload or broken modal state.
   - [ ] Checkout executes atomically via `orderService.placeStorefrontOrder`.
   - [ ] Storefront state is fully decoupled from back-office `CommerceContext`.
-- **Completion Status**: `PLANNED`.
+- **Completion Status**: `IMPLEMENTED — PENDING LOCAL VERIFICATION`.
+
+- **Gap audit findings addressed**: removed active storefront `CommerceContext` dependencies from catalog state, header, cart, checkout, and notification surfaces; moved storefront theme state into `StorefrontContext`; made checkout commercial totals server-validation authoritative; retained tenant-scoped cart session tokens and HTML5 History API routing.
 
 ---
 
