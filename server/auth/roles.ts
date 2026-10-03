@@ -47,7 +47,7 @@ export const PERMISSIONS = {
   POS_VIEW:'pos.view', POS_SELL:'pos.sell', POS_SESSION_OPEN:'pos.session_open', POS_SESSION_CLOSE:'pos.session_close', POS_DISCOUNT:'pos.discount',
   POS_PRICE_OVERRIDE:'pos.price_override', POS_VOID:'pos.void', POS_RETURN:'pos.return', POS_REFUND:'pos.refund', POS_REPORT:'pos.report',
   ADMIN_DIAGNOSTICS:'admin.diagnostics',
-  PLATFORM_VIEW:'platform.view', PLATFORM_TENANTS:'platform.tenants', PLATFORM_SUPPORT:'platform.support', PLATFORM_BILLING:'platform.billing',
+  PLATFORM_VIEW:'platform.view', PLATFORM_TENANTS:'platform.tenants', PLATFORM_SUPPORT:'platform.support', PLATFORM_BILLING:'platform.billing', SUPPORT_VIEW:'support.view', SUPPORT_CREATE:'support.create', SUPPORT_REPLY:'support.reply',
 } as const;
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
@@ -91,6 +91,9 @@ const tenantAdminPermissions = [
   PERMISSIONS.POS_REFUND,
   PERMISSIONS.POS_REPORT,
   PERMISSIONS.ADMIN_DIAGNOSTICS,
+  PERMISSIONS.SUPPORT_VIEW,
+  PERMISSIONS.SUPPORT_CREATE,
+  PERMISSIONS.SUPPORT_REPLY,
 ];
 
 const managerPermissions = [
