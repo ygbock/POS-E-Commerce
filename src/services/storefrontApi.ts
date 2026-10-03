@@ -72,6 +72,15 @@ export interface StorefrontTrackedOrder {
   maskedEmail: string;
 }
 
+export interface StorefrontOrderStatusHistory {
+  id: string;
+  fromStatus: string | null;
+  status: string;
+  label: string;
+  changedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface StorefrontContextResponse {
   tenant: { id: string; name: string; code: string; slug: string; customDomain?: string | null };
   localization: { currencyCode: string; currencySymbol: string; locale: string; timezone: string };
@@ -244,6 +253,17 @@ export const storefrontApi = {
     });
   },
   
+
+  getCustomerOrders(tenantSlug: string) {
+    return request<any[]>(`${tenantBase(tenantSlug)}/account/orders`);
+  },
+
+  getCustomerOrder(tenantSlug: string, orderNumber: string) {
+    return request<any>(
+      `${tenantBase(tenantSlug)}/account/orders/${encodeURIComponent(orderNumber)}`,
+    );
+  },
+
   trackOrder(tenantSlug: string | undefined, orderNumber: string, contact?: string) {
     const query = contact ? `?contact=${encodeURIComponent(contact)}` : '';
     return request<StorefrontTrackedOrder>(
