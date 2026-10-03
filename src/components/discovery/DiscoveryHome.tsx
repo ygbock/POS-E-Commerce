@@ -68,6 +68,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       type: (sp.get('type') || 'all') as DiscoverySearchType,
       city: sp.get('city') || undefined,
       district: sp.get('district') || undefined,
+      region: sp.get('region') || undefined,
       radiusKm: sp.get('radiusKm') ? Number(sp.get('radiusKm')) : 25,
       openNow: sp.get('openNow') === 'true',
       categoryId: sp.get('categoryId') || undefined,
@@ -81,6 +82,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const [activeType, setActiveType] = useState<DiscoverySearchType>(initialParams.type || 'all');
   const [selectedCity, setSelectedCity] = useState<string | undefined>(initialParams.city);
   const [selectedDistrict, setSelectedDistrict] = useState<string | undefined>(initialParams.district);
+  const [selectedRegion, setSelectedRegion] = useState<string | undefined>(initialParams.region);
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [radiusKm, setRadiusKm] = useState<number>(initialParams.radiusKm || 25);
@@ -121,6 +123,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       setActiveType(p.type || 'all');
       setSelectedCity(p.city);
       setSelectedDistrict(p.district);
+      setSelectedRegion(p.region);
       setRadiusKm(p.radiusKm || 25);
       setSort(p.sort || 'relevance');
       setFilters({
@@ -198,6 +201,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         type: activeType,
         city: selectedCity,
         district: selectedDistrict,
+        region: selectedRegion,
         lat: latitude ?? undefined,
         lng: longitude ?? undefined,
         radiusKm,
@@ -255,7 +259,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       setProductsState({ status: errState, data: [], error: msg, errorCode: code, errorStatus: status });
       setServicesState({ status: errState, data: [], error: msg, errorCode: code, errorStatus: status });
     }
-  }, [query, activeType, selectedCity, selectedDistrict, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]);
+  }, [query, activeType, selectedCity, selectedDistrict, selectedRegion, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]);
 
   useEffect(() => {
     void fetchDiscoveryContent();
@@ -271,6 +275,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       if (nextType !== 'all') sp.set('type', nextType);
       if (selectedCity) sp.set('city', selectedCity);
       if (selectedDistrict) sp.set('district', selectedDistrict);
+      if (selectedRegion) sp.set('region', selectedRegion);
       if (filters.categoryId) sp.set('categoryId', filters.categoryId);
       if (radiusKm !== 25) sp.set('radiusKm', String(radiusKm));
       if (filters.openNow) sp.set('openNow', 'true');
@@ -283,7 +288,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
     },
-    [activeType, query, selectedCity, radiusKm, filters.openNow, filters.categoryId, sort]
+    [activeType, query, selectedCity, selectedDistrict, selectedRegion, radiusKm, filters.openNow, filters.categoryId, sort]
   );
 
   const handleSearchSubmit = (q: string) => {
@@ -292,15 +297,19 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
   const handleLocationChange = (loc: {
     city?: string;
+    district?: string;
+    region?: string;
     lat?: number | null;
     lng?: number | null;
     radiusKm?: number;
   }) => {
     setSelectedCity(loc.city);
+    setSelectedDistrict(loc.district);
+    setSelectedRegion(loc.region);
     setLatitude(loc.lat ?? null);
     setLongitude(loc.lng ?? null);
     if (loc.radiusKm) setRadiusKm(loc.radiusKm);
-    syncToUrl({ city: loc.city, radiusKm: loc.radiusKm });
+    syncToUrl({ city: loc.city, district: loc.district, region: loc.region, radiusKm: loc.radiusKm });
   };
 
   const handleCategorySelect = (categoryId: string) => {
@@ -309,7 +318,15 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     syncToUrl({ categoryId: nextCat });
   };
 
-  const locationContextLabel = selectedCity ? `in ${selectedCity}` : latitude ? 'near you' : 'in your area';
+  const locationContextLabel = selectedCity
+    ? `in ${selectedCity}`
+    : selectedDistrict
+    ? `in ${selectedDistrict}`
+    : selectedRegion
+    ? `in ${selectedRegion}`
+    : latitude
+    ? 'near you'
+    : 'in your area';
 
   return (
     <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between ${className}`}>
@@ -349,8 +366,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 syncToUrl({ type });
               }}
               selectedCity={selectedCity}
-              onCityChange={(city) => {
-                handleLocationChange({ city });
+              selectedDistrict={selectedDistrict}
+              selectedRegion={selectedRegion}
+              onCityChange={(loc) => {
+                handleLocationChange(loc);
               }}
               latitude={latitude}
               longitude={longitude}

@@ -118,10 +118,16 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
         aria-expanded={isOpen}
         className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-[44px] cursor-pointer"
       >
-        <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" aria-hidden="true" />
+        <MapPin className={`w-4 h-4 shrink-0 ${hasCoords ? 'text-emerald-500 animate-pulse' : 'text-blue-600 dark:text-blue-400'}`} aria-hidden="true" />
         <span className="truncate max-w-[140px] sm:max-w-[200px]">{displayText}</span>
         {hasCoords && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold">
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500 text-white animate-pulse shrink-0">
+            <Navigation className="w-2 h-2 fill-current" />
+            Active
+          </span>
+        )}
+        {hasCoords && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold shrink-0">
             {selectedRadiusKm}km
           </span>
         )}
