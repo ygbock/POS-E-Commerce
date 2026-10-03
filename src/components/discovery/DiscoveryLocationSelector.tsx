@@ -116,7 +116,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
         onClick={() => setIsOpen(!isOpen)}
         aria-haspopup="true"
         aria-expanded={isOpen}
-        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-[44px] cursor-pointer"
       >
         <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" aria-hidden="true" />
         <span className="truncate max-w-[140px] sm:max-w-[200px]">{displayText}</span>
@@ -130,7 +130,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-72 sm:w-80 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-40 animate-in fade-in slide-in-from-top-2 duration-150 text-xs">
+        <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-40 animate-in fade-in slide-in-from-top-2 duration-150 text-xs">
           <div className="space-y-3">
             {/* GPS Location Button */}
             <div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, XCircle, AlertCircle, CalendarClock, Sparkles, Trophy, Ban } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryServiceRequest } from '../../types/discovery';
+import { DiscoveryMobileBottomNav } from './DiscoveryMobileBottomNav';
 
 export interface DiscoveryServiceRequestsPageProps {
   onBack?: () => void;
@@ -65,9 +66,9 @@ export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPage
 
   if (loading) return <main className="max-w-5xl mx-auto px-4 py-16 text-center"><Loader2 className="w-7 h-7 animate-spin mx-auto text-indigo-600" /><p className="mt-3 text-sm text-slate-500">Loading your requests…</p></main>;
 
-  return <main className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-sm font-bold"><ArrowLeft className="w-4 h-4" />Back to discovery</button>
+  return <main className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-24 lg:pb-8">
+    <div className="max-w-5xl mx-auto px-3.5 sm:px-6 py-6 sm:py-8">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-sm font-bold min-h-[44px]"><ArrowLeft className="w-4 h-4" />Back to discovery</button>
       <div className="mt-8 flex items-end justify-between gap-4">
         <div><p className="text-xs font-black uppercase tracking-widest text-indigo-600">AbaCha Discovery</p><h1 className="mt-1 text-3xl font-black">My service requests</h1><p className="mt-2 text-sm text-slate-500">Track requests, review provider quotes, and manage your service engagements.</p></div>
         <span className="text-xs font-bold text-slate-500">{requests.length} request{requests.length===1?'':'s'}</span>
@@ -195,5 +196,7 @@ export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPage
         </section>
       </div>}
     </div>
+
+    <DiscoveryMobileBottomNav activeTab="requests" />
   </main>;
 };

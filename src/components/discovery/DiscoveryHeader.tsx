@@ -191,39 +191,39 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
       } ${className}`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="h-20 flex items-center justify-between gap-4">
+        <div className="h-16 md:h-20 flex items-center justify-between gap-3 sm:gap-4">
           {/* Left: Logo & Browse Dropdown */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 sm:gap-6 min-w-0">
             <a
               href="/discover"
-              className="flex items-center gap-2 group focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded-xl"
-              aria-label="superpages Home"
+              className="flex items-center gap-2 group focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded-xl shrink-0"
+              aria-label="AbaCha Discovery Home"
             >
-              <svg className="w-8 h-8 shrink-0 select-none group-hover:scale-105 transition-transform" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 select-none group-hover:scale-105 transition-transform" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2L4 5V11C4 16.52 7.42 21.64 12 23C16.58 21.64 20 16.52 20 11V5L12 2Z" fill="#f97316" stroke="#f59e0b" strokeWidth="2"/>
                 <text x="12" y="15.5" fill="white" fontSize="11" fontWeight="900" textAnchor="middle">s</text>
               </svg>
               <div className="flex flex-col">
                 <div className="flex items-baseline">
-                  <span className="font-sans font-black text-white tracking-tight text-lg leading-none">
+                  <span className="font-sans font-black text-white tracking-tight text-base sm:text-lg leading-none">
                     AbaCha
                   </span>
                   <sup className="text-[9px] font-bold text-slate-400 align-super leading-none ml-0.5">®</sup>
                 </div>
-                <span className="text-[10px] font-semibold tracking-widest text-indigo-400 uppercase mt-1 leading-none">
+                <span className="text-[9px] sm:text-[10px] font-semibold tracking-widest text-indigo-400 uppercase mt-0.5 sm:mt-1 leading-none">
                   Discovery
                 </span>
               </div>
             </a>
 
-            {/* Customer activity/workspace dropdown */}
-            <div className="relative hidden lg:block">
+            {/* Customer activity/workspace dropdown — visible on tablet & desktop */}
+            <div className="relative hidden md:block">
               <button
                 type="button"
                 onClick={() => { setActivityOpen((v) => !v); setBrowseOpen(false); }}
                 aria-expanded={activityOpen}
                 aria-haspopup="menu"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold tracking-wide uppercase transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold tracking-wide uppercase transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 min-h-[38px]"
               >
                 <span>My Activity</span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-300 transition-transform duration-200" style={{ transform: activityOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
@@ -415,11 +415,11 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
                 onClick={() => { setNotificationOpen((v) => !v); setMobileMenuOpen(false); }}
                 aria-label={unreadNotificationCount ? `Notifications, ${unreadNotificationCount} unread` : 'Notifications'}
                 aria-expanded={notificationOpen}
-                className="relative p-2 rounded-lg text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                className="relative p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               >
                 <Bell className="w-5 h-5" />
                 {unreadNotificationCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] leading-4 text-white text-center font-black ring-2 ring-slate-950">
+                  <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] leading-4 text-white text-center font-black ring-2 ring-slate-950">
                     {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                   </span>
                 )}
@@ -428,24 +428,24 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg text-white hover:bg-white/10 transition-colors focus:outline-none"
+              className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               aria-label="Toggle Navigation"
             >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
       </div>
 
       {notificationOpen && (
-        <div className="lg:hidden fixed inset-x-0 top-20 bottom-0 z-40 bg-slate-950/60 backdrop-blur-xs p-3" onClick={() => setNotificationOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden text-slate-900 max-h-[70vh]" onClick={(event) => event.stopPropagation()}>
+        <div className="lg:hidden fixed inset-x-0 top-16 md:top-20 bottom-0 z-40 bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4" onClick={() => setNotificationOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden text-slate-900 max-h-[75vh]" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
               <div>
                 <p className="text-sm font-black">Notifications</p>
                 <p className="text-[11px] text-slate-500">{unreadNotificationCount ? `${unreadNotificationCount} unread` : 'All caught up'}</p>
               </div>
-              <button type="button" onClick={() => void handleMarkAllNotificationsRead()} disabled={!unreadNotificationCount} className="text-[11px] font-bold text-indigo-600 disabled:text-slate-300">
+              <button type="button" onClick={() => void handleMarkAllNotificationsRead()} disabled={!unreadNotificationCount} className="text-xs font-bold text-indigo-600 disabled:text-slate-300 min-h-[36px] px-2 py-1">
                 Mark all read
               </button>
             </div>
@@ -453,7 +453,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
               {notifications.length === 0 ? (
                 <div className="px-4 py-10 text-center text-xs text-slate-500">No notifications yet.</div>
               ) : notifications.map((notification) => (
-                <button key={notification.id} type="button" onClick={() => void handleNotificationClick(notification)} className={`w-full text-left px-4 py-3 border-b border-slate-100 ${notification.read_at ? '' : 'bg-indigo-50/60'}`}>
+                <button key={notification.id} type="button" onClick={() => void handleNotificationClick(notification)} className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors min-h-[48px] ${notification.read_at ? '' : 'bg-indigo-50/60'}`}>
                   <div className="flex gap-3">
                     <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${notification.read_at ? 'bg-slate-200' : 'bg-indigo-500'}`} />
                     <span className="min-w-0">
@@ -465,7 +465,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
                 </button>
               ))}
             </div>
-            <a href={workspaceHref('/discover/my-requests')} onClick={() => setNotificationOpen(false)} className="block px-4 py-3 text-center text-[11px] font-black text-indigo-600 border-t border-slate-100">
+            <a href={workspaceHref('/discover/my-requests')} onClick={() => setNotificationOpen(false)} className="block px-4 py-3 text-center text-xs font-black text-indigo-600 hover:bg-slate-50 border-t border-slate-100 min-h-[44px] flex items-center justify-center">
               View my service requests
             </a>
           </div>
@@ -474,34 +474,34 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
 
       {/* Mobile Drawer Navigation */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-x-0 top-20 bottom-0 z-30 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-slate-950 border-b border-slate-900 shadow-2xl p-4 space-y-4 text-white">
+        <div className="lg:hidden fixed inset-x-0 top-16 md:top-20 bottom-0 z-30 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-slate-950 border-b border-slate-900 shadow-2xl p-4 sm:p-5 space-y-4 text-white overflow-y-auto max-h-[calc(100vh-4rem)] pb-safe">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2">
               Browse Discovery
             </span>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <a
                 href="/discover/search?type=businesses"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold bg-slate-900 border border-slate-800"
+                className="flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold bg-slate-900 border border-slate-800 min-h-[44px]"
               >
-                <Star className="w-4 h-4 text-amber-500" />
+                <Star className="w-4 h-4 text-amber-500 shrink-0" />
                 <span>Popular Categories</span>
               </a>
               <a
                 href="/discover"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold bg-slate-900 border border-slate-800"
+                className="flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold bg-slate-900 border border-slate-800 min-h-[44px]"
               >
-                <FileText className="w-4 h-4 text-blue-500" />
+                <FileText className="w-4 h-4 text-blue-500 shrink-0" />
                 <span>State Directory</span>
               </a>
               <a
                 href="/discover/search?type=services"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold bg-slate-900 border border-slate-800"
+                className="flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold bg-slate-900 border border-slate-800 min-h-[44px]"
               >
-                <Users className="w-4 h-4 text-emerald-500" />
+                <Users className="w-4 h-4 text-emerald-500 shrink-0" />
                 <span>Find People</span>
               </a>
             </div>
@@ -509,25 +509,25 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
             <div className="pt-3 border-t border-slate-900">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2">My Shortcuts</span>
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <a href={workspaceHref("/discover/request-service")} onClick={() => setMobileMenuOpen(false)} className="col-span-2 rounded-xl border border-indigo-900 bg-indigo-950/40 p-3 text-xs font-bold flex items-center gap-2"><ClipboardPlus className="w-4 h-4 text-indigo-400" />Request Service</a>
-                <a href={workspaceHref("/discover/saved")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><Heart className="w-4 h-4 text-rose-500" />Saved</a>
-                <a href={workspaceHref("/discover/my-requests")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-400" />Requests</a>
-                <a href={workspaceHref("/discover/my-inquiries")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-blue-400" />Inquiries</a>
-                <a href={workspaceHref("/discover/my-claims")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2"><UserCheck className="w-4 h-4 text-amber-400" />Claims</a>
+                <a href={workspaceHref("/discover/request-service")} onClick={() => setMobileMenuOpen(false)} className="col-span-2 rounded-xl border border-indigo-900 bg-indigo-950/40 p-3 text-xs font-bold flex items-center gap-2 min-h-[44px]"><ClipboardPlus className="w-4 h-4 text-indigo-400 shrink-0" />Request Service</a>
+                <a href={workspaceHref("/discover/saved")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2 min-h-[44px]"><Heart className="w-4 h-4 text-rose-500 shrink-0" />Saved</a>
+                <a href={workspaceHref("/discover/my-requests")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2 min-h-[44px]"><FileText className="w-4 h-4 text-indigo-400 shrink-0" />Requests</a>
+                <a href={workspaceHref("/discover/my-inquiries")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2 min-h-[44px]"><MessageSquare className="w-4 h-4 text-blue-400 shrink-0" />Inquiries</a>
+                <a href={workspaceHref("/discover/my-claims")} onClick={() => setMobileMenuOpen(false)} className="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs font-bold flex items-center gap-2 min-h-[44px]"><UserCheck className="w-4 h-4 text-amber-400 shrink-0" />Claims</a>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-900 flex flex-col gap-2">
+            <div className="pt-3 border-t border-slate-900 flex flex-col sm:flex-row gap-2">
               <a
                 href="/login"
-                className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-2 min-h-[44px]"
               >
                 <LogIn className="w-4 h-4 text-slate-400" />
                 <span>Sign In</span>
               </a>
               <a
                 href="/business/signup"
-                className="w-full py-2.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center gap-2 min-h-[44px]"
               >
                 <Store className="w-4 h-4" />
                 <span>Get Listed</span>

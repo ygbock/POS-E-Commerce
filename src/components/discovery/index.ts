@@ -29,6 +29,7 @@ export * from './DiscoveryCategoryExplorer';
 export * from './ServiceRequestModule';
 export * from './DiscoveryHome';
 export * from './DiscoverySearchResults';
+export * from './DiscoveryMobileBottomNav';
 
 export { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
 

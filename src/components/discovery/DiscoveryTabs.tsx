@@ -58,7 +58,7 @@ export const DiscoveryTabs: React.FC<DiscoveryTabsProps> = ({
     <div
       role="tablist"
       aria-label="Discovery categories"
-      className={`flex items-center gap-1 sm:gap-2 p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 overflow-x-auto no-scrollbar ${className}`}
+      className={`flex items-center gap-1.5 sm:gap-2 p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 overflow-x-auto no-scrollbar snap-x snap-mandatory ${className}`}
     >
       {tabs.map((tab, idx) => {
         const Icon = tab.icon;
@@ -74,7 +74,7 @@ export const DiscoveryTabs: React.FC<DiscoveryTabsProps> = ({
             tabIndex={isSelected ? 0 : -1}
             onClick={() => onChange(tab.id)}
             onKeyDown={(e) => handleKeyDown(e, idx)}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-[44px] shrink-0 snap-start active:scale-95 ${
               isSelected
                 ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-slate-800/40'

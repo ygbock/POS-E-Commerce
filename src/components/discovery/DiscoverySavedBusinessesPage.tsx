@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Heart, MapPin, RefreshCw, Store, Trash2, AlertCircle } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryFavoriteBusiness } from '../../types/discovery';
+import { DiscoveryMobileBottomNav } from './DiscoveryMobileBottomNav';
 
 interface DiscoverySavedBusinessesPageProps {
   onBack?: () => void;
@@ -40,19 +41,19 @@ export const DiscoverySavedBusinessesPage: React.FC<DiscoverySavedBusinessesPage
   };
 
   return (
-    <div className="min-h-[70vh] bg-slate-50 dark:bg-slate-950 px-4 sm:px-6 py-6">
+    <div className="min-h-[70vh] bg-slate-50 dark:bg-slate-950 px-3.5 sm:px-6 py-6 pb-24 lg:pb-8">
       <div className="max-w-6xl mx-auto space-y-6">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <button type="button" onClick={onBack || (() => window.history.back())} className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-indigo-600">
+            <button type="button" onClick={onBack || (() => window.history.back())} className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-indigo-600 min-h-[44px]">
               <ArrowLeft className="w-4 h-4" /> Back to Discovery
             </button>
-            <h1 className="mt-4 text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <h1 className="mt-2 sm:mt-4 text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
               <Heart className="w-6 h-6 text-rose-500 fill-current" /> Saved Businesses
             </h1>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Businesses you saved for quick access later.</p>
           </div>
-          <button type="button" onClick={() => void load()} aria-label="Refresh saved businesses" className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+          <button type="button" onClick={() => void load()} aria-label="Refresh saved businesses" className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[44px] min-w-[44px] flex items-center justify-center">
             <RefreshCw className="w-4 h-4" />
           </button>
         </header>
@@ -78,19 +79,19 @@ export const DiscoverySavedBusinessesPage: React.FC<DiscoverySavedBusinessesPage
               return (
                 <article key={item.id} className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
-                    <button type="button" onClick={() => onOpenBusiness?.(item.slug)} className="text-left flex-1">
+                    <button type="button" onClick={() => onOpenBusiness?.(item.slug)} className="text-left flex-1 min-h-[44px]">
                       <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 font-black">
                         {item.logo_url ? <img src={item.logo_url} alt="" className="w-full h-full rounded-2xl object-cover" /> : <Store className="w-6 h-6" />}
                       </div>
                       <h2 className="mt-4 text-sm font-black text-slate-900 dark:text-white">{item.name}</h2>
                     </button>
-                    <button type="button" onClick={() => void remove(item.id)} aria-label={`Remove ${item.name} from saved businesses`} className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30">
+                    <button type="button" onClick={() => void remove(item.id)} aria-label={`Remove ${item.name} from saved businesses`} className="p-2.5 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 min-h-[44px] min-w-[44px] flex items-center justify-center">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   {item.short_description && <p className="mt-2 text-xs text-slate-500 line-clamp-2">{item.short_description}</p>}
                   {location && <p className="mt-3 text-[11px] text-slate-400 flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{location}</p>}
-                  <button type="button" onClick={() => onOpenBusiness?.(item.slug)} className="mt-4 w-full rounded-xl bg-indigo-600 text-white py-2.5 text-xs font-bold">
+                  <button type="button" onClick={() => onOpenBusiness?.(item.slug)} className="mt-4 w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white py-3 text-xs font-bold min-h-[44px] active:scale-[0.98]">
                     View Business
                   </button>
                 </article>
@@ -99,6 +100,8 @@ export const DiscoverySavedBusinessesPage: React.FC<DiscoverySavedBusinessesPage
           </div>
         )}
       </div>
+
+      <DiscoveryMobileBottomNav activeTab="saved" />
     </div>
   );
 };

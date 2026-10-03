@@ -71,8 +71,8 @@ export const DiscoveryCategoryExplorer: React.FC<DiscoveryCategoryExplorerProps>
   }
 
   return (
-    <section className={`space-y-4 ${className}`} aria-labelledby="category-explorer-heading">
-      <div className="flex items-center justify-between">
+    <section className={`space-y-3.5 sm:space-y-4 ${className}`} aria-labelledby="category-explorer-heading">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h2 id="category-explorer-heading" className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
             Explore by Category
@@ -86,15 +86,15 @@ export const DiscoveryCategoryExplorer: React.FC<DiscoveryCategoryExplorerProps>
           <button
             type="button"
             onClick={() => onSelectCategory('')}
-            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+            className="self-start sm:self-auto text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline min-h-[36px] flex items-center"
           >
             Clear category
           </button>
         )}
       </div>
 
-      {/* Grid of Category cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      {/* Grid of Category cards: 2 cols on mobile, 3 on sm tablet, 4 on md tablet, 6 on desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3">
         {categories.map((cat) => {
           const Icon = getCategoryIcon(cat.slug || cat.name);
           const isSelected = selectedCategoryId === cat.id;
@@ -104,37 +104,37 @@ export const DiscoveryCategoryExplorer: React.FC<DiscoveryCategoryExplorerProps>
               key={cat.id}
               type="button"
               onClick={() => onSelectCategory(cat.id)}
-              className={`group relative p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+              className={`group relative p-3 sm:p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between min-h-[96px] sm:min-h-[104px] cursor-pointer active:scale-[0.98] ${
                 isSelected
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20'
                   : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-800 dark:text-slate-200 shadow-2xs hover:shadow-sm'
               }`}
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1.5 sm:mb-2">
                 <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-colors shrink-0 ${
                     isSelected
                       ? 'bg-white/20 text-white'
                       : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </div>
 
                 <ChevronRight
-                  className={`w-4 h-4 transition-transform group-hover:translate-x-0.5 ${
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform group-hover:translate-x-0.5 shrink-0 ${
                     isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'
                   }`}
                 />
               </div>
 
-              <div>
-                <h3 className="font-bold text-xs sm:text-sm truncate">
+              <div className="min-w-0">
+                <h3 className="font-bold text-xs sm:text-sm truncate leading-tight">
                   {cat.name}
                 </h3>
                 {cat.item_count !== undefined && (
                   <p
-                    className={`text-[11px] font-medium mt-0.5 ${
+                    className={`text-[10px] sm:text-[11px] font-medium mt-0.5 truncate ${
                       isSelected ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'
                     }`}
                   >

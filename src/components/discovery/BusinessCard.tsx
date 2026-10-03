@@ -37,7 +37,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
     >
       <div>
         {/* Cover banner */}
-        <div className="relative h-32 sm:h-36 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-850 overflow-hidden">
+        <div className="relative h-28 sm:h-36 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-850 overflow-hidden">
           {business.cover_image_url ? (
             <img
               src={business.cover_image_url}
@@ -58,10 +58,10 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
         </div>
 
         {/* Card Body */}
-        <div className="p-4 sm:p-5 space-y-3">
+        <div className="p-3.5 sm:p-5 space-y-2.5 sm:space-y-3">
           {/* Logo + Title block */}
-          <div className="flex items-start gap-3 -mt-9 sm:-mt-10 relative z-10">
-            <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-white dark:bg-slate-900 border-2 border-white dark:border-slate-800 shadow-md flex items-center justify-center overflow-hidden shrink-0">
+          <div className="flex items-start gap-2.5 sm:gap-3 -mt-7 sm:-mt-9 relative z-10">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white dark:bg-slate-900 border-2 border-white dark:border-slate-800 shadow-md flex items-center justify-center overflow-hidden shrink-0">
               {business.logo_url ? (
                 <img
                   src={business.logo_url}
@@ -70,34 +70,34 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
                   loading="lazy"
                 />
               ) : (
-                <div className="w-full h-full bg-slate-900 dark:bg-slate-800 text-white flex items-center justify-center font-black text-base">
+                <div className="w-full h-full bg-slate-900 dark:bg-slate-800 text-white flex items-center justify-center font-black text-sm sm:text-base">
                   {business.name.slice(0, 2).toUpperCase()}
                 </div>
               )}
             </div>
 
-            <div className="min-w-0 flex-1 pt-4">
+            <div className="min-w-0 flex-1 pt-3 sm:pt-4">
               <h3
                 id={`business-title-${business.id}`}
-                className="font-black text-base sm:text-lg text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
+                className="font-black text-sm sm:text-base md:text-lg text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
               >
                 {business.name}
               </h3>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
+              <p className="text-[11px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
                 {business.category_name || business.business_type || 'Local Business'}
               </p>
             </div>
           </div>
 
           {/* Description */}
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed min-h-[2.5rem]">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed min-h-[2.25rem] sm:min-h-[2.5rem]">
             {business.short_description || business.description || 'Discover products, services, and local offerings from this business.'}
           </p>
 
           {/* Meta indicators: Location & Rating */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 pt-2 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80">
             {locationString ? (
-              <span className="inline-flex items-center gap-1 truncate max-w-[170px]" title={locationString}>
+              <span className="inline-flex items-center gap-1 truncate max-w-[140px] sm:max-w-[170px]" title={locationString}>
                 <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                 <span className="truncate font-medium">{locationString}</span>
               </span>
@@ -125,7 +125,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
       </div>
 
       {/* Card Actions Footer */}
-      <div className="p-4 sm:p-5 pt-0 flex flex-wrap items-center gap-2 mt-auto">
+      <div className="p-3.5 sm:p-5 pt-0 flex flex-wrap items-center gap-2 mt-auto">
         <a
           href={businessUrl}
           onClick={(e) => {
@@ -134,7 +134,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
               handleCardClick();
             }
           }}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold transition-all shadow-xs"
+          className="flex-1 min-w-[110px] inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-[0.98] dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold transition-all shadow-xs min-h-[44px]"
         >
           <span>View Profile</span>
           <ArrowUpRight className="w-3.5 h-3.5 opacity-70" aria-hidden="true" />
@@ -144,7 +144,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
         {storeUrl && (
           <a
             href={storeUrl}
-            className="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-950/60 transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-950/60 transition-colors min-h-[44px]"
             aria-label={`Visit ${business.name} storefront`}
           >
             <ShoppingBag className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
@@ -152,11 +152,11 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
           </a>
         )}
 
-        {/* Quick Contact buttons */}
+        {/* Quick Contact buttons with standard 44px touch targets */}
         {business.phone && (
           <a
             href={`tel:${business.phone}`}
-            className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title={`Call ${business.name}`}
             aria-label={`Call ${business.name}`}
           >
@@ -169,7 +169,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
             href={`https://wa.me/${business.whatsapp.replace(/[^0-9]/g, '')}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
             title="Chat on WhatsApp"
             aria-label={`Chat with ${business.name} on WhatsApp`}
           >

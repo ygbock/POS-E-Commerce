@@ -31,6 +31,7 @@ import { DiscoveryRating } from './DiscoveryRating';
 import { DiscoveryLoadingState } from './DiscoveryLoadingState';
 import { ServiceCard } from './ServiceCard';
 import { DiscoveryMapPanel } from './DiscoveryMapPanel';
+import { DiscoveryMobileBottomNav } from './DiscoveryMobileBottomNav';
 
 export interface DiscoveryBusinessProfileProps {
   businessId: string;
@@ -321,7 +322,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+      <main className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 pb-24 lg:pb-8">
         {/* Hero Card */}
         <section className="overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           {/* Cover photo */}
@@ -884,6 +885,9 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
           </div>
         </div>
       )}
+
+      {/* Mobile Bottom Navigation Dock */}
+      <DiscoveryMobileBottomNav />
     </div>
   );
 };

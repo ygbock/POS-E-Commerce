@@ -64,9 +64,11 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
 
   const externalMapUrl = `https://www.openstreetmap.org/?mlat=${center.latitude}&mlon=${center.longitude}#map=15/${center.latitude}/${center.longitude}`;
 
+  const [isMapInteracting, setIsMapInteracting] = React.useState(false);
+
   return (
     <section className={`rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm ${className}`}>
-      <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800">
         <div>
           <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
             <MapPin className="w-5 h-5 text-indigo-600" />
@@ -76,27 +78,48 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
             Explore published locations and nearby businesses.
           </p>
         </div>
-        <a
-          href={externalMapUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          Open map
-        </a>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <a
+            href={externalMapUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 min-h-[40px]"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Open map</span>
+          </a>
+        </div>
       </div>
 
-      <div className="relative aspect-[16/8] min-h-[260px] bg-slate-100 dark:bg-slate-800">
+      <div
+        className="relative h-64 sm:h-72 md:h-80 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden"
+        onClick={() => setIsMapInteracting(true)}
+      >
         <iframe
           title="AbaCha Discovery map"
           src={mapUrl}
-          className="absolute inset-0 w-full h-full border-0"
+          className={`absolute inset-0 w-full h-full border-0 transition-opacity ${
+            isMapInteracting ? 'pointer-events-auto' : 'pointer-events-none sm:pointer-events-auto'
+          }`}
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
         />
-        {points.length > 1 && (
-          <div className="absolute left-3 bottom-3 max-w-xs rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur border border-slate-200 dark:border-slate-700 px-3 py-2 shadow-lg">
+
+        {/* Mobile touch hint overlay so page scrolling isn't trapped */}
+        {!isMapInteracting && (
+          <div className="sm:hidden absolute inset-0 bg-slate-950/20 flex items-center justify-center pointer-events-auto cursor-pointer">
+            <button
+              type="button"
+              onClick={() => setIsMapInteracting(true)}
+              className="px-4 py-2 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md text-xs font-bold text-slate-800 dark:text-white shadow-lg border border-slate-200/80 dark:border-slate-700"
+            >
+              Tap to interact with map
+            </button>
+          </div>
+        )}
+
+        {points.length > 0 && (
+          <div className="absolute left-3 bottom-3 max-w-[calc(100%-1.5rem)] sm:max-w-xs rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur border border-slate-200 dark:border-slate-700 px-3 py-2 shadow-lg">
             <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
               {points.length} mapped locations
             </p>
@@ -108,7 +131,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
       </div>
 
       {points.length > 0 ? (
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
+        <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
           {points.map((point) => {
             const selected = point.business?.id === selectedBusinessId;
             return (
@@ -116,13 +139,13 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
                 key={point.id}
                 type="button"
                 onClick={() => point.business && onSelectBusiness?.(point.business)}
-                className={`text-left p-3 rounded-2xl border transition-colors ${
+                className={`text-left p-3 rounded-2xl border transition-all active:scale-[0.99] min-h-[56px] ${
                   selected
                     ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30'
                     : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-2.5">
                   <span className="mt-0.5 w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shrink-0">
                     <MapPin className="w-4 h-4" />
                   </span>
@@ -139,7 +162,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
                     )}
                   </span>
                   {point.business && (
-                    <Navigation className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <Navigation className="w-3.5 h-3.5 text-slate-400 shrink-0 self-center" />
                   )}
                 </div>
               </button>

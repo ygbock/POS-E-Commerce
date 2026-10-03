@@ -104,7 +104,7 @@ export const ServiceRequestModule: React.FC<ServiceRequestModuleProps> = ({
           <button
             type="button"
             onClick={() => setIsOpen(true)}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-md shadow-indigo-600/30 transition-all hover:scale-102 active:scale-98 whitespace-nowrap shrink-0"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-md shadow-indigo-600/30 transition-all hover:scale-102 active:scale-98 whitespace-nowrap shrink-0 min-h-[48px]"
           >
             <Wrench className="w-4 h-4" />
             <span>Post Service Request</span>
@@ -114,13 +114,13 @@ export const ServiceRequestModule: React.FC<ServiceRequestModuleProps> = ({
 
       {/* Modal for Service Request */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden p-6 sm:p-8 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-7 md:p-8 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-slate-100">
             {/* Close Button */}
             <button
               type="button"
               onClick={() => !isSubmitting && setIsOpen(false)}
-              className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label="Close request modal"
             >
               <X className="w-5 h-5" />

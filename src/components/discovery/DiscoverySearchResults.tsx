@@ -33,6 +33,7 @@ import { DiscoveryRateLimitState } from './DiscoveryRateLimitState';
 import { DiscoveryPagination } from './DiscoveryPagination';
 import { DiscoveryMapPanel } from './DiscoveryMapPanel';
 import { DiscoveryResultCount } from './DiscoveryResultCount';
+import { DiscoveryMobileBottomNav } from './DiscoveryMobileBottomNav';
 
 // ---------------------------------------------------------------------------
 // Page size constant — must match discoveryApi limit semantics
@@ -584,25 +585,29 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
       {/* 2. SEARCH BAR + LOCATION CONTROLS                                  */}
       {/* ------------------------------------------------------------------ */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3">
-          <DiscoverySearchBar
-            value={q}
-            onChange={(val) => {
-              // Controlled update — only fire search on submit
-              applyUrlUpdate({ q: val }, true);
-              setUrlState(readUrlParams());
-            }}
-            onSearch={handleSearchSubmit}
-            placeholder="Search businesses, products or services…"
-            autoFocus={!q}
-          />
-          <DiscoveryLocationSelector
-            selectedCity={city}
-            selectedRadiusKm={radiusKm}
-            latitude={lat}
-            longitude={lng}
-            onLocationChange={handleLocationChange}
-          />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
+          <div className="flex-1 min-w-0">
+            <DiscoverySearchBar
+              value={q}
+              onChange={(val) => {
+                // Controlled update — only fire search on submit
+                applyUrlUpdate({ q: val }, true);
+                setUrlState(readUrlParams());
+              }}
+              onSearch={handleSearchSubmit}
+              placeholder="Search businesses, products or services…"
+              autoFocus={!q}
+            />
+          </div>
+          <div className="shrink-0 self-start sm:self-auto">
+            <DiscoveryLocationSelector
+              selectedCity={city}
+              selectedRadiusKm={radiusKm}
+              latitude={lat}
+              longitude={lng}
+              onLocationChange={handleLocationChange}
+            />
+          </div>
         </div>
       </div>
 
@@ -622,19 +627,19 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
       {/* ------------------------------------------------------------------ */}
       {/* MAIN CONTENT                                                        */}
       {/* ------------------------------------------------------------------ */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-6 pb-24 lg:pb-12">
         {/* ---------------------------------------------------------------- */}
         {/* 4. RESULTS TOOLBAR: count + sort + mobile filter trigger          */}
         {/* ---------------------------------------------------------------- */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             {/* Mobile filter button */}
             <button
               type="button"
               onClick={() => setMobileFiltersOpen(true)}
               aria-expanded={mobileFiltersOpen}
               aria-controls="discovery-filters-drawer"
-              className="lg:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
+              className="lg:hidden inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs min-h-[44px]"
             >
               <Filter className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Filters</span>
@@ -907,11 +912,11 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
           />
 
           {/* Drawer sheet */}
-          <div className="relative mt-auto w-full max-h-[80vh] overflow-y-auto rounded-t-3xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 shadow-2xl p-6">
-            {/* Handle */}
-            <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 mx-auto mb-5" aria-hidden="true" />
+          <div className="relative mt-auto w-full max-h-[85vh] flex flex-col rounded-t-3xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 shadow-2xl p-5 sm:p-6">
+            {/* Drag Handle */}
+            <div className="w-10 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 mx-auto mb-4 shrink-0" aria-hidden="true" />
 
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center justify-between mb-4 shrink-0">
               <h2 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <Filter className="w-4 h-4 text-blue-600" aria-hidden="true" />
                 Filters
@@ -920,56 +925,67 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
                 type="button"
                 onClick={() => setMobileFiltersOpen(false)}
                 aria-label="Close filters"
-                className="w-8 h-8 flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="w-9 h-9 flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] min-w-[44px]"
               >
                 <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 
-            <DiscoveryFilters
-              filters={filters}
-              supportedFilters={{ nearMe: true, openNow: true, availableToday: false, delivery: false, pickup: false, categoryId: false, minRating: false }}
-              onChange={(newFilters) => {
-                handleFilterChange(newFilters);
-                setMobileFiltersOpen(false);
-              }}
-              hasLocation={hasLocation}
-              onRequestLocation={() => {
-                if (!navigator.geolocation) return;
-                navigator.geolocation.getCurrentPosition(
-                  (pos) => {
-                    handleLocationChange({
-                      lat: pos.coords.latitude,
-                      lng: pos.coords.longitude,
-                      radiusKm: radiusKm,
-                    });
-                    setMobileFiltersOpen(false);
-                  },
-                  () => {
-                    setMobileFiltersOpen(false);
-                  },
-                  { timeout: 8000, enableHighAccuracy: false },
-                );
-              }}
-            />
+            <div className="overflow-y-auto flex-1 pr-1 pb-3">
+              <DiscoveryFilters
+                filters={filters}
+                supportedFilters={{ nearMe: true, openNow: true, availableToday: false, delivery: false, pickup: false, categoryId: false, minRating: false }}
+                onChange={(newFilters) => {
+                  handleFilterChange(newFilters);
+                }}
+                hasLocation={hasLocation}
+                onRequestLocation={() => {
+                  if (!navigator.geolocation) return;
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      handleLocationChange({
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude,
+                        radiusKm: radiusKm,
+                      });
+                    },
+                    () => {
+                      // Handled by permission error
+                    },
+                    { timeout: 8000, enableHighAccuracy: false },
+                  );
+                }}
+              />
+            </div>
 
-            {activeFilterCount > 0 && (
-              <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+            {/* Bottom action bar pinned */}
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 shrink-0 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-colors min-h-[44px] active:scale-[0.98]"
+              >
+                Apply Filters {totalForActiveType > 0 ? `(${totalForActiveType})` : ''}
+              </button>
+              {activeFilterCount > 0 && (
                 <button
                   type="button"
                   onClick={() => {
                     handleClearFilters();
                     setMobileFiltersOpen(false);
                   }}
-                  className="w-full py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  className="px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-[44px]"
                 >
-                  Clear all filters ({activeFilterCount})
+                  Clear ({activeFilterCount})
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
+
+      {/* Mobile Bottom Navigation Dock */}
+      <DiscoveryMobileBottomNav activeTab="search" />
     </div>
   );
 };

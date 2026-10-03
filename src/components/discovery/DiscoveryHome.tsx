@@ -36,6 +36,7 @@ import {
   DiscoveryErrorState,
   DiscoveryRateLimitState,
   DiscoveryMapPanel,
+  DiscoveryMobileBottomNav,
   type DiscoveryFilterState,
 } from './index';
 
@@ -361,7 +362,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         {/* ------------------------------------------------------------------ */}
         {/* 3. Main Discovery Canvas                                            */}
         {/* ------------------------------------------------------------------ */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-12 sm:space-y-16">
+        <main className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-6 sm:py-10 md:py-12 space-y-10 sm:space-y-14 md:space-y-16 pb-24 lg:pb-12">
           {/* Categories Explorer Section */}
           <DiscoveryCategoryExplorer
             categories={categoriesState.data}
@@ -580,40 +581,40 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               <h2 id="explore-sierra-leone-heading" className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">Explore Sierra Leone</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Browse businesses, products, and services by city.</p>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3">
               {['Freetown', 'Bo', 'Kenema', 'Makeni', 'Koidu', 'Waterloo'].map((city) => (
                 <a key={city} href={'/discover/search?city=' + encodeURIComponent(city)}
-                  className="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                  className="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 active:scale-[0.98] min-h-[56px] flex flex-col justify-between">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{city}</span>
-                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+                    <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200 truncate">{city}</span>
+                    <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all shrink-0" />
                   </div>
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 block">Find local listings</span>
+                  <span className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-1 block truncate">Find local listings</span>
                 </a>
               ))}
             </div>
           </section>
 
           {/* 6. Merchant Acquisition */}
-          <section aria-labelledby="merchant-cta-heading" className="rounded-3xl border border-indigo-200/80 dark:border-indigo-900/70 bg-indigo-50/80 dark:bg-indigo-950/30 p-6 sm:p-8 lg:p-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-7">
+          <section aria-labelledby="merchant-cta-heading" className="rounded-3xl border border-indigo-200/80 dark:border-indigo-900/70 bg-indigo-50/80 dark:bg-indigo-950/30 p-5 sm:p-8 lg:p-10">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 sm:gap-7">
               <div className="max-w-2xl">
                 <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-2">
                   <BriefcaseBusiness className="w-4 h-4" />
                   <span>For Business Owners</span>
                 </div>
-                <h2 id="merchant-cta-heading" className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Get your business discovered on AbaCha</h2>
-                <p className="mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+                <h2 id="merchant-cta-heading" className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 dark:text-white leading-tight">Get your business discovered on AbaCha</h2>
+                <p className="mt-2 text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
                   Create a public business listing, showcase your services, and connect customers to your AbaCha Store when you are ready to sell online.
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+              <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 shrink-0 w-full sm:w-auto">
                 <a href="/business/signup"
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 min-h-[48px] active:scale-[0.98]">
                   <Building2 className="w-4 h-4" /> Get Listed
                 </a>
                 <a href="/discover/search?type=businesses"
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-[48px] active:scale-[0.98]">
                   <Search className="w-4 h-4" /> Browse Businesses
                 </a>
               </div>
@@ -622,37 +623,37 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
           {/* 5. Trust & Quality Banner                                        */}
           {/* ---------------------------------------------------------------- */}
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-100 dark:border-indigo-900/50">
-                <ShieldCheck className="w-6 h-6" />
+          <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 p-5 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+            <div className="flex items-start gap-3.5 sm:gap-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-100 dark:border-indigo-900/50">
+                <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Verified Local Merchants</h3>
+                <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Verified Local Merchants</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                   Every business profile is vetted with official credentials and authentic physical location data.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-100 dark:border-emerald-900/50">
-                <ShoppingBag className="w-6 h-6" />
+            <div className="flex items-start gap-3.5 sm:gap-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-100 dark:border-emerald-900/50">
+                <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Direct Merchant Storefronts</h3>
+                <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Direct Merchant Storefronts</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                   Visit online stores operated by local merchants to view live inventories and place orders.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-100 dark:border-amber-900/50">
-                <Zap className="w-6 h-6" />
+            <div className="flex items-start gap-3.5 sm:gap-4 sm:col-span-2 md:col-span-1">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-100 dark:border-amber-900/50">
+                <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Fast Local Connections</h3>
+                <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Fast Local Connections</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                   Contact businesses instantly via phone or WhatsApp, or request quotes directly on AbaCha.
                 </p>
@@ -708,6 +709,9 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           </div>
         </div>
       </footer>
+
+      {/* Mobile Bottom Navigation Dock */}
+      <DiscoveryMobileBottomNav activeTab="discover" />
     </div>
   );
 };
