@@ -53,6 +53,13 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifs, setShowNotifs] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showLocMenu, setShowLocMenu] = useState(false);
+  const [liveNotifications, setLiveNotifications] = useState<AppNotification[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void supportApi.listNotifications().then((items) => { if (active) setLiveNotifications(items); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   const notificationItems = liveNotifications ?? notifications.map((n) => ({
     id: n.id,
