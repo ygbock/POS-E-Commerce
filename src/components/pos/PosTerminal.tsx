@@ -67,7 +67,6 @@ export const PosTerminal: React.FC = () => {
     resumeHeldPosCart,
     removeHeldPosCart,
     processPosCheckout,
-    processPosReturn,
     posShift,
     currentLocation,
     currentLocationId,
@@ -124,6 +123,8 @@ export const PosTerminal: React.FC = () => {
   const [returnItemsState, setReturnItemsState] = useState<{ [variantId: string]: { qty: number; restock: boolean; reason: string } }>({});
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [returnError, setReturnError] = useState<string | null>(null);
+  const [returnRefundMethod, setReturnRefundMethod] = useState<'Cash' | 'Credit Card' | 'Mobile Money'>('Cash');
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
 
   const categories = ['All', 'Electronics', 'Home & Kitchen', 'Food & Beverage', 'Apparel'];
 
@@ -330,34 +331,49 @@ export const PosTerminal: React.FC = () => {
     }
   };
 
-  // Handle Search Return Order
-  const handleSearchReturnOrder = (e: React.FormEvent) => {
+  // Return/refund is server-authoritative. The client only selects the sale and requested quantities.
+  const handleSearchReturnOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setReturnError(null);
-    const ord = orders.find((o) => o.orderNumber.toUpperCase() === returnOrderNumber.trim().toUpperCase());
-    if (ord) {
-      setFoundReturnOrder(ord);
+    const orderNumber = returnOrderNumber.trim();
+    if (!orderNumber) return;
+
+    try {
+      const response = await fetch(`/api/pos/sales/${encodeURIComponent(orderNumber)}`, {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.order) {
+        throw new Error(body?.error?.message || 'Order not found. Please verify the order number on the receipt.');
+      }
+
+      const order = {
+        ...body.order,
+        items: Array.isArray(body.items) ? body.items : [],
+      } as Order;
+      setFoundReturnOrder(order);
       const init: { [variantId: string]: { qty: number; restock: boolean; reason: string } } = {};
-      ord.items.forEach((item) => {
-        init[item.variantId] = { qty: 0, restock: true, reason: 'Customer Changed Mind' };
+      order.items.forEach((item) => {
+        init[item.variantId] = { qty: 0, restock: true, reason: 'Customer Return' };
       });
       setReturnItemsState(init);
-    } else {
-      setReturnError('Order not found. Please verify the order number on the receipt.');
-      triggerScanToast('Order not found. Please verify the order number.', false);
+    } catch (error) {
+      setFoundReturnOrder(null);
+      const message = error instanceof Error ? error.message : 'Unable to load the sale.';
+      setReturnError(message);
+      triggerScanToast(message, false);
     }
   };
 
-  const handleConfirmReturn = () => {
-    if (!foundReturnOrder) return;
+  const handleConfirmReturn = async () => {
+    if (!foundReturnOrder || returnSubmitting) return;
     setReturnError(null);
     const itemsToReturn = (Object.entries(returnItemsState) as [string, { qty: number; restock: boolean; reason: string }][])
       .filter(([_, data]) => data.qty > 0)
       .map(([variantId, data]) => ({
-        variantId,
-        quantity: data.qty,
-        reason: data.reason,
-        restock: data.restock,
+        variant_id: variantId,
+        quantity: String(data.qty),
       }));
 
     if (itemsToReturn.length === 0) {
@@ -366,18 +382,41 @@ export const PosTerminal: React.FC = () => {
       return;
     }
 
-    let refundVal = 0;
-    itemsToReturn.forEach((r) => {
-      const origItem = foundReturnOrder.items.find((i) => i.variantId === r.variantId);
-      if (origItem) {
-        refundVal += origItem.price * r.quantity * (1 + origItem.taxRate / 100);
+    setReturnSubmitting(true);
+    try {
+      const response = await fetch('/api/pos/returns', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          orderId: foundReturnOrder.id,
+          refundMethod: returnRefundMethod,
+          reason: 'Customer Return',
+          returnItems: itemsToReturn,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.returnRecord) {
+        throw new Error(body?.error?.message || 'Unable to process the return.');
       }
-    });
 
-    processPosReturn(foundReturnOrder.id, itemsToReturn, refundVal);
-    setShowReturnModal(false);
-    setFoundReturnOrder(null);
-    setReturnOrderNumber('');
+      const refundAmount = body.returnRecord.refund_amount;
+      triggerScanToast(`Return processed. Refund: ${formatCurrency(Number(refundAmount))}`);
+      setShowReturnModal(false);
+      setFoundReturnOrder(null);
+      setReturnOrderNumber('');
+      setReturnItemsState({});
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to process the return.';
+      setReturnError(message);
+      triggerScanToast(`Return failed: ${message}`, false);
+    } finally {
+      setReturnSubmitting(false);
+    }
   };
 
   // Centralized POS Keyboard Shortcuts
@@ -1476,12 +1515,31 @@ export const PosTerminal: React.FC = () => {
                 ))}
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">Refund Method</span>
+                  <select
+                    value={returnRefundMethod}
+                    onChange={(e) => setReturnRefundMethod(e.target.value as typeof returnRefundMethod)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-white"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Mobile Money">Mobile Money</option>
+                  </select>
+                </label>
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-[11px] text-amber-800 dark:text-amber-300">
+                  Refund amount, return eligibility, inventory restoration, payment state, and cash-session reconciliation are calculated by the server.
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={handleConfirmReturn}
-                className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer"
+                disabled={returnSubmitting}
+                className="w-full py-3 bg-rose-600 disabled:opacity-50 hover:bg-rose-500 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer"
               >
-                Confirm Return & Issue Refund
+                {returnSubmitting ? 'Processing Return…' : 'Confirm Return & Issue Refund'}
               </button>
             </div>
           )}
