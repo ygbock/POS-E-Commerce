@@ -20,11 +20,11 @@ assert.doesNotMatch(accountModal, /Date\.now\(\) \+ 86400000/);
 
 
 
-const historyMigration = read('server/db/migrations/024_order_status_history.sql');
+const historyMigration = read('server/db/migrations/017_order_status_history.sql');
 assert.match(historyMigration, /CREATE TABLE IF NOT EXISTS order_status_history/);
 assert.match(historyMigration, /CREATE TRIGGER trg_orders_status_history/);
 assert.match(historyMigration, /NEW\.status IS DISTINCT FROM OLD\.status/);
-assert.match(historyMigration, /migration:024_backfill/);
+assert.match(historyMigration, /migration:017_backfill/);
 
 const context = read('src/context/StorefrontContext.tsx');
 assert.match(context, /storefront:\$\{encodeURIComponent\(slug\)\}:cart/);
@@ -39,7 +39,7 @@ assert.match(router, /router\.get\('\/:tenantSlug\/orders\/:orderNumber'/);
 assert.match(router, /router\.get\('\/:tenantSlug\/account\/orders', requireAuth\(\)/);
 assert.match(router, /router\.get\('\/:tenantSlug\/account\/orders\/\:orderNumber', requireAuth\(\)/);
 assert.match(router, /TENANT_ACCESS_DENIED/);
-assert.match(router, /getOrderForCustomerAuthUser/);
+assert.match(router, /auth_user_id = \$2/);
 
 
 const api = read('src/services/storefrontApi.ts');
