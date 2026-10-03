@@ -993,271 +993,184 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           )}
 
           {/* ======================================================================== */}
-          {/* TAB 2: LIVE ORDER TRACKING */}
+          {/* TAB 2: ORDER DETAILS */}
           {/* ======================================================================== */}
           {selectedTab === 'tracking' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              {/* Lookup Form */}
-              <form onSubmit={handleSearchTracking} className="bg-slate-50 dark:bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between pb-1">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                    <Lock className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Real-Time Order Status & GPS Logistics</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 hidden sm:inline">Method 1: Secure Order + Email Dual Verification</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                      Order Number / Order ID <span className="text-rose-400">*</span>
-                    </label>
-                    <input
-                      id="input-account-portal-track-number"
-                      type="text"
-                      placeholder="e.g. ORD-8801 or ORD-8802"
-                      value={orderQuery}
-                      onChange={(e) => setOrderQuery(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-750 hover:border-slate-600 focus:border-sky-500 rounded-xl p-2.5 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:ring-1 focus:ring-sky-500 transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                      Customer Email <span className="text-slate-500 font-normal">(Optional for privacy check)</span>
-                    </label>
-                    <input
-                      id="input-account-portal-track-email"
-                      type="email"
-                      placeholder="e.g. customer@example.com"
-                      value={emailQuery}
-                      onChange={(e) => setEmailQuery(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-750 hover:border-slate-600 focus:border-sky-500 rounded-xl p-2.5 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-sky-500 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400">
-                    <span>Quick Select:</span>
-                    {orders.slice(0, 3).map((ord) => (
-                      <button
-                        key={ord.id}
-                        type="button"
-                        onClick={() => handleTrackSpecificOrder(ord)}
-                        className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-sky-400 font-mono text-[10px] transition-colors"
-                      >
-                        {ord.orderNumber}
-                      </button>
-                    ))}
-                  </div>
-
+            <div className="space-y-5 animate-in fade-in duration-200">
+              {!searchedOrder ? (
+                <div className="py-14 text-center bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
+                  <Package className="w-10 h-10 mx-auto text-slate-600" />
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Select an order to view details</h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Choose an order from Order History. The details shown here are loaded from the store server for your authenticated account.
+                  </p>
                   <button
-                    type="submit"
-                    id="btn-account-portal-track-search"
-                    className="px-5 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-slate-900 dark:text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-sky-600/20 transition-all text-xs"
+                    type="button"
+                    onClick={() => setSelectedTab('orders')}
+                    className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold"
                   >
-                    <Search className="w-3.5 h-3.5" />
-                    <span>Track Order</span>
+                    View Order History
                   </button>
                 </div>
-              </form>
-
-              {/* Error state */}
-              {trackingErrorMessage && (
-                <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3 text-rose-300">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
-                  <div className="space-y-1">
-                    <p className="font-semibold text-xs">{trackingErrorMessage}</p>
-                    <p className="text-[11px] text-rose-400/80">
-                      Need assistance? Try selecting an order from your Order History tab or ensure email matches your receipt.
-                    </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTab('orders')}
+                      className="text-xs font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                      Back to Order History
+                    </button>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                      Server-authoritative order
+                    </span>
                   </div>
-                </div>
-              )}
 
-              {/* TRACKING DETAILS DISPLAY */}
-              {searchedOrder && (
-                <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                  {/* Status Banner */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                          Order #{searchedOrder.orderNumber}
-                        </span>
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            searchedOrder.status === 'Delivered' || searchedOrder.status === 'Completed'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : searchedOrder.status === 'Dispatched'
-                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                              : isCancelled
-                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          }`}
-                        >
-                          {searchedOrder.status}
-                        </span>
+                  {trackingErrorMessage && (
+                    <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3 text-rose-300">
+                      <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
+                      <p className="font-semibold text-xs">{trackingErrorMessage}</p>
+                    </div>
+                  )}
+
+                  <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Order</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <h3 className="font-mono text-base font-black text-white">{searchedOrder.orderNumber}</h3>
+                          <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/25 text-[10px] font-black uppercase">
+                            {searchedOrder.status}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Placed {new Date(searchedOrder.createdAt).toLocaleString()} · {searchedOrder.fulfillmentMethod}
+                        </p>
                       </div>
-                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                        <span>
-                          {searchedOrder.status === 'Delivered'
-                            ? 'Package Successfully Delivered!'
-                            : searchedOrder.status === 'Dispatched'
-                            ? 'Package In Transit to Destination'
-                            : searchedOrder.status === 'Picking'
-                            ? 'Order Being Packed at Central Warehouse'
-                            : searchedOrder.status === 'Payment Confirmed'
-                            ? 'Payment Verified — Preparing Dispatch'
-                            : 'Order Placed & Stock Reserved'}
-                        </span>
-                      </h3>
-                      <p className="text-xs text-slate-600 dark:text-slate-400">
-                        Placed on {new Date(searchedOrder.createdAt).toLocaleDateString()} • {searchedOrder.fulfillmentMethod}
-                      </p>
+                      <div className="text-left sm:text-right">
+                        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Order Total</p>
+                        <p className="text-lg font-black text-emerald-400">{formatCurrency(searchedOrder.totalAmount)}</p>
+                        <p className="text-[10px] text-slate-500">{searchedOrder.paymentStatus}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Fulfillment Status</p>
+                      {searchedOrder.status === 'Cancelled' || searchedOrder.status === 'Refunded' ? (
+                        <span className="text-[10px] font-bold uppercase text-rose-400">Order closed</span>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase text-emerald-400">Live status</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {STATUS_STEPS.map((step, index) => {
+                        const currentIndex = getStepIndex(searchedOrder.status);
+                        const complete = !isCancelled && currentIndex >= index;
+                        return (
+                          <div key={step.status} className="relative">
+                            <div className="flex items-center gap-2 sm:block">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center border text-[10px] font-black ${
+                                complete
+                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                  : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                              }`}>
+                                {complete ? <CheckCircle2 className="w-4 h-4" /> : index + 1}
+                              </div>
+                              <div className="mt-0 sm:mt-2">
+                                <p className="text-[10px] font-bold text-slate-800 dark:text-slate-200">{step.label}</p>
+                                <p className="text-[9px] text-slate-500 hidden sm:block">{step.description}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-2 p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Items ({searchedOrder.items.length})</p>
+                        <span className="text-[10px] text-slate-500">Order #{searchedOrder.orderNumber}</span>
+                      </div>
+                      <div className="divide-y divide-slate-200/80 dark:divide-slate-800/80">
+                        {searchedOrder.items.map((item, index) => (
+                          <div key={item.variantId || index} className="py-3 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{item.productName}</p>
+                              <p className="text-[10px] text-slate-500 truncate">
+                                {item.variantName || 'Standard'} · SKU {item.sku || '—'} · Qty {item.quantity}
+                              </p>
+                            </div>
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                              {formatCurrency(Number(item.price || 0) * Number(item.quantity || 0))}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleAdvanceStatus}
-                        disabled={isSimulating || searchedOrder.status === 'Delivered'}
-                        className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 transition-colors"
-                        title="Simulate advance fulfillment milestone"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin text-sky-400' : ''}`} />
-                        <span>Advance Demo Milestone</span>
-                      </button>
-
-                      {onOpenNotificationHub && (
-                        <button
-                          onClick={() => onOpenNotificationHub(searchedOrder)}
-                          className="px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                        >
-                          <Bell className="w-3.5 h-3.5" />
-                          <span>Alerts Hub</span>
-                        </button>
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Payment Summary</p>
+                      <div className="space-y-2 text-[11px]">
+                        <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span>{formatCurrency(searchedOrder.subtotal)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Discount</span><span>{formatCurrency(searchedOrder.discountAmount || 0)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Tax</span><span>{formatCurrency(searchedOrder.taxAmount)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Shipping</span><span>{formatCurrency(searchedOrder.shippingFee)}</span></div>
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between font-black text-sm">
+                          <span>Total</span><span className="text-emerald-400">{formatCurrency(searchedOrder.totalAmount)}</span>
+                        </div>
+                      </div>
+                      {Array.isArray(searchedOrder.payments) && searchedOrder.payments.length > 0 && (
+                        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Payments</p>
+                          {searchedOrder.payments.map((payment, index) => (
+                            <div key={payment.reference || index} className="text-[10px] flex justify-between gap-2">
+                              <span className="text-slate-500">{payment.method}</span>
+                              <span>{formatCurrency(payment.amount)} · {payment.status}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
 
-                  {/* 5-STAGE PROGRESS TIMELINE */}
-                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
-                    <p className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      Fulfillment Milestone Pipeline
-                    </p>
-
-                    <div className="relative">
-                      {/* Line connector */}
-                      <div className="absolute top-4 left-4 right-4 h-0.5 bg-slate-100 dark:bg-slate-800 hidden sm:block">
-                        <div
-                          className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 transition-all duration-500"
-                          style={{ width: `${(currentStep / (STATUS_STEPS.length - 1)) * 100}%` }}
-                        />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Fulfillment & Tracking</p>
+                      <div className="grid grid-cols-2 gap-3 text-[11px]">
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Method</span><span>{searchedOrder.fulfillmentMethod}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Location</span><span>{searchedOrder.locationName || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Carrier</span><span>{searchedOrder.carrierName || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Tracking</span><span className="font-mono">{searchedOrder.trackingNumber || 'Not assigned'}</span></div>
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 relative">
-                        {STATUS_STEPS.map((step, idx) => {
-                          const isDone = currentStep > idx || searchedOrder.status === 'Delivered';
-                          const isCurrent = currentStep === idx && searchedOrder.status !== 'Delivered';
-
-                          return (
-                            <div key={step.status} className="flex sm:flex-col items-center sm:text-center gap-3 sm:gap-2">
-                              <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all z-10 ${
-                                  isDone
-                                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                                    : isCurrent
-                                    ? 'bg-sky-500 text-slate-900 dark:text-white ring-4 ring-sky-500/20 animate-pulse'
-                                    : 'bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-500'
-                                }`}
-                              >
-                                {isDone ? <Check className="w-4 h-4 stroke-[3]" /> : idx + 1}
-                              </div>
-
-                              <div className="text-left sm:text-center">
-                                <p className={`text-xs font-bold ${isCurrent ? 'text-sky-400' : isDone ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
-                                  {step.label}
-                                </p>
-                                <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight sm:mt-0.5">
-                                  {step.description}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* CARRIER & LOGISTICS INFO */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-bold block">Carrier & Service</span>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <Truck className="w-3.5 h-3.5 text-sky-400" />
-                        <span>{searchedOrder.carrierName || 'OmniTrack Express / DHL'}</span>
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-bold block">Carrier Tracking Code</span>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono text-sky-400 truncate max-w-[130px]">
-                          {searchedOrder.trackingNumber || `TRK-OMNI-${searchedOrder.orderNumber}`}
-                        </span>
+                      {searchedOrder.trackingNumber && (
                         <button
-                          onClick={() => copyToClipboard(searchedOrder.trackingNumber || `TRK-OMNI-${searchedOrder.orderNumber}`)}
-                          className="p-1 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-colors"
-                          title="Copy tracking code"
+                          type="button"
+                          onClick={() => copyToClipboard(searchedOrder.trackingNumber || '')}
+                          className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[10px] font-bold flex items-center gap-1.5"
                         >
-                          {copiedTracking ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedTracking ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          Copy tracking number
                         </button>
+                      )}
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Customer & Order Information</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Customer</span><span>{searchedOrder.customerName || activeCustomerUser?.name || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Email</span><span className="break-all">{searchedOrder.customerEmail || activeCustomerUser?.email || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Order ID</span><span className="font-mono break-all">{searchedOrder.id}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Last Updated</span><span>{searchedOrder.updatedAt ? new Date(searchedOrder.updatedAt).toLocaleString() : '—'}</span></div>
                       </div>
                     </div>
-
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-bold block">Estimated Arrival</span>
-                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>
-                          {searchedOrder.status === 'Delivered'
-                            ? 'Delivered'
-                            : new Date(Date.now() + 86400000 * 2).toLocaleDateString(undefined, {
-                                weekday: 'short',
-                                month: 'short',
-                                day: 'numeric',
-                              })}
-                        </span>
-                      </span>
-                    </div>
                   </div>
-
-                  {/* ITEMS IN SHIPMENT */}
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">Items in this Package ({searchedOrder.items.length})</p>
-                      <span className="text-xs font-bold text-emerald-400">Total: {formatCurrency(searchedOrder.totalAmount)}</span>
-                    </div>
-
-                    <div className="divide-y divide-slate-200/80 dark:divide-slate-800/80">
-                      {searchedOrder.items.map((it, idx) => (
-                        <div key={idx} className="py-2.5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold text-xs flex-shrink-0">
-                              {it.quantity}×
-                            </div>
-                            <div>
-                              <p className="font-semibold text-slate-900 dark:text-white text-xs">{it.productName}</p>
-                              <p className="text-[10px] text-slate-600 dark:text-slate-400">{it.variantName} • SKU: {it.sku}</p>
-                            </div>
-                          </div>
-                          <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{formatCurrency(it.price * it.quantity)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                </>
               )}
             </div>
           )}
