@@ -13,14 +13,12 @@ import {
   AlertTriangle,
   Scale,
   ShieldCheck,
-  Landmark,
   Layers,
   History,
   Banknote,
   UserCheck,
   ChevronRight,
   ArrowLeft,
-  FileSpreadsheet,
   ArrowDownLeft,
   ArrowUpRight,
   FileText,
@@ -203,7 +201,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
     setReconStep(3);
   };
 
-  // Final Submit: Close Shift & Post to Ledger
+  // Final Submit: Close Shift & Save Reconciliation
   const handleFinalReconciliationClose = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!posShift.id) return;
@@ -745,17 +743,16 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
                   <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2 border border-slate-800 shadow-md">
                     <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
                       <div className="flex items-center gap-2">
-                        <Landmark className="w-4 h-4 text-emerald-400" />
-                        <span className="font-bold text-slate-200">General Ledger Auto-Posting Preview</span>
+                                                <span className="font-bold text-slate-200">Reconciliation Preview</span>
                       </div>
                       <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        SOURCE: POS_SHIFT_RECONCILIATION
+                        SOURCE: POS_SESSION_RECONCILIATION
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
                       <div>
-                        <span className="text-slate-400 block">Account Debited:</span>
+                        <span className="text-slate-400 block">Variance Treatment:</span>
                         <strong className="text-emerald-400 font-mono">
                           {calculatedDifference < 0
                             ? 'Cash Shortage Expense'
@@ -763,7 +760,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
                         </strong>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">Account Credited:</span>
+                        <span className="text-slate-400 block">Server Result:</span>
                         <strong className="text-emerald-400 font-mono">
                           {calculatedDifference > 0
                             ? 'Cash Overage Income'
@@ -773,7 +770,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
                     </div>
 
                     <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-800">
-                      <span className="text-slate-400">Journal Amount Posted:</span>
+                      <span className="text-slate-400">Counted / Variance Amount:</span>
                       <strong className="text-base font-mono font-bold text-emerald-400">
                         {formatCurrency(Math.abs(calculatedDifference) > 0 ? Math.abs(calculatedDifference) : activePrimaryCash)}
                       </strong>
@@ -804,7 +801,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
                       className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <Lock className="w-4 h-4" />
-                      <span>Post Reconciliation to Ledger & Close Register</span>
+                      <span>Save Reconciliation & Close Register</span>
                     </button>
                   </div>
                 </form>
