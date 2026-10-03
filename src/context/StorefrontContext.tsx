@@ -36,6 +36,7 @@ interface StorefrontContextValue {
   clearStoreCart: () => void;
   cartCount: number;
   wishlistIds: string[]; setWishlistIds: React.Dispatch<React.SetStateAction<string[]>>;
+  isDarkMode: boolean; toggleTheme: () => void;
   formatCurrency: (amount: number) => string; reloadTenant: () => Promise<void>;
 }
 const Context = createContext<StorefrontContextValue | undefined>(undefined);
@@ -68,6 +69,7 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
   const [cartToken, setCartTokenState] = useState<string | null>(null);
   const [storeCart, setStoreCart] = useState<StoreCartItem[]>([]);
   const [wishlistIds, setWishlistIds] = useState<string[]>([]);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => window.localStorage.getItem('abacha_storefront_theme') === 'dark');
   const reloadTenant = useCallback(async () => {
     setLoading(true); setError(null);
     try { setTenant(await loadContext(slug)); } catch (e) { setTenant(null); setError(e instanceof Error ? e.message : 'Storefront unavailable'); }
@@ -99,6 +101,12 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
     try { const parsed: unknown = JSON.parse(window.localStorage.getItem(wishKey) || '[]'); setWishlistIds(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []); }
     catch { setWishlistIds([]); }
   }, [reloadTenant, slug]);
+
+  const toggleTheme = useCallback(() => setIsDarkMode(current => {
+    const next = !current;
+    window.localStorage.setItem('abacha_storefront_theme', next ? 'dark' : 'light');
+    return next;
+  }), []);
 
   const setCartToken = useCallback((token: string | null) => {
     setCartTokenState(token);
@@ -142,7 +150,7 @@ export const StorefrontProvider: React.FC<React.PropsWithChildren> = ({ children
   const value = useMemo(() => ({
     tenant, loading, error, cartToken, setCartToken, storeCart,
     addToStoreCart, updateStoreCartQty, removeFromStoreCart, clearStoreCart, cartCount,
-    wishlistIds, setWishlistIds, formatCurrency, reloadTenant,
+    wishlistIds, setWishlistIds, isDarkMode, toggleTheme, formatCurrency, reloadTenant,
   }), [tenant, loading, error, cartToken, setCartToken, storeCart, addToStoreCart, updateStoreCartQty, removeFromStoreCart, clearStoreCart, cartCount, wishlistIds, formatCurrency, reloadTenant]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 };
