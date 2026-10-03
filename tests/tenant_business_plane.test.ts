@@ -36,6 +36,8 @@ assert.match(serverSource,/app\.post\(\s*['"]\/api\/customers['"]/);
 assert.match(serverSource,/app\.put\(\s*['"]\/api\/customers\/:id['"]/);
 assert.match(serverSource,/WHERE id = \$1 AND organization_id = \$2/);
 assert.match(serverSource,/DUPLICATE_LOCATION_CODE/);
+assert.match(serverSource,/is_primary/);
+assert.match(serverSource,/UPDATE locations SET is_primary = FALSE/);
 
 assert.ok(fs.existsSync(path.join(root,'src/components/admin/UserManagementView.tsx')));
 assert.ok(fs.existsSync(path.join(root,'src/components/admin/LocationManagementView.tsx')));
