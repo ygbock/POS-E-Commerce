@@ -283,7 +283,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 {notificationItems.length > 0 && (
                   <button
-                    onClick={clearAllNotifications}
+                    onClick={async () => { try { await supportApi.markAllNotificationsRead(); setLiveNotifications((prev) => prev ? prev.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })) : prev); } catch { clearAllNotifications(); } }}
                     className="text-[11px] text-blue-600 hover:underline transition-colors font-medium"
                   >
                     Clear All
