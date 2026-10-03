@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { Role } from '../../types';
+import { AppNotification, supportApi } from '../../services/supportApi';
 
 interface HeaderProps {
   activeTab: string;
