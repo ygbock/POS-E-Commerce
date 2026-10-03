@@ -195,9 +195,9 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 
 ### Phase 5.8 — Notifications & Support Ticket Hub
 - **Task ID**: `TASK-5.8.1`
-- **Objective**: Create tenant-to-platform support ticket hub and notification dispatch worker for critical events (out-of-stock alerts, transfer arrivals, order placement).
-- **Files / Components**: `server/db/migrations/013_support_and_notifications.sql`, `server/routes/supportRoutes.ts`, `src/components/platform/SystemOwnerDashboard.tsx`, `src/components/storefront/OrderNotificationHubModal.tsx`.
-- **Backend / API Impact**: `GET /api/support/tickets`, `POST /api/support/tickets`, `POST /api/support/tickets/:id/messages`.
+- **Objective**: Create the tenant-to-platform support ticket hub and durable notification dispatch foundation, with authenticated in-app delivery for support and other platform events.
+- **Files / Components**: `server/db/migrations/052_support_notifications.sql`, `server/services/supportService.ts`, `server/routes/supportRoutes.ts`, `src/services/supportApi.ts`, `src/components/platform/SupportWorkspace.tsx`, `src/components/layout/Header.tsx`.
+- **Backend / API Impact**: Tenant ticket list/create/detail/reply, platform ticket list/detail/status/reply, and authenticated notification list/read/read-all endpoints under `/api/support`.
 - **Database Impact**: Migration `052_support_notifications.sql` creating `support_tickets`, `support_ticket_messages`, `notifications`, and `notification_deliveries` with tenant/status indexes.
 - **UI Impact**: API foundation is complete; platform support workspace and tenant Help & Support UI consume the new endpoints in the next UI increment.
 - **RBAC**: `platform.support` for platform operators; `support.view`, `support.create`, and `support.reply` for tenant administrators.
