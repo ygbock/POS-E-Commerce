@@ -49,7 +49,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | **Phase 5.7** | Reports & Analytics Engine | Server-aggregated sales, margin, inventory valuation reports | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
 | **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, durable in-app notifications, delivery ledger, activity log | `VERIFIED LOCALLY — CI PENDING` |
 | **Phase 5.9** | Production Operations Hardening | Disaster recovery scripts, backup verification, monitoring | `IMPLEMENTED — PENDING LOCAL VERIFICATION` |
-| **Phase 5.10** | Final Security, QA & Release Gate | Penetration test, WCAG 2.2 AA audit, production handover | `PLANNED` |
+| **Phase 5.10** | Final Security, QA & Release Gate | Penetration test, WCAG 2.2 AA audit, production handover | `IN PROGRESS` |
 
 ---
 
@@ -189,7 +189,8 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
   - [ ] Reports load accurately for large datasets without client memory exhaustion.
   - [ ] Decimal arithmetic matches double-entry financial ledger standards.
   - [ ] Export to CSV / JSON supported securely.
-- **Completion Status**: `PLANNED`.
+- **Completion Status**: `IN PROGRESS`.
+- **Release Gate Artifact**: `.ai/REL-013_FINAL_RELEASE_GATE.md` created as the evidence-driven 2.6.0 release gate. Current release approval remains blocked until fresh TypeScript, full regression, production build, accessibility/security review, and deployment-operator infrastructure evidence are recorded.
 
 ---
 
