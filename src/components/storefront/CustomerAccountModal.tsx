@@ -35,14 +35,12 @@ import {
   ShoppingBag,
   Gift,
   Key,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
+import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontContext } from '../../context/StorefrontContext';
-import { authClient, AuthUser } from '../../services/authClient';
-import { storefrontApi } from '../../services/storefrontApi';
 import { Customer, Order, OrderStatus, Product, ProductVariant } from '../../types';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
+import { storefrontApi } from '../../services/storefrontApi';
 
 export type AccountPortalTab = 'profile' | 'orders' | 'tracking' | 'wishlist';
 
@@ -53,7 +51,6 @@ interface CustomerAccountModalProps {
   initialOrderNumber?: string;
   initialTrackingEmail?: string;
   onSelectProduct?: (product: Product) => void;
-  products: Product[];
   onOpenCart?: () => void;
   onOpenNotificationHub?: (order: Order) => void;
   onOpenClaimModal?: (email: string) => void;
@@ -77,44 +74,22 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   onOpenCart,
   onOpenNotificationHub,
   onOpenClaimModal,
-  products,
 }) => {
+  const { tenant } = useStorefrontContext();
   const {
-    tenant,
-    orders,
+    customers,
+    activeCustomerUser,
+    setActiveCustomerUser,
     formatCurrency,
-    wishlistIds: wishlist,
+    wishlist,
+    products,
     toggleWishlist,
     addToStoreCart,
-  } = useStorefrontContext();
-
-  type StorefrontCustomerSession = {
-    id: string;
-    name: string;
-    email: string;
-    tier: string;
-    loyaltyPoints: number;
-    phone?: string;
-  };
-
-  const mapAuthUser = (user: AuthUser | null): StorefrontCustomerSession | null => {
-    if (!user || !/customer/i.test(user.role)) return null;
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      tier: 'Customer',
-      loyaltyPoints: 0,
-      phone: undefined,
-    };
-  };
-
-  const [activeCustomerUser, setActiveCustomerUser] = useState<StorefrontCustomerSession | null>(() =>
-    mapAuthUser(authClient.getUser())
-  );
-
-  const getTotalStockForVariant = (variant: ProductVariant) =>
-    Object.values(variant.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+    getTotalStockForVariant,
+    registerNewCustomer,
+    applyCoupon,
+    appliedCoupon,
+  } = useCommerce();
 
   const [selectedTab, setSelectedTab] = useState<AccountPortalTab>(initialTab);
 
@@ -137,8 +112,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   // Sign In Form State
   const [signinEmail, setSigninEmail] = useState('');
   const [signinPassword, setSigninPassword] = useState('');
-  const [showSignupPassword, setShowSignupPassword] = useState(false);
-  const [showSigninPassword, setShowSigninPassword] = useState(false);
   const [signinError, setSigninError] = useState('');
 
   // Tracking state
@@ -148,7 +121,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [hasSearched, setHasSearched] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [copiedMagicLink, setCopiedMagicLink] = useState(false);
+  const [copiedCouponCode, setCopiedCouponCode] = useState(false);
   const [trackingErrorMessage, setTrackingErrorMessage] = useState('');
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [orderHistoryLoading, setOrderHistoryLoading] = useState(false);
+  const [orderHistoryError, setOrderHistoryError] = useState('');
 
   // Sync initialTab when props change
   useEffect(() => {
@@ -157,32 +134,25 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     }
   }, [isOpen, initialTab]);
 
-  // Resolve initial order detail from the server; never search the in-memory order collection.
+  // Sync initialOrderNumber by fetching the authoritative server record.
   useEffect(() => {
     if (!isOpen || !initialOrderNumber || !tenant?.slug) return;
     setOrderQuery(initialOrderNumber);
-    const contact = initialTrackingEmail || activeCustomerUser?.email || '';
-    if (contact) setEmailQuery(contact);
+    setTrackingErrorMessage('');
+    void storefrontApi.getCustomerOrder(tenant.slug, initialOrderNumber.trim())
+      .then((response: any) => {
+        const source = response?.data || response;
+        setSearchedOrder({ ...source, items: Array.isArray(source?.items) ? source.items : [] } as Order);
+        if (source?.customerEmail) setEmailQuery(source.customerEmail);
+        setHasSearched(true);
+      })
+      .catch(() => {
+        setSearchedOrder(null);
+        setHasSearched(true);
+        setTrackingErrorMessage('Order not found for this customer account.');
+      });
+  }, [isOpen, initialOrderNumber, tenant?.slug]);
 
-    void (activeCustomerUser
-      ? storefrontApi.getCustomerOrder(tenant.slug, initialOrderNumber)
-      : storefrontApi.trackOrder(tenant.slug, initialOrderNumber, contact || undefined)
-    ).then((data: any) => {
-      const source = data?.data || data;
-      const mapped: Order = {
-        ...source,
-        items: Array.isArray(source?.items) ? source.items : [],
-      } as Order;
-      setSearchedOrder(mapped);
-      if (mapped.customerEmail) setEmailQuery(mapped.customerEmail);
-      setHasSearched(true);
-      setTrackingErrorMessage('');
-    }).catch(() => {
-      setSearchedOrder(null);
-      setHasSearched(true);
-      setTrackingErrorMessage('Order not found or customer verification failed.');
-    });
-  }, [isOpen, initialOrderNumber, initialTrackingEmail, tenant?.slug, activeCustomerUser]);
   // Update emailQuery default when activeCustomerUser changes
   useEffect(() => {
     if (activeCustomerUser?.email) {
@@ -190,113 +160,212 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     }
   }, [activeCustomerUser]);
 
+  useEffect(() => {
+    if (!isOpen || !activeCustomerUser || !tenant?.slug) {
+      setCustomerOrders([]);
+      setOrderHistoryLoading(false);
+      setOrderHistoryError('');
+      return;
+    }
+
+    let cancelled = false;
+    setOrderHistoryLoading(true);
+    setOrderHistoryError('');
+
+    void storefrontApi.getCustomerOrders(tenant.slug)
+      .then((data: any) => {
+        if (cancelled) return;
+        const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        setCustomerOrders(rows.map((source: any) => ({
+          ...source,
+          items: Array.isArray(source?.items) ? source.items : [],
+        })) as Order[]);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCustomerOrders([]);
+        setOrderHistoryError(error instanceof Error ? error.message : 'Unable to load order history.');
+      })
+      .finally(() => {
+        if (!cancelled) setOrderHistoryLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, activeCustomerUser, tenant?.slug]);
+
   const modalRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, modalRef);
 
   if (!isOpen) return null;
-
-  // Filter orders for active customer
-  const customerOrders = activeCustomerUser ? orders : [];
 
   // Wishlist products
   const wishlistedProducts = products.filter((p) => wishlist.includes(p.id));
 
   // --- Handlers ---
   const handleLogout = () => {
-    void authClient.logout().finally(() => {
-      setActiveCustomerUser(null);
-      setSignupSuccessMsg('');
-      setSignupError('');
-      setSigninError('');
-      window.location.reload();
-    });
+    setActiveCustomerUser(null);
+    setSignupSuccessMsg('');
+    setSignupError('');
+    setSigninError('');
   };
 
   const handleCreateAccount = (e: React.FormEvent) => {
     e.preventDefault();
     setSignupError('');
-    setSignupSuccessMsg(
-      'Customer self-registration is not yet exposed by the server. Use the authenticated customer sign-in flow when an account has been provisioned.'
-    );
-  };
+    setSignupSuccessMsg('');
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSigninError('');
-
-    if (!signinEmail.trim() || !signinPassword) {
-      setSigninError('Please enter your account email and password.');
+    if (!signupName.trim()) {
+      setSignupError('Please enter your full name');
+      return;
+    }
+    if (!signupEmail.trim() || !signupEmail.includes('@')) {
+      setSignupError('Please enter a valid email address');
+      return;
+    }
+    if (!signupPhone.trim()) {
+      setSignupError('Please enter your phone number for delivery and order notifications');
       return;
     }
 
-    try {
-      const user = await authClient.login(signinEmail.trim(), signinPassword, tenant?.id);
-      const session = mapAuthUser(user);
-      if (!session) {
-        await authClient.logout();
-        setSigninError('This account is not a customer account for the storefront.');
-        return;
-      }
-      setActiveCustomerUser(session);
+    // Check if customer email is already registered
+    const existing = customers.find((c) => c.email.toLowerCase() === signupEmail.trim().toLowerCase());
+    if (existing) {
+      setActiveCustomerUser(existing);
+      setSignupSuccessMsg(`Welcome back, ${existing.name}! Switched to your registered account.`);
+      applyCoupon('WELCOME20');
+      return;
+    }
+
+    // Create the customer
+    const result = registerNewCustomer({
+      name: signupName.trim(),
+      email: signupEmail.trim(),
+      phone: signupPhone.trim(),
+      street: signupStreet.trim() || '100 Commerce Way',
+      city: signupCity.trim() || 'Seattle',
+      state: signupState.trim() || 'WA',
+      zip: signupZip.trim() || '98101',
+      country: signupCountry || 'USA',
+    });
+
+    // Auto-apply WELCOME20 coupon code to cart!
+    applyCoupon('WELCOME20');
+
+    setSignupSuccessMsg(
+      `🎉 Welcome ${result.customer.name}! Account created with ${result.pointsAdded} reward points. Coupon WELCOME20 ($20 OFF) has been activated!`
+    );
+
+    // Clear signup form
+    setSignupName('');
+    setSignupEmail('');
+    setSignupPhone('');
+    setSignupPassword('');
+  };
+
+  const handleSignIn = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSigninError('');
+
+    if (!signinEmail.trim()) {
+      setSigninError('Please enter your account email');
+      return;
+    }
+
+    const cleanEmail = signinEmail.trim().toLowerCase();
+    const found = customers.find((c) => c.email.toLowerCase() === cleanEmail);
+
+    if (found) {
+      setActiveCustomerUser(found);
       setSigninEmail('');
       setSigninPassword('');
-      window.location.reload();
-    } catch (error) {
-      setSigninError(error instanceof Error ? error.message : 'Unable to sign in. Please verify your credentials.');
+    } else {
+      setSigninError(`No customer found with email "${signinEmail}". Create an account below to claim WELCOME20!`);
     }
   };
 
   const handleSearchTracking = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setTrackingErrorMessage('');
-    const cleanOrder = orderQuery.trim();
-    const cleanEmail = emailQuery.trim();
+    const cleanOrder = orderQuery.trim().toLowerCase();
+    const cleanEmail = emailQuery.trim().toLowerCase();
 
     if (!cleanOrder) {
       setTrackingErrorMessage('Please enter a valid Order Number (e.g. ORD-2026-001)');
       return;
     }
-    if (!activeCustomerUser && !cleanEmail) {
-      setTrackingErrorMessage('Please enter the email or phone used at checkout.');
-      return;
-    }
+
     if (!tenant?.slug) {
       setTrackingErrorMessage('Storefront context is unavailable. Please try again.');
       return;
     }
 
-    setHasSearched(false);
     try {
-      const response = activeCustomerUser
-        ? await storefrontApi.getCustomerOrder(tenant.slug, cleanOrder)
-        : await storefrontApi.trackOrder(tenant.slug, cleanOrder, cleanEmail);
+      const response = await storefrontApi.trackOrder(tenant.slug, cleanOrder, cleanEmail || undefined);
+      const matchingOrder = (response as any)?.data || response;
+      if (!matchingOrder) throw new Error('Order not found');
+
+      // Dual email check if provided
+      if (cleanEmail && matchingOrder.customerEmail) {
+        const orderEmail = matchingOrder.customerEmail.toLowerCase().trim();
+        if (!orderEmail.includes(cleanEmail) && !cleanEmail.includes(orderEmail)) {
+          setHasSearched(true);
+          setSearchedOrder(null);
+          setTrackingErrorMessage(
+            `Security & Privacy: The email "${emailQuery.trim()}" does not match the billing email on file for ${matchingOrder.orderNumber}.`
+          );
+          return;
+        }
+      }
+
+      setHasSearched(true);
+      setSearchedOrder(matchingOrder as Order);
+      setTrackingErrorMessage('');
+    } catch (err: any) {
+      setHasSearched(true);
+      setSearchedOrder(null);
+      setTrackingErrorMessage(`No order found matching "${orderQuery.trim()}". Please verify your order number and email.`);
+    }
+  };
+
+  const handleTrackSpecificOrder = async (order: Order) => {
+    setOrderQuery(order.orderNumber);
+    setEmailQuery(order.customerEmail || activeCustomerUser?.email || '');
+    setTrackingErrorMessage('');
+    setHasSearched(false);
+    setSelectedTab('tracking');
+
+    if (!tenant?.slug) {
+      setSearchedOrder(null);
+      setHasSearched(true);
+      setTrackingErrorMessage('Storefront context is unavailable. Please try again.');
+      return;
+    }
+
+    try {
+      const response = await storefrontApi.getCustomerOrder(tenant.slug, order.orderNumber);
       const source = response?.data || response;
       setSearchedOrder({
         ...source,
         items: Array.isArray(source?.items) ? source.items : [],
       } as Order);
       setHasSearched(true);
-      setTrackingErrorMessage('');
     } catch {
-      setHasSearched(true);
       setSearchedOrder(null);
-      setTrackingErrorMessage('Order not found or customer verification failed.');
+      setHasSearched(true);
+      setTrackingErrorMessage('Unable to load the selected order details.');
     }
   };
-
-  const handleTrackSpecificOrder = (order: Order) => {
-    setOrderQuery(order.orderNumber);
-    setEmailQuery(order.customerEmail || activeCustomerUser?.email || '');
-    setSearchedOrder(order);
-    setHasSearched(true);
-    setTrackingErrorMessage('');
-    setSelectedTab('tracking');
-  };
-
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedTracking(true);
     setTimeout(() => setCopiedTracking(false), 2000);
+  };
+
+  const handleCopyCoupon = (code: string) => {
+    navigator.clipboard.writeText(code);
+    applyCoupon(code);
+    setCopiedCouponCode(true);
+    setTimeout(() => setCopiedCouponCode(false), 2000);
   };
 
   const handleMoveAllWishlistToCart = () => {
@@ -367,7 +436,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {activeCustomerUser
                   ? `${activeCustomerUser.email} • ${activeCustomerUser.loyaltyPoints.toLocaleString()} Reward Points`
-                  : 'Sign in to access authenticated order history; guest orders can be tracked with order verification'}
+                  : 'Sign up to unlock WELCOME20 coupon ($20 OFF) or track guest orders'}
               </p>
             </div>
           </div>
@@ -421,7 +490,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             }`}
           >
             <Truck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Track Order</span>
+            <span>Order Details</span>
             {searchedOrder && (
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             )}
@@ -468,36 +537,121 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             <div className="space-y-6">
               {activeCustomerUser ? (
                 <>
-                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Customer account</span>
-                      <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">{activeCustomerUser.name}</h4>
-                      <p className="text-xs text-slate-600 dark:text-slate-400">{activeCustomerUser.email}</p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-500">Account details and order history are provided from the authenticated store session.</p>
-                    </div>
-                  </div>
+                  {/* Tier & Loyalty Perks Card */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          <Award className="w-3 h-3" />
+                          <span>{activeCustomerUser.tier} Membership Tier</span>
+                        </span>
+                        <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white pt-1">
+                          {activeCustomerUser.name}
+                        </h4>
+                        <p className="text-slate-600 dark:text-slate-400 text-xs">
+                          {activeCustomerUser.notes || 'Exclusive member pricing & priority same-day fulfillment.'}
+                        </p>
+                      </div>
 
-                  {/* Server-verified promotion notice */}
-                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
-                    <div className="flex items-center gap-3">
-                      <Gift className="w-5 h-5 text-slate-500" />
+                      <div className="text-left sm:text-right bg-slate-100/80 dark:bg-slate-900/80 sm:bg-transparent p-3 sm:p-0 rounded-xl border border-slate-200 dark:border-slate-800 sm:border-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 block">Reward Points</span>
+                        <span className="text-xl sm:text-2xl font-black text-sky-400">
+                          {activeCustomerUser.loyaltyPoints.toLocaleString()} pts
+                        </span>
+                        <p className="text-[10px] text-emerald-400">Worth {formatCurrency(activeCustomerUser.loyaltyPoints * 0.05)} store credit</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800/80">
                       <div>
-                        <p className="font-bold text-slate-900 dark:text-white text-xs">Store promotions</p>
-                        <p className="text-[11px] text-slate-500 mt-1">Eligible promotions and fulfillment offers are verified by the store server during checkout.</p>
+                        <span className="text-[10px] text-slate-600 dark:text-slate-400 block">Total Lifetime Spend</span>
+                        <span className="text-xs sm:text-sm font-bold text-emerald-400">
+                          {formatCurrency(activeCustomerUser.totalSpent)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-600 dark:text-slate-400 block">Store Credit Balance</span>
+                        <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                          {formatCurrency(activeCustomerUser.storeCredit)}
+                        </span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <span className="text-[10px] text-slate-600 dark:text-slate-400 block">Customer ID</span>
+                        <span className="text-xs font-mono text-slate-700 dark:text-slate-300">
+                          {activeCustomerUser.id}
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Server-verified promotion notice */}
-                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+                  {/* Member Coupon Voucher Highlight: WELCOME20 */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-indigo-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center flex-shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
                         <Gift className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900 dark:text-white text-xs">Store promotions</p>
-                        <p className="text-[11px] text-slate-500 mt-1">Eligible promotions and fulfillment offers are verified by the store server during checkout.</p>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 dark:text-white text-xs">Member Voucher: WELCOME20</span>
+                          <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-200">
+                            $20 OFF ($100+ Orders)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-700 dark:text-slate-300 mt-0.5">
+                          Claim your $20 discount at checkout. Applies automatically to active carts.
+                        </p>
                       </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleCopyCoupon('WELCOME20')}
+                      className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all flex-shrink-0"
+                    >
+                      {copiedCouponCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedCouponCode ? 'Applied to Cart!' : 'Apply WELCOME20'}</span>
+                    </button>
+                  </div>
+
+                  {/* Portal Quick-Action Hub Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Quick Tracking Tile */}
+                    <div
+                      onClick={() => setSelectedTab('tracking')}
+                      className="p-4 bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-sky-500/40 rounded-2xl cursor-pointer transition-all flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center justify-center group-hover:scale-105 transition-transform">
+                          <Truck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white text-xs">Live Order Tracking</p>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                            {customerOrders.length > 0
+                              ? `Latest: ${customerOrders[0].orderNumber} (${customerOrders[0].status})`
+                              : 'Track courier & delivery milestone'}
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-600 dark:text-slate-400 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+
+                    {/* Quick Wishlist Tile */}
+                    <div
+                      onClick={() => setSelectedTab('wishlist')}
+                      className="p-4 bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-rose-500/40 rounded-2xl cursor-pointer transition-all flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center group-hover:scale-105 transition-transform">
+                          <Heart className={`w-5 h-5 ${wishlist.length > 0 ? 'fill-rose-400' : ''}`} />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white text-xs">Saved Wishlist</p>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                            {wishlist.length > 0 ? `${wishlist.length} products saved` : '0 saved items'}
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-600 dark:text-slate-400 group-hover:text-rose-400 group-hover:translate-x-0.5 transition-all" />
                     </div>
                   </div>
 
@@ -519,7 +673,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
                     <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-2">
                       <p className="font-bold uppercase tracking-wider text-[10px] text-slate-600 dark:text-slate-400">Default Shipping Address</p>
-                      <p className="text-slate-500">Address details are available when provided by the authenticated customer account.</p>
+                      {activeCustomerUser.addresses[0] ? (
+                        <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p>{activeCustomerUser.addresses[0].street}</p>
+                            <p>
+                              {activeCustomerUser.addresses[0].city}, {activeCustomerUser.addresses[0].state} {activeCustomerUser.addresses[0].zip}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-slate-500">No saved address yet.</p>
+                      )}
                     </div>
                   </div>
 
@@ -546,7 +712,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <span>Account Creation Special Offer</span>
                         </div>
                         <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-                          Create an account to access your authenticated customer workspace
+                          Create an Account & Get $20 OFF with <span className="text-amber-300 underline underline-offset-4 decoration-amber-400">WELCOME20</span>
                         </h3>
                         <p className="text-xs text-slate-700 dark:text-slate-300 max-w-xl">
                           Sign up in 30 seconds to unlock your $20 welcome voucher, earn 50 reward points, track orders in real-time, and link previous guest purchases automatically.
@@ -614,7 +780,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                         <div>
                           <h4 className="font-bold text-sm text-slate-900 dark:text-white">Create Customer Profile</h4>
-                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Unlock server-verified promotion coupon code and express checkout</p>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Unlock WELCOME20 coupon code and express checkout</p>
                         </div>
                         <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                           +50 Free Points
@@ -677,24 +843,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                             Password / PIN <span className="text-slate-500 font-normal">(Optional)</span>
                           </label>
-                          <div className="relative">
-                            <input
-                              type={showSignupPassword ? 'text' : 'password'}
-                              placeholder="Create a secure password"
-                              value={signupPassword}
-                              onChange={(e) => setSignupPassword(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 pr-10 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowSignupPassword((value) => !value)}
-                              aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
-                              title={showSignupPassword ? 'Hide password' : 'Show password'}
-                              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                            >
-                              {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
+                          <input
+                            type="password"
+                            placeholder="Create a secure password"
+                            value={signupPassword}
+                            onChange={(e) => setSignupPassword(e.target.value)}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
+                          />
                         </div>
                       </div>
 
@@ -743,7 +898,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         className="w-full py-3.5 bg-gradient-to-r from-sky-500 via-indigo-600 to-sky-500 hover:opacity-95 text-slate-900 dark:text-white rounded-xl text-xs font-black shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 transition-all"
                       >
                         <Gift className="w-4 h-4 text-amber-300" />
-                        <span>Create Account & Unlock server-verified promotion</span>
+                        <span>Create Account & Unlock WELCOME20</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     </form>
@@ -786,24 +941,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                             Password
                           </label>
-                          <div className="relative">
-                            <input
-                              type={showSigninPassword ? 'text' : 'password'}
-                              placeholder="Enter your account password"
-                              value={signinPassword}
-                              onChange={(e) => setSigninPassword(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 pr-10 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowSigninPassword((value) => !value)}
-                              aria-label={showSigninPassword ? 'Hide password' : 'Show password'}
-                              title={showSigninPassword ? 'Hide password' : 'Show password'}
-                              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                            >
-                              {showSigninPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
+                          <input
+                            type="password"
+                            placeholder="Enter your account password"
+                            value={signinPassword}
+                            onChange={(e) => setSigninPassword(e.target.value)}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white placeholder:text-slate-500 text-xs focus:border-sky-500 focus:outline-none"
+                          />
                         </div>
                       </div>
 
@@ -816,8 +960,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         <span>Sign In</span>
                       </button>
 
+                      {/* Instant Autofill Helper for Testing */}
                       <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-center">
-                        <p className="text-[10px] text-slate-500">Customer demo accounts are no longer loaded from client-side fixtures. Sign in with a server-authenticated customer account.</p>
+                        <p className="text-[10px] text-slate-500 mb-1.5">Quick Demo Sign-In (Registered Customers):</p>
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          {customers.slice(0, 3).map((cust) => (
+                            <button
+                              key={cust.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveCustomerUser(cust);
+                                setSigninEmail('');
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 text-[10px] font-medium transition-colors"
+                            >
+                              {cust.name} ({cust.tier})
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </form>
                   )}
@@ -827,263 +987,187 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           )}
 
           {/* ======================================================================== */}
-          {/* TAB 2: LIVE ORDER TRACKING */}
+          {/* TAB 2: ORDER DETAILS */}
           {/* ======================================================================== */}
           {selectedTab === 'tracking' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              {/* Lookup Form */}
-              <form onSubmit={handleSearchTracking} className="bg-slate-50 dark:bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between pb-1">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                    <Lock className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Real-Time Order Status & GPS Logistics</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 hidden sm:inline">Method 1: Secure Order + Email Dual Verification</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                      Order Number / Order ID <span className="text-rose-400">*</span>
-                    </label>
-                    <input
-                      id="input-account-portal-track-number"
-                      type="text"
-                      placeholder="e.g. ORD-8801 or ORD-8802"
-                      value={orderQuery}
-                      onChange={(e) => setOrderQuery(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-750 hover:border-slate-600 focus:border-sky-500 rounded-xl p-2.5 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:ring-1 focus:ring-sky-500 transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                      Customer Email <span className="text-slate-500 font-normal">(Optional for privacy check)</span>
-                    </label>
-                    <input
-                      id="input-account-portal-track-email"
-                      type="email"
-                      placeholder="e.g. customer@example.com"
-                      value={emailQuery}
-                      onChange={(e) => setEmailQuery(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-750 hover:border-slate-600 focus:border-sky-500 rounded-xl p-2.5 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-sky-500 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400">
-                    <span>Quick Select:</span>
-                    {orders.slice(0, 3).map((ord) => (
-                      <button
-                        key={ord.id}
-                        type="button"
-                        onClick={() => handleTrackSpecificOrder(ord)}
-                        className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-sky-400 font-mono text-[10px] transition-colors"
-                      >
-                        {ord.orderNumber}
-                      </button>
-                    ))}
-                  </div>
-
+            <div className="space-y-5 animate-in fade-in duration-200">
+              {!searchedOrder ? (
+                <div className="py-14 text-center bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
+                  <Package className="w-10 h-10 mx-auto text-slate-600" />
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Select an order to view details</h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Choose an order from Order History. The details shown here are loaded from the store server for your authenticated account.
+                  </p>
                   <button
-                    type="submit"
-                    id="btn-account-portal-track-search"
-                    className="px-5 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-slate-900 dark:text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-sky-600/20 transition-all text-xs"
+                    type="button"
+                    onClick={() => setSelectedTab('orders')}
+                    className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold"
                   >
-                    <Search className="w-3.5 h-3.5" />
-                    <span>Track Order</span>
+                    View Order History
                   </button>
                 </div>
-              </form>
-
-              {/* Error state */}
-              {trackingErrorMessage && (
-                <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3 text-rose-300">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
-                  <div className="space-y-1">
-                    <p className="font-semibold text-xs">{trackingErrorMessage}</p>
-                    <p className="text-[11px] text-rose-400/80">
-                      Need assistance? Try selecting an order from your Order History tab or ensure email matches your receipt.
-                    </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTab('orders')}
+                      className="text-xs font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                      Back to Order History
+                    </button>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                      Server-authoritative order
+                    </span>
                   </div>
-                </div>
-              )}
 
-              {/* TRACKING DETAILS DISPLAY */}
-              {searchedOrder && (
-                <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                  {/* Status Banner */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                          Order #{searchedOrder.orderNumber}
-                        </span>
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            searchedOrder.status === 'Delivered' || searchedOrder.status === 'Completed'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : searchedOrder.status === 'Dispatched'
-                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                              : isCancelled
-                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          }`}
-                        >
-                          {searchedOrder.status}
-                        </span>
+                  {trackingErrorMessage && (
+                    <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3 text-rose-300">
+                      <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
+                      <p className="font-semibold text-xs">{trackingErrorMessage}</p>
+                    </div>
+                  )}
+
+                  <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Order</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <h3 className="font-mono text-base font-black text-white">{searchedOrder.orderNumber}</h3>
+                          <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/25 text-[10px] font-black uppercase">
+                            {searchedOrder.status}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Placed {new Date(searchedOrder.createdAt).toLocaleString()} · {searchedOrder.fulfillmentMethod}
+                        </p>
                       </div>
-                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                        <span>
-                          {searchedOrder.status === 'Delivered'
-                            ? 'Package Successfully Delivered!'
-                            : searchedOrder.status === 'Dispatched'
-                            ? 'Package In Transit to Destination'
-                            : searchedOrder.status === 'Picking'
-                            ? 'Order Being Packed at Central Warehouse'
-                            : searchedOrder.status === 'Payment Confirmed'
-                            ? 'Payment Verified — Preparing Dispatch'
-                            : 'Order Placed & Stock Reserved'}
-                        </span>
-                      </h3>
-                      <p className="text-xs text-slate-600 dark:text-slate-400">
-                        Placed on {new Date(searchedOrder.createdAt).toLocaleDateString()} • {searchedOrder.fulfillmentMethod}
-                      </p>
+                      <div className="text-left sm:text-right">
+                        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Order Total</p>
+                        <p className="text-lg font-black text-emerald-400">{formatCurrency(searchedOrder.totalAmount)}</p>
+                        <p className="text-[10px] text-slate-500">{searchedOrder.paymentStatus}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Fulfillment Status</p>
+                      <span className={`text-[10px] font-bold uppercase ${searchedOrder.status === 'Cancelled' || searchedOrder.status === 'Refunded' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {searchedOrder.status}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      
+                    {searchedOrder.statusHistory?.length ? (
+                      <div className="relative space-y-4">
+                        {searchedOrder.statusHistory.map((event, index) => (
+                          <div key={event.id} className="relative flex gap-3">
+                            {index < searchedOrder.statusHistory!.length - 1 && (
+                              <span className="absolute left-3.5 top-7 bottom-[-16px] w-px bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+                            )}
+                            <div className="relative z-10 w-7 h-7 rounded-full flex items-center justify-center bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                                <div>
+                                  <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">{event.label}</p>
+                                  <p className="text-[10px] text-slate-500">{event.status}</p>
+                                </div>
+                                <time className="text-[9px] text-slate-500" dateTime={event.changedAt}>
+                                  {new Date(event.changedAt).toLocaleString()}
+                                </time>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-500">No lifecycle events have been recorded for this order.</p>
+                    )}
+                  </div>
 
-                      {onOpenNotificationHub && (
-                        <button
-                          onClick={() => onOpenNotificationHub(searchedOrder)}
-                          className="px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                        >
-                          <Bell className="w-3.5 h-3.5" />
-                          <span>Alerts Hub</span>
-                        </button>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-2 p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Items ({searchedOrder.items.length})</p>
+                        <span className="text-[10px] text-slate-500">Order #{searchedOrder.orderNumber}</span>
+                      </div>
+                      <div className="divide-y divide-slate-200/80 dark:divide-slate-800/80">
+                        {searchedOrder.items.map((item, index) => (
+                          <div key={item.variantId || index} className="py-3 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{item.productName}</p>
+                              <p className="text-[10px] text-slate-500 truncate">
+                                {item.variantName || 'Standard'} · SKU {item.sku || '—'} · Qty {item.quantity}
+                              </p>
+                            </div>
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                              {formatCurrency(Number(item.price || 0) * Number(item.quantity || 0))}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Payment Summary</p>
+                      <div className="space-y-2 text-[11px]">
+                        <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span>{formatCurrency(searchedOrder.subtotal)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Discount</span><span>{formatCurrency(searchedOrder.discountAmount || 0)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Tax</span><span>{formatCurrency(searchedOrder.taxAmount)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Shipping</span><span>{formatCurrency(searchedOrder.shippingFee)}</span></div>
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between font-black text-sm">
+                          <span>Total</span><span className="text-emerald-400">{formatCurrency(searchedOrder.totalAmount)}</span>
+                        </div>
+                      </div>
+                      {Array.isArray(searchedOrder.payments) && searchedOrder.payments.length > 0 && (
+                        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Payments</p>
+                          {searchedOrder.payments.map((payment, index) => (
+                            <div key={payment.reference || index} className="text-[10px] flex justify-between gap-2">
+                              <span className="text-slate-500">{payment.method}</span>
+                              <span>{formatCurrency(payment.amount)} · {payment.status}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
 
-                  {/* 5-STAGE PROGRESS TIMELINE */}
-                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
-                    <p className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      Fulfillment Milestone Pipeline
-                    </p>
-
-                    <div className="relative">
-                      {/* Line connector */}
-                      <div className="absolute top-4 left-4 right-4 h-0.5 bg-slate-100 dark:bg-slate-800 hidden sm:block">
-                        <div
-                          className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 transition-all duration-500"
-                          style={{ width: `${(currentStep / (STATUS_STEPS.length - 1)) * 100}%` }}
-                        />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Fulfillment & Tracking</p>
+                      <div className="grid grid-cols-2 gap-3 text-[11px]">
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Method</span><span>{searchedOrder.fulfillmentMethod}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Location</span><span>{searchedOrder.locationName || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Carrier</span><span>{searchedOrder.carrierName || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Tracking</span><span className="font-mono">{searchedOrder.trackingNumber || 'Not assigned'}</span></div>
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 relative">
-                        {STATUS_STEPS.map((step, idx) => {
-                          const isDone = currentStep > idx || searchedOrder.status === 'Delivered';
-                          const isCurrent = currentStep === idx && searchedOrder.status !== 'Delivered';
-
-                          return (
-                            <div key={step.status} className="flex sm:flex-col items-center sm:text-center gap-3 sm:gap-2">
-                              <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all z-10 ${
-                                  isDone
-                                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                                    : isCurrent
-                                    ? 'bg-sky-500 text-slate-900 dark:text-white ring-4 ring-sky-500/20 animate-pulse'
-                                    : 'bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-500'
-                                }`}
-                              >
-                                {isDone ? <Check className="w-4 h-4 stroke-[3]" /> : idx + 1}
-                              </div>
-
-                              <div className="text-left sm:text-center">
-                                <p className={`text-xs font-bold ${isCurrent ? 'text-sky-400' : isDone ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
-                                  {step.label}
-                                </p>
-                                <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight sm:mt-0.5">
-                                  {step.description}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* CARRIER & LOGISTICS INFO */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-bold block">Carrier & Service</span>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <Truck className="w-3.5 h-3.5 text-sky-400" />
-                        <span>{searchedOrder.carrierName || 'OmniTrack Express / DHL'}</span>
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-bold block">Carrier Tracking Code</span>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono text-sky-400 truncate max-w-[130px]">
-                          {searchedOrder.trackingNumber || `TRK-OMNI-${searchedOrder.orderNumber}`}
-                        </span>
+                      {searchedOrder.trackingNumber && (
                         <button
-                          onClick={() => copyToClipboard(searchedOrder.trackingNumber || `TRK-OMNI-${searchedOrder.orderNumber}`)}
-                          className="p-1 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-colors"
-                          title="Copy tracking code"
+                          type="button"
+                          onClick={() => copyToClipboard(searchedOrder.trackingNumber || '')}
+                          className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[10px] font-bold flex items-center gap-1.5"
                         >
-                          {copiedTracking ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedTracking ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          Copy tracking number
                         </button>
+                      )}
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Customer & Order Information</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Customer</span><span>{searchedOrder.customerName || activeCustomerUser?.name || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Email</span><span className="break-all">{searchedOrder.customerEmail || activeCustomerUser?.email || '—'}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Order ID</span><span className="font-mono break-all">{searchedOrder.id}</span></div>
+                        <div><span className="block text-[9px] uppercase text-slate-500 font-bold">Last Updated</span><span>{searchedOrder.updatedAt ? new Date(searchedOrder.updatedAt).toLocaleString() : '—'}</span></div>
                       </div>
                     </div>
-
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-bold block">Estimated Arrival</span>
-                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>
-                          {searchedOrder.status === 'Delivered'
-                            ? 'Delivered'
-                            : new Date(Date.now() + 86400000 * 2).toLocaleDateString(undefined, {
-                                weekday: 'short',
-                                month: 'short',
-                                day: 'numeric',
-                              })}
-                        </span>
-                      </span>
-                    </div>
                   </div>
-
-                  {/* ITEMS IN SHIPMENT */}
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">Items in this Package ({searchedOrder.items.length})</p>
-                      <span className="text-xs font-bold text-emerald-400">Total: {formatCurrency(searchedOrder.totalAmount)}</span>
-                    </div>
-
-                    <div className="divide-y divide-slate-200/80 dark:divide-slate-800/80">
-                      {searchedOrder.items.map((it, idx) => (
-                        <div key={idx} className="py-2.5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold text-xs flex-shrink-0">
-                              {it.quantity}×
-                            </div>
-                            <div>
-                              <p className="font-semibold text-slate-900 dark:text-white text-xs">{it.productName}</p>
-                              <p className="text-[10px] text-slate-600 dark:text-slate-400">{it.variantName} • SKU: {it.sku}</p>
-                            </div>
-                          </div>
-                          <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{formatCurrency(it.price * it.quantity)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                </>
               )}
             </div>
           )}
@@ -1267,7 +1351,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-slate-900 dark:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-sky-600/20 transition-all"
                           >
                             <Truck className="w-3.5 h-3.5" />
-                            <span>Track Live</span>
+                            <span>View Details</span>
                           </button>
                         </div>
                       </div>
