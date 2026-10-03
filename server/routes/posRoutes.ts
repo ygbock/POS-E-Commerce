@@ -319,7 +319,13 @@ export function createPosRouter(db: DatabaseClient, posService: PosService, subs
         const offset = req.query.offset ? parseInt(req.query.offset.toString(), 10) : 0;
 
         const sessions = await posRepo.listSessions({ orgId, locationId, limit, offset });
-        res.json({ success: true, sessions });
+        const sessionsWithSummary = await Promise.all(
+          sessions.map(async (session) => ({
+            ...session,
+            summary: await posRepo.getSessionSummary(session.id, orgId),
+          }))
+        );
+        res.json({ success: true, sessions: sessionsWithSummary });
       } catch (err) {
         handlePosRouteError(res, err);
       }
