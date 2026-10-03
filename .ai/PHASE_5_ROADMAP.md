@@ -48,7 +48,7 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | **Phase 5.6** | SaaS Subscriptions & Billing Engine | Subscription tiers, invoices, MRR/ARR, payment status | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
 | **Phase 5.7** | Reports & Analytics Engine | Server-aggregated sales, margin, inventory valuation reports | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
 | **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, durable in-app notifications, delivery ledger, activity log | `VERIFIED LOCALLY — CI PENDING` |
-| **Phase 5.9** | Production Operations Hardening | Disaster recovery scripts, backup verification, monitoring | `PLANNED` |
+| **Phase 5.9** | Production Operations Hardening | Disaster recovery scripts, backup verification, monitoring | `IMPLEMENTED — PENDING LOCAL VERIFICATION` |
 | **Phase 5.10** | Final Security, QA & Release Gate | Penetration test, WCAG 2.2 AA audit, production handover | `PLANNED` |
 
 ---
@@ -229,7 +229,10 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
   - [ ] Automated backup verification script runs and confirms schema and data restoration.
   - [ ] Health and readiness probes fail closed if PostgreSQL disconnects.
   - [ ] CI/CD pipeline enforces all 4 production gates.
-- **Completion Status**: `PLANNED`.
+- **Completion Status**: `IMPLEMENTED — PENDING LOCAL VERIFICATION`.
+- **Implemented Foundation**: `scripts/verify_backup_restore.ts`, `scripts/operator_bootstrap.ts`, `/api/health`, `/api/ready`, staging release-tuple workflow, and four-stage production promotion gates (artifact, migration, deployment, revision/health verification).
+- **Verification Added**: `tests/production_operations.test.ts` validates local restore verification, operator password generation/hash separation, credential non-disclosure in generated bootstrap SQL, and revocation SQL generation. `npm run test:production-operations` is included in the full regression chain.
+- **Operational Boundary**: Local restore verification explicitly does not claim cloud-provider PITR capability. Customer staging/production restore rehearsals and external monitoring configuration remain deployment-operator activities.
 
 ---
 
