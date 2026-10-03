@@ -215,9 +215,7 @@ export function classifyApiError(
     return {
       status: 500,
       code: 'INTERNAL_SERVER_ERROR',
-      message: isProduction
-        ? 'An unexpected internal error occurred. Please contact support.'
-        : sanitizeApiErrorMessage(msg),
+      message: 'An unexpected internal error occurred. Please contact support.',
     };
   }
 
@@ -284,14 +282,10 @@ export function classifyApiError(
   }
 
   // 9. Unhandled internal server error (500)
-  const safeMessage = isProduction
-    ? 'An unexpected internal error occurred. Please contact support.'
-    : sanitizeApiErrorMessage(msg || 'An unexpected internal error occurred. Please contact support.');
-
   return {
     status: 500,
     code: err?.code || 'INTERNAL_SERVER_ERROR',
-    message: safeMessage,
+    message: 'An unexpected internal error occurred. Please contact support.',
   };
 }
 
@@ -356,8 +350,10 @@ export function apiErrorHandler(err: any, req: Request, res: Response, _next?: a
   if (status >= 500) {
     console.error(`[AbaCha API Error] [${req.method} ${req.originalUrl || req.url}] Status: ${status}`, {
       code: body.error.code,
-      message: err?.message,
-      stack: process.env.NODE_ENV === 'production' ? undefined : err?.stack,
+      message: sanitizeApiErrorMessage(String(err?.message || '')),
+      stack: process.env.NODE_ENV === 'production'
+        ? undefined
+        : sanitizeApiErrorMessage(String(err?.stack || '')),
       requestId: body.error.requestId,
       caller: (req as any).auth ? { userId: (req as any).auth.userId, orgId: (req as any).auth.organizationId } : 'unauthenticated',
     });
