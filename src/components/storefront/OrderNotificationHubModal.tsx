@@ -56,6 +56,12 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
   const [activeTab, setActiveTab] = useState<'confirmation_email' | 'dispatch_email' | 'sms_simulator' | 'whatsapp_simulator'>('confirmation_email');
   const [copiedLink, setCopiedLink] = useState(false);
   const [customMsg, setCustomMsg] = useState('');
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  const handleSimulateAdvance = () => {
+    setIsSimulating(true);
+    setTimeout(() => setIsSimulating(false), 1500);
+  };
 
   if (!isOpen || !order) return null;
 

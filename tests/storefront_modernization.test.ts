@@ -34,7 +34,7 @@ assert.match(storefrontState, /useStorefrontContext/);
 
 const header = read('src/components/storefront/StoreHeader.tsx');
 assert.doesNotMatch(header, /useCommerce/);
-assert.match(header, /products: import\('\.\.\/types'\)\.Product\[\]/);
+assert.match(header, /products: import\('\.\.\/\.\.\/types'\)\.Product\[\]/);
 
 const cartDrawer = read('src/components/storefront/StoreCartDrawer.tsx');
 assert.doesNotMatch(cartDrawer, /useCommerce/);

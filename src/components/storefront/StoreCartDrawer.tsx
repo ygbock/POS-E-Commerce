@@ -37,25 +37,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
     cartItemsCount += item.quantity;
   });
 
-  let couponDiscount = 0;
-  if (appliedCoupon) {
-    couponDiscount =
-      appliedCoupon.discountType === 'fixed'
-        ? appliedCoupon.value
-        : (cartSubtotal * appliedCoupon.value) / 100;
-  }
 
-  const freeShippingThreshold = 75;
-  const amountToFreeShipping = Math.max(0, freeShippingThreshold - cartSubtotal);
-  const freeShippingProgress = Math.min(100, (cartSubtotal / freeShippingThreshold) * 100);
-
-  const handleApplyCoupon = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!couponInput.trim()) return;
-    const res = applyCoupon(couponInput.trim());
-    setCouponMsg({ text: res.message, isError: !res.success });
-    if (res.success) setCouponInput('');
-  };
 
   return (
     <div
