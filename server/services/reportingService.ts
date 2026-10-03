@@ -8,8 +8,12 @@ export interface ReportDateRange {
 }
 
 function normalizeRange(range: ReportDateRange) {
-  const from = range.from ? new Date(range.from) : new Date(Date.now() - 30 * 86400000);
-  const to = range.to ? new Date(range.to) : new Date();
+  const from = range.from
+    ? /^\d{4}-\d{2}-\d{2}$/.test(range.from) ? new Date(`${range.from}T00:00:00.000Z`) : new Date(range.from)
+    : new Date(Date.now() - 30 * 86400000);
+  const to = range.to
+    ? /^\d{4}-\d{2}-\d{2}$/.test(range.to) ? new Date(`${range.to}T23:59:59.999Z`) : new Date(range.to)
+    : new Date();
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
     throw new Error('INVALID_REPORT_DATE_RANGE');
   }
