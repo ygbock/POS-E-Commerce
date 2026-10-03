@@ -1247,7 +1247,11 @@ async function main() {
 
         assert.strictEqual(body.success, false);
         assert.strictEqual(body.error.code, 'INTERNAL_SERVER_ERROR');
-        // In non-production or production, sensitive credentials or database connection details must not leak in error code
+        assert.strictEqual(body.error.message, 'An unexpected internal error occurred. Please contact support.');
+        assert.ok(!JSON.stringify(body).includes('SuperSecretSecretPassword'), 'Database password must never reach the HTTP response');
+        assert.ok(!JSON.stringify(body).includes('postgres://'), 'Database connection URI must never reach the HTTP response');
+        assert.ok(!JSON.stringify(body).includes('db.internal'), 'Internal database hostname must never reach the HTTP response');
+        // In non-production or production, sensitive credentials or database connection details must not leak in error response
         assert.strictEqual(body.stack, undefined, 'Stack trace must never be returned in API response');
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
