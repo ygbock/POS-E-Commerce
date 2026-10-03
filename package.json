@@ -42,7 +42,8 @@
     "test:tenant-provisioning": "tsx tests/tenant_provisioning.test.ts",
     "test:platform-subscriptions": "tsx tests/platform_subscription_management.test.ts",
     "test:storefront-api-client": "tsx tests/storefront_api_client.test.ts",
-    "test:storefront-multi-tenant": "tsx tests/storefront_multi_tenant.test.ts"
+    "test:storefront-multi-tenant": "tsx tests/storefront_multi_tenant.test.ts",
+    "test:billing": "tsx tests/billing.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
