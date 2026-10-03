@@ -124,14 +124,22 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
         id: s.id, status: s.status === 'OPEN' ? 'Open' : 'Closed', cashierName: s.cashier_name || 'Cashier',
         openingCash: Number(s.opening_cash || 0), closingCashCalculated: Number(s.expected_cash || 0),
         closingCashActual: s.counted_cash == null ? 0 : Number(s.counted_cash), cashDifference: s.variance == null ? 0 : Number(s.variance),
-        openedAt: s.opened_at, closedAt: s.closed_at || null, transactionsCount: 0,
-        totalCashSales: 0, totalCardSales: 0, totalMobileSales: 0, totalWalletSales: 0, totalRefunds: 0,
+        openedAt: s.opened_at, closedAt: s.closed_at || null,
+        transactionsCount: Number(s.summary?.transactions_count || 0),
+        totalSales: Number(s.summary?.total_sales || 0),
+        totalCashSales: Number(s.summary?.total_cash_sales || 0),
+        totalCardSales: Number(s.summary?.total_card_sales || 0),
+        totalMobileSales: Number(s.summary?.total_mobile_sales || 0),
+        totalWalletSales: Number(s.summary?.total_wallet_sales || 0),
+        totalRefunds: Number(s.summary?.total_refunds || 0),
+        cashInTotal: Number(s.summary?.cash_in_total || 0),
+        cashOutTotal: Number(s.summary?.cash_out_total || 0),
       });
       const mapped = sessions.map(mapShift);
       setPosShift(mapped.find((s: any) => s.status === 'Open') || mapped[0] || {
         id: '', status: 'Closed', cashierName: '', openingCash: 0, closingCashCalculated: 0,
         closingCashActual: 0, cashDifference: 0, openedAt: new Date().toISOString(), closedAt: null,
-        transactionsCount: 0, totalCashSales: 0, totalCardSales: 0, totalMobileSales: 0, totalWalletSales: 0, totalRefunds: 0,
+        transactionsCount: 0, totalSales: 0, totalCashSales: 0, totalCardSales: 0, totalMobileSales: 0, totalWalletSales: 0, totalRefunds: 0, cashInTotal: 0, cashOutTotal: 0,
       });
       setPosShiftHistory(mapped.filter((s: any) => s.status === 'Closed'));
     }).catch((error) => {
@@ -374,7 +382,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
 
               {/* Tender breakdown */}
               <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
-                <p className="font-bold text-slate-700 dark:text-slate-300 text-[11px] uppercase tracking-wider">Tender Method Breakdown</p>
+                <p className="font-bold text-slate-700 dark:text-slate-300 text-[11px] uppercase tracking-wider">Tender Method Breakdown (Server)</p>
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
                   <span>Cash Collections:</span>
                   <strong className="font-mono text-slate-900 dark:text-white">{formatCurrency(posShift.totalCashSales)}</strong>
@@ -877,7 +885,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
                 /* List of history shifts */
                 <div className="space-y-2">
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                    Audit log of closed shift reconciliations & financial double-entry ledger postings:
+                    Audit log of closed shift reconciliations and server-recorded cash activity:
                   </p>
 
                   <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
