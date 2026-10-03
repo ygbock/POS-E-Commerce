@@ -10,6 +10,14 @@ assert.match(accountModal, /storefrontApi\.getCustomerOrder\(tenant\.slug, order
 assert.match(accountModal, /const \[customerOrders, setCustomerOrders\] = useState<Order\[\]>\(\[\]\)/);
 assert.doesNotMatch(accountModal, /const customerOrders = activeCustomerUser \? orders : \[\]/);
 assert.match(accountModal, /<span>Order Details<\/span>/);
+assert.match(accountModal, /Fulfillment Status/);
+assert.match(accountModal, /Payment Summary/);
+assert.match(accountModal, /Fulfillment & Tracking/);
+assert.match(accountModal, /Customer & Order Information/);
+assert.doesNotMatch(accountModal, /simulateAdvanceOrderStatus/);
+assert.doesNotMatch(accountModal, /Advance Demo Milestone/);
+assert.doesNotMatch(accountModal, /Date\.now\(\) \+ 86400000/);
+
 
 
 const context = read('src/context/StorefrontContext.tsx');
