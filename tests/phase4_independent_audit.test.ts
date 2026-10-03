@@ -524,6 +524,18 @@ async function main() {
     const cancelled = await orderService.cancelStorefrontOrder(orgAlpha, orderId, 'Customer Service');
     assert.strictEqual(cancelled.status, 'Cancelled');
 
+    const cancelHistory = await db.query<any>(
+      `SELECT from_status, to_status, metadata FROM order_status_history WHERE organization_id = $1 AND order_id = $2 ORDER BY changed_at ASC, id ASC`,
+      [orgAlpha, orderId]
+    );
+    assert.ok(cancelHistory.rows.length >= 2, 'Order status history must contain creation and cancellation events');
+    assert.strictEqual(cancelHistory.rows[0].from_status, null);
+    assert.strictEqual(cancelHistory.rows[0].to_status, 'Stock Reserved');
+    const cancelEvent = cancelHistory.rows[cancelHistory.rows.length - 1];
+    assert.strictEqual(cancelEvent.from_status, 'Stock Reserved');
+    assert.strictEqual(cancelEvent.to_status, 'Cancelled');
+    assert.strictEqual(cancelEvent.metadata.source, 'orders_status_trigger');
+
     // Check balance after cancel
     const afterCancelBal = await db.query<any>(
       `SELECT on_hand, reserved FROM inventory_balances WHERE organization_id = $1 AND location_id = $2 AND variant_id = $3`,
@@ -584,6 +596,17 @@ async function main() {
     // Fulfill order
     const fulfilled = await orderService.fulfillStorefrontOrder(orgAlpha, orderId, 'Warehouse Dispatcher');
     assert.strictEqual(fulfilled.status, 'Completed');
+
+    const fulfillmentHistory = await db.query<any>(
+      `SELECT from_status, to_status, metadata FROM order_status_history WHERE organization_id = $1 AND order_id = $2 ORDER BY changed_at ASC, id ASC`,
+      [orgAlpha, orderId]
+    );
+    assert.ok(fulfillmentHistory.rows.length >= 2, 'Order status history must contain creation and fulfillment events');
+    assert.strictEqual(fulfillmentHistory.rows[0].to_status, 'Stock Reserved');
+    const fulfillmentEvent = fulfillmentHistory.rows[fulfillmentHistory.rows.length - 1];
+    assert.strictEqual(fulfillmentEvent.from_status, 'Stock Reserved');
+    assert.strictEqual(fulfillmentEvent.to_status, 'Completed');
+    assert.strictEqual(fulfillmentEvent.metadata.source, 'orders_status_trigger');
 
     // Check stock after fulfill
     const afterFulfillBal = await db.query<any>(
@@ -672,6 +695,14 @@ async function main() {
     );
     assert.ok(Number(balRace.rows[0].reserved) >= 0, 'reserved stock must never drop below 0');
 
+    const raceHistory = await db.query<any>(
+      `SELECT from_status, to_status FROM order_status_history WHERE organization_id = $1 AND order_id = $2 ORDER BY changed_at ASC, id ASC`,
+      [orgAlpha, raceOrderId]
+    );
+    const terminalEvents = raceHistory.rows.filter((event: any) => event.to_status === 'Cancelled' || event.to_status === 'Completed');
+    assert.strictEqual(terminalEvents.length, 1, 'Cancellation/fulfillment race must produce exactly one terminal lifecycle event');
+    assert.strictEqual(terminalEvents[0].from_status, 'Stock Reserved');
+
     markPassed('Audit 11: Cancellation vs Fulfillment Race (Row lock produces single terminal state)');
   } catch (err) {
     markFailed('Audit 11: Cancellation vs Fulfillment Race', err);
@@ -720,7 +751,35 @@ async function main() {
     const resAfterExp = Number(balAfterExp.rows[0].reserved);
     assert.strictEqual(resBeforeExp - resAfterExp, 2, 'Expiry worker correctly returned 2 reserved units');
 
-    markPassed('Audit 12: Reservation Expiry Worker (Releases reserved stock on timeout)');
+    const expOrder = await orderService.placeStorefrontOrder({
+      ...baseOrderParams,
+      organization_id: orgAlpha,
+      idempotency_key: crypto.randomUUID(),
+      payment_method: 'Credit Card',
+      fulfillment_method: 'Standard Delivery',
+      location_id: locAlpha,
+      cart_items: [{ variant_id: varAlpha, quantity: '1.0000' }],
+    });
+    const expOrderId = expOrder.order.id;
+    await db.query(
+      `UPDATE inventory_reservations SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 hour' WHERE organization_id = $1 AND reference_type = 'orders' AND reference_id = $2 AND status = 'ACTIVE'`,
+      [orgAlpha, expOrderId]
+    );
+    const orderExpiryResult = await reservationService.expireStaleReservations(orgAlpha);
+    assert.ok(orderExpiryResult.expiredCount >= 1, 'Order reservation should expire');
+    const expiredOrder = await orderRepo.findOrderById(expOrderId, orgAlpha);
+    assert.strictEqual(expiredOrder?.order.status, 'Cancelled', 'Final reservation expiry must cancel Stock Reserved order');
+
+    const expiryHistory = await db.query<any>(
+      `SELECT from_status, to_status, metadata FROM order_status_history WHERE organization_id = $1 AND order_id = $2 ORDER BY changed_at ASC, id ASC`,
+      [orgAlpha, expOrderId]
+    );
+    assert.strictEqual(expiryHistory.rows.length, 2, 'Order expiry should append exactly one cancellation lifecycle event');
+    assert.strictEqual(expiryHistory.rows[1].from_status, 'Stock Reserved');
+    assert.strictEqual(expiryHistory.rows[1].to_status, 'Cancelled');
+    assert.strictEqual(expiryHistory.rows[1].metadata.source, 'orders_status_trigger');
+
+    markPassed('Audit 12: Reservation Expiry Worker (Releases reserved stock and cancels expired orders)');
   } catch (err) {
     markFailed('Audit 12: Reservation Expiry Worker', err);
   }
