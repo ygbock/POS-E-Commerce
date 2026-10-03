@@ -60,7 +60,7 @@ export class BillingService {
 
   private async nextInvoiceNumber(tx: DatabaseClient): Promise<string> {
     const result = await tx.query<{ invoice_number: string }>(
-      "SELECT 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' || LPAD((COUNT(*) + 1)::text, 6, '0') AS invoice_number FROM billing_invoices WHERE created_at::date = CURRENT_DATE"
+      "SELECT 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' || LPAD(nextval('billing_invoice_number_seq')::text, 6, '0') AS invoice_number"
     );
     return result.rows[0]?.invoice_number || `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-000001`;
   }
