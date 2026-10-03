@@ -1,15 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef } from 'react';
 import {
   ShoppingCart,
   X,
   Plus,
   Minus,
   Trash2,
-  Tag,
   ArrowRight,
-  Truck,
-  Sparkles,
-  Check,
 } from 'lucide-react';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
