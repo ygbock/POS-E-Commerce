@@ -44,9 +44,9 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 | **Phase 5.2** | Design System & UI/UX Foundation | Design tokens, shared components, accessible forms & tables | `IMPLEMENTED — PENDING VERIFICATION` |
 | **Phase 5.3** | Platform Control-Plane Completion | Tenant onboarding wizard, plan mutations, operator tools | `IMPLEMENTED — PENDING VERIFICATION` |
 | **Phase 5.4** | Tenant Business-Plane Completion | User administration table, location CRUD, customer mutations | `IMPLEMENTED — PENDING VERIFICATION` |
-| **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `NEXT` |
+| **Phase 5.5** | Customer Storefront Modernization | Modular checkout, deep URL routing, server-authoritative cart | `IMPLEMENTED — VERIFIED LOCALLY` |
 | **Phase 5.6** | SaaS Subscriptions & Billing Engine | Subscription tiers, invoices, MRR/ARR, payment status | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
-| **Phase 5.7** | Reports & Analytics Engine | Server-aggregated sales, margin, inventory valuation reports | `PLANNED` |
+| **Phase 5.7** | Reports & Analytics Engine | Server-aggregated sales, margin, inventory valuation reports | `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION` |
 | **Phase 5.8** | Notifications & Support Ticket Hub | Support tickets, webhook/email notifications, activity log | `PLANNED` |
 | **Phase 5.9** | Production Operations Hardening | Disaster recovery scripts, backup verification, monitoring | `PLANNED` |
 | **Phase 5.10** | Final Security, QA & Release Gate | Penetration test, WCAG 2.2 AA audit, production handover | `PLANNED` |
@@ -183,6 +183,8 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 - **Security Requirements**: Tenant-scoped SQL queries; cannot aggregate data across organizations.
 - **Tests**: `tests/reports.test.ts`.
 - **Dependencies**: `TASK-5.4.1`.
+- **Implemented Foundation**: `025_reporting_indexes.sql`, `server/services/reportingService.ts`, and `server/routes/reportRoutes.ts` provide tenant-scoped sales aggregation, inventory valuation, and POS shift reconciliation. The endpoints are protected by `reports.view` and require authenticated tenant context.
+- **Completion Status**: `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION`.
 - **Acceptance Criteria**:
   - [ ] Reports load accurately for large datasets without client memory exhaustion.
   - [ ] Decimal arithmetic matches double-entry financial ledger standards.
