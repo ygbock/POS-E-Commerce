@@ -1,5 +1,5 @@
 -- AbaCha Unified Commerce
--- Migration 056: storefront policy defaults must fail closed
+-- Migration 057: storefront policy defaults must fail closed
 --
 -- Migration 011/017 established legacy commercial policy defaults. Those
 -- migrations are immutable because they may already be applied in production.
