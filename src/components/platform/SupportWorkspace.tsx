@@ -84,7 +84,7 @@ export const SupportWorkspace: React.FC<{ platform?: boolean }> = ({ platform = 
           <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold">Tickets ({tickets.length})</div>
           <div className="overflow-y-auto max-h-[65vh]">
             {loading ? <div className="p-6 text-sm text-slate-500">Loading tickets…</div> : tickets.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">No support tickets.</div> :
-              tickets.map(ticket => <button key={ticket.id} onClick={() => void select(ticket)} className={\`w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 \${selected?.id === ticket.id ? 'bg-blue-50 dark:bg-blue-950/30' : ''}\`}>
+              tickets.map(ticket => <button key={ticket.id} onClick={() => void select(ticket)} className={`w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 ${selected?.id === ticket.id ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}>
                 <div className="flex items-start justify-between gap-2"><span className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{ticket.subject}</span><span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800">{ticket.priority}</span></div>
                 <div className="flex items-center gap-2 mt-2 text-xs text-slate-500"><Clock3 className="w-3.5 h-3.5" />{statusLabel[ticket.status] || ticket.status}<span>•</span>{new Date(ticket.updated_at).toLocaleString()}</div>
               </button>)}
@@ -100,7 +100,7 @@ export const SupportWorkspace: React.FC<{ platform?: boolean }> = ({ platform = 
                 <p className="mt-4 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{selected.description}</p>
               </div>
               <div className="flex-1 overflow-y-auto p-5 space-y-3">
-                {(selected.messages || []).map(message => <div key={message.id} className={\`max-w-[85%] rounded-xl p-3 \${message.author_user_id === selected.created_by_user_id ? 'bg-slate-100 dark:bg-slate-800' : 'bg-blue-50 dark:bg-blue-950/30 ml-auto'}\`}>
+                {(selected.messages || []).map(message => <div key={message.id} className={`max-w-[85%] rounded-xl p-3 ${message.author_user_id === selected.created_by_user_id ? 'bg-slate-100 dark:bg-slate-800' : 'bg-blue-50 dark:bg-blue-950/30 ml-auto'}`}>
                   <div className="text-[10px] text-slate-500 mb-1">{message.author_email || message.author_user_id} · {new Date(message.created_at).toLocaleString()}</div>
                   <div className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{message.body}</div>
                 </div>)}
