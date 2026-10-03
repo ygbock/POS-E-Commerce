@@ -11,7 +11,6 @@ import {
   Sparkles,
   Check,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
@@ -26,15 +25,8 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
   onClose,
   onProceedToCheckout,
 }) => {
-  const {
-    appliedCoupon,
-    applyCoupon,
-    removeCoupon,
-  } = useCommerce();
   const { storeCart, updateStoreCartQty, removeFromStoreCart, formatCurrency } = useStorefrontContext();
 
-  const [couponInput, setCouponInput] = useState('');
-  const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
 
   const drawerRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, drawerRef);
@@ -102,27 +94,6 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
           </button>
         </div>
 
-        {/* Free Shipping Progress Bar */}
-        {cartItemsCount > 0 && (
-          <div className="py-2.5 px-3 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5 my-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300">
-                <Truck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                {amountToFreeShipping > 0
-                  ? `Add ${formatCurrency(amountToFreeShipping)} more for FREE Dispatch`
-                  : 'You unlocked FREE Express Dispatch!'}
-              </span>
-              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{Math.round(freeShippingProgress)}%</span>
-            </div>
-            <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-indigo-600 to-emerald-500 transition-all duration-500"
-                style={{ width: `${freeShippingProgress}%` }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Cart Items List */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 py-2 custom-scrollbar">
           {storeCart.length === 0 ? (
@@ -185,88 +156,12 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
         {/* Cart Drawer Footer */}
         {storeCart.length > 0 && (
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
-            {/* Coupon Code Form & Quick Selectors */}
-            <form onSubmit={handleApplyCoupon} className="space-y-1.5">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Coupon code (e.g. WELCOME20, GUEST5)"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                  className="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs text-slate-900 dark:text-white uppercase placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-                <button
-                  type="submit"
-                  className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-900 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors"
-                >
-                  Apply
-                </button>
-              </div>
-
-              {/* Quick Coupon Chips */}
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <span className="text-[10px] text-slate-500 font-semibold">Available:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCouponInput('WELCOME20');
-                    applyCoupon('WELCOME20');
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 border border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-bold transition-colors"
-                >
-                  WELCOME20 ($20 OFF)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCouponInput('GUEST5');
-                    applyCoupon('GUEST5');
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 border border-emerald-300 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold transition-colors"
-                >
-                  GUEST5 ($5 OFF)
-                </button>
-              </div>
-
-              {appliedCoupon && (
-                <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-500/30 px-3 py-1.5 rounded-xl">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>
-                      Coupon <strong>{appliedCoupon.code}</strong> applied (-{formatCurrency(couponDiscount)})
-                    </span>
-                  </span>
-                  <button type="button" onClick={removeCoupon} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {couponMsg && !appliedCoupon && (
-                <p className={`text-[11px] ${couponMsg.isError ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                  {couponMsg.text}
-                </p>
-              )}
-            </form>
-
-            {/* Totals Breakdown */}
+            {/* Server-authoritative totals */}
             <div className="space-y-1.5 text-xs bg-slate-50 dark:bg-slate-850 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
               <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>Cart Subtotal</span>
-                <span className="font-semibold text-slate-900 dark:text-white">{formatCurrency(cartSubtotal)}</span>
+                <span>Items</span><span className="font-semibold text-slate-900 dark:text-white">{cartItemsCount}</span>
               </div>
-              {couponDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
-                  <span>Coupon Savings</span>
-                  <span>-{formatCurrency(couponDiscount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm font-black text-slate-900 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-800">
-                <span>Estimated Total</span>
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(Math.max(0, cartSubtotal - couponDiscount))}
-                </span>
-              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Final price, discounts, tax, shipping, and total are validated by the server at checkout.</p>
             </div>
 
             {/* Checkout Action */}
