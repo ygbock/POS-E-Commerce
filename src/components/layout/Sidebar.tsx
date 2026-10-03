@@ -24,6 +24,7 @@ import {
   ExternalLink,
   MapPin,
   Sparkles,
+  Layers,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { isPlatformRole } from '../platform/platformAccess';
@@ -179,6 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       'support': Users,
       'security': ShieldAlert,
       'discovery-moderation': Sparkles,
+      'discovery-categories': Layers,
     };
     return [
       {

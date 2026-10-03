@@ -22,6 +22,7 @@ import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard
 import { PlatformDiscoveryModerationView } from './components/platform/PlatformDiscoveryModerationView';
 import { TenantManagementView } from './components/platform/TenantManagementView';
 import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
+import { PlatformDiscoveryCategoriesView } from './components/platform/PlatformDiscoveryCategoriesView';
 import { UserManagementView } from './components/admin/UserManagementView';
 import { LocationManagementView } from './components/admin/LocationManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
@@ -158,6 +159,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'support' && <SystemOwnerDashboard onNavigate={setActiveTab} />}
             {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'discovery-moderation' && <PlatformDiscoveryModerationView />}
+            {activeTab === 'discovery-categories' && <PlatformDiscoveryCategoriesView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
             {(activeTab === 'discovery' || activeTab === 'discovery-admin') && <DiscoveryMarketplace />}
             {activeTab === 'users' && <UserManagementView />}
