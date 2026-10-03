@@ -673,7 +673,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">3–5 Business Days</p>
                     <span className="text-xs font-bold">
-                      {subtotal >= 75 || appliedCoupon?.code === 'FREESHIP' ? (
+                      {serverTotals && shippingFee === 0 ? (
                         <strong className="text-emerald-600 dark:text-emerald-400">FREE Dispatch</strong>
                       ) : (
                         '$5.00 Flat Rate'
@@ -1029,78 +1029,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                   ))}
                 </div>
 
-                {/* Coupon Code Engine */}
-                <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">Promo Code or Voucher</span>
-                    <span className="text-[10px] text-sky-500 font-semibold">1 Coupon per order</span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. WELCOME20, FREESHIP"
-                      value={couponInput}
-                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                      className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-white uppercase placeholder:text-slate-400 font-mono text-xs focus:outline-none focus:border-sky-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyCoupon}
-                      className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
-                    >
-                      Apply
-                    </button>
-                  </div>
-
-                  {/* Available Vouchers Chips */}
-                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                    <span className="text-[10px] text-slate-400 font-semibold">Available:</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCouponInput('WELCOME20');
-                        applyCoupon('WELCOME20');
-                      }}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold transition-colors cursor-pointer"
-                    >
-                      WELCOME20 ($20 OFF)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCouponInput('FREESHIP');
-                        applyCoupon('FREESHIP');
-                      }}
-                      className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-600 dark:text-sky-400 text-[10px] font-bold transition-colors cursor-pointer"
-                    >
-                      FREESHIP
-                    </button>
-                  </div>
-
-                  {/* Applied Coupon Banner */}
-                  {appliedCoupon && (
-                    <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 font-semibold">
-                      <span>
-                        Coupon <strong>{appliedCoupon.code}</strong> applied (-{displayCurrency(discount)})
-                      </span>
-                      <button
-                        type="button"
-                        onClick={removeCoupon}
-                        className="text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer ml-2"
-                        aria-label="Remove Coupon"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {couponMsg && !appliedCoupon && (
-                    <p className={`text-[11px] ${couponMsg.isError ? 'text-rose-500' : 'text-emerald-500'}`}>
-                      {couponMsg.text}
-                    </p>
-                  )}
-                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">Final discounts and shipping are calculated and validated by the server when you place the order.</div>
 
                 {/* Costs Breakdown */}
                 <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs">
