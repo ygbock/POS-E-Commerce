@@ -24,6 +24,7 @@ import {
   ExternalLink,
   MapPin,
   Sparkles,
+  LifeBuoy,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { isPlatformRole } from '../platform/platformAccess';
@@ -157,6 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             : []),
           { id: 'audit', label: 'Security & Audit Logs', icon: ShieldAlert },
           { id: 'settings', label: 'System Settings', icon: Settings },
+          { id: 'support', label: 'Help & Support', icon: LifeBuoy },
         ],
       },
     ],
