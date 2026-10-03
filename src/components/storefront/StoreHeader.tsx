@@ -25,7 +25,6 @@ import {
   Moon,
   Bell,
 } from 'lucide-react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface StoreHeaderProps {
@@ -48,6 +47,7 @@ interface StoreHeaderProps {
   onOpenPos?: () => void;
   isDarkMode: boolean;
   onToggleTheme: () => void;
+  products: import('../../types').Product[];
 }
 
 export const StoreHeader: React.FC<StoreHeaderProps> = ({
@@ -70,8 +70,8 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   onOpenPos,
   isDarkMode,
   onToggleTheme,
+  products,
 }) => {
-  const { activeCustomerUser, products, appliedCoupon } = useCommerce();
   const { storeCart, wishlistIds: wishlist, formatCurrency } = useStorefrontContext();
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -305,14 +305,14 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
               title="Customer Account Portal (Orders, Tracking & Wishlist)"
             >
               <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                {activeCustomerUser ? activeCustomerUser.name.charAt(0) : <User className="w-3.5 h-3.5" />}
+                <User className="w-3.5 h-3.5" />
               </div>
               <div className="hidden xl:block text-left">
                 <p className="text-[11px] font-bold text-slate-900 dark:text-white leading-tight truncate max-w-[110px]">
-                  {activeCustomerUser ? activeCustomerUser.name.split(' ')[0] : 'Account'}
+                  Account
                 </p>
                 <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
-                  {activeCustomerUser ? `${activeCustomerUser.tier} Tier` : 'Sign In'}
+                  Sign In
                 </p>
               </div>
             </button>
@@ -610,14 +610,14 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
               <div className="p-3.5 bg-slate-50 dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-xs shadow-md shadow-indigo-600/20">
-                    {activeCustomerUser ? activeCustomerUser.name.charAt(0) : <User className="w-4 h-4" />}
+  <User className="w-4 h-4" />
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                      {activeCustomerUser ? activeCustomerUser.name : 'Welcome, Guest!'}
+                      Welcome, Guest!
                     </p>
                     <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                      {activeCustomerUser ? `${activeCustomerUser.tier} • ${activeCustomerUser.loyaltyPoints} pts` : 'Sign in for rewards'}
+                      Sign in for rewards
                     </p>
                   </div>
                 </div>
@@ -627,7 +627,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                   onClick={() => handleMobileNav(onOpenAccount)}
                   className="px-3 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-[11px] font-bold transition-all"
                 >
-                  {activeCustomerUser ? 'Manage' : 'Sign In'}
+                  Sign In
                 </button>
               </div>
 
