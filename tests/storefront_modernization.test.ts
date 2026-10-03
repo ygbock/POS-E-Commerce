@@ -1,14 +1,16 @@
 
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const read = (path: string) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
 const accountModal = fs.readFileSync('src/components/storefront/CustomerAccountModal.tsx', 'utf8');
 assert.match(accountModal, /storefrontApi\.getCustomerOrders\(tenant\.slug\)/);
 assert.match(accountModal, /storefrontApi\.getCustomerOrder\(tenant\.slug, order\.orderNumber\)/);
 assert.match(accountModal, /const \[customerOrders, setCustomerOrders\] = useState<Order\[\]>\(\[\]\)/);
 assert.doesNotMatch(accountModal, /const customerOrders = activeCustomerUser \? orders : \[\]/);
 assert.match(accountModal, /<span>Order Details<\/span>/);
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
 
-const read = (path: string) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const context = read('src/context/StorefrontContext.tsx');
 assert.match(context, /storefront:\$\{encodeURIComponent\(slug\)\}:cart/);
