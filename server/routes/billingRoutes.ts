@@ -8,6 +8,25 @@ export function createBillingRouter(db: DatabaseClient): Router {
   const router = Router();
   const billing = new BillingService(db);
 
+  router.post('/subscribe', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const organizationId = typeof req.body?.organizationId === 'string' ? req.body.organizationId.trim() : '';
+      if (!organizationId) {
+        return res.status(422).json({ success: false, error: { code: 'TENANT_ID_REQUIRED', message: 'Organization ID is required.' } });
+      }
+      const invoice = await billing.createInvoice(organizationId, {
+        provider: typeof req.body?.provider === 'string' ? req.body.provider.trim() : undefined,
+        dueDays: req.body?.dueDays,
+        reason: typeof req.body?.reason === 'string' ? req.body.reason.trim() : 'subscription checkout',
+      });
+      return res.status(201).json({ success: true, data: { invoice, paymentStatus: 'pending' } });
+    } catch (err: any) {
+      const message = err?.message || 'Unable to create subscription invoice.';
+      const code = String(message).split(':')[0] || 'BILLING_ERROR';
+      return res.status(code === 'SUBSCRIPTION_NOT_FOUND' ? 404 : 400).json({ success: false, error: { code, message } });
+    }
+  });
+
   router.get('/invoices', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const organizationId = typeof req.query.organizationId === 'string' ? req.query.organizationId.trim() : undefined;
