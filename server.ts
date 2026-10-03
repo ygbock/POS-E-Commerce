@@ -19,6 +19,7 @@ import { createPosRouter } from './server/routes/posRoutes.ts';
 import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
 import { createPlatformRouter } from './server/routes/platformRoutes.ts';
 import { createBillingRouter, createBillingWebhookRouter } from './server/routes/billingRoutes.ts';
+import { createReportRouter } from './server/routes/reportRoutes.ts';
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
@@ -391,6 +392,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // SaaS control-plane routes. Authorization is enforced inside the router.
   app.use('/api/platform', createPlatformRouter(db, subscriptionService));
+  app.use('/api/reports', createReportRouter(db));
   app.use('/api/platform/billing', createBillingRouter(db));
   app.use('/api/webhooks', createBillingWebhookRouter(db));
 
