@@ -39,6 +39,7 @@ import {
 import { useCommerce } from '../../context/CommerceContext';
 import { Customer, Order, OrderStatus, Product, ProductVariant } from '../../types';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
+import { storefrontApi } from '../../services/storefrontApi';
 
 export type AccountPortalTab = 'profile' | 'orders' | 'tracking' | 'wishlist';
 
@@ -83,7 +84,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     toggleWishlist,
     addToStoreCart,
     getTotalStockForVariant,
-    simulateAdvanceOrderStatus,
     registerNewCustomer,
     applyCoupon,
     appliedCoupon,
@@ -124,7 +124,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [orderHistoryLoading, setOrderHistoryLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState('');
-  const [isSimulating, setIsSimulating] = useState(false);
 
   // Sync initialTab when props change
   useEffect(() => {
@@ -133,22 +132,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     }
   }, [isOpen, initialTab]);
 
-  // Sync initialOrderNumber
+  // Sync initialOrderNumber by fetching the authoritative server record.
   useEffect(() => {
-    if (isOpen && initialOrderNumber) {
-      setOrderQuery(initialOrderNumber);
-      const found = orders.find(
-        (o) =>
-          o.orderNumber.toLowerCase() === initialOrderNumber.trim().toLowerCase() ||
-          o.id.toLowerCase() === initialOrderNumber.trim().toLowerCase()
-      );
-      if (found) {
-        setSearchedOrder(found);
-        if (found.customerEmail) setEmailQuery(found.customerEmail);
+    if (!isOpen || !initialOrderNumber || !tenant?.slug) return;
+    setOrderQuery(initialOrderNumber);
+    setTrackingErrorMessage('');
+    void storefrontApi.getCustomerOrder(tenant.slug, initialOrderNumber.trim())
+      .then((response: any) => {
+        const source = response?.data || response;
+        setSearchedOrder({ ...source, items: Array.isArray(source?.items) ? source.items : [] } as Order);
+        if (source?.customerEmail) setEmailQuery(source.customerEmail);
         setHasSearched(true);
-      }
-    }
-  }, [isOpen, initialOrderNumber, orders]);
+      })
+      .catch(() => {
+        setSearchedOrder(null);
+        setHasSearched(true);
+        setTrackingErrorMessage('Order not found for this customer account.');
+      });
+  }, [isOpen, initialOrderNumber, tenant?.slug]);
 
   // Update emailQuery default when activeCustomerUser changes
   useEffect(() => {
@@ -194,16 +195,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   useModalFocusTrap(isOpen, onClose, modalRef);
 
   if (!isOpen) return null;
-
-  // Filter orders for active customer
-  const customerOrders = activeCustomerUser
-    ? orders.filter(
-        (o) =>
-          o.customerName?.toLowerCase() === activeCustomerUser.name.toLowerCase() ||
-          o.customerEmail?.toLowerCase() === activeCustomerUser.email.toLowerCase() ||
-          o.customerId === activeCustomerUser.id
-      )
-    : orders.slice(0, 4);
 
   // Wishlist products
   const wishlistedProducts = products.filter((p) => wishlist.includes(p.id));
@@ -370,16 +361,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setTrackingErrorMessage('Unable to load the selected order details.');
     }
   };
-  const handleAdvanceStatus = () => {
-    if (!searchedOrder) return;
-    setIsSimulating(true);
-    const updated = simulateAdvanceOrderStatus(searchedOrder.id);
-    if (updated) {
-      setSearchedOrder(updated);
-    }
-    setTimeout(() => setIsSimulating(false), 300);
-  };
-
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedTracking(true);
