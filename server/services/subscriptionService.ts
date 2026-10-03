@@ -743,6 +743,8 @@ export class SubscriptionService {
   async getBillingOverview(client?: DatabaseClient): Promise<{
     status: string;
     mrr: number;
+    arr: number;
+    churnRate30d: number;
     currency: string;
     activeCount: number;
     trialingCount: number;
@@ -780,7 +782,16 @@ export class SubscriptionService {
       JOIN subscription_plans sp ON sp.id = os.plan_id
     `);
 
-    const distRes = await db.query<any>(`
+    const churnRes = await db.query<any>(`
+      SELECT
+        COUNT(*) FILTER (WHERE action = 'PLATFORM_SUBSCRIPTION_CANCELLED')::int AS cancellations,
+        COUNT(DISTINCT organization_id)::int AS touched_tenants
+      FROM audit_events
+      WHERE action = 'PLATFORM_SUBSCRIPTION_CANCELLED'
+        AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+    `);
+
+    const distRes = await db.query<any>(
       SELECT
         sp.code,
         sp.name,
@@ -796,11 +807,20 @@ export class SubscriptionService {
     `);
 
     const row = aggRes.rows[0];
+    const mrr = Number(row?.mrr || 0);
+    const activeCount = Number(row?.active_count || 0);
+    const cancellations30d = Number(churnRes.rows[0]?.cancellations || 0);
+    const churnRate30d = activeCount + cancellations30d > 0
+      ? Number(((cancellations30d / (activeCount + cancellations30d)) * 100).toFixed(2))
+      : 0;
+
     return {
       status: 'operational',
-      mrr: Number(row?.mrr || 0),
+      mrr,
+      arr: Number((mrr * 12).toFixed(2)),
+      churnRate30d,
+      activeCount,
       currency: 'SLE',
-      activeCount: Number(row?.active_count || 0),
       trialingCount: Number(row?.trialing_count || 0),
       pausedCount: Number(row?.paused_count || 0),
       cancelledCount: Number(row?.cancelled_count || 0),
