@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useCommerce } from '../../context/CommerceContext';
 import { useStorefrontRoute } from '../../router/StorefrontRouter';
 import { Product, ProductVariant, Order } from '../../types';
 import { filterStorefrontProducts, sortStorefrontProducts } from './storefrontCatalog';
@@ -10,8 +9,8 @@ import { AccountPortalTab } from './CustomerAccountModal';
 export interface StorefrontStateProps { onOpenAdmin?: () => void; onOpenPos?: () => void; }
 export function useStorefrontState() {
   const { route, navigate } = useStorefrontRoute();
-  const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency, storeCart, addToStoreCart, wishlistIds } = useStorefrontContext();
-  const { products, getTotalStockForVariant, orders, isDarkMode, toggleTheme } = useCommerce();
+  const { tenant, loading: tenantLoading, error: tenantError, formatCurrency: formatTenantCurrency, storeCart, addToStoreCart, wishlistIds, isDarkMode, toggleTheme } = useStorefrontContext();
+  const getTotalStockForVariant = (variant?: ProductVariant) => Object.values(variant?.stockByLocation || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   const wishlist = wishlistIds;
   // Navigation & View state
   const [activeSection, setActiveSection] = useState<'home' | 'catalog'>('home');
@@ -320,7 +319,7 @@ export function useStorefrontState() {
 
 
 
-  return { route, navigate, tenant, tenantLoading, tenantError, products: catalogProducts, catalogLoading, catalogError, catalogPagination, storeCart, addToStoreCart, wishlist, formatCurrency: formatTenantCurrency, getTotalStockForVariant, orders, isDarkMode, toggleTheme,
+  return { route, navigate, tenant, tenantLoading, tenantError, products: catalogProducts, catalogLoading, catalogError, catalogPagination, storeCart, addToStoreCart, wishlist, formatCurrency: formatTenantCurrency, getTotalStockForVariant, orders: [], isDarkMode, toggleTheme,
     activeSection, setActiveSection, searchQuery, setSearchQuery, selectedCategory, setSelectedCategory, selectedBrand, setSelectedBrand, sortBy, setSortBy,
     minPrice, setMinPrice, maxPrice, setMaxPrice, inStockOnly, setInStockOnly, onSaleOnly, setOnSaleOnly, minRating, setMinRating, isMobileFilterOpen, setIsMobileFilterOpen,
     selectedDetailProduct, setSelectedDetailProduct, isCartDrawerOpen, setIsCartDrawerOpen, isWishlistDrawerOpen, setIsWishlistDrawerOpen, isAccountModalOpen, setIsAccountModalOpen,
