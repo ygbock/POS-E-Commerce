@@ -13,12 +13,18 @@ assert.match(accountModal, /<span>Order Details<\/span>/);
 assert.match(accountModal, /Fulfillment Status/);
 assert.match(accountModal, /Payment Summary/);
 assert.match(accountModal, /Fulfillment & Tracking/);
-assert.match(accountModal, /Customer & Order Information/);
+assert.match(accountModal, /Customer & Order Information/);\nassert.match(accountModal, /searchedOrder\.statusHistory/);\nassert.match(accountModal, /new Date\(event\.changedAt\)\.toLocaleString\(\)/);
 assert.doesNotMatch(accountModal, /simulateAdvanceOrderStatus/);
 assert.doesNotMatch(accountModal, /Advance Demo Milestone/);
 assert.doesNotMatch(accountModal, /Date\.now\(\) \+ 86400000/);
 
 
+
+const historyMigration = read('server/db/migrations/024_order_status_history.sql');
+assert.match(historyMigration, /CREATE TABLE IF NOT EXISTS order_status_history/);
+assert.match(historyMigration, /CREATE TRIGGER trg_orders_status_history/);
+assert.match(historyMigration, /NEW\.status IS DISTINCT FROM OLD\.status/);
+assert.match(historyMigration, /migration:024_backfill/);
 
 const context = read('src/context/StorefrontContext.tsx');
 assert.match(context, /storefront:\$\{encodeURIComponent\(slug\)\}:cart/);
@@ -40,7 +46,7 @@ const api = read('src/services/storefrontApi.ts');
 assert.match(api, /trackOrder\(tenantSlug/);
 assert.match(api, /encodeURIComponent\(orderNumber\)/);
 
-const tracking = read('src/components/storefront/OrderTrackingModal.tsx');
+assert.match(api, /getCustomerOrders\(tenantSlug/);\nassert.match(api, /getCustomerOrder\(tenantSlug, orderNumber/);\n\nconst tracking = read('src/components/storefront/OrderTrackingModal.tsx');
 assert.match(tracking, /storefrontApi\.trackOrder/);
 assert.doesNotMatch(tracking, /orders\.find\(/);
 
