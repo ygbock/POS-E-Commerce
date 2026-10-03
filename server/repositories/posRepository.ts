@@ -41,6 +41,19 @@ export interface PosReturnRecord {
   idempotency_key?: string | null;
 }
 
+
+export interface PosSessionSummary {
+  transactions_count: number;
+  total_sales: string;
+  total_cash_sales: string;
+  total_card_sales: string;
+  total_mobile_sales: string;
+  total_wallet_sales: string;
+  total_refunds: string;
+  cash_in_total: string;
+  cash_out_total: string;
+}
+
 export interface PosReturnItemRecord {
   id: string;
   return_id: string;
@@ -164,6 +177,66 @@ export class PosRepository {
       params
     );
     return res.rows.map(mapSessionRow);
+  }
+
+  async getSessionSummary(sessionId: string, orgId: string, client?: DatabaseClient): Promise<PosSessionSummary> {
+    const db = this.getClient(client);
+    const salesRes = await db.query<any>(
+      `SELECT
+         COUNT(DISTINCT o.id)::int AS transactions_count,
+         COALESCE(SUM(DISTINCT o.total_amount), 0) AS total_sales
+       FROM orders o
+       WHERE o.pos_session_id = $1 AND o.organization_id = $2`,
+      [sessionId, orgId]
+    );
+
+    const tenderRes = await db.query<any>(
+      `SELECT payment_method, COALESCE(SUM(amount), 0) AS total
+         FROM payments
+        WHERE organization_id = $2
+          AND order_id IN (SELECT id FROM orders WHERE pos_session_id = $1 AND organization_id = $2)
+          AND status = 'Completed'
+        GROUP BY payment_method`,
+      [sessionId, orgId]
+    );
+
+    const refundRes = await db.query<any>(
+      `SELECT COALESCE(SUM(pr.refund_amount), 0) AS total
+         FROM pos_returns pr
+         JOIN orders o ON o.id = pr.order_id AND o.organization_id = $2
+        WHERE o.pos_session_id = $1 AND pr.organization_id = $2`,
+      [sessionId, orgId]
+    );
+
+    const movementRes = await db.query<any>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN type = 'Cash In' THEN amount ELSE 0 END), 0) AS cash_in_total,
+         COALESCE(SUM(CASE WHEN type = 'Cash Out' THEN amount ELSE 0 END), 0) AS cash_out_total
+       FROM pos_cash_movements
+      WHERE session_id = $1`,
+      [sessionId]
+    );
+
+    const tenderTotals = new Map<string, string>();
+    for (const row of tenderRes.rows) {
+      tenderTotals.set(String(row.payment_method).trim().toLowerCase(), parseExactMoney(row.total));
+    }
+    const findTender = (...names: string[]) => {
+      const total = names.reduce((sum, name) => sum + Number(tenderTotals.get(name.toLowerCase()) || '0'), 0);
+      return total.toFixed(2);
+    };
+
+    return {
+      transactions_count: Number(salesRes.rows[0]?.transactions_count || 0),
+      total_sales: parseExactMoney(salesRes.rows[0]?.total_sales || '0'),
+      total_cash_sales: findTender('cash'),
+      total_card_sales: findTender('card', 'credit card', 'debit card'),
+      total_mobile_sales: findTender('mobile money', 'mobilemoney', 'mobile'),
+      total_wallet_sales: findTender('wallet', 'digital wallet'),
+      total_refunds: parseExactMoney(refundRes.rows[0]?.total || '0'),
+      cash_in_total: parseExactMoney(movementRes.rows[0]?.cash_in_total || '0'),
+      cash_out_total: parseExactMoney(movementRes.rows[0]?.cash_out_total || '0'),
+    };
   }
 
   async updateSessionExpectedCash(id: string, newExpected: string, client?: DatabaseClient): Promise<void> {
