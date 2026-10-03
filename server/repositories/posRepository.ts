@@ -182,21 +182,25 @@ export class PosRepository {
   async getSessionSummary(sessionId: string, orgId: string, client?: DatabaseClient): Promise<PosSessionSummary> {
     const db = this.getClient(client);
     const salesRes = await db.query<any>(
-      `SELECT
-         COUNT(DISTINCT o.id)::int AS transactions_count,
-         COALESCE(SUM(DISTINCT o.total_amount), 0) AS total_sales
-       FROM orders o
-       WHERE o.pos_session_id = $1 AND o.organization_id = $2`,
+      `SELECT COUNT(DISTINCT o.id)::int AS transactions_count,
+              COALESCE(SUM(o.total_amount), 0) AS total_sales
+         FROM orders o
+        WHERE o.pos_session_id = $1 AND o.organization_id = $2`,
       [sessionId, orgId]
     );
 
     const tenderRes = await db.query<any>(
-      `SELECT payment_method, COALESCE(SUM(amount), 0) AS total
-         FROM payments
-        WHERE organization_id = $2
-          AND order_id IN (SELECT id FROM orders WHERE pos_session_id = $1 AND organization_id = $2)
-          AND status = 'Completed'
-        GROUP BY payment_method`,
+      `SELECT
+         COALESCE(SUM(CASE WHEN LOWER(TRIM(p.payment_method)) = 'cash' THEN p.amount ELSE 0 END), 0) AS total_cash_sales,
+         COALESCE(SUM(CASE WHEN LOWER(TRIM(p.payment_method)) IN ('card', 'credit card', 'debit card') THEN p.amount ELSE 0 END), 0) AS total_card_sales,
+         COALESCE(SUM(CASE WHEN LOWER(TRIM(p.payment_method)) IN ('mobile money', 'mobilemoney', 'mobile') THEN p.amount ELSE 0 END), 0) AS total_mobile_sales,
+         COALESCE(SUM(CASE WHEN LOWER(TRIM(p.payment_method)) IN ('wallet', 'digital wallet') THEN p.amount ELSE 0 END), 0) AS total_wallet_sales
+       FROM payments p
+       JOIN orders o ON o.id = p.order_id
+      WHERE o.pos_session_id = $1
+        AND o.organization_id = $2
+        AND p.organization_id = $2
+        AND p.status = 'Completed'`,
       [sessionId, orgId]
     );
 
@@ -217,22 +221,14 @@ export class PosRepository {
       [sessionId]
     );
 
-    const tenderTotals = new Map<string, string>();
-    for (const row of tenderRes.rows) {
-      tenderTotals.set(String(row.payment_method).trim().toLowerCase(), parseExactMoney(row.total));
-    }
-    const findTender = (...names: string[]) => {
-      const total = names.reduce((sum, name) => sum + Number(tenderTotals.get(name.toLowerCase()) || '0'), 0);
-      return total.toFixed(2);
-    };
-
+    const tender = tenderRes.rows[0] || {};
     return {
       transactions_count: Number(salesRes.rows[0]?.transactions_count || 0),
       total_sales: parseExactMoney(salesRes.rows[0]?.total_sales || '0'),
-      total_cash_sales: findTender('cash'),
-      total_card_sales: findTender('card', 'credit card', 'debit card'),
-      total_mobile_sales: findTender('mobile money', 'mobilemoney', 'mobile'),
-      total_wallet_sales: findTender('wallet', 'digital wallet'),
+      total_cash_sales: parseExactMoney(tender.total_cash_sales || '0'),
+      total_card_sales: parseExactMoney(tender.total_card_sales || '0'),
+      total_mobile_sales: parseExactMoney(tender.total_mobile_sales || '0'),
+      total_wallet_sales: parseExactMoney(tender.total_wallet_sales || '0'),
       total_refunds: parseExactMoney(refundRes.rows[0]?.total || '0'),
       cash_in_total: parseExactMoney(movementRes.rows[0]?.cash_in_total || '0'),
       cash_out_total: parseExactMoney(movementRes.rows[0]?.cash_out_total || '0'),
