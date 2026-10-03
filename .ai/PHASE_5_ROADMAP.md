@@ -155,20 +155,20 @@ CUSTOMER / STOREFRONT PLANE (Phase 5.5)
 
 ### Phase 5.6 — SaaS Subscriptions and Billing Engine
 - **Task ID**: `TASK-5.6.1`
-- **Objective**: Build server-side subscription management, tenant billing tiers (Starter, Professional, Enterprise), invoice tracking, and webhook endpoints for payment gateway integration.
-- **Files / Components**: `server/db/migrations/013_saas_billing.sql`, `server/routes/billingRoutes.ts`, `src/components/platform/SystemOwnerDashboard.tsx`.
-- **Backend / API Impact**: `GET /api/platform/billing/invoices`, `POST /api/platform/billing/subscribe`, `POST /api/webhooks/billing`.
-- **Database Impact**: Migration 013 creating `subscriptions`, `invoices`, and `tenant_plans` tables; Migration 012 is reserved for tenant lifecycle schema.
-- **UI Impact**: Dedicated Subscriptions and Invoicing panels in `SystemOwnerDashboard.tsx` and Tenant Settings.
-- **RBAC**: `platform.billing` permission.
-- **Security Requirements**: Cryptographic webhook signature verification, fail-closed subscription expiry.
-- **Tests**: `tests/billing.test.ts`.
+- **Objective**: Complete server-side subscription management, tenant billing tiers, invoice tracking, and payment-provider settlement boundaries.
+- **Implemented Foundation**: `014_subscription_billing_foundation.sql` provides canonical plans, tenant subscriptions, provider-event idempotency, and usage metering. Existing subscription services provide plan changes, trial/lifecycle controls, feature/limit enforcement, and database-authoritative MRR.
+- **New Billing Layer**: `015_billing_invoices.sql`, `server/services/billingService.ts`, and `server/routes/billingRoutes.ts` provide immutable pricing snapshots in invoices, invoice status history, signed webhook verification, replay protection, and paid/past-due settlement transitions.
+- **Backend / API Impact**: `GET /api/platform/billing/invoices`, `GET /api/platform/billing/invoices/:invoiceId`, `POST /api/platform/billing/invoices/:organizationId`, and `POST /api/webhooks/billing`.
+- **RBAC**: `platform.billing` protects platform billing APIs; webhook settlement is authenticated exclusively by cryptographic signature.
+- **Security Requirements**: HMAC SHA-256 webhook verification, durable provider-event uniqueness, server-authoritative invoice totals, and no client-side payment confirmation authority.
+- **Tests**: `tests/billing.test.ts` covers signatures, invoice creation, settlement, and webhook replay.
 - **Dependencies**: `TASK-5.3.1`.
 - **Acceptance Criteria**:
-  - [ ] Database schema models subscriptions, invoices, and payment statuses.
-  - [ ] Accurate calculation of MRR, ARR, and churn rates based on real database records.
+  - [x] Database schema models subscriptions, invoices, invoice status history, and payment-provider events.
+  - [x] MRR and ARR are calculated from active paid subscriptions; a 30-day cancellation-rate metric is exposed from recorded platform cancellation events.
   - [ ] Automated downgrade/suspension policy for delinquent tenants.
-- **Completion Status**: `PLANNED`.
+- **Remaining Work**: Connect the signed webhook contract to the chosen payment provider, add scheduled delinquency reconciliation, and expose dedicated invoice/subscription controls in tenant settings. No provider credentials or payment secrets are committed.
+- **Completion Status**: `CORE IMPLEMENTED — PENDING LOCAL VERIFICATION`.
 
 ---
 
