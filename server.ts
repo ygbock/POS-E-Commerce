@@ -18,6 +18,7 @@ import { createInventoryRouter } from './server/routes/inventoryRoutes.ts';
 import { createPosRouter } from './server/routes/posRoutes.ts';
 import { createStorefrontRouter } from './server/routes/storefrontRoutes.ts';
 import { createPlatformRouter } from './server/routes/platformRoutes.ts';
+import { createBillingRouter, createBillingWebhookRouter } from './server/routes/billingRoutes.ts';
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
@@ -267,7 +268,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   ];
 
   // Global API Middleware
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+      (req as any).rawBody = Buffer.from(buf);
+    },
+  }));
 
   // Request / Correlation ID Middleware (API-001R1)
   app.use('/api', requestIdMiddleware);
@@ -385,6 +391,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // SaaS control-plane routes. Authorization is enforced inside the router.
   app.use('/api/platform', createPlatformRouter(db, subscriptionService));
+  app.use('/api/platform/billing', createBillingRouter(db));
+  app.use('/api/webhooks', createBillingWebhookRouter(db));
 
   // Request Header Metadata
   app.use('/api', (req, res, next) => {
