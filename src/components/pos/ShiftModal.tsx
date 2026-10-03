@@ -33,14 +33,18 @@ interface ShiftModalProps {
 }
 
 export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
-  const {
-    posShift,
-    posShiftHistory,
-    openPosShift,
-    closePosShift,
-    formatCurrency,
-    currentLocation,
-  } = useCommerce();
+  const { formatCurrency, currentLocation } = useCommerce();
+
+  type ServerShift = any;
+  const [posShift, setPosShift] = useState<ServerShift>({
+    id: '', status: 'Closed', cashierName: '', openingCash: 0, closingCashCalculated: 0,
+    closingCashActual: 0, cashDifference: 0, openedAt: new Date().toISOString(),
+    closedAt: null, transactionsCount: 0, totalCashSales: 0, totalCardSales: 0,
+    totalMobileSales: 0, totalWalletSales: 0, totalRefunds: 0,
+  });
+  const [posShiftHistory, setPosShiftHistory] = useState<ServerShift[]>([]);
+  const [serverLoading, setServerLoading] = useState(false);
+  const [serverError, setServerError] = useState('');
 
   const [openingCashInput, setOpeningCashInput] = useState<string>('300.00');
   const [cashierNameInput, setCashierNameInput] = useState<string>(posShift.cashierName || 'Elena Rostova');
@@ -88,7 +92,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
   // Step 4: Supervisor Approval & Sign-Off
   const [supervisorApproved, setSupervisorApproved] = useState<boolean>(true);
   const [supervisorNameInput, setSupervisorNameInput] = useState<string>('Marcus Vance');
-  const [supervisorPin, setSupervisorPin] = useState<string>('1234');
+  const [supervisorPin, setSupervisorPin] = useState<string>('');
 
   // Selected History Shift Modal view
   const [viewHistoryShift, setViewHistoryShift] = useState<PosShift | null>(null);
@@ -109,6 +113,39 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
     };
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen || !currentLocation?.id) return;
+    let cancelled = false;
+    setServerLoading(true);
+    setServerError('');
+    void fetch(`/api/pos/sessions?locationId=${encodeURIComponent(currentLocation.id)}&limit=50`, {
+      headers: { Accept: 'application/json' }, credentials: 'same-origin',
+    }).then(async (response) => {
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error?.message || 'Unable to load POS sessions.');
+      return Array.isArray(body?.sessions) ? body.sessions : [];
+    }).then((sessions) => {
+      if (cancelled) return;
+      const mapShift = (s: any) => ({
+        id: s.id, status: s.status === 'OPEN' ? 'Open' : 'Closed', cashierName: s.cashier_name || 'Cashier',
+        openingCash: Number(s.opening_cash || 0), closingCashCalculated: Number(s.expected_cash || 0),
+        closingCashActual: s.counted_cash == null ? 0 : Number(s.counted_cash), cashDifference: s.variance == null ? 0 : Number(s.variance),
+        openedAt: s.opened_at, closedAt: s.closed_at || null, transactionsCount: 0,
+        totalCashSales: 0, totalCardSales: 0, totalMobileSales: 0, totalWalletSales: 0, totalRefunds: 0,
+      });
+      const mapped = sessions.map(mapShift);
+      setPosShift(mapped.find((s: any) => s.status === 'Open') || mapped[0] || {
+        id: '', status: 'Closed', cashierName: '', openingCash: 0, closingCashCalculated: 0,
+        closingCashActual: 0, cashDifference: 0, openedAt: new Date().toISOString(), closedAt: null,
+        transactionsCount: 0, totalCashSales: 0, totalCardSales: 0, totalMobileSales: 0, totalWalletSales: 0, totalRefunds: 0,
+      });
+      setPosShiftHistory(mapped.filter((s: any) => s.status === 'Closed'));
+    }).catch((error) => {
+      if (!cancelled) setServerError(error instanceof Error ? error.message : 'Unable to load POS sessions.');
+    }).finally(() => { if (!cancelled) setServerLoading(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, currentLocation?.id]);
+
   if (!isOpen) return null;
 
   const handleDenomChange = (field: keyof CashDenominations, value: string) => {
@@ -116,11 +153,21 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
     setDenominations((prev) => ({ ...prev, [field]: val }));
   };
 
-  const handleOpenShift = (e: React.FormEvent) => {
+  const handleOpenShift = async (e: React.FormEvent) => {
     e.preventDefault();
+    setServerError('');
     const cash = parseFloat(openingCashInput) || 0;
-    openPosShift(cash, cashierNameInput);
-    onClose();
+    try {
+      const response = await fetch('/api/pos/sessions', {
+        method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        credentials: 'same-origin', body: JSON.stringify({ locationId: currentLocation.id, terminalId: 'Terminal 01', openingCash: cash }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error?.message || 'Unable to open POS shift.');
+      const s = body?.session;
+      setPosShift({ ...posShift, id: s.id, status: 'Open', cashierName: s.cashier_name, openingCash: Number(s.opening_cash), closingCashCalculated: Number(s.expected_cash), openedAt: s.opened_at });
+      onClose();
+    } catch (error) { setServerError(error instanceof Error ? error.message : 'Unable to open POS shift.'); }
   };
 
   const expectedCash = posShift.closingCashCalculated;
@@ -161,21 +208,23 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose }) => {
   };
 
   // Final Submit: Close Shift & Post to Ledger
-  const handleFinalReconciliationClose = (e: React.FormEvent) => {
+  const handleFinalReconciliationClose = async (e: React.FormEvent) => {
     e.preventDefault();
-    const secondCountVal = parseFloat(secondCountInput) || activePrimaryCash;
-
-    closePosShift(activePrimaryCash, {
-      secondCount: secondCountVal,
-      verifierName: verifierNameInput,
-      varianceReason,
-      denominations,
-      supervisorApproved,
-      supervisorName: supervisorNameInput,
-      notes: closeNotes,
-    });
-
-    onClose();
+    if (!posShift.id) return;
+    setServerError('');
+    try {
+      const response = await fetch(`/api/pos/sessions/${encodeURIComponent(posShift.id)}/close`, {
+        method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        credentials: 'same-origin', body: JSON.stringify({ countedCash: activePrimaryCash }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error?.message || 'Unable to close POS shift.');
+      const s = body?.session;
+      const closed = { ...posShift, status: 'Closed', closingCashCalculated: Number(s.expected_cash), closingCashActual: Number(s.counted_cash), cashDifference: Number(s.variance), closedAt: s.closed_at };
+      setPosShift(closed);
+      setPosShiftHistory((history) => [closed, ...history.filter((item: any) => item.id !== closed.id)]);
+      onClose();
+    } catch (error) { setServerError(error instanceof Error ? error.message : 'Unable to close POS shift.'); }
   };
 
   return (
