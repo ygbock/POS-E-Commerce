@@ -109,6 +109,7 @@ export const Storefront: React.FC<StorefrontProps> = ({ onOpenAdmin, onOpenPos }
           onOpenPos={onOpenPos}
           isDarkMode={isDarkMode}
           onToggleTheme={toggleTheme}
+          products={products}
         />
 
         <main className="max-w-[1700px] 2xl:max-w-[1800px] mx-auto px-3 sm:px-6 lg:px-10 xl:px-12 pt-4 sm:pt-6 pb-32 lg:pb-12 space-y-10 sm:space-y-12">
