@@ -1062,35 +1062,38 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-slate-900 dark:text-white">Fulfillment Status</p>
-                      {searchedOrder.status === 'Cancelled' || searchedOrder.status === 'Refunded' ? (
-                        <span className="text-[10px] font-bold uppercase text-rose-400">Order closed</span>
-                      ) : (
-                        <span className="text-[10px] font-bold uppercase text-emerald-400">Live status</span>
-                      )}
+                      <span className={`text-[10px] font-bold uppercase ${searchedOrder.status === 'Cancelled' || searchedOrder.status === 'Refunded' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {searchedOrder.status}
+                      </span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                      {STATUS_STEPS.map((step, index) => {
-                        const currentIndex = getStepIndex(searchedOrder.status);
-                        const complete = !isCancelled && currentIndex >= index;
-                        return (
-                          <div key={step.status} className="relative">
-                            <div className="flex items-center gap-2 sm:block">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center border text-[10px] font-black ${
-                                complete
-                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                                  : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
-                              }`}>
-                                {complete ? <CheckCircle2 className="w-4 h-4" /> : index + 1}
-                              </div>
-                              <div className="mt-0 sm:mt-2">
-                                <p className="text-[10px] font-bold text-slate-800 dark:text-slate-200">{step.label}</p>
-                                <p className="text-[9px] text-slate-500 hidden sm:block">{step.description}</p>
+
+                    {searchedOrder.statusHistory?.length ? (
+                      <div className="relative space-y-4">
+                        {searchedOrder.statusHistory.map((event, index) => (
+                          <div key={event.id} className="relative flex gap-3">
+                            {index < searchedOrder.statusHistory!.length - 1 && (
+                              <span className="absolute left-3.5 top-7 bottom-[-16px] w-px bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+                            )}
+                            <div className="relative z-10 w-7 h-7 rounded-full flex items-center justify-center bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                                <div>
+                                  <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">{event.label}</p>
+                                  <p className="text-[10px] text-slate-500">{event.status}</p>
+                                </div>
+                                <time className="text-[9px] text-slate-500" dateTime={event.changedAt}>
+                                  {new Date(event.changedAt).toLocaleString()}
+                                </time>
                               </div>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-500">No lifecycle events have been recorded for this order.</p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
