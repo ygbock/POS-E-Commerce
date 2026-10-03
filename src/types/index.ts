@@ -406,6 +406,15 @@ export type OrderStatus =
   | 'Cancelled'
   | 'Refunded';
 
+export interface OrderStatusHistoryEvent {
+  id: string;
+  fromStatus?: OrderStatus | null;
+  status: OrderStatus;
+  label: string;
+  changedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -451,6 +460,7 @@ export interface Order {
   updatedAt: string;
   loyaltyPointsEarned: number;
   loyaltyPointsRedeemed: number;
+  statusHistory?: OrderStatusHistoryEvent[];
 }
 
 export interface Customer {
