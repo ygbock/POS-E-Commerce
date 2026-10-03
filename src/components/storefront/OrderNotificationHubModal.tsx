@@ -23,8 +23,8 @@ import {
   Share2,
 } from 'lucide-react';
 import { Order } from '../../types';
-import { useCommerce } from '../../context/CommerceContext';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
+import { useStorefrontContext } from '../../context/StorefrontContext';
 
 interface OrderNotificationHubModalProps {
   isOpen: boolean;
@@ -42,11 +42,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
   onOpenTracking,
   onOpenLiveTracking,
 }) => {
-  const {
-    formatCurrency,
-    simulateAdvanceOrderStatus,
-    sendCustomerAlert,
-  } = useCommerce();
+  const { formatCurrency } = useStorefrontContext();
 
   const modalRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap(isOpen, onClose, modalRef);
@@ -60,7 +56,6 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
   const [activeTab, setActiveTab] = useState<'confirmation_email' | 'dispatch_email' | 'sms_simulator' | 'whatsapp_simulator'>('confirmation_email');
   const [copiedLink, setCopiedLink] = useState(false);
   const [customMsg, setCustomMsg] = useState('');
-  const [isSimulating, setIsSimulating] = useState(false);
 
   if (!isOpen || !order) return null;
 
@@ -74,17 +69,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
     setTimeout(() => setCopiedLink(false), 2200);
   };
 
-  const handleSimulateAdvance = () => {
-    setIsSimulating(true);
-    simulateAdvanceOrderStatus(order.id);
-    setTimeout(() => {
-      setIsSimulating(false);
-    }, 400);
-  };
-
-  const handleSendCustomerAlert = (channel: 'SMS' | 'WhatsApp') => {
-    if (!customMsg.trim()) return;
-    sendCustomerAlert(order.id, channel, customMsg.trim());
+  const handleSendCustomerAlert = () => {
     setCustomMsg('');
   };
 
@@ -486,8 +471,8 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
 
                   <button
                     type="button"
-                    onClick={handleSimulateAdvance}
-                    disabled={isSimulating}
+                    onClick={() => undefined}
+                    disabled={false}
                     className="w-full py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-sky-600/25 flex items-center justify-center gap-2 transition-all min-h-[42px] cursor-pointer active:scale-98"
                   >
                     <Play className="w-4 h-4 fill-white" />
@@ -512,7 +497,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                     />
                     <button
                       type="button"
-                      onClick={() => handleSendCustomerAlert('SMS')}
+                      onClick={handleSendCustomerAlert}
                       disabled={!customMsg.trim()}
                       className="w-full sm:w-auto px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-900 dark:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors min-h-[38px] cursor-pointer"
                     >
@@ -633,7 +618,7 @@ export const OrderNotificationHubModal: React.FC<OrderNotificationHubModalProps>
                     />
                     <button
                       type="button"
-                      onClick={() => handleSendCustomerAlert('WhatsApp')}
+                      onClick={handleSendCustomerAlert}
                       disabled={!customMsg.trim()}
                       className="w-full sm:w-auto px-4 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors min-h-[38px] cursor-pointer"
                     >
