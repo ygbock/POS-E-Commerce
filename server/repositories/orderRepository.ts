@@ -388,6 +388,46 @@ export class OrderRepository {
     };
   }
 
+  async findOrderByIdOrNumber(
+    idOrOrderNumber: string,
+    organizationId: string,
+    client?: DatabaseClient
+  ): Promise<{ order: OrderRecord; items: OrderItemRecord[] } | null> {
+    if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+      throw new Error('TENANT_REQUIRED: organization_id is required to find an order.');
+    }
+    const db = this.getClient(client);
+    const orderRes = await db.query<any>(
+      `SELECT id, organization_id, location_id, customer_id, order_number,
+              source, channel, fulfillment_method,
+              subtotal, discount_amount, discount_code,
+              tax_amount, shipping_fee, total_amount, total_cost_amount,
+              payment_status, status, cashier_name, tracking_number, carrier_name, notes,
+              pos_session_id, idempotency_key, created_at, updated_at
+         FROM orders
+        WHERE organization_id = $2
+          AND (id = $1 OR order_number = $1)
+        LIMIT 1`,
+      [idOrOrderNumber, organizationId],
+    );
+    if (orderRes.rows.length === 0) return null;
+
+    const order = orderRes.rows[0];
+    const itemsRes = await db.query<any>(
+      `SELECT oi.id, oi.order_id, oi.variant_id, oi.product_name, oi.variant_name, oi.sku,
+              oi.unit_price, oi.cost_price, oi.quantity,
+              oi.discount_amount, oi.tax_rate, oi.total_amount, oi.created_at
+         FROM order_items oi
+         JOIN orders o ON oi.order_id = o.id
+        WHERE oi.order_id = $1 AND o.organization_id = $2`,
+      [order.id, organizationId],
+    );
+    return {
+      order: mapOrderRow(order),
+      items: itemsRes.rows.map(mapOrderItemRow),
+    };
+  }
+
   async findPaymentByOrderId(
     orderId: string,
     organizationId: string,
