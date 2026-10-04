@@ -64,6 +64,14 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [claimMessage, setClaimMessage] = useState<string | null>(null);
   const [claimForm, setClaimForm] = useState({ claimantName: '', claimantEmail: '', evidence: '' });
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportMessage, setReportMessage] = useState<string | null>(null);
+  const [reportForm, setReportForm] = useState({ reasonCode: 'INACCURATE_INFORMATION', description: '' });
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const [reviewForm, setReviewForm] = useState({ rating: 5, reviewerName: '', title: '', body: '' });
 
   // Direct service quote modal
   const [activeServiceForModal, setActiveServiceForModal] = useState<DiscoveryService | null>(null);
@@ -106,6 +114,11 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
       mounted = false;
     };
   }, [businessId]);
+
+  useEffect(() => {
+    if (!profile?.business.id) return;
+    void discoveryApi.trackEvent({ eventType: 'VIEW', businessId: profile.business.id });
+  }, [profile?.business.id]);
 
   useEffect(() => {
     if (!profile?.business.id) return;
@@ -187,6 +200,36 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
     } finally {
       setClaimSubmitting(false);
     }
+  };
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || reviewSubmitting || !reviewForm.reviewerName.trim() || !reviewForm.body.trim()) return;
+    setReviewSubmitting(true);
+    setReviewMessage(null);
+    try {
+      await discoveryApi.createReview(profile.business.id, { rating: reviewForm.rating, reviewerName: reviewForm.reviewerName.trim(), title: reviewForm.title.trim() || undefined, body: reviewForm.body.trim() });
+      setReviewMessage('Review submitted. It will appear after moderation.');
+      setReviewForm({ rating: 5, reviewerName: '', title: '', body: '' });
+      window.setTimeout(() => setReviewOpen(false), 1600);
+    } catch (err: unknown) {
+      setReviewMessage(err instanceof Error ? err.message : 'Unable to submit your review.');
+    } finally { setReviewSubmitting(false); }
+  };
+
+  const handleReportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || reportSubmitting || !reportForm.reasonCode) return;
+    setReportSubmitting(true);
+    setReportMessage(null);
+    try {
+      await discoveryApi.createReport({ businessId: profile.business.id, reasonCode: reportForm.reasonCode, description: reportForm.description.trim() || undefined });
+      setReportMessage('Thank you. Your report has been submitted for review.');
+      setReportForm({ reasonCode: 'INACCURATE_INFORMATION', description: '' });
+      window.setTimeout(() => setReportOpen(false), 1600);
+    } catch (err: unknown) {
+      setReportMessage(err instanceof Error ? err.message : 'Unable to submit your report.');
+    } finally { setReportSubmitting(false); }
   };
 
   const handleBackClick = () => {
@@ -290,6 +333,26 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
   const reviews = profile.recentReviews || [];
   const rating = Number(profile.reviewsSummary?.rating || 0);
   const reviewCount = Number(profile.reviewsSummary?.count || 0);
+  const weeklyHours = profile.hours || [];
+  const primaryHours = weeklyHours.filter((h) => h.location_id === primary?.id);
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const currentDate = new Date();
+  const currentDay = currentDate.getDay() === 0 ? 7 : currentDate.getDay();
+  const currentMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();
+  const parseTime = (value?: string | null) => {
+    if (!value) return null;
+    const [hours, minutes] = value.split(':').map(Number);
+    return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null;
+  };
+  const todayHours = primaryHours.find((h) => Number(h.day_of_week) === currentDay);
+  const todayOpen = todayHours && !todayHours.is_closed
+    ? (() => {
+        const open = parseTime(todayHours.opens_at);
+        const close = parseTime(todayHours.closes_at);
+        if (open == null || close == null) return false;
+        return close > open ? currentMinutes >= open && currentMinutes < close : currentMinutes >= open || currentMinutes < close;
+      })()
+    : false;
 
   const canCall = s.allow_phone_contact && !!b.phone;
   const canWhatsApp = s.allow_whatsapp_contact && !!b.whatsapp;
@@ -408,11 +471,24 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 >
                   <UserCheck className="w-4 h-4" />
                   <span>Claim Business</span>
-                </button>
+                </button
+                
+                <button
+                  type="button"
+                  onClick={() => { setReportMessage(null); setReportOpen(true); }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-xs font-bold"
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Report</span>
+                </button>>
 
                 <button
                   type="button"
-                  onClick={() => { setContactMessage(null); setContactOpen(true); }}
+                  onClick={() => {
+                    void discoveryApi.trackEvent({ eventType: 'CONTACT', businessId: b.id });
+                    setContactMessage(null);
+                    setContactOpen(true);
+                  }}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold shadow-md hover:opacity-90 transition-opacity"
                 >
                   <Send className="w-4 h-4" />
@@ -422,6 +498,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 {canCall && (
                   <a
                     href={`tel:${b.phone}`}
+                    onClick={() => void discoveryApi.trackEvent({ eventType: 'CONTACT', businessId: b.id })}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-2xs"
                   >
                     <Phone className="w-4 h-4 text-indigo-600" />
@@ -432,6 +509,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 {canWhatsApp && (
                   <a
                     href={`https://wa.me/${b.whatsapp!.replace(/[^0-9]/g, '')}`}
+                    onClick={() => void discoveryApi.trackEvent({ eventType: 'CONTACT', businessId: b.id, metadata: { channel: 'whatsapp' } })}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition-colors shadow-2xs"
@@ -446,6 +524,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                     target="_blank"
                     rel="noopener noreferrer"
                     href={`https://www.google.com/maps/search/?api=1&query=${primary!.latitude},${primary!.longitude}`}
+                    onClick={() => void discoveryApi.trackEvent({ eventType: 'DIRECTION_CLICK', businessId: b.id })}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-2xs"
                   >
                     <Navigation className="w-4 h-4 text-sky-600" />
@@ -457,6 +536,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 {storeUrl && (
                   <a
                     href={storeUrl}
+                    onClick={() => void discoveryApi.trackEvent({ eventType: 'STORE_CLICK', businessId: b.id })}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all hover:scale-102 active:scale-98"
                   >
                     <ShoppingBag className="w-4 h-4" />
@@ -526,7 +606,11 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                     <ServiceCard
                       key={svc.id}
                       service={svc}
-                      onRequestService={(selected) => setActiveServiceForModal(selected)}
+                      onRequestService={(selected) => {
+                        void discoveryApi.trackEvent({ eventType: 'SERVICE_VIEW', businessId: b.id, serviceId: selected.id });
+                        if (onRequestService) onRequestService(selected);
+                        else if (s.allow_service_requests) setActiveServiceForModal(selected);
+                      }}
                     />
                   ))}
                 </div>
@@ -587,6 +671,14 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                   </button>
                 )}
               </section>
+                <button
+                  type="button"
+                  onClick={() => { setReviewMessage(null); setReviewOpen(true); }}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold"
+                >
+                  <Star className="w-4 h-4" />
+                  Write a Review
+                </button>
             )}
           </div>
 
@@ -627,6 +719,34 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                   </div>
                 )}
               </div>
+            </section>
+
+            {/* Operating Hours */}
+            <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-2xs">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-black text-sm uppercase tracking-wider text-slate-400">Operating Hours</h2>
+                <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${todayOpen ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'}`}>
+                  <span className={`w-2 h-2 rounded-full ${todayOpen ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                  {todayHours ? (todayOpen ? 'Open now' : 'Closed now') : 'Hours unavailable'}
+                </span>
+              </div>
+              {primaryHours.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {dayNames.map((day, index) => {
+                    const dayHours = primaryHours.find((h) => Number(h.day_of_week) === index + 1);
+                    return (
+                      <div key={day} className="flex items-center justify-between gap-3 text-xs">
+                        <span className="font-semibold text-slate-600 dark:text-slate-300">{day}</span>
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {!dayHours || dayHours.is_closed ? 'Closed' : `${dayHours.opens_at?.slice(0, 5) || '—'} – ${dayHours.closes_at?.slice(0, 5) || '—'}`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-slate-500">Operating hours have not been published for the main location.</p>
+              )}
             </section>
 
             {/* Multiple Locations */}
@@ -678,6 +798,58 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
           </aside>
         </div>
       </main>
+
+      {/* Report Listing Modal */}
+      {reportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="discovery-report-title">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+            <div className="flex items-center justify-between gap-4 p-5 border-b border-slate-100 dark:border-slate-800">
+              <div><h2 id="discovery-report-title" className="text-lg font-black text-slate-900 dark:text-white">Report {b.name}</h2><p className="mt-1 text-xs text-slate-500">Tell AbaCha what needs review about this listing.</p></div>
+              <button type="button" onClick={() => !reportSubmitting && setReportOpen(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close report form"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleReportSubmit} className="p-5 space-y-4">
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Reason *
+                <select value={reportForm.reasonCode} onChange={(e) => setReportForm((v) => ({ ...v, reasonCode: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm">
+                  <option value="INACCURATE_INFORMATION">Inaccurate information</option><option value="DUPLICATE_LISTING">Duplicate listing</option><option value="FRAUD_OR_SCAM">Fraud or scam</option><option value="INAPPROPRIATE_CONTENT">Inappropriate content</option><option value="CLOSED_BUSINESS">Business is closed</option><option value="OTHER">Other</option>
+                </select>
+              </label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Details
+                <textarea maxLength={5000} rows={5} value={reportForm.description} onChange={(e) => setReportForm((v) => ({ ...v, description: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm resize-y" />
+              </label>
+              {reportMessage && <p role="status" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{reportMessage}</p>}
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => setReportOpen(false)} disabled={reportSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button><button type="submit" disabled={reportSubmitting} className="px-5 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold disabled:opacity-60">{reportSubmitting ? 'Submitting…' : 'Submit Report'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Write Review Modal */}
+      {reviewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="discovery-review-title">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+            <div className="flex items-center justify-between gap-4 p-5 border-b border-slate-100 dark:border-slate-800">
+              <div><h2 id="discovery-review-title" className="text-lg font-black text-slate-900 dark:text-white">Review {b.name}</h2><p className="mt-1 text-xs text-slate-500">Your review will be published after moderation.</p></div>
+              <button type="button" onClick={() => !reviewSubmitting && setReviewOpen(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close review form"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleReviewSubmit} className="p-5 space-y-4">
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Rating *
+                <select value={reviewForm.rating} onChange={(e) => setReviewForm((v) => ({ ...v, rating: Number(e.target.value) }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm">{[5,4,3,2,1].map((value) => <option key={value} value={value}>{value} / 5</option>)}</select>
+              </label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Your name *
+                <input required maxLength={160} value={reviewForm.reviewerName} onChange={(e) => setReviewForm((v) => ({ ...v, reviewerName: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Title
+                <input maxLength={180} value={reviewForm.title} onChange={(e) => setReviewForm((v) => ({ ...v, title: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Review *
+                <textarea required maxLength={5000} rows={6} value={reviewForm.body} onChange={(e) => setReviewForm((v) => ({ ...v, body: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm resize-y" />
+              </label>
+              {reviewMessage && <p role="status" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{reviewMessage}</p>}
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => setReviewOpen(false)} disabled={reviewSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button><button type="submit" disabled={reviewSubmitting} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-60">{reviewSubmitting ? 'Submitting…' : 'Submit Review'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Ownership Claim Modal */}
       {claimOpen && (
