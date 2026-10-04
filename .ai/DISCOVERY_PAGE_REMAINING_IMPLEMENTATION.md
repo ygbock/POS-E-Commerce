@@ -98,6 +98,16 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Perform runtime/manual customer-profile verification.
 
 ### DISC-PAGE-005 — Location and Map
+**Implementation status:** IMPLEMENTED. Location fallback, URL-preserved area filters, radius selection, map recentering, unmapped-listing disclosure, directions, and map-service fallback are implemented. Automated regression verification and runtime/manual verification remain part of the release gate.
+- [x] Manual city/district/region selection is wired through URL/search state.
+- [x] Browser GPS with explicit user action and permission/unavailable fallback.
+- [x] Radius changes and distance filtering are wired through the search API.
+- [x] Businesses with and without usable coordinates are handled explicitly.
+- [x] Map/list synchronization recenters the embedded map on the selected business.
+- [x] Mobile map interaction preserves page scrolling until the user opts in.
+- [x] Map-service failure has a non-blocking fallback.
+- [x] Directions links are available for mapped businesses.
+- [x] Location privacy messaging is displayed.
 - [ ] Verify manual city/district/region selection.
 - [ ] Verify browser GPS.
 - [ ] Verify denied/unavailable GPS fallback.
@@ -267,7 +277,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 ### Wave 2 — Complete customer discovery
 4. DISC-PAGE-004 Business Profile — **IMPLEMENTATION COMPLETE**
-5. DISC-PAGE-005 Location and Map — **NEXT ACTIVE TASK**
+5. DISC-PAGE-005 Location and Map — **IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
 6. DISC-PAGE-006 Product Discovery
 7. DISC-PAGE-007 Service/RFQ
 
