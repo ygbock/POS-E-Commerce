@@ -66,8 +66,13 @@ const decode = (val: string) => {
 };
 
 export function parseDiscoveryPath(pathname = window.location.pathname, search = window.location.search): DiscoveryRoute {
-  const segments = pathname.replace(/\/+/g, '/').replace(/\/$/, '').split('/').filter(Boolean).map(decode);
+  const normalizedPath = pathname.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+  const segments = normalizedPath.split('/').filter(Boolean).map(decode);
   const params = new URLSearchParams(search);
+
+  // The public root is the Discovery landing page. Keep this equivalent to
+  // /discover so direct visits and client-side navigation share one route contract.
+  if (normalizedPath === '/') return { name: 'discover-home' };
 
   // 1. Customer Routes (/discover/...)
   if (segments[0] === 'discover') {
