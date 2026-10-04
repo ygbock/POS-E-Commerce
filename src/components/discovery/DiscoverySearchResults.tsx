@@ -15,6 +15,7 @@ import type {
   DiscoveryService,
   DiscoverySearchCounts,
   DiscoveryDataState,
+  DiscoveryCategory,
 } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import { buildDiscoveryPath } from '../../router/DiscoveryRouter';
@@ -182,7 +183,23 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
   // Derived filter state for DiscoveryFilters
   const [filters, setFilters] = useState<DiscoveryFilterState>({
     openNow: urlState.openNow || undefined,
+    categoryId: urlState.categoryId,
   });
+  const [categories, setCategories] = useState<DiscoveryCategory[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    void discoveryApi.getCategories()
+      .then((items) => {
+        if (mounted) setCategories(items);
+      })
+      .catch(() => {
+        if (mounted) setCategories([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Resync from URL on popstate (browser Back/Forward)
   useEffect(() => {
@@ -190,7 +207,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
       const next = readUrlParams();
       setUrlState(next);
       setSearchDraft(next.q);
-      setFilters({ openNow: next.openNow || undefined });
+      setFilters({ openNow: next.openNow || undefined, categoryId: next.categoryId });
     };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
@@ -370,7 +387,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
     setFilters(newFilters);
     navigateTo({
       openNow: newFilters.openNow,
-      categoryId,
+      categoryId: newFilters.categoryId,
       page: 1,
     });
   };
@@ -460,11 +477,11 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
 
   const totalForActiveType =
     activeType === 'businesses'
-      ? businessesState.data.length
+      ? businessesState.total
       : activeType === 'products'
-      ? productsState.data.length
+      ? productsState.total
       : activeType === 'services'
-      ? servicesState.data.length
+      ? servicesState.total
       : counts.businesses + counts.products + counts.services;
 
   const currentOffset = (page - 1) * PAGE_SIZE;
@@ -523,7 +540,6 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
             pageSize={PAGE_SIZE}
             currentOffset={currentOffset}
             onOffsetChange={handlePageChange}
-            hasNext={sectionState.data.length === PAGE_SIZE}
             className="mt-6"
           />
         )}
@@ -703,6 +719,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
               <DiscoveryFilters
                 filters={filters}
                 onChange={handleFilterChange}
+                categories={categories}
                 hasLocation={hasLocation}
                 onRequestLocation={() => {
                   // Trigger geolocation on explicit user action only
