@@ -684,5 +684,27 @@ export class AuthService {
        VALUES ('disc_inv_2', 'usr_merchant_inv2', 'OWNER', TRUE)
        ON CONFLICT (business_id, user_id) DO NOTHING`
     );
+
+    // Initial Locations for Seeded Businesses
+    await this.db.query(
+      `INSERT INTO discovery_business_locations (id, business_id, name, location_type, address_line_1, city, district, region, latitude, longitude, is_primary, is_active, location_quality_status, location_source)
+       VALUES ('loc_list_1', 'disc_list_1', 'Freetown Central Office', 'OFFICE', '10 Siaka Stevens Street', 'Freetown', 'Western Area Urban', 'Western Area', 8.484, -13.229, TRUE, TRUE, 'HIGH', 'MANUAL')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_business_locations (id, business_id, name, location_type, address_line_1, city, district, region, latitude, longitude, is_primary, is_active, location_quality_status, location_source)
+       VALUES ('loc_list_2', 'disc_list_2', 'Kono Workshop', 'BRANCH', '5 Post Office Road', 'Koidu', 'Kono', 'Eastern Province', 8.643, -10.971, TRUE, TRUE, 'HIGH', 'MANUAL')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_business_locations (id, business_id, name, location_type, address_line_1, city, district, region, latitude, longitude, is_primary, is_active, location_quality_status, location_source)
+       VALUES ('loc_inv_1', 'disc_inv_1', 'Bo Main Branch', 'STORE', '72 Bo-Kenema Highway', 'Bo', 'Bo', 'Southern Province', 7.962, -11.737, TRUE, TRUE, 'HIGH', 'MANUAL')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_business_locations (id, business_id, name, location_type, address_line_1, city, district, region, latitude, longitude, is_primary, is_active, location_quality_status, location_source)
+       VALUES ('loc_inv_2', 'disc_inv_2', 'Makeni Central Mall', 'STORE', '15 Rogbaneh Road', 'Makeni', 'Bombali', 'Northern Province', 8.883, -12.043, TRUE, TRUE, 'HIGH', 'MANUAL')
+       ON CONFLICT (id) DO NOTHING`
+    );
   }
 }

@@ -157,6 +157,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
                 key={point.id}
                 type="button"
                 onClick={() => point.business && onSelectBusiness?.(point.business)}
+                title={`Get directions to ${point.name}`}
                 className={`text-left p-3 rounded-2xl border transition-all active:scale-[0.99] min-h-[56px] ${
                   selected
                     ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30'
