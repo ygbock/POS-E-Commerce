@@ -499,6 +499,23 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-007: locations, service areas, hours and public settings
   // ------------------------------------------------------------------
+  router.get('/businesses/:id/hours', async (req, res, next) => {
+    try {
+      await checkBusinessVisibility(req.params.id, req);
+      const result = await db.query(
+        `SELECT h.*
+           FROM discovery_business_hours h
+           JOIN discovery_business_locations l ON l.id=h.location_id
+          WHERE l.business_id=$1 AND l.is_active=TRUE
+          ORDER BY l.is_primary DESC,l.created_at ASC,h.day_of_week`,
+        [req.params.id],
+      );
+      res.json({ success: true, data: result.rows });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   router.get('/businesses/:id/locations', async (req, res, next) => {
     try {
       await checkBusinessVisibility(req.params.id, req);
