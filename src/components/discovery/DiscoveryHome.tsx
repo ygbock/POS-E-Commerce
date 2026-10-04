@@ -69,6 +69,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       city: sp.get('city') || undefined,
       district: sp.get('district') || undefined,
       region: sp.get('region') || undefined,
+      lat: sp.get('lat') ? Number(sp.get('lat')) : undefined,
+      lng: sp.get('lng') ? Number(sp.get('lng')) : undefined,
       radiusKm: sp.get('radiusKm') ? Number(sp.get('radiusKm')) : 25,
       openNow: sp.get('openNow') === 'true',
       categoryId: sp.get('categoryId') || undefined,
@@ -83,8 +85,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const [selectedCity, setSelectedCity] = useState<string | undefined>(initialParams.city);
   const [selectedDistrict, setSelectedDistrict] = useState<string | undefined>(initialParams.district);
   const [selectedRegion, setSelectedRegion] = useState<string | undefined>(initialParams.region);
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
+  const [latitude, setLatitude] = useState<number | null>(initialParams.lat ?? null);
+  const [longitude, setLongitude] = useState<number | null>(initialParams.lng ?? null);
   const [radiusKm, setRadiusKm] = useState<number>(initialParams.radiusKm || 25);
   const [sort, setSort] = useState<DiscoverySortOption>(initialParams.sort || 'relevance');
 
@@ -124,6 +126,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       setSelectedCity(p.city);
       setSelectedDistrict(p.district);
       setSelectedRegion(p.region);
+      setLatitude(p.lat ?? null);
+      setLongitude(p.lng ?? null);
       setRadiusKm(p.radiusKm || 25);
       setSort(p.sort || 'relevance');
       setFilters({
@@ -277,9 +281,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       if (selectedDistrict) sp.set('district', selectedDistrict);
       if (selectedRegion) sp.set('region', selectedRegion);
       if (filters.categoryId) sp.set('categoryId', filters.categoryId);
+      if (latitude != null) sp.set('lat', String(latitude));
+      if (longitude != null) sp.set('lng', String(longitude));
       if (radiusKm !== 25) sp.set('radiusKm', String(radiusKm));
       if (filters.openNow) sp.set('openNow', 'true');
-      if (filters.categoryId) sp.set('categoryId', filters.categoryId);
       if (sort !== 'relevance') sp.set('sort', sort);
 
       const path = `/discover/search${sp.toString() ? `?${sp.toString()}` : ''}`;
@@ -288,7 +293,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
     },
-    [activeType, query, selectedCity, selectedDistrict, selectedRegion, radiusKm, filters.openNow, filters.categoryId, sort]
+    [activeType, query, selectedCity, selectedDistrict, selectedRegion, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]
   );
 
   const handleSearchSubmit = (q: string) => {
@@ -309,7 +314,14 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     setLatitude(loc.lat ?? null);
     setLongitude(loc.lng ?? null);
     if (loc.radiusKm) setRadiusKm(loc.radiusKm);
-    syncToUrl({ city: loc.city, district: loc.district, region: loc.region, radiusKm: loc.radiusKm });
+    syncToUrl({
+      city: loc.city,
+      district: loc.district,
+      region: loc.region,
+      lat: loc.lat ?? undefined,
+      lng: loc.lng ?? undefined,
+      radiusKm: loc.radiusKm,
+    });
   };
 
   const handleCategorySelect = (categoryId: string) => {
@@ -317,6 +329,32 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     setFilters((prev) => ({ ...prev, categoryId: nextCat }));
     syncToUrl({ categoryId: nextCat });
   };
+
+  const clearDiscoveryFilters = useCallback(() => {
+    setQuery('');
+    setActiveType('all');
+    setSelectedCity(undefined);
+    setSelectedDistrict(undefined);
+    setSelectedRegion(undefined);
+    setLatitude(null);
+    setLongitude(null);
+    setRadiusKm(25);
+    setSort('relevance');
+    setFilters({});
+    syncToUrl({
+      q: undefined,
+      type: undefined,
+      city: undefined,
+      district: undefined,
+      region: undefined,
+      lat: undefined,
+      lng: undefined,
+      radiusKm: undefined,
+      openNow: undefined,
+      categoryId: undefined,
+      sort: undefined,
+    });
+  }, [syncToUrl]);
 
   const locationContextLabel = selectedCity
     ? `in ${selectedCity}`
@@ -429,11 +467,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 <DiscoveryEmptyState
                   type="businesses"
                   query={query}
-                  onClearFilters={() => {
-                    setQuery('');
-                    setSelectedCity(undefined);
-                    setFilters({});
-                  }}
+                  onClearFilters={clearDiscoveryFilters}
                 />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -484,11 +518,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 <DiscoveryEmptyState
                   type="products"
                   query={query}
-                  onClearFilters={() => {
-                    setQuery('');
-                    setSelectedCity(undefined);
-                    setFilters({});
-                  }}
+                  onClearFilters={clearDiscoveryFilters}
                 />
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
@@ -562,11 +592,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 <DiscoveryEmptyState
                   type="services"
                   query={query}
-                  onClearFilters={() => {
-                    setQuery('');
-                    setSelectedCity(undefined);
-                    setFilters({});
-                  }}
+                  onClearFilters={clearDiscoveryFilters}
                 />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
