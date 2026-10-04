@@ -951,7 +951,8 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
             <div className="overflow-y-auto flex-1 pr-1 pb-3">
               <DiscoveryFilters
                 filters={filters}
-                supportedFilters={{ nearMe: true, openNow: true, availableToday: false, delivery: false, pickup: false, categoryId: false, minRating: false }}
+                categories={categories}
+                supportedFilters={{ nearMe: true, openNow: true, availableToday: false, delivery: false, pickup: false, categoryId: true, minRating: false }}
                 onChange={(newFilters) => {
                   handleFilterChange(newFilters);
                 }}
