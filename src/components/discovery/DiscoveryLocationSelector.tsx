@@ -35,6 +35,8 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [manualInput, setManualInput] = useState('');
+  const [manualDistrict, setManualDistrict] = useState('');
+  const [manualRegion, setManualRegion] = useState('');
   const [isLocating, setIsLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -79,21 +81,27 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
     );
   };
 
-  const handleSelectCity = (city: string) => {
+  const handleSelectLocation = (city?: string, district?: string, region?: string) => {
     onLocationChange({
-      city: city || undefined,
+      city: city?.trim() || undefined,
       lat: null,
       lng: null,
       radiusKm: selectedRadiusKm,
     });
+    setManualDistrict('');
+    setManualRegion('');
+    setManualInput('');
+  };
+
+  const handleSelectCity = (city: string) => {
+    handleSelectLocation(city);
     setIsOpen(false);
   };
 
   const handleApplyManual = (e: React.FormEvent) => {
     e.preventDefault();
     if (manualInput.trim()) {
-      handleSelectCity(manualInput.trim());
-      setManualInput('');
+      handleSelectLocation(manualInput.trim(), manualDistrict, manualRegion);
     }
   };
 
@@ -198,14 +206,33 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
               <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                 City / District Search
               </label>
-              <form onSubmit={handleApplyManual} className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={manualInput}
-                  onChange={(e) => setManualInput(e.target.value)}
-                  placeholder="e.g. Freetown, Bo…"
-                  className="flex-1 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+              <form onSubmit={handleApplyManual} className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  <input
+                    type="text"
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    placeholder="City"
+                    aria-label="City"
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    value={manualDistrict}
+                    onChange={(e) => setManualDistrict(e.target.value)}
+                    placeholder="District"
+                    aria-label="District"
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    value={manualRegion}
+                    onChange={(e) => setManualRegion(e.target.value)}
+                    placeholder="Region"
+                    aria-label="Region"
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
                 <button
                   type="submit"
                   className="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold hover:opacity-90 transition-opacity"
@@ -226,7 +253,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
                   onClick={() => handleSelectCity('')}
                   className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
                 >
-                  Clear filter
+                  Clear location filter
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
