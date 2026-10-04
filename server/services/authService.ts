@@ -420,6 +420,30 @@ export class AuthService {
        ON CONFLICT (id) DO NOTHING`
     );
 
+    // Two listing only businesses
+    await this.db.query(
+      `INSERT INTO organizations (id, name, code, is_active, plan_tier, slug)
+       VALUES ('org_list_only_1', 'Freetown General Services Ltd', 'LIST_ONLY_1', TRUE, 'starter', 'freetown-general-ltd')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO organizations (id, name, code, is_active, plan_tier, slug)
+       VALUES ('org_list_only_2', 'Kono Artisanal Crafts Ltd', 'LIST_ONLY_2', TRUE, 'starter', 'kono-artisanal-crafts-ltd')
+       ON CONFLICT (id) DO NOTHING`
+    );
+
+    // Two listing + inventory businesses
+    await this.db.query(
+      `INSERT INTO organizations (id, name, code, is_active, plan_tier, slug)
+       VALUES ('org_list_inv_1', 'Bo Electronics & Spare Parts Ltd', 'LIST_INV_1', TRUE, 'professional', 'bo-electronics-spare-parts-ltd')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO organizations (id, name, code, is_active, plan_tier, slug)
+       VALUES ('org_list_inv_2', 'Makeni Supermarket & Retail Ltd', 'LIST_INV_2', TRUE, 'professional', 'makeni-supermarket-retail-ltd')
+       ON CONFLICT (id) DO NOTHING`
+    );
+
     let platformAdminPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD?.trim();
     if (!platformAdminPassword || platformAdminPassword.length < 12) {
       if (process.env.NODE_ENV !== 'production') {
@@ -520,6 +544,49 @@ export class AuthService {
         role: 'business_owner' as UserRole,
         password: 'MerchantOwner123!',
       },
+      // Two listing only businesses
+      {
+        id: 'usr_merchant_list1',
+        orgId: 'org_list_only_1',
+        email: 'merchant_list1@abacha.internal',
+        name: 'Freetown List Owner',
+        role: 'business_owner' as UserRole,
+        password: 'MerchantListPass1!',
+      },
+      {
+        id: 'usr_merchant_list2',
+        orgId: 'org_list_only_2',
+        email: 'merchant_list2@abacha.internal',
+        name: 'Kono List Owner',
+        role: 'business_owner' as UserRole,
+        password: 'MerchantListPass2!',
+      },
+      // Two listing + inventory businesses
+      {
+        id: 'usr_merchant_inv1',
+        orgId: 'org_list_inv_1',
+        email: 'merchant_inv1@abacha.internal',
+        name: 'Bo Inv Owner',
+        role: 'business_owner' as UserRole,
+        password: 'MerchantInvPass1!',
+      },
+      {
+        id: 'usr_merchant_inv2',
+        orgId: 'org_list_inv_2',
+        email: 'merchant_inv2@abacha.internal',
+        name: 'Makeni Inv Owner',
+        role: 'business_owner' as UserRole,
+        password: 'MerchantInvPass2!',
+      },
+      // Dummy Platform Admin Account
+      {
+        id: 'usr_dummy_platform_admin',
+        orgId: orgDefault,
+        email: 'dummy_admin@abacha.internal',
+        name: 'Dummy Platform Admin',
+        role: 'platform_admin' as UserRole,
+        password: 'DummyAdmin123!',
+      },
     ];
 
     for (const u of defaultUsers) {
@@ -556,6 +623,65 @@ export class AuthService {
     await this.db.query(
       `INSERT INTO discovery_business_memberships (business_id, user_id, role, is_active)
        VALUES ('disc_ygbock', 'usr_ygbock', 'OWNER', TRUE)
+       ON CONFLICT (business_id, user_id) DO NOTHING`
+    );
+
+    // Two listing only businesses
+    await this.db.query(
+      `INSERT INTO discovery_businesses
+       (id, public_id, organization_id, name, slug, short_description, business_mode, listing_status, verification_status, is_discoverable, created_by_user_id)
+       VALUES ('disc_list_1', 'biz_list_1_987654', NULL, 'Freetown General Services', 'freetown-general', 'Freetown general services listing only business.', 'DISCOVERY_ONLY', 'PUBLISHED', 'VERIFIED', TRUE, 'usr_merchant_list1')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_businesses
+       (id, public_id, organization_id, name, slug, short_description, business_mode, listing_status, verification_status, is_discoverable, created_by_user_id)
+       VALUES ('disc_list_2', 'biz_list_2_987654', NULL, 'Kono Artisanal Crafts', 'kono-artisanal', 'Kono artisanal crafts listing only business.', 'DISCOVERY_ONLY', 'PUBLISHED', 'VERIFIED', TRUE, 'usr_merchant_list2')
+       ON CONFLICT (id) DO NOTHING`
+    );
+
+    // Two listing + inventory businesses
+    await this.db.query(
+      `INSERT INTO discovery_businesses
+       (id, public_id, organization_id, name, slug, short_description, business_mode, listing_status, verification_status, is_discoverable, created_by_user_id)
+       VALUES ('disc_inv_1', 'biz_inv_1_987654', 'org_list_inv_1', 'Bo Electronics & Spare Parts', 'bo-electronics', 'Bo electronics and spare parts listing plus inventory business.', 'DISCOVERY_AND_STORE', 'PUBLISHED', 'VERIFIED', TRUE, 'usr_merchant_inv1')
+       ON CONFLICT (id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_businesses
+       (id, public_id, organization_id, name, slug, short_description, business_mode, listing_status, verification_status, is_discoverable, created_by_user_id)
+       VALUES ('disc_inv_2', 'biz_inv_2_987654', 'org_list_inv_2', 'Makeni Supermarket & Retail', 'makeni-supermarket', 'Makeni supermarket and retail listing plus inventory business.', 'DISCOVERY_AND_STORE', 'PUBLISHED', 'VERIFIED', TRUE, 'usr_merchant_inv2')
+       ON CONFLICT (id) DO NOTHING`
+    );
+
+    // Settings
+    for (const bid of ['disc_list_1', 'disc_list_2', 'disc_inv_1', 'disc_inv_2']) {
+      await this.db.query(
+        `INSERT INTO discovery_business_settings (business_id)
+         VALUES ($1)
+         ON CONFLICT (business_id) DO NOTHING`, [bid]
+      );
+    }
+
+    // Memberships
+    await this.db.query(
+      `INSERT INTO discovery_business_memberships (business_id, user_id, role, is_active)
+       VALUES ('disc_list_1', 'usr_merchant_list1', 'OWNER', TRUE)
+       ON CONFLICT (business_id, user_id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_business_memberships (business_id, user_id, role, is_active)
+       VALUES ('disc_list_2', 'usr_merchant_list2', 'OWNER', TRUE)
+       ON CONFLICT (business_id, user_id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_business_memberships (business_id, user_id, role, is_active)
+       VALUES ('disc_inv_1', 'usr_merchant_inv1', 'OWNER', TRUE)
+       ON CONFLICT (business_id, user_id) DO NOTHING`
+    );
+    await this.db.query(
+      `INSERT INTO discovery_business_memberships (business_id, user_id, role, is_active)
+       VALUES ('disc_inv_2', 'usr_merchant_inv2', 'OWNER', TRUE)
        ON CONFLICT (business_id, user_id) DO NOTHING`
     );
   }
