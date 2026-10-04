@@ -370,12 +370,16 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
 
   const handleLocationChange = (loc: {
     city?: string;
+    district?: string;
+    region?: string;
     lat?: number | null;
     lng?: number | null;
     radiusKm?: number;
   }) => {
     navigateTo({
       city: loc.city,
+      district: loc.district,
+      region: loc.region,
       lat: loc.lat,
       lng: loc.lng,
       radiusKm: loc.radiusKm ?? radiusKm,
