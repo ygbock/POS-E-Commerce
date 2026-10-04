@@ -104,9 +104,12 @@ export class DiscoveryBusinessRepository {
     const clauses = [`b.listing_status = 'PUBLISHED'`, `b.is_discoverable = TRUE`, `(b.organization_id IS NULL OR o.is_active = TRUE)`];
     const params: any[] = [];
     const add = (sql: string, value: any) => {
-      clauses.push(sql.replaceAll('$X', () => {
+      const placeholder = () => {
         params.push(value);
-        return '
+        return '$' + params.length;
+      };
+      clauses.push(sql.replace(/\$X/g, placeholder));
+    };
     if (filter.categoryId) add('EXISTS (SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id = b.id AND (c.id = $X OR c.parent_id = $X) AND c.is_active = TRUE)', filter.categoryId);
     if (filter.city) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.city) = LOWER($X))', filter.city);
     if (filter.district) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.district) = LOWER($X))', filter.district);
