@@ -212,17 +212,61 @@ export class DiscoveryBusinessService {
     locations: DiscoveryBusinessLocationRecord[];
     categories: Array<{ id: string; name: string; slug: string; is_primary: boolean }>;
     settings: DiscoveryBusinessSettingsRecord;
+    hours: Array<Record<string, unknown>>;
+    recentReviews: Array<Record<string, unknown>>;
+    reviewsSummary: { rating: string; count: number };
+    activeServices: Array<Record<string, unknown>>;
   } | null> {
     const business = await this.repository.findById(id, client);
     if (!business || !(await this.isPubliclyVisible(business, client))) return null;
-    const [locations, categories, settings] = await Promise.all([
+    const db = client || this.db;
+    const [locations, categories, settings, hours, reviews, summary, services] = await Promise.all([
       this.repository.listLocations(id, { activeOnly: true }, client),
       this.repository.listCategories(id, client),
       this.repository.getSettings(id, client),
+      db.query(
+        `SELECT h.*
+           FROM discovery_business_hours h
+           JOIN discovery_business_locations l ON l.id=h.location_id
+          WHERE l.business_id=$1 AND l.is_active=TRUE
+          ORDER BY l.is_primary DESC,l.created_at ASC,h.day_of_week`,
+        [id],
+      ),
+      db.query(
+        `SELECT r.id,r.reviewer_name,r.rating,r.title,r.body,r.verified_purchase,r.created_at,
+                rr.response AS merchant_response,rr.created_at AS merchant_response_created_at
+           FROM discovery_reviews r
+           LEFT JOIN discovery_review_responses rr ON rr.review_id=r.id
+          WHERE r.business_id=$1 AND r.status='PUBLISHED'
+          ORDER BY r.verified_purchase DESC,r.created_at DESC
+          LIMIT 100`,
+        [id],
+      ),
+      db.query(
+        `SELECT COALESCE(AVG(rating),0)::numeric(3,2) AS rating,COUNT(*)::int AS count
+           FROM discovery_reviews
+          WHERE business_id=$1 AND status='PUBLISHED'`,
+        [id],
+      ),
+      db.query(
+        `SELECT *
+           FROM discovery_services
+          WHERE business_id=$1 AND is_active=TRUE
+          ORDER BY name`,
+        [id],
+      ),
     ]);
-    return { business, locations, categories, settings };
+    return {
+      business,
+      locations,
+      categories,
+      settings,
+      hours: hours.rows,
+      recentReviews: reviews.rows,
+      reviewsSummary: summary.rows[0] || { rating: '0.00', count: 0 },
+      activeServices: services.rows,
+    };
   }
-
   async update(id: string, patch: DiscoveryBusinessUpdateInput, actor: { userId: string; role: string; organizationId?: string }, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
