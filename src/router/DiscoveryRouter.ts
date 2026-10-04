@@ -65,7 +65,10 @@ const decode = (val: string) => {
   }
 };
 
-export function parseDiscoveryPath(pathname = window.location.pathname, search = window.location.search): DiscoveryRoute {
+export function parseDiscoveryPath(
+  pathname = typeof window !== 'undefined' ? window.location.pathname : '/',
+  search = typeof window !== 'undefined' ? window.location.search : '',
+): DiscoveryRoute {
   const normalizedPath = pathname.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
   const segments = normalizedPath.split('/').filter(Boolean).map(decode);
   const params = new URLSearchParams(search);
