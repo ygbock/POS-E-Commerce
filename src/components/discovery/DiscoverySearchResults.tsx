@@ -177,6 +177,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
   const [urlState, setUrlState] = useState(readUrlParams);
 
   const { q, type: activeType, city, district, region, lat, lng, radiusKm, openNow, categoryId, sort, page } = urlState;
+  const [searchDraft, setSearchDraft] = useState(q);
 
   // Derived filter state for DiscoveryFilters
   const [filters, setFilters] = useState<DiscoveryFilterState>({
@@ -188,6 +189,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
     const handlePop = () => {
       const next = readUrlParams();
       setUrlState(next);
+      setSearchDraft(next.q);
       setFilters({ openNow: next.openNow || undefined });
     };
     window.addEventListener('popstate', handlePop);
@@ -336,7 +338,9 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
   );
 
   const handleSearchSubmit = (newQuery: string) => {
-    navigateTo({ q: newQuery, page: 1 });
+    const normalizedQuery = newQuery.trim();
+    setSearchDraft(normalizedQuery);
+    navigateTo({ q: normalizedQuery, page: 1 });
   };
 
   const handleTypeChange = (newType: DiscoverySearchType) => {
@@ -588,12 +592,8 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
           <div className="flex-1 min-w-0">
             <DiscoverySearchBar
-              value={q}
-              onChange={(val) => {
-                // Controlled update — only fire search on submit
-                applyUrlUpdate({ q: val }, true);
-                setUrlState(readUrlParams());
-              }}
+              value={searchDraft}
+              onChange={setSearchDraft}
               onSearch={handleSearchSubmit}
               placeholder="Search businesses, products or services…"
               autoFocus={!q}
