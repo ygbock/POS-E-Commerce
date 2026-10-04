@@ -651,6 +651,7 @@ export interface DiscoveryPublicBusinessProfile {
   locations: DiscoveryLocation[];
   categories: DiscoveryCategory[];
   settings: DiscoveryBusinessSettings;
+  hours: DiscoveryBusinessHours[];
   reviewsSummary: DiscoveryReviewsSummary;
   recentReviews: DiscoveryReview[];
   activeServices: DiscoveryService[];
