@@ -32,6 +32,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 ## 3. Remaining Implementation
 
 ### DISC-PAGE-001 — Runtime Entry and Routing
+**Implementation status:** COMPLETE. Runtime/manual verification remains part of the release gate.
 - [ ] Verify direct navigation to `/discover`.
 - [ ] Verify refresh on `/discover` and all public Discovery URLs.
 - [ ] Verify `/discover/search`.
@@ -46,6 +47,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 **Done when:** every public Discovery URL loads directly and refreshes without route loops, blank screens or tenant-resolution lockouts.
 
 ### DISC-PAGE-002 — Discovery Home Hardening
+**Implementation status:** COMPLETE. TypeScript and router verification passed; runtime/manual verification remains.
 - [ ] Verify hero/search.
 - [ ] Verify categories from real API.
 - [ ] Verify businesses, products and services from real API.
@@ -61,6 +63,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Verify production asset paths.
 
 ### DISC-PAGE-003 — Search Results Completion
+**Implementation status:** COMPLETE. Search Results URL/search/filter/pagination hardening is implemented; automated Search, ranking, attribution, TypeScript and router checks passed. Runtime/manual verification remains.
 - [ ] Verify All/Businesses/Products/Services tabs.
 - [ ] Verify keyword search.
 - [ ] Verify category, city, district, region and radius filters.
@@ -74,6 +77,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Verify mobile filters.
 
 ### DISC-PAGE-004 — Business Profile Completion
+**Next active task.**
 - [ ] Verify identity, description and categories.
 - [ ] Verify verification badge.
 - [ ] Verify contacts and directions.
@@ -253,9 +257,9 @@ Complete Discovery so customers can search businesses, products and services; fi
 ## 4. Execution Waves
 
 ### Wave 1 — Make `/discover` reliable
-1. DISC-PAGE-001 Runtime Entry and Routing
-2. DISC-PAGE-002 Discovery Home
-3. DISC-PAGE-003 Search Results
+1. DISC-PAGE-001 Runtime Entry and Routing — **IMPLEMENTATION COMPLETE**
+2. DISC-PAGE-002 Discovery Home — **IMPLEMENTATION COMPLETE**
+3. DISC-PAGE-003 Search Results — **IMPLEMENTATION COMPLETE**
 
 ### Wave 2 — Complete customer discovery
 4. DISC-PAGE-004 Business Profile
