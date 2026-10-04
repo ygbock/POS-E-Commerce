@@ -48,10 +48,12 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
     return [...fromBusinesses, ...fromLocations].slice(0, 40);
   }, [businesses, locations]);
 
+  const selectedPoint = useMemo(() => points.find((point) => point.business?.id === selectedBusinessId), [points, selectedBusinessId]);
   const center = useMemo(() => {
+    if (selectedPoint) return selectedPoint;
     if (points.length === 0) return { lat: 8.484, lng: -13.229 };
     return points[0];
-  }, [points]);
+  }, [points, selectedPoint]);
 
   const mapUrl = useMemo(() => {
     const delta = 0.08;
@@ -65,6 +67,8 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
   const externalMapUrl = `https://www.openstreetmap.org/?mlat=${center.latitude}&mlon=${center.longitude}#map=15/${center.latitude}/${center.longitude}`;
 
   const [isMapInteracting, setIsMapInteracting] = React.useState(false);
+  const [mapLoadError, setMapLoadError] = React.useState(false);
+  const unmappedBusinessCount = businesses.filter((b) => !finiteCoord(b.latitude) || !finiteCoord(b.longitude)).length;
 
   return (
     <section className={`rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm ${className}`}>
@@ -95,15 +99,23 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
         className="relative h-64 sm:h-72 md:h-80 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden"
         onClick={() => setIsMapInteracting(true)}
       >
-        <iframe
+        {mapLoadError ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-100 dark:bg-slate-800">
+            <MapPin className="w-9 h-9 text-slate-400" aria-hidden="true" />
+            <p className="mt-2 text-sm font-black text-slate-700 dark:text-slate-200">Map service unavailable</p>
+            <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">The mapped results are still available below. You can open the map externally for directions.</p>
+            <a href={externalMapUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">Open map</a>
+          </div>
+        ) : <iframe
           title="AbaCha Discovery map"
           src={mapUrl}
+          onError={() => setMapLoadError(true)}
           className={`absolute inset-0 w-full h-full border-0 transition-opacity ${
             isMapInteracting ? 'pointer-events-auto' : 'pointer-events-none sm:pointer-events-auto'
           }`}
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
-        />
+        />}
 
         {/* Mobile touch hint overlay so page scrolling isn't trapped */}
         {!isMapInteracting && (
@@ -129,6 +141,12 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
           </div>
         )}
       </div>
+
+      {unmappedBusinessCount > 0 && (
+        <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-amber-50/70 dark:bg-amber-950/20 text-[11px] text-amber-800 dark:text-amber-300">
+          {unmappedBusinessCount} published business{unmappedBusinessCount === 1 ? '' : 'es'} do not have usable coordinates yet, so they remain visible in the list but are not plotted on the map.
+        </div>
+      )}
 
       {points.length > 0 ? (
         <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
