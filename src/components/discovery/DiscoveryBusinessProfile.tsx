@@ -257,6 +257,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
         preferredDate: quoteForm.preferredDate || undefined,
       });
 
+      void discoveryApi.trackEvent({ eventType: 'SERVICE_REQUEST', businessId: profile?.business.id, serviceId: activeServiceForModal.id });
       setQuoteSuccess(true);
       setTimeout(() => {
         setQuoteSuccess(false);
@@ -456,13 +457,15 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 </button>
 
 
-                <a
-                  href="/discover/request-service"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
+                {s.allow_service_requests && (
+                  <a
+                    href="/discover/request-service"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
                 >
-                  <ClipboardPlus className="w-4 h-4" />
-                  <span>Request Service</span>
-                </a>
+                    <ClipboardPlus className="w-4 h-4" />
+                    <span>Request Service</span>
+                  </a>
+                )}
 
                 <button
                   type="button"
@@ -607,9 +610,10 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                       key={svc.id}
                       service={svc}
                       onRequestService={(selected) => {
+                        if (!s.allow_service_requests) return;
                         void discoveryApi.trackEvent({ eventType: 'SERVICE_VIEW', businessId: b.id, serviceId: selected.id });
                         if (onRequestService) onRequestService(selected);
-                        else if (s.allow_service_requests) setActiveServiceForModal(selected);
+                        else setActiveServiceForModal(selected);
                       }}
                     />
                   ))}
