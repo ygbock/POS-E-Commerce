@@ -53,6 +53,20 @@ export interface DiscoveryHomeProps {
   className?: string;
 }
 
+interface DiscoveryUrlParams {
+  q: string;
+  type: DiscoverySearchType;
+  city?: string;
+  district?: string;
+  region?: string;
+  lat?: number;
+  lng?: number;
+  radiusKm: number;
+  openNow: boolean;
+  categoryId?: string;
+  sort: DiscoverySortOption;
+}
+
 export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   onReturnToStore,
   className = '',
@@ -60,8 +74,16 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   // ---------------------------------------------------------------------------
   // 1. URL State Parsing & Synchronization
   // ---------------------------------------------------------------------------
-  const parseUrlParams = () => {
-    if (typeof window === 'undefined') return {};
+  const parseUrlParams = (): DiscoveryUrlParams => {
+    if (typeof window === 'undefined') {
+      return {
+        q: '',
+        type: 'all',
+        radiusKm: 25,
+        openNow: false,
+        sort: 'relevance',
+      };
+    }
     const sp = new URLSearchParams(window.location.search);
     return {
       q: sp.get('q') || '',
