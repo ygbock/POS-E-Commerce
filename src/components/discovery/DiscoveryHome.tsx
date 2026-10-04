@@ -335,14 +335,14 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     setSelectedRegion(loc.region);
     setLatitude(loc.lat ?? null);
     setLongitude(loc.lng ?? null);
-    if (loc.radiusKm) setRadiusKm(loc.radiusKm);
+    setRadiusKm(loc.radiusKm ?? 25);
     syncToUrl({
       city: loc.city,
       district: loc.district,
       region: loc.region,
       lat: loc.lat ?? undefined,
       lng: loc.lng ?? undefined,
-      radiusKm: loc.radiusKm,
+      radiusKm: loc.radiusKm ?? 25,
     });
   };
 
@@ -571,7 +571,11 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             </div>
             <DiscoveryMapPanel
               businesses={businessesState.data}
-              onSelectBusiness={(business) => window.location.assign('/discover/business/' + encodeURIComponent(business.slug))}
+              onSelectBusiness={(business) =>
+                window.location.assign(
+                  '/discover/business/' + encodeURIComponent(business.slug || business.id)
+                )
+              }
             />
           </section>
 
