@@ -19,7 +19,8 @@ assert.match(search, /district: loc\.district/);
 assert.match(search, /region: loc\.region/);
 assert.match(search, /district: sp\.get\('district'\)/);
 assert.match(search, /region: sp\.get\('region'\)/);
-assert.match(search, /const radiusVal = sp\.get\('radiusKm'\)/);\nassert.match(search, /radiusKm: radiusVal \? Math\.max\(1, Math\.min\(500, Number\(radiusVal\)\)\) : 25/);
+assert.match(search, /const radiusVal = sp\.get\('radiusKm'\)/);
+assert.match(search, /radiusKm: radiusVal \? Math\.max\(1, Math\.min\(500, Number\(radiusVal\)\)\) : 25/);
 
 assert.match(map, /selectedPoint/);
 assert.match(map, /onError=\{\(\) => setMapLoadError\(true\)\}/);
