@@ -8,6 +8,8 @@ interface DiscoveryLocationSelectorProps {
   longitude?: number | null;
   onLocationChange: (location: {
     city?: string;
+    district?: string;
+    region?: string;
     lat?: number | null;
     lng?: number | null;
     radiusKm?: number;
@@ -84,6 +86,8 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
   const handleSelectLocation = (city?: string, district?: string, region?: string) => {
     onLocationChange({
       city: city?.trim() || undefined,
+      district: district?.trim() || undefined,
+      region: region?.trim() || undefined,
       lat: null,
       lng: null,
       radiusKm: selectedRadiusKm,
