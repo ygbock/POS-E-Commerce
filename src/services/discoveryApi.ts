@@ -261,6 +261,11 @@ export const discoveryApi = {
     return request<DiscoveryLocation[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/locations`);
   },
 
+  /** Get public weekly hours for a business location set. */
+  async getBusinessHours(businessId: string): Promise<DiscoveryBusinessHours[]> {
+    return request<DiscoveryBusinessHours[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/hours`);
+  },
+
   /** Get the active categories currently assigned to a merchant listing. */
   async getBusinessCategories(businessId: string): Promise<DiscoveryCategory[]> {
     return request<DiscoveryCategory[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/categories`);
