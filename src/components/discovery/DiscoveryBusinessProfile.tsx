@@ -674,7 +674,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                     {showReviews ? 'Show fewer reviews' : `Show all ${reviews.length} reviews`}
                   </button>
                 )}
-              </section>
+
                 <button
                   type="button"
                   onClick={() => { setReviewMessage(null); setReviewOpen(true); }}
@@ -683,6 +683,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                   <Star className="w-4 h-4" />
                   Write a Review
                 </button>
+              </section>
             )}
           </div>
 
