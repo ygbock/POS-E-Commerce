@@ -103,7 +103,54 @@ export class DiscoveryBusinessRepository {
   async listPublished(filter: DiscoveryBusinessListFilter = {}, client?: DatabaseClient): Promise<DiscoveryBusinessRecord[]> {
     const clauses = [`b.listing_status = 'PUBLISHED'`, `b.is_discoverable = TRUE`, `(b.organization_id IS NULL OR o.is_active = TRUE)`];
     const params: any[] = [];
-    const add = (sql: string, value: any) => { params.push(value); clauses.push(sql.replaceAll('$X', `${params.length}`)); };
+    const add = (sql: string, value: any) => {
+      clauses.push(sql.replaceAll('$X', () => {
+        params.push(value);
+        return '
+    if (filter.categoryId) add('EXISTS (SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id = b.id AND (c.id = $X OR c.parent_id = $X) AND c.is_active = TRUE)', filter.categoryId);
+    if (filter.city) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.city) = LOWER($X))', filter.city);
+    if (filter.district) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.district) = LOWER($X))', filter.district);
+    if (filter.region) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.region) = LOWER($X))', filter.region);
+    if (filter.businessType) add('LOWER(b.business_type) = LOWER($X)', filter.businessType);
+    if (filter.verificationStatus) add('b.verification_status = $X', filter.verificationStatus);
+    const limit = Math.min(Math.max(Number(filter.limit) || 50, 1), 200); const offset = Math.max(Number(filter.offset) || 0, 0);
+    params.push(limit, offset);
+    const result = await this.db(client).query<DiscoveryBusinessRecord>(
+      `SELECT b.* FROM discovery_businesses b LEFT JOIN organizations o ON o.id = b.organization_id
+       WHERE ${clauses.join(' AND ')} ORDER BY CASE WHEN b.verification_status = 'VERIFIED' THEN 0 ELSE 1 END,
+       b.published_at DESC NULLS LAST, b.name ASC LIMIT $${params.length - 1} OFFSET $${params.length}`, params,
+    );
+    return result.rows;
+  }
+  async listLocations(businessId: string, options?: { activeOnly?: boolean }, client?: DatabaseClient): Promise<DiscoveryBusinessLocationRecord[]> {
+    const result = await this.db(client).query<DiscoveryBusinessLocationRecord>(
+      `SELECT id, business_id, name, location_type, address_line_1, address_line_2, city, district, region, country, postal_code, latitude, longitude, service_radius_km, phone, is_primary, is_active, created_at, updated_at FROM discovery_business_locations WHERE business_id = $1 ${options?.activeOnly === false ? '' : 'AND is_active = TRUE'} ORDER BY is_primary DESC, name ASC`, [businessId]);
+    return result.rows;
+  }
+  async listCategories(businessId: string, client?: DatabaseClient): Promise<Array<{ id: string; name: string; slug: string; is_primary: boolean }>> {
+    const result = await this.db(client).query<any>(
+      `SELECT c.id, c.name, c.slug, bcm.is_primary FROM discovery_business_category_map bcm
+       JOIN discovery_business_categories c ON c.id = bcm.category_id WHERE bcm.business_id = $1 AND c.is_active = TRUE
+       ORDER BY bcm.is_primary DESC, c.display_order ASC, c.name ASC`, [businessId]);
+    return result.rows;
+  }
+  async getSettings(businessId: string, client?: DatabaseClient): Promise<DiscoveryBusinessSettingsRecord> {
+    const result = await this.db(client).query<DiscoveryBusinessSettingsRecord>(
+      `INSERT INTO discovery_business_settings (business_id) VALUES ($1)
+       ON CONFLICT (business_id) DO UPDATE SET business_id = EXCLUDED.business_id RETURNING *`, [businessId]);
+    return result.rows[0];
+  }
+  async addListingEvent(data: { businessId: string; fromStatus: DiscoveryListingStatus | null; toStatus: DiscoveryListingStatus; reason?: string | null; actorUserId?: string | null }, client?: DatabaseClient): Promise<{ id: string }> {
+    const id = randomUUID();
+    await this.db(client).query(
+      `INSERT INTO discovery_listing_events (id, business_id, from_status, to_status, reason, actor_user_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, data.businessId, data.fromStatus, data.toStatus, data.reason || null, data.actorUserId || null]);
+    return { id };
+  }
+}
+ + params.length;
+      }));
+    };
     if (filter.categoryId) add('EXISTS (SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id = b.id AND (c.id = $X OR c.parent_id = $X) AND c.is_active = TRUE)', filter.categoryId);
     if (filter.city) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.city) = LOWER($X))', filter.city);
     if (filter.district) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.district) = LOWER($X))', filter.district);
