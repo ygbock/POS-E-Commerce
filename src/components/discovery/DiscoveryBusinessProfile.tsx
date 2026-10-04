@@ -471,7 +471,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 >
                   <UserCheck className="w-4 h-4" />
                   <span>Claim Business</span>
-                </button
+                </button>
                 
                 <button
                   type="button"
@@ -480,7 +480,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 >
                   <AlertCircle className="w-4 h-4" />
                   <span>Report</span>
-                </button>>
+                </button>
 
                 <button
                   type="button"
