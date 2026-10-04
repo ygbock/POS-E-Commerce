@@ -1791,7 +1791,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         let result;
         try {
           if (shouldBePrimary) {
-            await db.query('UPDATE locations SET is_primary=FALSE WHERE organization_id=$1', [orgId]);
+            await db.query('UPDATE locations SET is_primary = FALSE WHERE organization_id=$1', [orgId]);
           }
           result = await db.query(
             `INSERT INTO locations
@@ -1856,7 +1856,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         let result;
         try {
           if (wantsPrimary) {
-            await db.query('UPDATE locations SET is_primary=FALSE WHERE organization_id=$1 AND id<>$2', [orgId, req.params.id]);
+            await db.query('UPDATE locations SET is_primary = FALSE WHERE organization_id=$1 AND id<>$2', [orgId, req.params.id]);
           }
           result = await db.query(
             `UPDATE locations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP

@@ -133,7 +133,7 @@ assert.doesNotMatch(tenantResolver, /Standard 1-year manufacturer warranty/);
 assert.doesNotMatch(tenantResolver, /Orders placed before 2 PM dispatch same-day/);
 assert.doesNotMatch(tenantResolver, /Ready for pickup within 2 hours/);
 
-const policyMigration = read('server/db/migrations/053_storefront_policy_defaults_fail_closed.sql');
+const policyMigration = read('server/db/migrations/057_storefront_policy_defaults_fail_closed.sql');
 assert.match(policyMigration, /ALTER COLUMN policies SET DEFAULT '\{\}'::jsonb/);
 assert.doesNotMatch(policyMigration, /75\\.00|9\\.99|19\\.99/);
 
