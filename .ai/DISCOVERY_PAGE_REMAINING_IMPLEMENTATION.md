@@ -77,21 +77,25 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Verify mobile filters.
 
 ### DISC-PAGE-004 — Business Profile Completion
-**Next active task.**
-- [ ] Verify identity, description and categories.
-- [ ] Verify verification badge.
-- [ ] Verify contacts and directions.
-- [ ] Verify locations and operating hours.
-- [ ] Verify open/closed status.
-- [ ] Verify products and connected store.
-- [ ] Verify services.
-- [ ] Verify reviews and rating summary.
-- [ ] Verify ownership claim.
-- [ ] Verify report listing.
-- [ ] Verify service-request CTA.
-- [ ] Verify Discovery-only versus Discovery-and-Store behavior.
-- [ ] Verify suspended/archived/unavailable listing states.
-- [ ] Verify profile analytics events.
+**Implementation status:** COMPLETE. Public profile contract, operating hours, reviews, services, customer actions, report/claim flows, store-mode behavior and profile analytics wiring are implemented. Automated and runtime/manual verification remain part of the release gate.
+- [x] Identity, description and categories are rendered from the public profile payload.
+- [x] Verification badge/status is rendered.
+- [x] Contact actions and directions are wired with settings guards.
+- [x] Primary-location operating hours are rendered with current open/closed status.
+- [x] Active services are included in the public profile payload and rendered.
+- [x] Published reviews and rating summary are included in the public profile payload.
+- [x] Ownership claim submission is wired.
+- [x] Public listing report submission is wired.
+- [x] Service-request CTA and quote submission are wired with the listing's service-request setting.
+- [x] Discovery-only versus Discovery-and-Store behavior is enforced for the public store link.
+- [x] Published/non-published visibility is enforced by the public profile service.
+- [x] Profile view, contact, direction, store, service-view and service-request analytics events are wired.
+- [ ] Run `npm run test:discovery-profile`.
+- [ ] Run `npx tsc --noEmit`.
+- [ ] Run `npm run test:discovery-router`.
+- [ ] Run `npm run test:discovery-search`.
+- [ ] Run the full `npm run test:discovery` suite.
+- [ ] Perform runtime/manual customer-profile verification.
 
 ### DISC-PAGE-005 — Location and Map
 - [ ] Verify manual city/district/region selection.
@@ -262,8 +266,8 @@ Complete Discovery so customers can search businesses, products and services; fi
 3. DISC-PAGE-003 Search Results — **IMPLEMENTATION COMPLETE**
 
 ### Wave 2 — Complete customer discovery
-4. DISC-PAGE-004 Business Profile
-5. DISC-PAGE-005 Location and Map
+4. DISC-PAGE-004 Business Profile — **IMPLEMENTATION COMPLETE**
+5. DISC-PAGE-005 Location and Map — **NEXT ACTIVE TASK**
 6. DISC-PAGE-006 Product Discovery
 7. DISC-PAGE-007 Service/RFQ
 
