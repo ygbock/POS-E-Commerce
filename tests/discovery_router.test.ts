@@ -13,9 +13,16 @@ assert.deepEqual(search, {
   query: 'phone',
   type: 'products',
   city: 'Freetown',
+  district: undefined,
+  region: undefined,
+  lat: undefined,
+  lng: undefined,
   radiusKm: 10,
   openNow: true,
+  sort: undefined,
+  categoryId: undefined,
   page: 2,
+  limit: undefined,
 });
 
 const business = parseDiscoveryPath('/discover/business/business%2F123', '');
