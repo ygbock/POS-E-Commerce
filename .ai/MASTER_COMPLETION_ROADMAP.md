@@ -343,12 +343,32 @@ Gate 1 should no longer block core merchant workflow implementation; remaining i
 
 #### TASK-MERCHANT-2 — Users, locations, customers and suppliers
 
-- staff/user administration UX;
-- role/permission management UX;
-- location management UX;
-- customer/CRM workflows;
-- supplier management;
-- purchasing workflows.
+**Status: IMPLEMENTED — CI/local validation gate active**
+
+Implemented in this slice:
+- Merchant administration workspaces for Users, Locations, Customers/CRM and Suppliers.
+- Business-owner command center quick operations now preserves the selected business context when entering each administration workspace.
+- Existing server-side tenant-scoped users, locations and customer CRM APIs are exposed through the unified management shell.
+- Added a dedicated supplier management UI covering list/create/edit/deactivate workflows.
+- Added supplier workspace routing and merchant navigation.
+- Merchant-route duplicates now enforce server-side permission checks for customer profiles, users, locations and supplier operations.
+- Tenant/business boundaries remain server-authoritative; the browser does not supply organization identity for these operations.
+- Regression contract: `tests/merchant_administration.test.ts`, registered as `test:merchant-administration` and included in `npm test`.
+
+Implementation commits:
+- `59ecd889` — supplier management workspace.
+- `d4682e5c` — administration workspace routing.
+- `8bfd1d4a` — supplier navigation.
+- `3891686b` — merchant command-center administration quick actions.
+- `5043839f` — merchant endpoint permission enforcement.
+- `4f0a4e5f` — administration regression contract.
+- `69010c7f` — full-regression registration.
+
+Remaining TASK-MERCHANT-2 hardening:
+- Run the full merchant administration contract and CI.
+- Verify role-specific UI visibility and API denial for under-privileged tenant roles.
+- Complete richer supplier detail/purchase-history UX as part of TASK-MERCHANT-3 purchasing and receiving.
+- Complete location/user invitation and lifecycle polish where not already covered by existing foundations.
 
 #### TASK-MERCHANT-3 — Purchasing and receiving
 
