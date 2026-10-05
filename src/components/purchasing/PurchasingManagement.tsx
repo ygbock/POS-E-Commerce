@@ -39,14 +39,13 @@ export const PurchasingManagement: React.FC = () => {
     purchaseOrders,
     products,
     locations,
-    createPurchaseOrder,
-    receivePurchaseOrderGoods,
-    updatePurchaseOrderStatus,
     formatCurrency,
     getTotalStockForVariant,
   } = useCommerce();
 
   const [suppliers, setSuppliers] = useState<Supplier[]>(contextSuppliers);
+  const [serverPurchaseOrders, setServerPurchaseOrders] = useState<PurchaseOrder[]>(purchaseOrders);
+  const [purchaseApiLoading, setPurchaseApiLoading] = useState(false);
   const [supplierApiLoading, setSupplierApiLoading] = useState(false);
   const [supplierApiError, setSupplierApiError] = useState('');
 
@@ -67,6 +66,73 @@ export const PurchasingManagement: React.FC = () => {
     } finally { setSupplierApiLoading(false); }
   };
   useEffect(() => { void loadSuppliers(); }, []);
+
+  const mapPurchaseOrder = (po: any): PurchaseOrder => ({
+    id: po.id,
+    poNumber: po.po_number,
+    supplierId: po.supplier_id,
+    supplierName: po.supplier_name || suppliers.find((s) => s.id === po.supplier_id)?.name || '',
+    destinationLocationId: po.destination_location_id,
+    destinationLocationName: po.destination_location_name || locations.find((l) => l.id === po.destination_location_id)?.name || '',
+    status: po.status,
+    paymentStatus: po.payment_status,
+    orderDate: po.order_date,
+    expectedDate: po.expected_date,
+    receivedDate: po.received_date || undefined,
+    items: (po.items || []).map((item: any) => {
+      const match = allVariants.find((x) => x.variant.id === item.variant_id);
+      return {
+        productId: match?.product.id || '',
+        variantId: item.variant_id,
+        productName: match?.product.name || item.sku,
+        variantName: match?.variant.name || item.sku,
+        sku: item.sku,
+        orderedQty: Number(item.ordered_qty),
+        receivedQty: Number(item.received_qty),
+        unitCost: Number(item.unit_cost),
+        totalCost: Number(item.total_cost),
+        batchNumber: item.batch_number || undefined,
+        expiryDate: item.expiry_date || undefined,
+      };
+    }),
+    subtotal: Number(po.subtotal || 0),
+    tax: Number(po.tax_amount || 0),
+    shipping: Number(po.shipping_fee || 0),
+    totalAmount: Number(po.total_amount || 0),
+    notes: po.notes || undefined,
+    createdBy: po.created_by || '',
+  });
+
+  const loadPurchaseOrders = async () => {
+    setPurchaseApiLoading(true);
+    try {
+      const res = await fetch('/api/purchase-orders?limit=100', { headers: authClient.getAuthHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Unable to load purchase orders.');
+      setServerPurchaseOrders((data.data || []).map(mapPurchaseOrder));
+    } catch (error: any) {
+      setSupplierApiError(error?.message || 'Unable to load purchase orders.');
+      setServerPurchaseOrders(purchaseOrders);
+    } finally {
+      setPurchaseApiLoading(false);
+    }
+  };
+
+  const createServerPurchaseOrder = async (input: any) => {
+    const idempotencyKey = `po-${crypto.randomUUID()}`;
+    const res = await fetch('/api/purchase-orders', {
+      method: 'POST',
+      headers: { ...authClient.getAuthHeaders(), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ ...input, idempotency_key: idempotencyKey }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Unable to create purchase order.');
+    await loadPurchaseOrders();
+    return data.data;
+  };
+
+  useEffect(() => { void loadPurchaseOrders(); }, []);
+  useEffect(() => { if (!purchaseApiLoading && serverPurchaseOrders.length === 0 && purchaseOrders.length) setServerPurchaseOrders(purchaseOrders); }, [purchaseOrders, purchaseApiLoading]);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'pos' | 'suppliers' | 'replenishment' | 'analytics'>('pos');
@@ -230,7 +296,7 @@ export const PurchasingManagement: React.FC = () => {
     setPoLineItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleCreatePoSubmit = (e: React.FormEvent) => {
+  const handleCreatePoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const sup = suppliers.find((s) => s.id === selectedSupplierId);
     const destLoc = locations.find((l) => l.id === destinationLocationId) || locations[0];
@@ -238,29 +304,26 @@ export const PurchasingManagement: React.FC = () => {
 
     const subtotal = poLineItems.reduce((s, it) => s + it.unitCost * it.orderedQty, 0);
 
-    createPurchaseOrder({
-      supplierId: sup.id,
-      supplierName: sup.name,
-      destinationLocationId: destLoc.id,
-      destinationLocationName: destLoc.name,
-      status: 'Sent',
-      paymentStatus: 'Unpaid',
-      expectedDate: new Date(expectedDate).toISOString(),
-      items: poLineItems.map((item) => ({
-        ...item,
-        receivedQty: 0,
-        totalCost: item.orderedQty * item.unitCost,
-      })),
-      subtotal,
-      tax: subtotal * 0.05,
-      shipping: 50,
-      totalAmount: subtotal * 1.05 + 50,
-      notes: poNotes,
-      createdBy: 'Procurement Manager',
-    });
-
-    setIsCreatePoOpen(false);
-    setPoNotes('');
+    try {
+      await createServerPurchaseOrder({
+        supplier_id: sup.id,
+        destination_location_id: destLoc.id,
+        expected_date: new Date(expectedDate).toISOString(),
+        items: poLineItems.map((item) => ({
+          variant_id: item.variantId,
+          sku: item.sku,
+          ordered_qty: String(item.orderedQty),
+          unit_cost: item.unitCost.toFixed(2),
+        })),
+        tax_amount: (subtotal * 0.05).toFixed(2),
+        shipping_fee: '50.00',
+        notes: poNotes,
+      });
+      setIsCreatePoOpen(false);
+      setPoNotes('');
+    } catch (error: any) {
+      setSupplierApiError(error?.message || 'Unable to create purchase order.');
+    }
   };
 
   // Open supplier edit / create modal
@@ -349,8 +412,30 @@ export const PurchasingManagement: React.FC = () => {
       expiryDate: expiryDates[variantId],
     }));
 
-    receivePurchaseOrderGoods(receivingPo.id, receivedItems);
-    setReceivingPo(null);
+    void (async () => {
+      try {
+        const idempotencyKey = `grn-${crypto.randomUUID()}`;
+        const res = await fetch(`/api/purchase-orders/${encodeURIComponent(receivingPo.id)}/receive`, {
+          method: 'POST',
+          headers: { ...authClient.getAuthHeaders(), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify({
+            idempotency_key: idempotencyKey,
+            items: receivedItems.map((item) => ({
+              variant_id: item.variantId,
+              quantity: String(item.quantity),
+              batch_number: item.batchNumber || undefined,
+              expiry_date: item.expiryDate || undefined,
+            })),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || 'Unable to receive purchase order goods.');
+        await loadPurchaseOrders();
+        setReceivingPo(null);
+      } catch (error: any) {
+        setSupplierApiError(error?.message || 'Unable to receive purchase order goods.');
+      }
+    })();
   };
 
   // Auto-replenish all low stock items by grouping by supplier
@@ -434,7 +519,7 @@ export const PurchasingManagement: React.FC = () => {
 
   // Filtered Purchase Orders
   const filteredPOs = useMemo(() => {
-    return purchaseOrders.filter((po) => {
+    return serverPurchaseOrders.filter((po) => {
       const query = poSearch.toLowerCase().trim();
       const matchesSearch =
         !query ||
@@ -453,7 +538,7 @@ export const PurchasingManagement: React.FC = () => {
 
       return matchesSearch && matchesStatus && matchesLocation;
     });
-  }, [purchaseOrders, poSearch, poStatusFilter, poLocationFilter]);
+  }, [serverPurchaseOrders, poSearch, poStatusFilter, poLocationFilter]);
 
   // Filtered Suppliers
   const filteredSuppliers = useMemo(() => {
