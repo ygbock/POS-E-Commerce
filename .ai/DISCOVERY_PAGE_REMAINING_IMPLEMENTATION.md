@@ -151,14 +151,17 @@ Complete Discovery so customers can search businesses, products and services; fi
 **Target flow:** Discover Service → Service Detail → Request → Matching → Provider Response → Quote → Customer Decision.
 
 ### DISC-PAGE-008 — Customer Discovery Workspace
-- [ ] Verify Saved Businesses.
-- [ ] Verify My Service Requests.
-- [ ] Verify My Contact Inquiries.
-- [ ] Verify My Claims.
-- [ ] Verify authentication boundaries.
-- [ ] Verify anonymous-user behavior.
-- [ ] Verify private data isolation.
-- [ ] Verify empty states and deep links.
+- [x] Saved Businesses workspace with load, refresh, open and remove actions.
+- [x] My Service Requests workspace with lifecycle detail, timeline, cancellation and quote acceptance.
+- [x] My Contact Inquiries workspace with status and response timestamps.
+- [x] My Claims workspace with pending/approved/rejected decisions and review notes.
+- [x] Deep-link routes registered for all authenticated customer workspaces.
+- [x] Anonymous users are redirected to login with the original workspace path preserved.
+- [x] Customer APIs are server-scoped to the authenticated user for favorites, inquiries and claims.
+- [x] Empty/error/loading states are implemented across the workspace pages.
+- [x] PAGE-008 regression coverage is registered in `test:discovery`.
+
+**IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
 
 ### DISC-PAGE-009 — Merchant Listing-to-Public Lifecycle
 - [ ] Verify Discovery-only business creation.
