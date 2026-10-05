@@ -4,7 +4,7 @@ import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
-import { createAuthSession, generateRefreshToken, findSessionByRefreshToken, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
+import { createAuthSession, generateRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
 export interface LoginResult {
   token: string;
@@ -439,6 +439,17 @@ export class AuthService {
         err.code = 'REVOKED';
         throw err;
       }
+
+      // If this access token belongs to a V2 server session, the session record
+      // is authoritative for revocation. Legacy/test-issued JWTs without a
+      // session row remain compatible during the migration window.
+      const session = await findSessionByAccessJti(this.db, claims.jti);
+      if (session?.revoked_at) {
+        const err: any = new Error('Session has been revoked');
+        err.code = 'REVOKED';
+        throw err;
+      }
+      if (session) await touchAuthSession(this.db, session.id);
     }
 
     return claims;
