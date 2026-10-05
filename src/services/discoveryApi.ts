@@ -499,21 +499,27 @@ export const discoveryApi = {
    * Track a client-side analytics event
    */
   async trackEvent(event: {
+    eventId?: string;
     eventType: string;
     businessId?: string;
     productId?: string;
     serviceId?: string;
     metadata?: Record<string, unknown>;
-  }): Promise<void> {
+  }): Promise<{ eventId: string; recorded: boolean } | null> {
     try {
-      await fetch('/api/discovery/analytics/events', {
+      const eventId = event.eventId || `evt_${crypto.randomUUID().replace(/-/g, '')}`;
+      const response = await fetch('/api/discovery/analytics/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeaders() },
-        body: JSON.stringify(event),
+        body: JSON.stringify({ ...event, eventId }),
         credentials: 'same-origin',
       });
+      if (!response.ok) return null;
+      const payload = await response.json().catch(() => null);
+      return payload?.data || { eventId, recorded: true };
     } catch {
       // Analytics tracking should fail silently to protect user experience
+      return null;
     }
   },
 
