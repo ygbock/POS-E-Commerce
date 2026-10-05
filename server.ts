@@ -587,6 +587,15 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   });
 
+  app.post('/api/auth/logout-all', requireAuth(), async (req: Request, res: Response) => {
+    await authService.logoutAllSessions(req.auth!.userId);
+    clearAuthenticationCookies(res);
+    res.json({
+      success: true,
+      message: 'All authentication sessions successfully revoked',
+    });
+  });
+
   // ------------------------------------------------------------------
   // 2. SYSTEM HEALTH & DIAGNOSTICS ENDPOINTS
   // ------------------------------------------------------------------
