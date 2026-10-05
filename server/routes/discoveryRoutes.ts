@@ -16,8 +16,19 @@ const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECT
 const SEARCH_ATTRIBUTION_EVENTS = new Set(['IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
 const discoverySearchRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 120, message: 'Too many discovery search requests. Please slow down and try again shortly.' });
 const discoveryAttributionRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 180, message: 'Too many discovery attribution events. Please slow down and try again shortly.' });
+const DISCOVERY_PUBLIC_PAGE_SIZE = 100;
+const DISCOVERY_MAX_OFFSET = 10000;
 const DISCOVERY_SESSION_COOKIE = 'discovery_sid';
 const DISCOVERY_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+function parseDiscoveryInteger(value: unknown, fallback: number, min: number, max: number, field: string): number {
+  if (value == null || value === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`VALIDATION_ERROR:${field} must be an integer between ${min} and ${max}.`);
+  }
+  return parsed;
+}
 
 function getDiscoverySessionHash(req: Request, res: Response): string {
   const cookieHeader = String(req.headers.cookie || '');
@@ -53,7 +64,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   // Categories are platform-managed reference data. They are readable during
   // merchant onboarding so a new business can select its discovery category.
-  router.get('/categories', async (req, res, next) => {
+  router.get('/categories', discoverySearchRateLimiter, async (req, res, next) => {
     try {
       const result = await db.query(
         `SELECT c.id, c.parent_id, c.name, c.slug, c.description, c.icon_name, c.is_active, c.display_order, c.created_at, c.updated_at,
@@ -213,16 +224,18 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-005/006: onboarding + listing lifecycle
   // ------------------------------------------------------------------
-  router.get('/businesses', async (req, res, next) => {
+  router.get('/businesses', discoverySearchRateLimiter, async (req, res, next) => {
     try {
+      const limit = parseDiscoveryInteger(req.query.limit, DISCOVERY_PUBLIC_PAGE_SIZE, 1, DISCOVERY_PUBLIC_PAGE_SIZE, 'limit');
+      const offset = parseDiscoveryInteger(req.query.offset, 0, 0, DISCOVERY_MAX_OFFSET, 'offset');
       const data = await businessService.listPublished({
         city: typeof req.query.city === 'string' ? req.query.city : undefined,
         district: typeof req.query.district === 'string' ? req.query.district : undefined,
         region: typeof req.query.region === 'string' ? req.query.region : undefined,
         businessType: typeof req.query.businessType === 'string' ? req.query.businessType : undefined,
         categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
-        limit: typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined,
-        offset: typeof req.query.offset === 'string' ? Number(req.query.offset) : undefined,
+        limit,
+        offset,
       });
       res.json({ success: true, count: data.length, data });
     } catch (err) { next(err); }
@@ -821,8 +834,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const lat = req.query.lat != null ? Number(req.query.lat) : null;
       const lng = req.query.lng != null ? Number(req.query.lng) : null;
       const radius = req.query.radiusKm != null ? Number(req.query.radiusKm) : 25;
-      const limit = Math.min(Math.max(Number(req.query.limit || 20),1),100);
-      const offset = Math.max(Number(req.query.offset || 0),0);
+      const limit = parseDiscoveryInteger(req.query.limit, 20, 1, DISCOVERY_PUBLIC_PAGE_SIZE, 'limit');
+      const offset = parseDiscoveryInteger(req.query.offset, 0, 0, DISCOVERY_MAX_OFFSET, 'offset');
       const openNow = String(req.query.openNow || '').toLowerCase() === 'true';
       const categoryId = typeof req.query.categoryId === 'string' && req.query.categoryId.trim() ? req.query.categoryId.trim() : null;
       const sort = typeof req.query.sort === 'string' && ['relevance','rating','review_count','name_asc','newest','distance'].includes(req.query.sort) ? req.query.sort : 'relevance';
