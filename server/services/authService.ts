@@ -154,6 +154,24 @@ export class AuthService {
     return result;
   }
 
+  async logoutWithRefreshToken(refreshToken: string): Promise<void> {
+    if (!refreshToken) return;
+    const session = await findSessionByRefreshToken(this.db, refreshToken);
+    if (session) {
+      await revokeAuthSession(this.db, session.id, 'logout');
+      return;
+    }
+    // A rotated refresh token is already revoked; revoke its family to fail
+    // closed if a stale credential is being replayed during logout.
+    const anySession = await this.db.query<{ refresh_token_family_id: string }>(
+      'SELECT refresh_token_family_id FROM auth_sessions WHERE refresh_token_hash=$1 LIMIT 1',
+      [require('./session').hashRefreshToken(refreshToken)],
+    );
+    if (anySession.rows[0]) {
+      await revokeAuthSessionFamily(this.db, anySession.rows[0].refresh_token_family_id, 'logout-stale-refresh');
+    }
+  }
+
   async logoutAllSessions(userId: string): Promise<void> {
     await revokeAllUserSessions(this.db, userId, 'logout-all');
   }
