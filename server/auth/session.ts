@@ -80,15 +80,13 @@ export async function createAuthSession(
   return result.rows[0];
 }
 
-export async function findActiveSessionByRefreshToken(
+export async function findSessionByRefreshToken(
   db: DatabaseClient,
   refreshToken: string,
 ): Promise<SessionRecord | null> {
   const result = await db.query<SessionRecord>(
     `SELECT * FROM auth_sessions
       WHERE refresh_token_hash = $1
-        AND revoked_at IS NULL
-        AND refresh_expires_at > CURRENT_TIMESTAMP
       LIMIT 1`,
     [hashRefreshToken(refreshToken)],
   );
@@ -153,5 +151,22 @@ export async function touchAuthSession(db: DatabaseClient, sessionId: string): P
   await db.query(
     `UPDATE auth_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE id = $1 AND revoked_at IS NULL`,
     [sessionId],
+  );
+}
+
+
+export async function replaceAuthSession(
+  db: DatabaseClient,
+  oldSessionId: string,
+  newSessionId: string,
+): Promise<void> {
+  await db.query(
+    `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
+           revoke_reason = COALESCE(revoke_reason, 'refresh-rotation'),
+           replaced_by_session_id = $2,
+           last_seen_at = CURRENT_TIMESTAMP
+     WHERE id = $1`,
+    [oldSessionId, newSessionId],
   );
 }
