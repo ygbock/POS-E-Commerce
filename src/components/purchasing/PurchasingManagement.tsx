@@ -439,7 +439,7 @@ export const PurchasingManagement: React.FC = () => {
   };
 
   // Auto-replenish all low stock items by grouping by supplier
-  const handleBulkAutoReplenish = () => {
+  const handleBulkAutoReplenish = async () => {
     if (lowStockItems.length === 0) return;
 
     // Group low stock items by supplier
@@ -484,32 +484,29 @@ export const PurchasingManagement: React.FC = () => {
     let poCount = 0;
     const destLoc = locations[0];
 
-    Object.values(itemsBySupplier).forEach(({ supplier, items }) => {
-      if (items.length === 0) return;
+    for (const { supplier, items } of Object.values(itemsBySupplier)) {
+      if (items.length === 0) continue;
       const subtotal = items.reduce((s, it) => s + it.unitCost * it.orderedQty, 0);
-
-      createPurchaseOrder({
-        supplierId: supplier.id,
-        supplierName: supplier.name,
-        destinationLocationId: destLoc.id,
-        destinationLocationName: destLoc.name,
-        status: 'Sent',
-        paymentStatus: 'Unpaid',
-        expectedDate: new Date(Date.now() + (supplier.leadTimeDays || 7) * 86400000).toISOString(),
-        items: items.map((it) => ({
-          ...it,
-          receivedQty: 0,
-          totalCost: it.orderedQty * it.unitCost,
-        })),
-        subtotal,
-        tax: subtotal * 0.05,
-        shipping: 40,
-        totalAmount: subtotal * 1.05 + 40,
-        notes: `Automated reorder generated from stock replenishment threshold scan.`,
-        createdBy: 'System Auto-Procurement',
-      });
-      poCount++;
-    });
+      try {
+        await createServerPurchaseOrder({
+          supplier_id: supplier.id,
+          destination_location_id: destLoc.id,
+          expected_date: new Date(Date.now() + (supplier.leadTimeDays || 7) * 86400000).toISOString(),
+          items: items.map((it) => ({
+            variant_id: it.variantId,
+            sku: it.sku,
+            ordered_qty: String(it.orderedQty),
+            unit_cost: it.unitCost.toFixed(2),
+          })),
+          tax_amount: (subtotal * 0.05).toFixed(2),
+          shipping_fee: '40.00',
+          notes: 'Automated reorder generated from stock replenishment threshold scan.',
+        });
+        poCount++;
+      } catch (error: any) {
+        setSupplierApiError(error?.message || `Unable to create reorder for ${supplier.name}.`);
+      }
+    }
 
     setAutoOrderSuccessMsg(
       `Successfully generated ${poCount} Purchase Order(s) across ${lowStockItems.length} low-stock SKUs!`
