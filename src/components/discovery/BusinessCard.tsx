@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Store, MapPin, Phone, MessageSquare, Navigation, ArrowUpRight, ShoppingBag } from 'lucide-react';
 import type { DiscoveryBusiness } from '../../types/discovery';
 import { VerificationBadge } from './VerificationBadge';
@@ -15,6 +15,8 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
   onSelect,
   className = '',
 }) => {
+  const [coverImageFailed, setCoverImageFailed] = useState(false);
+  const [logoImageFailed, setLogoImageFailed] = useState(false);
   const locationString = [business.city, business.district, business.region].filter(Boolean).join(', ');
   const distanceKm = business.distance_km != null && Number.isFinite(Number(business.distance_km)) ? Number(business.distance_km) : null;
 
@@ -38,12 +40,13 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
       <div>
         {/* Cover banner */}
         <div className="relative h-28 sm:h-36 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-850 overflow-hidden">
-          {business.cover_image_url ? (
+          {business.cover_image_url && !coverImageFailed ? (
             <img
               src={business.cover_image_url}
               alt=""
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               loading="lazy"
+              onError={() => setCoverImageFailed(true)}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center opacity-30 text-slate-400">
@@ -62,12 +65,13 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
           {/* Logo + Title block */}
           <div className="flex items-start gap-2.5 sm:gap-3 -mt-7 sm:-mt-9 relative z-10">
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white dark:bg-slate-900 border-2 border-white dark:border-slate-800 shadow-md flex items-center justify-center overflow-hidden shrink-0">
-              {business.logo_url ? (
+              {business.logo_url && !logoImageFailed ? (
                 <img
                   src={business.logo_url}
                   alt={`${business.name} logo`}
                   className="w-full h-full object-cover"
                   loading="lazy"
+                  onError={() => setLogoImageFailed(true)}
                 />
               ) : (
                 <div className="w-full h-full bg-slate-900 dark:bg-slate-800 text-white flex items-center justify-center font-black text-sm sm:text-base">
