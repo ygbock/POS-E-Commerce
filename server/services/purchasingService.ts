@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { InventoryRepository } from '../repositories/inventoryRepository.ts';
+import { parseExactQuantity, parseExactMoney } from '../inventory/inventoryPolicies.ts';
 
 type PurchaseItemInput = {
   variant_id: string;
@@ -17,19 +18,24 @@ type ReceiveItemInput = {
 };
 
 const exactQty = (value: unknown, field: string, positive = true) => {
-  const raw = String(value ?? '').trim();
-  if (!/^\d+(?:\.\d{1,4})?$/.test(raw) || (positive && Number(raw) <= 0)) {
-    throw new Error(`VALIDATION_ERROR:${field} must be a positive quantity with up to 4 decimal places.`);
-  }
-  return raw;
+  const qty = parseExactQuantity(value, field, { allowNegative: false, maxDecimals: 4 });
+  if (positive && qty.startsWith('-')) throw new Error(`VALIDATION_ERROR:${field} must be positive.`);
+  return qty;
 };
 
-const exactMoney = (value: unknown, field: string) => {
-  const raw = String(value ?? '').trim();
-  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) {
-    throw new Error(`VALIDATION_ERROR:${field} must be a non-negative amount with up to 2 decimal places.`);
-  }
-  return raw;
+const exactMoney = (value: unknown, field: string) => parseExactMoney(value, field, { allowNegative: false });
+
+const moneyToCents = (value: string): bigint => {
+  const [whole, fraction = ''] = value.split('.');
+  return BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2));
+};
+
+const centsToMoney = (value: bigint): string => {
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+  const whole = abs / 100n;
+  const cents = String(abs % 100n).padStart(2, '0');
+  return `${negative ? '-' : ''}${whole}.${cents}`;
 };
 
 export class PurchasingService {
@@ -120,14 +126,18 @@ export class PurchasingService {
         const variant = variantMap.get(item.variant_id);
         const qty = exactQty(item.ordered_qty, 'ordered_qty');
         const unitCost = exactMoney(item.unit_cost, 'unit_cost');
-        const total = (Number(qty) * Number(unitCost)).toFixed(2);
+        const total = centsToMoney((BigInt(qty.split('.')[0]) * 10000n + BigInt((qty.split('.')[1] || '').padEnd(4, '0'))) * moneyToCents(unitCost) / 10000n);
         return { variant_id: item.variant_id, sku: item.sku || variant.sku, ordered_qty: qty, unit_cost: unitCost, total_cost: total };
       });
 
-      const subtotal = normalizedItems.reduce((sum, item) => sum + Number(item.total_cost), 0);
-      const tax = Number(exactMoney(input.tax_amount ?? '0.00', 'tax_amount'));
-      const shipping = Number(exactMoney(input.shipping_fee ?? '0.00', 'shipping_fee'));
-      const total = subtotal + tax + shipping;
+      const subtotalCents = normalizedItems.reduce((sum, item) => sum + moneyToCents(item.total_cost), 0n);
+      const taxCents = moneyToCents(exactMoney(input.tax_amount ?? '0.00', 'tax_amount'));
+      const shippingCents = moneyToCents(exactMoney(input.shipping_fee ?? '0.00', 'shipping_fee'));
+      const totalCents = subtotalCents + taxCents + shippingCents;
+      const subtotal = centsToMoney(subtotalCents);
+      const tax = centsToMoney(taxCents);
+      const shipping = centsToMoney(shippingCents);
+      const total = centsToMoney(totalCents);
       const id = `po_${randomUUID().replace(/-/g, '')}`;
       const poNumber = `PO-${new Date().getUTCFullYear()}-${randomUUID().replace(/-/g, '').slice(0, 10).toUpperCase()}`;
 
@@ -171,6 +181,7 @@ export class PurchasingService {
   async receive(organizationId: string, actor: { userId: string; name?: string }, poId: string, items: ReceiveItemInput[], idempotencyKey?: string, notes?: string) {
     if (!organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
     if (!Array.isArray(items) || items.length === 0) throw new Error('VALIDATION_ERROR:At least one received item is required.');
+    if (items.length > 200) throw new Error('VALIDATION_ERROR:Receipt cannot contain more than 200 items.');
     return this.db.withTransaction(async (tx) => {
       const existingReceipt = idempotencyKey
         ? await tx.query('SELECT id FROM purchase_receipts WHERE organization_id=$1 AND idempotency_key=$2 LIMIT 1',[organizationId,idempotencyKey])
