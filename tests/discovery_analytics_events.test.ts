@@ -43,7 +43,10 @@ async function main() {
     [business.id],
   );
   await db.query(
-    "INSERT INTO products (id,organization_id,slug,name,status,channels_ecommerce) VALUES ('disc_analytics_product','disc_analytics_org','analytics-phone','Analytics Phone','active',TRUE)",
+    "INSERT INTO units_of_measure (id,organization_id,code,name,category,allow_fractional,base_unit_code,conversion_factor) VALUES ('disc_analytics_uom_pcs','disc_analytics_org','PCS','Pieces','Count',FALSE,'PCS',1.0000)",
+  );
+  await db.query(
+    "INSERT INTO products (id,organization_id,slug,name,unit_code,status,channels_ecommerce) VALUES ('disc_analytics_product','disc_analytics_org','analytics-phone','Analytics Phone','PCS','active',TRUE)",
   );
 
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](business.id, actor);
