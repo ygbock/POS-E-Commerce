@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { UserRole, hasPermission, isPlatformRole } from '../auth/roles';
+import { UserRole, hasPermission, isPlatformRole, AuthIdentityType, getIdentityTypeForRole } from '../auth/roles';
 import { AuthService } from '../services/authService';
 import { TokenClaims } from '../auth/token';
 
@@ -13,6 +13,7 @@ export interface AuthContext {
   userId: string;
   organizationId: string;
   role: UserRole;
+  identityType: AuthIdentityType;
   permissions: string[];
   locationId?: string | null;
   email?: string;
@@ -64,6 +65,7 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
         userId: claims.sub,
         organizationId: claims.orgId,
         role: claims.role,
+        identityType: claims.identityType || getIdentityTypeForRole(claims.role),
         permissions: claims.permissions,
         locationId: claims.locId,
         email: claims.email,
