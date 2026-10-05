@@ -1,6 +1,6 @@
 # AbaCha Discovery Page — Remaining Implementation Plan
 
-**Status:** Active
+**Status:** Active — PAGE-001 through PAGE-012 implementation complete; PAGE-013 production hardening in progress
 **Scope:** Customer-facing Discovery experience and the end-to-end workflows required to make `/discover` production-ready.
 
 ## 1. Objective
@@ -26,13 +26,15 @@ Complete Discovery so customers can search businesses, products and services; fi
 | Customer Discovery workspace | IMPLEMENTED |
 | Merchant Discovery lifecycle | IMPLEMENTED |
 | Trust/Verification | IMPLEMENTED |
-| Admin moderation UI | PARTIAL |
-| Production readiness | NOT COMPLETE |
+| Admin moderation UI | IMPLEMENTED |
+| Analytics/Event Verification | IMPLEMENTED |
+| Accessibility/Responsive Hardening | IMPLEMENTED |
+| Production readiness | IN PROGRESS — PAGE-013 |
 
 ## 3. Remaining Implementation
 
 ### DISC-PAGE-001 — Runtime Entry and Routing
-**Implementation status:** COMPLETE. Runtime/manual verification remains part of the release gate.
+**Implementation status:** COMPLETE. CI/regression validation passed; runtime/manual verification remains part of the release gate.
 - [ ] Verify direct navigation to `/discover`.
 - [ ] Verify refresh on `/discover` and all public Discovery URLs.
 - [ ] Verify `/discover/search`.
@@ -47,7 +49,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 **Done when:** every public Discovery URL loads directly and refreshes without route loops, blank screens or tenant-resolution lockouts.
 
 ### DISC-PAGE-002 — Discovery Home Hardening
-**Implementation status:** COMPLETE. TypeScript and router verification passed; runtime/manual verification remains.
+**Implementation status:** COMPLETE. TypeScript/router regression coverage and CI validation passed; runtime/manual verification remains.
 - [ ] Verify hero/search.
 - [ ] Verify categories from real API.
 - [ ] Verify businesses, products and services from real API.
@@ -63,7 +65,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Verify production asset paths.
 
 ### DISC-PAGE-003 — Search Results Completion
-**Implementation status:** COMPLETE. Search Results URL/search/filter/pagination hardening is implemented; automated Search, ranking, attribution, TypeScript and router checks passed. Runtime/manual verification remains.
+**Implementation status:** COMPLETE. Search Results URL/search/filter/pagination hardening is implemented; automated Search, ranking, attribution, TypeScript and router checks passed; PAGE-013 adds bounded pagination and public endpoint rate-limit regression coverage. Runtime/manual verification remains.
 - [ ] Verify All/Businesses/Products/Services tabs.
 - [ ] Verify keyword search.
 - [ ] Verify category, city, district, region and radius filters.
@@ -90,11 +92,11 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] Discovery-only versus Discovery-and-Store behavior is enforced for the public store link.
 - [x] Published/non-published visibility is enforced by the public profile service.
 - [x] Profile view, contact, direction, store, service-view and service-request analytics events are wired.
-- [ ] Run `npm run test:discovery-profile`.
-- [ ] Run `npx tsc --noEmit`.
-- [ ] Run `npm run test:discovery-router`.
-- [ ] Run `npm run test:discovery-search`.
-- [ ] Run the full `npm run test:discovery` suite.
+- [x] Run `npm run test:discovery-profile`.
+- [x] TypeScript/lint gate passed in CI.
+- [x] Run `npm run test:discovery-router`.
+- [x] Run `npm run test:discovery-search`.
+- [x] Discovery aggregate gate is registered and covered by CI; latest CI passed.
 - [ ] Perform runtime/manual customer-profile verification.
 
 ### DISC-PAGE-005 — Location and Map
@@ -203,7 +205,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 
 ### DISC-PAGE-011 — Analytics/Event Verification
-**Implementation status:** COMPLETE; VALIDATION ACTIVE. Discovery analytics ingestion now has server-side event validation, idempotent event IDs, bounded attribution rate limiting, privacy-preserving HttpOnly session identity, published-target validation for businesses/products/services, and richer merchant analytics summaries.
+**Implementation status:** COMPLETE; VALIDATION ACTIVE. Dedicated analytics regression passed after fixture hardening; latest CI also passed. Discovery analytics ingestion now has server-side event validation, idempotent event IDs, bounded attribution rate limiting, privacy-preserving HttpOnly session identity, published-target validation for businesses/products/services, and richer merchant analytics summaries.
 
 - [x] Search events.
 - [x] Impression events.
@@ -218,13 +220,13 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] Privacy-preserving session identity.
 - [x] Merchant analytics summaries.
 - [x] Generic analytics event verification regression coverage.
-- [ ] Run the full Discovery test gate.
-- [ ] Run `npx tsc --noEmit`.
-- [ ] Run `npm run build`.
+- [x] Dedicated `npm run test:discovery-analytics` regression passed.
+- [x] Latest Discovery CI gate passed.
+- [x] Production build passed during the implementation validation cycle.
 - [ ] Perform runtime/manual analytics verification.
 
 ### DISC-PAGE-012 — Accessibility and Responsive Hardening
-**Implementation status:** COMPLETE; VALIDATION ACTIVE. Discovery-specific accessibility and responsive hardening is implemented across filters, verification information, map controls, mobile navigation spacing, touch targets, keyboard dismissal, focus trapping, reduced-motion handling, and horizontal-overflow safety.
+**Implementation status:** COMPLETE; CI VALIDATED. The latest CI run passed after the accessibility/responsive implementation. Discovery-specific accessibility and responsive hardening is implemented across filters, verification information, map controls, mobile navigation spacing, touch targets, keyboard dismissal, focus trapping, reduced-motion handling, and horizontal-overflow safety.
 
 - [x] Keyboard navigation.
 - [x] Screen-reader labels.
@@ -238,25 +240,34 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] Dark mode.
 - [x] No horizontal overflow.
 - [x] Dedicated static accessibility/responsive regression coverage.
-- [ ] Run the full Discovery test gate.
-- [ ] Run `npx tsc --noEmit`.
-- [ ] Run `npm run build`.
+- [x] Accessibility/responsive regression coverage is registered in `test:discovery`.
+- [x] Latest CI TypeScript/build/regression gate passed.
+- [x] Latest CI run passed for PAGE-012.
 - [ ] Perform browser/manual verification at mobile, tablet and desktop breakpoints.
 
 ### DISC-PAGE-013 — Performance and Resilience
-- [ ] Measure initial Discovery load.
-- [ ] Detect duplicate API requests.
-- [ ] Verify request cancellation.
-- [ ] Verify search debouncing where appropriate.
-- [ ] Verify independent section loading.
-- [ ] Verify large result sets.
-- [ ] Verify 300+ listing performance.
-- [ ] Verify slow API/network interruption.
-- [ ] Verify rate limiting.
-- [ ] Verify image fallbacks.
-- [ ] Verify production assets and bundle impact.
 
+**Implementation status:** IN PROGRESS; PRODUCTION HARDENING ACTIVE. Existing Discovery search cancellation, independent section loading, 300-listing performance coverage, production asset/build validation and rate limiting are retained; PAGE-013 now hardens public pagination and rate-limit coverage.
+
+- [x] Bounded public search pagination (`limit` 1–100; `offset` 0–10,000).
+- [x] Reject non-integer/NaN pagination input with `VALIDATION_ERROR` instead of allowing malformed database parameters.
+- [x] Rate-limit public business listing endpoint.
+- [x] Rate-limit public category endpoint.
+- [x] Preserve existing search endpoint rate limiting.
+- [x] Preserve request cancellation through `AbortController` in Search Results.
+- [x] Preserve independent business/product/service section loading.
+- [x] Preserve 300-listing search performance regression coverage.
+- [x] Add dedicated production-readiness regression gate and register it in `test:discovery`.
+- [ ] Measure initial Discovery browser load in a production-like deployment.
+- [ ] Detect duplicate API requests with browser/network instrumentation.
+- [ ] Verify search debouncing where appropriate.
+- [ ] Verify slow API/network interruption in a browser.
+- [ ] Verify image fallback behavior under failed/slow asset loads.
+- [ ] Verify production bundle impact against the release baseline.
+- [ ] Run the new production-readiness regression locally.
 ### DISC-PAGE-014 — End-to-End QA and Release Gate
+
+**Status:** PENDING FINAL PAGE-013 HARDENING AND MANUAL RELEASE VERIFICATION.
 
 **Automated:**
 - [ ] `npm run test:discovery`.
@@ -308,25 +319,52 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 ### Wave 2 — Complete customer discovery
 4. DISC-PAGE-004 Business Profile — **IMPLEMENTATION COMPLETE**
-5. DISC-PAGE-005 Location and Map — **IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
+5. DISC-PAGE-005 Location and Map — **IMPLEMENTATION COMPLETE**
 6. DISC-PAGE-006 Product Discovery — **IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
-7. DISC-PAGE-007 Service/RFQ
+7. DISC-PAGE-007 Service/RFQ — **IMPLEMENTATION COMPLETE**
 
 ### Wave 3 — Complete platform workflows
-8. DISC-PAGE-008 Customer Workspace
-9. DISC-PAGE-009 Merchant Lifecycle
-10. DISC-PAGE-010 Moderation UI
+8. DISC-PAGE-008 Customer Workspace — **IMPLEMENTATION COMPLETE**
+9. DISC-PAGE-009 Merchant Lifecycle — **IMPLEMENTATION COMPLETE; VALIDATED**
+10. DISC-PAGE-010 Moderation UI — **IMPLEMENTATION COMPLETE; VALIDATED**
 
 ### Wave 4 — Production hardening
-11. DISC-PAGE-011 Analytics
-12. DISC-PAGE-012 Accessibility/Mobile
-13. DISC-PAGE-013 Performance/Resilience
+11. DISC-PAGE-011 Analytics — **IMPLEMENTATION COMPLETE; VALIDATED IN CI**
+12. DISC-PAGE-012 Accessibility/Mobile — **IMPLEMENTATION COMPLETE; CI PASSED**
+13. DISC-PAGE-013 Performance/Resilience — **IMPLEMENTATION IN PROGRESS**
 
 ### Wave 5 — Release
 14. DISC-PAGE-014 QA and Release Gate
 15. DISC-PAGE-015 Documentation/Handoff
 
-## 5. Definition of Done
+## 5. Current Implementation Checklist
+
+### Completed implementation waves
+- [x] PAGE-001 Runtime Entry and Routing implementation.
+- [x] PAGE-002 Discovery Home implementation.
+- [x] PAGE-003 Search Results implementation.
+- [x] PAGE-004 Business Profile implementation.
+- [x] PAGE-005 Location and Map implementation.
+- [x] PAGE-006 Product Discovery implementation.
+- [x] PAGE-007 Service Discovery and RFQ implementation.
+- [x] PAGE-008 Customer Discovery Workspace implementation.
+- [x] PAGE-009 Merchant Listing-to-Public Lifecycle implementation.
+- [x] PAGE-010 Admin Moderation UI implementation.
+- [x] PAGE-011 Analytics/Event Verification implementation.
+- [x] PAGE-012 Accessibility and Responsive Hardening implementation.
+- [x] PAGE-013 initial Performance/Resilience hardening: bounded pagination and public rate limiting.
+- [x] Discovery accessibility, analytics, moderation, lifecycle, search, service, customer-workspace and performance regression coverage registered in `test:discovery`.
+- [x] Latest PAGE-012 CI run passed.
+
+### Remaining release-gate work
+- [ ] Complete PAGE-013 browser-level performance/resilience verification.
+- [ ] Run/record final `npm run test:discovery` locally.
+- [ ] Run/record final `npx tsc --noEmit` locally.
+- [ ] Run/record final `npm run build` locally.
+- [ ] Complete DISC-PAGE-014 end-to-end QA and release gate.
+- [ ] Complete DISC-PAGE-015 documentation and production handoff.
+
+## 6. Definition of Done
 
 > A customer can open AbaCha Discovery, search for a real local business/product/service, filter by location/category/availability, inspect the listing, contact or navigate to the business, visit its connected store where available, request a service where applicable, and manage resulting customer activity — while merchants and administrators can manage listing lifecycle and moderation — entirely through the application UI.
 
