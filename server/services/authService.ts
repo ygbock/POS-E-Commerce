@@ -4,7 +4,7 @@ import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
-import { createAuthSession, generateRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
+import { createAuthSession, generateRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
 export interface LoginResult {
   token: string;
@@ -156,6 +156,28 @@ export class AuthService {
 
   async logoutAllSessions(userId: string): Promise<void> {
     await revokeAllUserSessions(this.db, userId, 'logout-all');
+  }
+
+  async listSessions(userId: string) {
+    const sessions = await listUserSessions(this.db, userId);
+    return sessions.map(session => ({
+      id: session.id,
+      userId: session.user_id,
+      organizationId: session.organization_id,
+      identityType: session.identity_type,
+      role: session.role,
+      deviceId: session.device_id,
+      userAgent: session.user_agent,
+      ipAddress: session.ip_address,
+      createdAt: session.created_at,
+      lastSeenAt: session.last_seen_at,
+      accessExpiresAt: session.access_expires_at,
+      refreshExpiresAt: session.refresh_expires_at,
+    }));
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<boolean> {
+    return revokeUserSession(this.db, userId, sessionId);
   }
 
   async registerBusinessOwner(input: {
