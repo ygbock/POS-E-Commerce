@@ -553,6 +553,9 @@ export class DiscoveryBusinessService {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
     await this.assertCanManageScoped(existing, actor, client);
+    if (existing.listing_status === 'PAUSED') {
+      return this.transition(id, 'PUBLISHED', actor, reason || 'Listing republished after owner pause.', client);
+    }
     if (existing.listing_status !== 'APPROVED') {
       try {
         this.assertModerator(actor, existing);
