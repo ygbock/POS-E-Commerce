@@ -16,6 +16,8 @@ async function main() {
   assert.match(authService, /process\.env\.ABACHA_PLATFORM_ADMIN_EMAIL/);
   assert.match(authService, /process\.env\.ABACHA_PLATFORM_ADMIN_PASSWORD\?\.trim\(\)/);
   assert.match(authService, /platformAdminEmail/);
+  assert.match(authService, /SELECT \* FROM users WHERE id=\$1 AND organization_id=\$2 LIMIT 1/);
+  assert.match(authService, /SET email = \$1, name = \$2, password_hash = \$3/);
 
   const authClient = read('src/services/authClient.ts');
   assert.match(authClient, /import\.meta\.env as Record<string, string \| undefined>/);
