@@ -43,7 +43,7 @@ async function main() {
     [business.id],
   );
   await db.query(
-    "INSERT INTO products (id,organization_id,name,status,channels_ecommerce) VALUES ('disc_analytics_product','disc_analytics_org','Analytics Phone','active',TRUE)",
+    "INSERT INTO products (id,organization_id,slug,name,status,channels_ecommerce) VALUES ('disc_analytics_product','disc_analytics_org','analytics-phone','Analytics Phone','active',TRUE)",
   );
 
   for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](business.id, actor);
