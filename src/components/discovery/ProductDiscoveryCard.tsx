@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, Store, MapPin, ExternalLink, ShoppingBag } from 'lucide-react';
+import { Package, Store, MapPin, ExternalLink } from 'lucide-react';
 import type { DiscoveryProduct } from '../../types/discovery';
 import { AvailabilityBadge } from './AvailabilityBadge';
 
