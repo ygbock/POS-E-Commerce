@@ -807,7 +807,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
                   {renderSectionResult(
                     productsState,
                     'products',
-                    (prod) => <ProductDiscoveryCard key={prod.variant_id} product={prod} />,
+                    (prod) => <ProductDiscoveryCard key={prod.variant_id} product={prod} onSelect={handleProductSelect} />,
                     'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4',
                     q ? `No products found for "${q}"` : 'No products found nearby',
                     `${city ? `No products listed in ${city}.` : 'No products found in this area.'} Try broadening your search or removing filters.`,
