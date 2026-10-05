@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, MessageSquare, RefreshCw } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryContactInquiry } from '../../types/discovery';
+import { authClient } from '../../services/authClient';
 
 interface Props {
   onBack?: () => void;
@@ -24,7 +25,10 @@ export const DiscoveryMyContactInquiriesPage: React.FC<Props> = ({ onBack }) => 
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    if (!authClient.getToken()) { setError('Sign in is required to view your contact inquiries.'); setLoading(false); return; }
+    void load();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
