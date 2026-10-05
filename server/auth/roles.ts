@@ -11,6 +11,7 @@ export type UserRole =
   | 'purchasing_manager'
   | 'sales_user'
   | 'viewer'
+  | 'customer'
   | 'system_owner'
   | 'platform_admin'
   | 'platform_support'
@@ -144,6 +145,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   cashier: [PERMISSIONS.PRODUCTS_VIEW,PERMISSIONS.ORDERS_VIEW,PERMISSIONS.ORDERS_CREATE,PERMISSIONS.CUSTOMERS_VIEW,PERMISSIONS.CUSTOMERS_CREATE,PERMISSIONS.POS_VIEW,PERMISSIONS.POS_SELL,PERMISSIONS.POS_SESSION_OPEN,PERMISSIONS.POS_SESSION_CLOSE,PERMISSIONS.POS_DISCOUNT,PERMISSIONS.POS_RETURN],
   sales_user: [PERMISSIONS.PRODUCTS_VIEW,PERMISSIONS.ORDERS_VIEW,PERMISSIONS.ORDERS_CREATE,PERMISSIONS.CUSTOMERS_VIEW,PERMISSIONS.CUSTOMERS_CREATE,PERMISSIONS.CUSTOMERS_UPDATE,PERMISSIONS.POS_VIEW,PERMISSIONS.POS_SELL,PERMISSIONS.POS_SESSION_OPEN,PERMISSIONS.POS_SESSION_CLOSE,PERMISSIONS.POS_DISCOUNT],
   viewer: [PERMISSIONS.PRODUCTS_VIEW,PERMISSIONS.INVENTORY_VIEW,PERMISSIONS.ORDERS_VIEW,PERMISSIONS.REPORTS_VIEW,PERMISSIONS.LOCATIONS_VIEW],
+  customer: [PERMISSIONS.PRODUCTS_VIEW, PERMISSIONS.ORDERS_VIEW, PERMISSIONS.CUSTOMERS_VIEW],
   system_owner: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_TENANTS,PERMISSIONS.PLATFORM_SUPPORT,PERMISSIONS.PLATFORM_BILLING,PERMISSIONS.PLATFORM_DISCOVERY],
   platform_admin: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_TENANTS,PERMISSIONS.PLATFORM_SUPPORT,PERMISSIONS.PLATFORM_DISCOVERY],
   platform_support: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_SUPPORT],
@@ -165,7 +167,8 @@ export function normalizeRole(roleInput: string): UserRole {
     super_admin:'super_admin', business_owner:'business_owner', admin:'admin', manager:'manager', store_manager:'manager',
     cashier:'cashier', inventory_manager:'inventory_manager', warehouse_manager:'inventory_manager',
     purchasing_manager:'purchasing_manager', sales_user:'sales_user', accountant:'sales_user', viewer:'viewer',
-    e_commerce_customer:'viewer', system_owner:'system_owner', platform_admin:'platform_admin',
+    e_commerce_customer:'customer',
+    customer:'customer', system_owner:'system_owner', platform_admin:'platform_admin',
     platform_support:'platform_support', platform_finance:'platform_finance',
   };
   return aliases[clean] || (VALID_ROLES.includes(clean as UserRole) ? clean as UserRole : 'viewer');
@@ -183,4 +186,14 @@ export function isPlatformRole(role: string): boolean {
 export function canAccessPlatform(role: string, permission: string): boolean {
   if (!isPlatformRole(role)) return false;
   return hasPermission(role, permission);
+}
+
+export type AuthIdentityType = 'platform' | 'business_owner' | 'staff' | 'customer';
+
+export function getIdentityTypeForRole(roleInput: string): AuthIdentityType {
+  const role = normalizeRole(roleInput);
+  if (isPlatformRole(role)) return 'platform';
+  if (role === 'business_owner') return 'business_owner';
+  if (role === 'customer') return 'customer';
+  return 'staff';
 }
