@@ -4,7 +4,7 @@ import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
-import { createAuthSession, generateRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
+import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
 export interface LoginResult {
   token: string;
@@ -165,7 +165,7 @@ export class AuthService {
     // closed if a stale credential is being replayed during logout.
     const anySession = await this.db.query<{ refresh_token_family_id: string }>(
       'SELECT refresh_token_family_id FROM auth_sessions WHERE refresh_token_hash=$1 LIMIT 1',
-      [require('./session').hashRefreshToken(refreshToken)],
+      [hashRefreshToken(refreshToken)],
     );
     if (anySession.rows[0]) {
       await revokeAuthSessionFamily(this.db, anySession.rows[0].refresh_token_family_id, 'logout-stale-refresh');
