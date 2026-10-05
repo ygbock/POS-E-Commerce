@@ -10,6 +10,7 @@ const sidebar = read('src/components/layout/Sidebar.tsx');
 const portal = read('src/components/merchant/BusinessOwnerPortal.tsx');
 const merchantRoutes = read('server/routes/merchantRoutes.ts');
 const supplierView = read('src/components/purchasing/SupplierManagementView.tsx');
+const userView = read('src/components/admin/UserManagementView.tsx');
 
 for (const workspace of ['users', 'locations', 'crm', 'suppliers']) {
   assert.match(app, new RegExp(`workspaceTabs = new Set\\(\\[[^\\]]*['"]${workspace}['"]`), `App must accept ${workspace} workspace requests`);
@@ -38,5 +39,6 @@ assert.match(supplierView, /fetch\('\/api\/suppliers'/);
 assert.match(supplierView, /method: editing \? 'PUT' : 'POST'/);
 assert.match(supplierView, /method: 'DELETE'/);
 assert.match(supplierView, /Tenant suppliers/);
+assert.match(userView, /fetch\('\/api\/users\/'\+user\.id,\{method:'PUT'/);
 
 console.log('Merchant users, locations, customers and suppliers workspace contract passed.');
