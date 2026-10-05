@@ -87,9 +87,9 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
             href={externalMapUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 min-h-[40px]"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 min-h-[40px]"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Open map</span>
           </a>
         </div>
@@ -104,7 +104,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
             <MapPin className="w-9 h-9 text-slate-400" aria-hidden="true" />
             <p className="mt-2 text-sm font-black text-slate-700 dark:text-slate-200">Map service unavailable</p>
             <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">The mapped results are still available below. You can open the map externally for directions.</p>
-            <a href={externalMapUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">Open map</a>
+            <a href={externalMapUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">Open map</a>
           </div>
         ) : <iframe
           title="AbaCha Discovery map"
@@ -115,6 +115,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
           }`}
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
+          aria-label="Interactive map of Discovery locations"
         />}
 
         {/* Mobile touch hint overlay so page scrolling isn't trapped */}
@@ -123,7 +124,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
             <button
               type="button"
               onClick={() => setIsMapInteracting(true)}
-              className="px-4 py-2 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md text-xs font-bold text-slate-800 dark:text-white shadow-lg border border-slate-200/80 dark:border-slate-700"
+              className="px-4 py-2 min-h-[44px] rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md text-xs font-bold text-slate-800 dark:text-white shadow-lg border border-slate-200/80 dark:border-slate-700"
             >
               Tap to interact with map
             </button>
