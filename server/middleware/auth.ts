@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { UserRole, hasPermission, isPlatformRole, AuthIdentityType, getIdentityTypeForRole } from '../auth/roles';
 import { AuthService } from '../services/authService';
 import { TokenClaims } from '../auth/token';
+import { ACCESS_COOKIE } from '../auth/session';
 
 /**
  * Authenticated Request Context (SEC-001)
@@ -37,7 +38,12 @@ export function extractToken(req: Request): string | null {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7).trim();
   }
-  return null;
+
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';').map(part => part.trim());
+  const match = cookies.find(part => part.startsWith(`${ACCESS_COOKIE}=`));
+  return match ? decodeURIComponent(match.substring(ACCESS_COOKIE.length + 1)) : null;
 }
 
 /**
