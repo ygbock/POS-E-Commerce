@@ -205,8 +205,15 @@ class AuthClient {
     }
 
     const [emailKey, passwordKey] = envKeys;
-    const email = import.meta.env[emailKey]?.trim();
-    const password = import.meta.env[passwordKey];
+    const readEnvCredential = (key: string) => {
+      const value = (import.meta.env as Record<string, string | undefined>)[key];
+      return typeof value === 'string' ? value.trim() : '';
+    };
+    const email = readEnvCredential(emailKey);
+    // Development seed trims ABACHA_PLATFORM_ADMIN_PASSWORD before hashing;
+    // apply the same normalization to VITE persona credentials so the two
+    // environment-variable paths cannot silently disagree on whitespace.
+    const password = readEnvCredential(passwordKey);
 
     if (!email || !password) {
       console.warn(`[AuthClient] Demo credentials are not configured for persona '${roleName}'.`);
@@ -214,7 +221,27 @@ class AuthClient {
     }
 
     try {
-      return await this.login(email, password);
+      const user = await this.login(email, password);
+      const expectedRoles: Record<string, string> = {
+        'Super Admin': 'super_admin',
+        'Business Owner': 'business_owner',
+        'Store Manager': 'manager',
+        'Cashier': 'cashier',
+        'Inventory Manager': 'inventory_manager',
+        'Warehouse Manager': 'inventory_manager',
+        'Accountant': 'sales_user',
+        'E-commerce Customer': 'viewer',
+        'System Owner': 'system_owner',
+        'Platform Admin': 'platform_admin',
+        'Platform Support': 'platform_support',
+        'Platform Finance': 'platform_finance',
+      };
+      const expectedRole = expectedRoles[roleName];
+      if (expectedRole && user.role !== expectedRole) {
+        await this.logout();
+        throw new Error(`PERSONA_ROLE_MISMATCH: Expected ${expectedRole}, received ${user.role}`);
+      }
+      return user;
     } catch (err) {
       console.warn(`[AuthClient] Auto-login for persona '${roleName}' failed:`, err);
       return null;
