@@ -3,7 +3,7 @@ import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
-import { UserRole, getPermissionsForRole, normalizeRole } from '../auth/roles';
+import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 
 export interface LoginResult {
   token: string;
@@ -13,6 +13,7 @@ export interface LoginResult {
     email: string;
     name: string;
     role: UserRole;
+    identityType: AuthIdentityType;
     permissions: string[];
     locationId?: string | null;
   };
@@ -138,6 +139,7 @@ export class AuthService {
       email,
       organizationId,
       role: 'business_owner',
+      identityType: 'business_owner',
       permissions,
     });
 
@@ -202,6 +204,7 @@ export class AuthService {
       email: user.email,
       organizationId: user.organization_id,
       role,
+      identityType: getIdentityTypeForRole(role),
       permissions,
       locationId: user.location_id,
     });
@@ -214,6 +217,58 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role,
+        identityType: getIdentityTypeForRole(role),
+        permissions,
+        locationId: user.location_id,
+      },
+    };
+  }
+
+  /**
+   * Platform control-plane authentication. This is intentionally separate from
+   * tenant/business authentication: the email must resolve to a platform role,
+   * and tenant selection is never accepted from the client.
+   */
+  async loginPlatform(credentials: { email: string; password: string }): Promise<LoginResult> {
+    const email = credentials.email.toLowerCase().trim();
+    if (!email || !credentials.password) throw new Error('Invalid platform credentials');
+
+    const result = await this.db.query<UserRecord>(
+      `SELECT u.*
+         FROM users u
+         WHERE LOWER(u.email)=LOWER($1)
+           AND u.is_active=TRUE
+           AND u.role IN ('system_owner','platform_admin','platform_support','platform_finance')
+         LIMIT 1`,
+      [email],
+    );
+    const user = result.rows[0];
+    if (!user) throw new Error('Invalid platform credentials');
+    const role = normalizeRole(user.role);
+    if (!isPlatformRole(role)) throw new Error('PLATFORM_ACCESS_DENIED');
+    if (!verifyPassword(credentials.password, user.password_hash, user.password_salt)) {
+      throw new Error('Invalid platform credentials');
+    }
+
+    const permissions = getPermissionsForRole(role);
+    const token = signToken({
+      userId: user.id,
+      email: user.email,
+      organizationId: user.organization_id,
+      role,
+      identityType: 'platform',
+      permissions,
+      locationId: user.location_id,
+    });
+    return {
+      token,
+      user: {
+        id: user.id,
+        organizationId: user.organization_id,
+        email: user.email,
+        name: user.name,
+        role,
+        identityType: 'platform',
         permissions,
         locationId: user.location_id,
       },
@@ -628,15 +683,16 @@ export class AuthService {
           password_hash: hash,
           password_salt: salt,
           role: u.role,
+          identity_type: getIdentityTypeForRole(u.role),
           is_active: true,
         });
       } else {
         await this.db.query(
           `UPDATE users
              SET email = $1, name = $2, password_hash = $3, password_salt = $4,
-                 role = $5, is_active = TRUE, updated_at = CURRENT_TIMESTAMP
+                 role = $5, identity_type = $6, is_active = TRUE, updated_at = CURRENT_TIMESTAMP
            WHERE id = $6 AND organization_id = $7`,
-          [u.email, u.name, hash, salt, u.role, existing.id, u.orgId],
+          [u.email, u.name, hash, salt, u.role, getIdentityTypeForRole(u.role), existing.id, u.orgId],
         );
       }
     }
