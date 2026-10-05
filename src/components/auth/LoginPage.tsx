@@ -25,9 +25,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
     setLoading(true);
     try {
       const isBusinessOwnerSignIn = mode === 'business' || window.location.pathname === '/business/signin' || window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
-      const user = isBusinessOwnerSignIn
-        ? await authClient.loginBusinessOwner(email.trim(), password)
-        : await authClient.login(email.trim(), password);
+      const user = mode === 'platform'
+        ? await authClient.loginPlatform(email.trim(), password)
+        : isBusinessOwnerSignIn
+          ? await authClient.loginBusinessOwner(email.trim(), password)
+          : await authClient.login(email.trim(), password);
 
       if (mode === 'platform' && !['system_owner', 'platform_admin', 'platform_support', 'platform_finance'].includes(user.role)) {
         await authClient.logout();
