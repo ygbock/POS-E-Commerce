@@ -5,7 +5,8 @@ import { AuthService } from '../services/authService.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { AuditRepository } from '../repositories/auditRepository.ts';
 import { assertBusinessPermission } from '../services/discoveryBusinessAccess.ts';
-import { getPermissionsForRole } from '../auth/roles.ts';
+import { getPermissionsForRole, PERMISSIONS } from '../auth/roles.ts';
+import { requirePermission } from '../middleware/auth.ts';
 
 export function createMerchantRouter(db: DatabaseClient, authService: AuthService) {
   const router = express.Router();
@@ -53,7 +54,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
   };
 
   // Tenant-scoped customer CRM profile for the merchant workspace.
-  router.get('/customers/:id/profile', requireAuth(), async (req, res) => {
+  router.get('/customers/:id/profile', requireAuth(), requirePermission(PERMISSIONS.CUSTOMERS_VIEW), async (req, res) => {
     try {
       if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
       const orgId = req.auth.organizationId;
@@ -676,7 +677,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
   });
 
   // Tenant-scoped supplier directory used by the merchant workspace and CRM tests.
-  router.get('/suppliers', requireAuth(), async (req, res) => {
+  router.get('/suppliers', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_VIEW), async (req, res) => {
     try {
       const orgId=req.auth?.organizationId;
       if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -689,7 +690,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     } catch(err){ return fail(res,err); }
   });
 
-  router.get('/suppliers/:id', requireAuth(), async (req,res) => {
+  router.get('/suppliers/:id', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_VIEW), async (req,res) => {
     try {
       const orgId=req.auth?.organizationId;
       if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -704,7 +705,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     } catch(err){ return fail(res,err); }
   });
 
-  router.post('/suppliers', requireAuth(), async (req,res) => {
+  router.post('/suppliers', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_CREATE), async (req,res) => {
     try {
       const orgId=req.auth?.organizationId;
       if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -722,7 +723,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     } catch(err){ return fail(res,err); }
   });
 
-  router.put('/suppliers/:id', requireAuth(), async (req,res) => {
+  router.put('/suppliers/:id', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_CREATE), async (req,res) => {
     try {
       const orgId=req.auth?.organizationId;
       if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -753,7 +754,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     } catch(err){ return fail(res,err); }
   });
 
-  router.delete('/suppliers/:id', requireAuth(), async (req,res) => {
+  router.delete('/suppliers/:id', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_CREATE), async (req,res) => {
     try {
       const orgId=req.auth?.organizationId;
       if(!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -770,7 +771,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
   });
 
   // Tenant-scoped locations
-  router.get('/locations', requireAuth(), async (req, res) => {
+  router.get('/locations', requireAuth(), requirePermission(PERMISSIONS.LOCATIONS_VIEW), async (req, res) => {
     try {
       const orgId = req.auth?.organizationId;
       if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -787,7 +788,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.post('/locations', requireAuth(), async (req, res) => {
+  router.post('/locations', requireAuth(), requirePermission(PERMISSIONS.LOCATIONS_MANAGE), async (req, res) => {
     try {
       const orgId = req.auth?.organizationId;
       if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -819,7 +820,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.put('/locations/:id', requireAuth(), async (req, res) => {
+  router.put('/locations/:id', requireAuth(), requirePermission(PERMISSIONS.LOCATIONS_MANAGE), async (req, res) => {
     try {
       const orgId = req.auth?.organizationId;
       if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
@@ -870,7 +871,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
   });
 
   // Tenant-scoped users
-  router.get('/users', requireAuth(), async (req, res) => {
+  router.get('/users', requireAuth(), requirePermission(PERMISSIONS.USERS_VIEW), async (req, res) => {
     try {
       const orgId = req.auth?.organizationId;
       if (!orgId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
