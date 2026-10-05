@@ -838,7 +838,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
                   {renderSectionResult(
                     servicesState,
                     'services',
-                    (svc) => <ServiceCard key={svc.id} service={svc} />,
+                    (svc) => <ServiceCard key={svc.id} service={svc} onOpenService={(service) => { void discoveryApi.trackEvent({ eventType: 'SERVICE_VIEW', businessId: service.business_id, serviceId: service.id }); window.location.assign('/discover/service/' + encodeURIComponent(service.id)); }} />,
                     'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5',
                     q ? `No services found for "${q}"` : 'No services found nearby',
                     'Try searching for a broader term or selecting a different location.',
@@ -896,7 +896,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
                 {renderSectionResult(
                   servicesState,
                   'services',
-                  (svc) => <ServiceCard key={svc.id} service={svc} />,
+                  (svc) => <ServiceCard key={svc.id} service={svc} onOpenService={(service) => { void discoveryApi.trackEvent({ eventType: 'SERVICE_VIEW', businessId: service.business_id, serviceId: service.id }); window.location.assign('/discover/service/' + encodeURIComponent(service.id)); }} />,
                   'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5',
                   q ? `No services found for "${q}"` : 'No services found nearby',
                   [
