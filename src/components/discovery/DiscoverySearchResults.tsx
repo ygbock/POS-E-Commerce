@@ -82,6 +82,15 @@ function readUrlParams(): {
   const radiusVal = sp.get('radiusKm');
   const latVal = sp.get('lat');
   const lngVal = sp.get('lng');
+  const parseFinite = (value: string | null): number | null => {
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const parsedPage = parseFinite(pageVal);
+  const parsedRadius = parseFinite(radiusVal);
+  const parsedLat = parseFinite(latVal);
+  const parsedLng = parseFinite(lngVal);
   const rawSort = sp.get('sort') || 'relevance';
   const validSorts: DiscoverySortOption[] = ['relevance', 'rating', 'review_count', 'name_asc', 'newest', 'distance'];
   const sort: DiscoverySortOption = validSorts.includes(rawSort as DiscoverySortOption)
@@ -98,13 +107,13 @@ function readUrlParams(): {
     city: sp.get('city') || undefined,
     district: sp.get('district') || undefined,
     region: sp.get('region') || undefined,
-    lat: latVal ? Number(latVal) : null,
-    lng: lngVal ? Number(lngVal) : null,
-    radiusKm: radiusVal ? Math.max(1, Math.min(500, Number(radiusVal))) : 25,
+    lat: parsedLat,
+    lng: parsedLng,
+    radiusKm: parsedRadius != null ? Math.max(1, Math.min(500, parsedRadius)) : 25,
     openNow: sp.get('openNow') === 'true',
     categoryId: sp.get('categoryId') || undefined,
     sort,
-    page: pageVal ? Math.max(1, Number(pageVal)) : 1,
+    page: parsedPage != null ? Math.max(1, Math.floor(parsedPage)) : 1,
   };
 }
 
