@@ -145,7 +145,7 @@ export class AuthService {
 
     return {
       token,
-      user: { id: userId, organizationId, email, name, role: 'business_owner', permissions },
+      user: { id: userId, organizationId, email, name, role: 'business_owner', identityType: 'business_owner', permissions },
       business: { id: businessId, publicId, name: businessName, slug, businessMode: input.businessMode, listingStatus: 'DRAFT' },
     };
   }
