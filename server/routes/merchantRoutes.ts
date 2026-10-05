@@ -2,11 +2,10 @@ import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { AuthService } from '../services/authService.ts';
-import { requireAuth } from '../middleware/auth.ts';
+import { requireAuth, requirePermission } from '../middleware/auth.ts';
 import { AuditRepository } from '../repositories/auditRepository.ts';
 import { assertBusinessPermission } from '../services/discoveryBusinessAccess.ts';
 import { getPermissionsForRole, PERMISSIONS } from '../auth/roles.ts';
-import { requirePermission } from '../middleware/auth.ts';
 
 export function createMerchantRouter(db: DatabaseClient, authService: AuthService) {
   const router = express.Router();
