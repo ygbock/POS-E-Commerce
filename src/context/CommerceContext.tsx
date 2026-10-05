@@ -314,9 +314,18 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   useEffect(() => {
-    // Demo persona login is development-only. In production, hydrate the UI
-    // from the already-authenticated server session instead of trusting localStorage.
+    // An existing authenticated session is always authoritative. Never replace
+    // a real platform/merchant session with a development demo persona during
+    // provider hydration. Demo credentials are only used when there is no
+    // authenticated session at all.
     void (async () => {
+      const existingUser = authClient.getUser();
+      if (existingUser) {
+        const verifiedUser = await authClient.fetchMe();
+        applyAuthenticatedUser(verifiedUser || existingUser);
+        return;
+      }
+
       if (import.meta.env.DEV) {
         const demoUser = await authClient.loginAsPersona(currentRole);
         if (demoUser) {
@@ -324,8 +333,8 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return;
         }
       }
-      const authenticatedUser = await authClient.fetchMe();
-      applyAuthenticatedUser(authenticatedUser);
+
+      applyAuthenticatedUser(await authClient.fetchMe());
     })();
   }, []);
 
