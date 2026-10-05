@@ -3,6 +3,7 @@ import { DiscoveryHome } from './DiscoveryHome';
 import { DiscoverySearchResults } from './DiscoverySearchResults';
 import { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
 import { DiscoveryServiceRequestPage } from './DiscoveryServiceRequestPage';
+import { DiscoveryServiceDetailPage } from './DiscoveryServiceDetailPage';
 import { DiscoveryServiceRequestsPage } from './DiscoveryServiceRequestsPage';
 import { DiscoverySavedBusinessesPage } from './DiscoverySavedBusinessesPage';
 import { DiscoveryMyContactInquiriesPage } from './DiscoveryMyContactInquiriesPage';
@@ -50,6 +51,19 @@ export const DiscoveryMarketplace: React.FC = () => {
           </div>
           <DiscoverySearchResults onReturnToStore={() => navigate('discover-home')} />
         </div>
+      );
+    }
+
+    if (route.name === 'discover-service') {
+      return (
+        <DiscoveryServiceDetailPage
+          serviceId={route.serviceId}
+          onBack={() => navigate('discover-home')}
+          onRequestService={(service) =>
+            navigate('/discover/request-service?serviceId=' + encodeURIComponent(service.id) + '&serviceName=' + encodeURIComponent(service.name))
+          }
+          onOpenBusiness={(businessId) => navigate('/discover/business/' + encodeURIComponent(businessId))}
+        />
       );
     }
 
