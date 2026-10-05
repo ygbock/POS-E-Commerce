@@ -323,7 +323,10 @@ export class AuthService {
       identityType: 'business_owner',
       role: 'business_owner',
     });
-    return result;
+    if (!result.business) {
+      throw new Error('BUSINESS_OWNER_BUSINESS_NOT_FOUND: Business owner account has no active business membership.');
+    }
+    return result as LoginResult & { business: BusinessSummary };
   }
 
   async login(credentials: {
