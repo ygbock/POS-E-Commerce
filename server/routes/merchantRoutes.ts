@@ -16,8 +16,8 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     const code = raw.split(':')[0];
     const status =
       code === 'NOT_FOUND' ? 404 :
-      code === 'EMAIL_ALREADY_REGISTERED' ? 409 :
-      code === 'VALIDATION_ERROR' ? 422 :
+      code === 'EMAIL_ALREADY_REGISTERED' || code === 'IDEMPOTENCY_CONFLICT' ? 409 :
+      code === 'VALIDATION_ERROR' || code === 'INVALID_QUANTITY' || code === 'INVALID_MONEY' ? 422 :
       code === 'UNAUTHORIZED' ? 401 :
       code === 'PERMISSION_DENIED' || code === 'TENANT_ACCESS_DENIED' ? 403 : 400;
     return res.status(status).json({
