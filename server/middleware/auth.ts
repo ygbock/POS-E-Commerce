@@ -13,7 +13,7 @@ export interface AuthContext {
   userId: string;
   organizationId: string;
   role: UserRole;
-  identityType: AuthIdentityType;
+  identityType?: AuthIdentityType;
   permissions: string[];
   locationId?: string | null;
   email?: string;
