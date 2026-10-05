@@ -67,6 +67,38 @@ async function main() {
   );
   assert.ok(secondSession.rows[0]?.revoked_at, 'logout must mark the server session revoked');
 
+  const third = await auth.login({
+    email: 'superadmin@abacha.internal',
+    password: 'SuperAdmin123!',
+    organizationId: 'org_default',
+  });
+  const thirdClaims = verifyToken(third.token);
+  const listed = await auth.listSessions('usr_superadmin');
+  assert.ok(listed.some(session => session.id === thirdClaims.jti || session.role === 'super_admin'), 'active session inventory must be available');
+  const thirdSession = await db.query(
+    'SELECT id FROM auth_sessions WHERE access_jti=$1',
+    [thirdClaims.jti],
+  );
+  assert.equal(thirdSession.rows.length, 1);
+  assert.equal(await auth.revokeSession('usr_superadmin', thirdSession.rows[0].id), true);
+  await assert.rejects(
+    () => auth.verifySession(third.token),
+    (err: any) => err?.code === 'REVOKED',
+    'individual session revocation must invalidate its access token',
+  );
+
+  const fourth = await auth.login({
+    email: 'superadmin@abacha.internal',
+    password: 'SuperAdmin123!',
+    organizationId: 'org_default',
+  });
+  await auth.logoutAllSessions('usr_superadmin');
+  await assert.rejects(
+    () => auth.verifySession(fourth.token),
+    (err: any) => err?.code === 'REVOKED',
+    'logout-all must invalidate every active session',
+  );
+
   console.log('Auth secure session lifecycle tests: PASSED');
 }
 
