@@ -1,4 +1,3 @@
-import { setAuthenticationCookies } from '../auth/sessionCookies.ts';
 import { setAuthenticationCookies } from '../auth/sessionCookies';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
