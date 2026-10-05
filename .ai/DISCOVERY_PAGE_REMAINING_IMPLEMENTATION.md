@@ -134,19 +134,21 @@ Complete Discovery so customers can search businesses, products and services; fi
 **IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
 
 ### DISC-PAGE-007 — Service Discovery and RFQ
-- [ ] Verify service cards and service detail.
-- [ ] Verify pricing, duration, service area and booking mode.
-- [ ] Verify request form validation.
-- [ ] Verify selected service is preserved.
-- [ ] Verify request creation.
-- [ ] Verify provider matching.
-- [ ] Verify quote retrieval and comparison.
-- [ ] Verify customer request history.
-- [ ] Verify merchant request inbox.
-- [ ] Verify notifications.
-- [ ] Verify request status transitions.
+- [x] Public service cards open a dedicated service-detail page.
+- [x] Service detail exposes pricing, duration, service area and booking mode.
+- [x] Service detail and search/home cards emit service-view attribution.
+- [x] Public service detail is server-authoritative: active service + published/discoverable business + active organization.
+- [x] Request form validates required customer/request fields and preserves the selected service.
+- [x] Request creation persists the selected service through the Discovery API.
+- [x] Provider matching and tenant authorization are enforced by the service-request backend.
+- [x] Customer request history, lifecycle timeline and quote comparison are implemented.
+- [x] Customer quote acceptance is wired to the request lifecycle.
+- [x] Merchant request inbox and quote submission are implemented.
+- [x] PAGE-007 regression coverage is registered in `test:discovery`.
 
-**Target flow:** Discover Service → Request → Matching → Provider Response → Quote → Customer Decision.
+**IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
+
+**Target flow:** Discover Service → Service Detail → Request → Matching → Provider Response → Quote → Customer Decision.
 
 ### DISC-PAGE-008 — Customer Discovery Workspace
 - [ ] Verify Saved Businesses.
