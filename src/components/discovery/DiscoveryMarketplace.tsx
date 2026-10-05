@@ -10,6 +10,7 @@ import { DiscoveryMyContactInquiriesPage } from './DiscoveryMyContactInquiriesPa
 import { DiscoveryMyClaimsPage } from './DiscoveryMyClaimsPage';
 import { DiscoveryBusinessContainer } from './business/DiscoveryBusinessContainer';
 import { useDiscoveryRoute } from '../../router/useDiscoveryRoute';
+import { authClient } from '../../services/authClient';
 import { Store, Compass, LayoutDashboard } from 'lucide-react';
 
 /**
@@ -28,6 +29,12 @@ export const DiscoveryMarketplace: React.FC = () => {
     }
     return 'customer';
   });
+
+  const requireCustomerAuth = (path: string) => {
+    if (authClient.getToken()) return true;
+    window.location.assign('/login?redirect=' + encodeURIComponent(path));
+    return false;
+  };
 
   // Check if current route is a business discovery route
   const isBusinessRoute =
@@ -85,6 +92,7 @@ export const DiscoveryMarketplace: React.FC = () => {
     }
 
     if (route.name === 'discover-saved') {
+      if (!requireCustomerAuth('/discover/saved')) return null;
       return (
         <DiscoverySavedBusinessesPage
           onBack={() => navigate('discover-home')}
@@ -94,16 +102,19 @@ export const DiscoveryMarketplace: React.FC = () => {
     }
 
     if (route.name === 'discover-my-requests') {
+      if (!requireCustomerAuth('/discover/my-requests')) return null;
       return (
         <DiscoveryServiceRequestsPage onBack={() => navigate('discover-home')} />
       );
     }
 
     if (route.name === 'discover-my-inquiries') {
+      if (!requireCustomerAuth('/discover/my-inquiries')) return null;
       return <DiscoveryMyContactInquiriesPage onBack={() => navigate('discover-home')} />;
     }
 
     if (route.name === 'discover-my-claims') {
+      if (!requireCustomerAuth('/discover/my-claims')) return null;
       return <DiscoveryMyClaimsPage onBack={() => navigate('discover-home')} />;
     }
 
