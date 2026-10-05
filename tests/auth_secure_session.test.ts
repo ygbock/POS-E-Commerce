@@ -73,14 +73,14 @@ async function main() {
     organizationId: 'org_default',
   });
   const thirdClaims = verifyToken(third.token);
-  const listed = await auth.listSessions('usr_superadmin');
-  assert.ok(listed.some(session => session.id === thirdClaims.jti || session.role === 'super_admin'), 'active session inventory must be available');
   const thirdSession = await db.query(
-    'SELECT id FROM auth_sessions WHERE access_jti=$1',
+    'SELECT id,user_id FROM auth_sessions WHERE access_jti=$1',
     [thirdClaims.jti],
   );
   assert.equal(thirdSession.rows.length, 1);
-  assert.equal(await auth.revokeSession('usr_superadmin', thirdSession.rows[0].id), true);
+  const listed = await auth.listSessions(thirdSession.rows[0].user_id);
+  assert.ok(listed.some(session => session.id === thirdSession.rows[0].id), 'active session inventory must be available');
+  assert.equal(await auth.revokeSession(thirdSession.rows[0].user_id, thirdSession.rows[0].id), true);
   await assert.rejects(
     () => auth.verifySession(third.token),
     (err: any) => err?.code === 'REVOKED',
@@ -92,7 +92,7 @@ async function main() {
     password: 'SuperAdmin123!',
     organizationId: 'org_default',
   });
-  await auth.logoutAllSessions('usr_superadmin');
+  await auth.logoutAllSessions(thirdSession.rows[0].user_id);
   await assert.rejects(
     () => auth.verifySession(fourth.token),
     (err: any) => err?.code === 'REVOKED',
