@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Package, Store, MapPin, ExternalLink } from 'lucide-react';
 import type { DiscoveryProduct } from '../../types/discovery';
 import { AvailabilityBadge } from './AvailabilityBadge';
@@ -15,6 +15,7 @@ export const ProductDiscoveryCard: React.FC<ProductDiscoveryCardProps> = ({
   className = '',
 }) => {
   const firstImage = Array.isArray(product.images) && product.images[0] ? product.images[0] : null;
+  const [imageFailed, setImageFailed] = useState(false);
   const locationString = [product.city, product.district].filter(Boolean).join(', ');
 
   const formattedPrice =
@@ -34,12 +35,13 @@ export const ProductDiscoveryCard: React.FC<ProductDiscoveryCardProps> = ({
       <div>
         {/* Product Image */}
         <div className="relative aspect-square rounded-2xl bg-slate-100 dark:bg-slate-800 overflow-hidden mb-2.5 sm:mb-3.5">
-          {firstImage ? (
+          {firstImage && !imageFailed ? (
             <img
               src={firstImage}
               alt={product.product_name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               loading="lazy"
+              onError={() => setImageFailed(true)}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600">
