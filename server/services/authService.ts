@@ -6,10 +6,20 @@ import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole,
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
 import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
+export interface BusinessSummary {
+  id: string;
+  publicId: string;
+  name: string;
+  slug: string;
+  businessMode: string;
+  listingStatus: string;
+}
+
 export interface LoginResult {
   token: string;
   /** Internal-only refresh credential. Defined non-enumerably so API JSON never exposes it. */
   refreshToken?: string;
+  business?: BusinessSummary;
   user: {
     id: string;
     organizationId: string;
@@ -205,11 +215,7 @@ export class AuthService {
     password: string;
     businessName: string;
     businessMode: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE';
-  }): Promise<{
-    token: string;
-    user: LoginResult['user'];
-    business: { id: string; publicId: string; name: string; slug: string; businessMode: string; listingStatus: string };
-  }> {
+  }): Promise<LoginResult & { business: BusinessSummary }> {
     const name = input.name.trim();
     const email = input.email.toLowerCase().trim();
     const businessName = input.businessName.trim();
@@ -310,14 +316,17 @@ export class AuthService {
       token,
       user: { id: userId, organizationId, email, name, role: 'business_owner', identityType: 'business_owner', permissions },
       business: { id: businessId, publicId, name: businessName, slug, businessMode: input.businessMode, listingStatus: 'DRAFT' },
-    } as any;
+    };
     await this.attachSecureSession(result, {
       userId,
       organizationId,
       identityType: 'business_owner',
       role: 'business_owner',
     });
-    return result;
+    if (!result.business) {
+      throw new Error('BUSINESS_OWNER_BUSINESS_NOT_FOUND: Business owner account has no active business membership.');
+    }
+    return result as LoginResult & { business: BusinessSummary };
   }
 
   async login(credentials: {
@@ -404,6 +413,30 @@ export class AuthService {
       identityType: getIdentityTypeForRole(role),
       role,
     });
+
+    if (role === 'business_owner') {
+      const businessResult = await this.db.query(
+        `SELECT b.id,b.public_id,b.name,b.slug,b.business_mode,b.listing_status
+           FROM discovery_business_memberships m
+           JOIN discovery_businesses b ON b.id=m.business_id
+          WHERE m.user_id=$1 AND m.role='OWNER' AND m.is_active=TRUE
+          ORDER BY b.created_at DESC
+          LIMIT 1`,
+        [user.id],
+      );
+      const business = businessResult.rows[0];
+      if (business) {
+        result.business = {
+          id: business.id,
+          publicId: business.public_id,
+          name: business.name,
+          slug: business.slug,
+          businessMode: business.business_mode,
+          listingStatus: business.listing_status,
+        };
+      }
+    }
+
     return result;
   }
 
