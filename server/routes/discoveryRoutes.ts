@@ -1301,6 +1301,31 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-010: services + request/quote marketplace
   // ------------------------------------------------------------------
+  router.get('/services/:id', async (req,res,next)=>{
+    try {
+      const r=await db.query(
+        `SELECT s.*, b.name AS business_name, b.slug AS business_slug, b.public_id AS business_public_id,
+                b.verification_status, b.listing_status, b.is_discoverable,
+                b.organization_id, l.city, l.district, l.region
+           FROM discovery_services s
+           JOIN discovery_businesses b ON b.id=s.business_id
+           LEFT JOIN LATERAL (
+             SELECT city,district,region FROM discovery_locations
+              WHERE business_id=b.id AND is_active=TRUE
+              ORDER BY is_primary DESC, created_at ASC LIMIT 1
+           ) l ON TRUE
+          WHERE s.id=$1 AND s.is_active=TRUE
+            AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS (
+              SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+            ))`,
+        [req.params.id],
+      );
+      if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});
+      res.json({success:true,data:r.rows[0]});
+    } catch(err) { next(err); }
+  });
+
   router.get('/businesses/:id/services', async (req,res,next)=>{
     try {
       await checkBusinessVisibility(req.params.id, req);
