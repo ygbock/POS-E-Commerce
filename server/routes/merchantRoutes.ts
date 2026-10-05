@@ -1,3 +1,4 @@
+import { setAuthenticationCookies } from '../auth/sessionCookies';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
@@ -259,7 +260,8 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         password,
         organizationId: row.organization_id,
       });
-      res.json({ success: true, data: result });
+      setAuthenticationCookies(res, result.token, result.refreshToken);
+      res.json({ success: true, data: { token: result.token, user: result.user, business: result.business } });
     } catch (err) {
       const raw = String((err as any)?.message || 'Merchant sign-in failed.');
       const code = raw.split(':')[0];
