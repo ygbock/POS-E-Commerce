@@ -16,7 +16,6 @@ export interface AuthUser {
   locationId?: string | null;
 }
 
-const TOKEN_KEY = 'abacha_auth_jwt';
 const USER_KEY = 'abacha_auth_user';
 
 /**
@@ -45,7 +44,6 @@ class AuthClient {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      this.currentToken = localStorage.getItem(TOKEN_KEY);
       const cachedUser = localStorage.getItem(USER_KEY);
       if (cachedUser) {
         try {
@@ -66,13 +64,13 @@ class AuthClient {
   }
 
   getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (this.currentToken) {
-      headers['Authorization'] = `Bearer ${this.currentToken}`;
-    }
-    return headers;
+    // Authentication is carried by the HttpOnly session cookie. No bearer token
+    // is persisted in browser storage and JavaScript cannot read the session secret.
+    return { 'Content-Type': 'application/json' };
+  }
+
+  private getRequestInit(init: RequestInit = {}): RequestInit {
+    return { ...init, credentials: 'include' };
   }
 
   async registerBusinessOwner(input: {
@@ -82,11 +80,11 @@ class AuthClient {
     businessName: string;
     businessMode: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE';
   }): Promise<AuthUser & { business: { id: string; publicId: string; name: string; slug: string; businessMode: string; listingStatus: string } }> {
-    const res = await fetch('/api/merchant/signup', {
+    const res = await fetch('/api/merchant/signup', this.getRequestInit({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
-    });
+    }));
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to create business account.');
     this.currentToken = data.data.token;
@@ -99,11 +97,11 @@ class AuthClient {
   }
 
   async loginBusinessOwner(email: string, password: string): Promise<AuthUser> {
-    const res = await fetch('/api/merchant/login', {
+    const res = await fetch('/api/merchant/login', this.getRequestInit({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.trim(), password }),
-    });
+    }));
     const data = await res.json();
     if (!res.ok || !data.success) {
       throw new Error(data.error?.message || 'Unable to sign in to the business owner portal.');
@@ -119,7 +117,7 @@ class AuthClient {
   }
 
   async loginPlatform(email: string, password: string): Promise<AuthUser> {
-    const res = await fetch('/api/auth/platform/login', {
+    const res = await fetch('/api/auth/platform/login', this.getRequestInit({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.trim(), password }),
@@ -138,13 +136,13 @@ class AuthClient {
   }
 
   async login(email: string, password: string, organizationId?: string): Promise<AuthUser> {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch('/api/auth/login', this.getRequestInit({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // organizationId is optional. The server resolves the account's active organization
       // from the authenticated email when the user has a single organization.
       body: JSON.stringify(organizationId ? { email, password, organizationId } : { email, password }),
-    });
+    }));
 
     const data = await res.json();
     if (!res.ok || !data.success) {
@@ -165,10 +163,10 @@ class AuthClient {
   async logout(): Promise<void> {
     if (this.currentToken) {
       try {
-        await fetch('/api/auth/logout', {
+        await fetch('/api/auth/logout', this.getRequestInit({
           method: 'POST',
           headers: this.getAuthHeaders(),
-        });
+        }));
       } catch {
         // Continue clearing local state even if network fails.
       }
@@ -177,21 +175,32 @@ class AuthClient {
     this.currentToken = null;
     this.currentUser = null;
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
     }
   }
 
   async fetchMe(): Promise<AuthUser | null> {
-    if (!this.currentToken) return null;
-
     try {
-      const res = await fetch('/api/auth/me', {
+      // On a fresh page load the access token is intentionally unavailable to
+      // JavaScript. The HttpOnly refresh cookie silently establishes a new
+      // short-lived access session when needed.
+      if (!this.currentToken) {
+        const refresh = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+        if (refresh.ok) {
+          const refreshed = await refresh.json();
+          this.currentToken = refreshed.data?.token || null;
+          this.currentUser = refreshed.data?.user || null;
+        }
+      }
+
+      const res = await fetch('/api/auth/me', this.getRequestInit({
         headers: this.getAuthHeaders(),
-      });
+      }));
       if (!res.ok) {
         if (res.status === 401) {
-          await this.logout();
+          this.currentToken = null;
+          this.currentUser = null;
+          localStorage.removeItem(USER_KEY);
         }
         return null;
       }
