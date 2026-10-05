@@ -2026,12 +2026,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/businesses/:id/analytics', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req,req.params.id,'business.analytics.view')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Analytics access forbidden.'}});
     const days=Math.min(Math.max(Number(req.query.days||30),1),365);
-    const r=await db.query("SELECT event_type,COUNT(*)::int AS count,COUNT(DISTINCT session_hash)::int AS unique_sessions FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval GROUP BY event_type ORDER BY count DESC",[req.params.id,String(days)]);
-    const counts:Record<string,number>={}; let uniqueSessions=0;
-    for(const row of r.rows) {
-      counts[String(row.event_type)]=Number(row.count)||0;
-      uniqueSessions += Number(row.unique_sessions)||0;
-    }
+    const [r, sessionSummary] = await Promise.all([
+      db.query("SELECT event_type,COUNT(*)::int AS count FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval GROUP BY event_type ORDER BY count DESC",[req.params.id,String(days)]),
+      db.query("SELECT COUNT(DISTINCT session_hash)::int AS unique_sessions FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval",[req.params.id,String(days)]),
+    ]);
+    const counts:Record<string,number>={};
+    for(const row of r.rows) counts[String(row.event_type)]=Number(row.count)||0;
+    const uniqueSessions=Number(sessionSummary.rows[0]?.unique_sessions||0);
     const impressions=counts.IMPRESSION||0;
     const views=counts.VIEW||0;
     const conversions=(counts.CONTACT||0)+(counts.DIRECTION_CLICK||0)+(counts.SERVICE_REQUEST||0)+(counts.STORE_CLICK||0);
