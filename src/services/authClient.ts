@@ -127,7 +127,6 @@ class AuthClient {
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
     if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, data.data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     }
     return data.data.user;
