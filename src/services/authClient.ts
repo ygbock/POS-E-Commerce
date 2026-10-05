@@ -241,7 +241,8 @@ class AuthClient {
     }
 
     try {
-      const user = await this.login(email, password);
+      const platformPersona = ['System Owner', 'Platform Admin', 'Platform Support', 'Platform Finance'].includes(roleName);
+      const user = platformPersona ? await this.loginPlatform(email, password) : await this.login(email, password);
       const expectedRoles: Record<string, string> = {
         'Super Admin': 'super_admin',
         'Business Owner': 'business_owner',
@@ -250,7 +251,7 @@ class AuthClient {
         'Inventory Manager': 'inventory_manager',
         'Warehouse Manager': 'inventory_manager',
         'Accountant': 'sales_user',
-        'E-commerce Customer': 'viewer',
+        'E-commerce Customer': 'customer',
         'System Owner': 'system_owner',
         'Platform Admin': 'platform_admin',
         'Platform Support': 'platform_support',
