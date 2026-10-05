@@ -212,6 +212,23 @@ async function main() {
   try {
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
+    const publicSearchResponse = await fetch(baseUrl + '/api/discovery/businesses?limit=200');
+    assert.strictEqual(publicSearchResponse.status, 200);
+    const publicSearchBody = await publicSearchResponse.json();
+    assert.strictEqual(publicSearchBody?.success, true);
+    assert.ok(
+      publicSearchBody?.data?.some((listing: any) => listing.id === business.id),
+      'published listing must be returned by the public Discovery HTTP search endpoint',
+    );
+
+    const publicProfileResponse = await fetch(
+      baseUrl + `/api/discovery/businesses/${encodeURIComponent(business.slug)}`,
+    );
+    assert.strictEqual(publicProfileResponse.status, 200);
+    const publicProfileBody = await publicProfileResponse.json();
+    assert.strictEqual(publicProfileBody?.success, true);
+    assert.strictEqual(publicProfileBody?.data?.business?.id, business.id);
+
     // Owner lifecycle controls: pause hides the listing, republish restores it,
     // and archive permanently removes it from public Discovery.
     const paused = await service.pause(business.id, merchant, 'Owner temporarily paused the listing.');
@@ -244,22 +261,7 @@ async function main() {
     assert.ok(lifecycleHistory.rows.some((row: any) => row.to_status === 'PAUSED' && row.actor_user_id === merchant.userId));
     assert.ok(lifecycleHistory.rows.some((row: any) => row.to_status === 'ARCHIVED' && row.actor_user_id === merchant.userId));
 
-    const publicSearchResponse = await fetch(baseUrl + '/api/discovery/businesses?limit=200');
-    assert.strictEqual(publicSearchResponse.status, 200);
-    const publicSearchBody = await publicSearchResponse.json();
-    assert.strictEqual(publicSearchBody?.success, true);
-    assert.ok(
-      publicSearchBody?.data?.some((listing: any) => listing.id === business.id),
-      'published listing must be returned by the public Discovery HTTP search endpoint',
-    );
 
-    const publicProfileResponse = await fetch(
-      baseUrl + `/api/discovery/businesses/${encodeURIComponent(business.slug)}`,
-    );
-    assert.strictEqual(publicProfileResponse.status, 200);
-    const publicProfileBody = await publicProfileResponse.json();
-    assert.strictEqual(publicProfileBody?.success, true);
-    assert.strictEqual(publicProfileBody?.data?.business?.id, business.id);
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve()),
