@@ -164,18 +164,22 @@ Complete Discovery so customers can search businesses, products and services; fi
 **IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
 
 ### DISC-PAGE-009 — Merchant Listing-to-Public Lifecycle
-- [ ] Verify Discovery-only business creation.
-- [ ] Verify Discovery-and-Store business creation.
-- [ ] Verify listing readiness.
-- [ ] Verify submission.
-- [ ] Verify moderation.
-- [ ] Verify approval.
-- [ ] Verify publication.
-- [ ] Verify published listing appears in search.
-- [ ] Verify rejection and resubmission.
-- [ ] Verify pause, suspension and archive.
-- [ ] Verify lifecycle history.
-- [ ] Verify store conversion.
+**Implementation status:** COMPLETE; VALIDATION ACTIVE. Merchant creation, readiness, submission, moderation, approval, publication, rejection/resubmission, pause/resume/archive, lifecycle history, and Discovery → Store conversion are implemented and covered by the existing lifecycle/authorization/store regression suites. Operating hours are managed through the existing merchant Hours Editor as part of listing configuration.
+
+- [x] Discovery-only business creation.
+- [x] Discovery-and-Store business creation.
+- [x] Server-authoritative listing readiness.
+- [x] Submission.
+- [x] Moderation review and rejection reasons/issues.
+- [x] Approval.
+- [x] Publication.
+- [x] Published listing appears in public Discovery search/profile.
+- [x] Rejection and controlled resubmission.
+- [x] Pause, owner resume, moderator suspension, and archive.
+- [x] Immutable lifecycle history with actor/reason capture.
+- [x] Discovery-only → Discovery-and-Store transactional conversion.
+- [x] Merchant workspace exposes owner pause/resume/archive controls.
+- [x] Regression coverage exercises the full moderation/public lifecycle and store conversion.
 
 **Target flow:** Create Business → Configure Listing → Location → Category → Hours → Services → Submit → Review → Approve → Publish.
 
