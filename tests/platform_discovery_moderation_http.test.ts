@@ -164,6 +164,47 @@ async function main() {
     assert.equal(rejectedDetail.status, 200);
     assert.equal(rejectedDetail.body.data.issues.filter((issue: any) => issue.status === 'OPEN').length, 2);
 
+    await service.resubmit(business.id, merchant, 'Merchant corrected the moderation issues.');
+    const reviewAgain = await request(baseUrl, `/api/platform/discovery/moderation/listings/${business.id}/decision`, {
+      method: 'POST',
+      token: platformAdminToken,
+      body: { status: 'UNDER_REVIEW', reason: 'Corrections received.' },
+    });
+    assert.equal(reviewAgain.status, 200);
+
+    const approve = await request(baseUrl, `/api/platform/discovery/moderation/listings/${business.id}/decision`, {
+      method: 'POST',
+      token: platformAdminToken,
+      body: { status: 'APPROVED', reason: 'Listing approved.' },
+    });
+    assert.equal(approve.status, 200);
+    assert.equal(approve.body.data.listing_status, 'APPROVED');
+
+    const publish = await request(baseUrl, `/api/platform/discovery/moderation/listings/${business.id}/decision`, {
+      method: 'POST',
+      token: platformAdminToken,
+      body: { status: 'PUBLISHED', reason: 'Listing published.' },
+    });
+    assert.equal(publish.status, 200);
+    assert.equal(publish.body.data.listing_status, 'PUBLISHED');
+
+    const suspend = await request(baseUrl, `/api/platform/discovery/moderation/listings/${business.id}/decision`, {
+      method: 'POST',
+      token: platformAdminToken,
+      body: { status: 'SUSPENDED', reason: 'Policy review required.' },
+    });
+    assert.equal(suspend.status, 200);
+    assert.equal(suspend.body.data.listing_status, 'SUSPENDED');
+    assert.equal(suspend.body.data.is_discoverable, false);
+
+    const history = await request(baseUrl, '/api/platform/discovery/moderation/history?limit=100', { token: platformAdminToken });
+    assert.equal(history.status, 200);
+    assert.ok(Array.isArray(history.body.data));
+    assert.ok(history.body.data.some((row: any) => row.business_id === business.id && row.to_status === 'SUSPENDED'));
+
+    const historyDenied = await request(baseUrl, '/api/platform/discovery/moderation/history', { token: tenantSuperAdminToken });
+    assert.equal(historyDenied.status, 403);
+
     console.log('Platform Discovery moderation HTTP workflow passed.');
   } finally {
     server.close();
