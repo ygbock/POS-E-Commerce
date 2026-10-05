@@ -247,7 +247,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 ### DISC-PAGE-013 — Performance and Resilience
 
-**Implementation status:** IN PROGRESS; PRODUCTION HARDENING ACTIVE. Existing Discovery search cancellation, independent section loading, 300-listing performance coverage, production asset/build validation and rate limiting are retained; PAGE-013 now hardens public pagination and rate-limit coverage.
+**Implementation status:** IN PROGRESS; AUTOMATED PRODUCTION HARDENING GATE PASSED. Existing Discovery search cancellation, independent section loading, 300-listing performance coverage, production asset/build validation and rate limiting are retained; PAGE-013 now hardens public pagination, malformed URL handling, asset resilience and rate-limit coverage. Browser/manual release verification remains.
 
 - [x] Bounded public search pagination (`limit` 1–100; `offset` 0–10,000).
 - [x] Reject non-integer/NaN pagination input with `VALIDATION_ERROR` instead of allowing malformed database parameters.
@@ -270,20 +270,23 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Verify image fallback behavior under failed/slow asset loads.
 - [ ] Verify production bundle impact against the release baseline.
 - [ ] Run the new production-readiness regression locally.
+- [x] CI production-readiness, Discovery aggregate, TypeScript/lint and production build gates passed on `401fb83c995253a494b252309cbc389352507117`.
 ### DISC-PAGE-014 — End-to-End QA and Release Gate
 
 **Status:** PENDING FINAL PAGE-013 HARDENING AND MANUAL RELEASE VERIFICATION.
 
 **Automated:**
-- [ ] `npm run test:discovery`.
-- [ ] Discovery frontend tests.
-- [ ] Discovery router tests.
+- [x] CI `npm run test:discovery` / Authoritative Domain Regression Suites passed.
+- [x] CI Discovery frontend/router/API regression coverage passed.
+- [ ] Local reproduction of the complete Discovery gate.
 - [ ] Discovery API-client tests.
 - [ ] Discovery HTTP authorization tests.
 - [ ] Discovery search tests.
 - [ ] Discovery performance tests.
-- [ ] `npx tsc --noEmit`.
-- [ ] `npm run build`.
+- [x] CI `npx tsc --noEmit` / Lint & Build Validation passed.
+- [x] CI production build / Lint & Build Validation passed.
+- [ ] Local `npx tsc --noEmit`.
+- [ ] Local `npm run build`.
 - [ ] Full `npm test`.
 - [ ] Production migration verification.
 
@@ -361,6 +364,8 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] PAGE-013 resilience hardening: malformed URL-number normalization and Discovery image fallbacks.
 - [x] Discovery accessibility, analytics, moderation, lifecycle, search, service, customer-workspace and performance regression coverage registered in `test:discovery`.
 - [x] Latest PAGE-012 CI run passed.
+- [x] Corrected PAGE-005 location/map regression test committed and full CI gate passed.
+- [x] PAGE-013 automated production-readiness and Discovery aggregate CI gate passed.
 
 ### Remaining release-gate work
 - [ ] Complete PAGE-013 browser-level performance/resilience verification.
