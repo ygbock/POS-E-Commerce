@@ -561,11 +561,24 @@ export class DiscoveryBusinessService {
       return this.transition(id, 'PUBLISHED', actor, reason || 'Listing republished after owner pause.', client);
     }
 
-    this.assertModerator(actor, existing);
     if (existing.listing_status !== 'APPROVED') {
+      this.assertModerator(actor, existing);
       throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to PUBLISHED. Listing must be APPROVED first.`);
     }
-    return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published by moderator.', client, true);
+
+    // Approved listings may be published either by the authorized business owner
+    // or by a platform moderator. Keep the two authorization paths explicit so
+    // merchant publication remains available without granting merchant users
+    // moderation powers.
+    const isModerator = ['super_admin', 'platform_admin', 'system_owner'].includes(actor.role)
+      || (actor.role === 'admin' && Boolean(existing.organization_id) && existing.organization_id === actor.organizationId);
+
+    if (isModerator) {
+      return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published by moderator.', client, true);
+    }
+
+    await this.assertCanManageScoped(existing, actor, client);
+    return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published by business owner.', client);
   }
 
   async pause(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
