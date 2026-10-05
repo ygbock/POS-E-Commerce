@@ -276,6 +276,7 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const roleFromServer = (serverRole: string): Role => {
     const roleMap: Record<string, Role> = {
       super_admin: 'Super Admin',
+      business_owner: 'Business Owner',
       admin: 'Business Owner',
       manager: 'Store Manager',
       cashier: 'Cashier',
