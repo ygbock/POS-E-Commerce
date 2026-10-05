@@ -552,19 +552,20 @@ export class DiscoveryBusinessService {
   async publish(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    await this.assertCanManageScoped(existing, actor, client);
+
+    // A paused listing is a merchant lifecycle operation and therefore remains
+    // business-scoped. Platform moderation publishing is a distinct operation
+    // from APPROVED -> PUBLISHED and must use the moderator boundary instead.
     if (existing.listing_status === 'PAUSED') {
+      await this.assertCanManageScoped(existing, actor, client);
       return this.transition(id, 'PUBLISHED', actor, reason || 'Listing republished after owner pause.', client);
     }
+
+    this.assertModerator(actor, existing);
     if (existing.listing_status !== 'APPROVED') {
-      try {
-        this.assertModerator(actor, existing);
-      } catch (err) {
-        throw new Error('PERMISSION_DENIED:Discovery moderation requires administrator authorization.');
-      }
       throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to PUBLISHED. Listing must be APPROVED first.`);
     }
-    return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published by business owner.', client);
+    return this.transition(id, 'PUBLISHED', actor, reason || 'Listing published by moderator.', client, true);
   }
 
   async pause(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
