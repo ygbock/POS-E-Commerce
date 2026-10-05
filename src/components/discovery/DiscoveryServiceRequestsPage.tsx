@@ -3,6 +3,7 @@ import { ArrowLeft, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, XCirc
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryServiceRequest } from '../../types/discovery';
 import { DiscoveryMobileBottomNav } from './DiscoveryMobileBottomNav';
+import { authClient } from '../../services/authClient';
 
 export interface DiscoveryServiceRequestsPageProps {
   onBack?: () => void;
@@ -39,7 +40,10 @@ export const DiscoveryServiceRequestsPage: React.FC<DiscoveryServiceRequestsPage
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    if (!authClient.getToken()) { setError('Sign in is required to view your service requests.'); setLoading(false); return; }
+    void load();
+  }, []);
 
   useEffect(() => {
     if (!requestedId || loading || !requests.some((request) => request.id === requestedId)) return;
