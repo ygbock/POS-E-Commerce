@@ -4,6 +4,15 @@
 -- from the legacy single-role interpretation.
 
 ALTER TABLE users
+  DROP CONSTRAINT IF EXISTS users_role_check;
+
+ALTER TABLE users
+  ADD CONSTRAINT users_role_check CHECK (role IN (
+    'super_admin','admin','manager','cashier','inventory_manager','purchasing_manager','sales_user','viewer','customer',
+    'system_owner','platform_admin','platform_support','platform_finance','business_owner'
+  ));
+
+ALTER TABLE users
   ADD COLUMN IF NOT EXISTS identity_type VARCHAR(32);
 
 UPDATE users
