@@ -10,6 +10,7 @@ export interface UserRecord {
   password_hash: string;
   password_salt: string;
   role: UserRole;
+  identity_type?: 'platform' | 'business_owner' | 'staff' | 'customer';
   location_id?: string | null;
   is_active: boolean;
   created_at: string;
@@ -42,6 +43,7 @@ export class UserRepository {
       location_id?: string | null;
       locationId?: string | null;
       is_active?: boolean;
+      identity_type?: 'platform' | 'business_owner' | 'staff' | 'customer';
     },
     client?: DatabaseClient
   ): Promise<UserRecord> {
@@ -59,7 +61,7 @@ export class UserRepository {
     const res = await db.query<UserRecord>(
       `INSERT INTO users (
         id, organization_id, email, name, password_hash, password_salt,
-        role, location_id, is_active
+        role, identity_type, location_id, is_active
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *`,
       [
@@ -70,6 +72,7 @@ export class UserRepository {
         passHash,
         passSalt,
         user.role,
+        user.identity_type || null,
         locId,
         user.is_active ?? true,
       ]
