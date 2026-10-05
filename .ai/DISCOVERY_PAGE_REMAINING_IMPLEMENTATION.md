@@ -184,18 +184,23 @@ Complete Discovery so customers can search businesses, products and services; fi
 **Target flow:** Create Business → Configure Listing → Location → Category → Hours → Services → Submit → Review → Approve → Publish.
 
 ### DISC-PAGE-010 — Admin Moderation UI
-- [ ] Moderation overview/dashboard.
-- [ ] Listing review queue.
-- [ ] Listing detail review.
-- [ ] Approve/reject/suspend actions.
-- [ ] Verification queue.
-- [ ] Ownership claims queue.
-- [ ] Abuse reports queue.
-- [ ] Review moderation.
-- [ ] Moderation history.
-- [ ] Reason/note capture.
-- [ ] Permission enforcement.
-- [ ] Audit event visibility.
+**Implementation status:** COMPLETE; VALIDATION ACTIVE. The platform moderation workspace now provides the administrator listing review queue/detail workflow, structured rejection issues, approve/reject/publish/suspend actions, verification queue, ownership-claim queue, review moderation, abuse-report triage, moderation history, reason/note capture, and server-authoritative platform permission enforcement.
+
+- [x] Moderation overview/workspace.
+- [x] Listing review queue with filtering and pagination.
+- [x] Listing detail review with readiness, profile, location and moderation issues.
+- [x] Approve/reject/publish/suspend actions.
+- [x] Verification queue and approve/reject decisions.
+- [x] Ownership claims queue and approve/reject decisions.
+- [x] Abuse reports queue with under-review/resolve/dismiss decisions.
+- [x] Customer review moderation.
+- [x] Moderation history combining listing lifecycle and trust decisions.
+- [x] Reason/note capture and structured rejection issues.
+- [x] Platform permission enforcement and tenant-user denial.
+- [x] Server-side audit/trust event visibility.
+- [x] HTTP regression coverage for authorization, lifecycle decisions, suspension and history.
+
+
 
 ### DISC-PAGE-011 — Analytics/Event Verification
 - [ ] Search events.
