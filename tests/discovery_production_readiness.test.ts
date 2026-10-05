@@ -76,6 +76,18 @@ async function main() {
     assert.match(discoverySource, /router\.get\('\/businesses', discoverySearchRateLimiter/);
     assert.match(discoverySource, /router\.get\('\/categories', discoverySearchRateLimiter/);
 
+    const searchResultsSource = await import('node:fs/promises').then((fs) => fs.readFile('./src/components/discovery/DiscoverySearchResults.tsx', 'utf8'));
+    assert.match(searchResultsSource, /parseFinite/);
+    assert.match(searchResultsSource, /Number\.isFinite\(parsed\)/);
+
+    const productCardSource = await import('node:fs/promises').then((fs) => fs.readFile('./src/components/discovery/ProductDiscoveryCard.tsx', 'utf8'));
+    assert.match(productCardSource, /setImageFailed\(true\)/);
+    assert.match(productCardSource, /firstImage && !imageFailed/);
+
+    const businessCardSource = await import('node:fs/promises').then((fs) => fs.readFile('./src/components/discovery/BusinessCard.tsx', 'utf8'));
+    assert.match(businessCardSource, /setCoverImageFailed\(true\)/);
+    assert.match(businessCardSource, /setLogoImageFailed\(true\)/);
+
     console.log('Discovery production readiness hardening tests passed.');
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
