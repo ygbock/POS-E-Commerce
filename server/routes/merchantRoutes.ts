@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from '../middleware/auth.ts';
 import { AuditRepository } from '../repositories/auditRepository.ts';
 import { assertBusinessPermission } from '../services/discoveryBusinessAccess.ts';
 import { getPermissionsForRole, PERMISSIONS } from '../auth/roles.ts';
+import { PurchasingService } from '../services/purchasingService.ts';
 
 export function createMerchantRouter(db: DatabaseClient, authService: AuthService) {
   const router = express.Router();
@@ -51,6 +52,92 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
     return role;
   };
+
+  const purchasing = new PurchasingService(db);
+
+  // Server-authoritative purchasing workflow.
+  router.get('/purchase-orders', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_VIEW), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const offset = req.query.offset ? Number(req.query.offset) : undefined;
+      const data = await purchasing.listPurchaseOrders(req.auth.organizationId, {
+        status: req.query.status as string | undefined,
+        supplierId: req.query.supplierId as string | undefined,
+        limit: Number.isFinite(limit) ? limit : undefined,
+        offset: Number.isFinite(offset) ? offset : undefined,
+      });
+      return res.json({ success: true, count: data.length, data });
+    } catch (err) { return fail(res, err); }
+  });
+
+  router.get('/purchase-orders/:id', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_VIEW), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const data = await purchasing.getPurchaseOrder(req.auth.organizationId, req.params.id);
+      return res.json({ success: true, data });
+    } catch (err) { return fail(res, err); }
+  });
+
+  router.post('/purchase-orders', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_CREATE), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const idempotencyKey = String(req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key || '').trim() || undefined;
+      const data = await purchasing.createPurchaseOrder(req.auth.organizationId, {
+        userId: req.auth.userId,
+        name: (req.auth as any).name || req.auth.email || req.auth.userId,
+      }, { ...req.body, idempotency_key: idempotencyKey });
+      return res.status(201).json({ success: true, data });
+    } catch (err) { return fail(res, err); }
+  });
+
+  router.post('/purchase-orders/:id/send', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_CREATE), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const data = await purchasing.updateStatus(req.auth.organizationId, req.params.id, 'Sent');
+      return res.json({ success: true, data });
+    } catch (err) { return fail(res, err); }
+  });
+
+  router.post('/purchase-orders/:id/approve', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_APPROVE), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const data = await purchasing.updateStatus(req.auth.organizationId, req.params.id, 'Approved');
+      return res.json({ success: true, data });
+    } catch (err) { return fail(res, err); }
+  });
+
+  router.post('/purchase-orders/:id/cancel', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_CREATE), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const data = await purchasing.updateStatus(req.auth.organizationId, req.params.id, 'Cancelled');
+      return res.json({ success: true, data });
+    } catch (err) { return fail(res, err); }
+  });
+
+  router.post('/purchase-orders/:id/receive', requireAuth(), requirePermission(PERMISSIONS.INVENTORY_RECEIVE), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const idempotencyKey = String(req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || req.body?.idempotency_key || '').trim() || undefined;
+      const data = await purchasing.receive(
+        req.auth.organizationId,
+        { userId: req.auth.userId, name: (req.auth as any).name || req.auth.email || req.auth.userId },
+        req.params.id,
+        req.body?.items,
+        idempotencyKey,
+        req.body?.notes,
+      );
+      return res.status(201).json({ success: true, data });
+    } catch (err) { return fail(res, err); }
+  });
+
+  router.get('/purchase-receipts', requireAuth(), requirePermission(PERMISSIONS.PURCHASES_VIEW), async (req, res) => {
+    try {
+      if (!req.auth?.organizationId) throw new Error('TENANT_ACCESS_DENIED:Tenant context is required.');
+      const data = await purchasing.listReceipts(req.auth.organizationId, req.query.purchaseOrderId as string | undefined);
+      return res.json({ success: true, count: data.length, data });
+    } catch (err) { return fail(res, err); }
+  });
 
   // Tenant-scoped customer CRM profile for the merchant workspace.
   router.get('/customers/:id/profile', requireAuth(), requirePermission(PERMISSIONS.CUSTOMERS_VIEW), async (req, res) => {
