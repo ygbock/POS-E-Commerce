@@ -6,7 +6,9 @@ import { AuthService } from '../server/services/authService';
 async function main() {
   const db: DatabaseClient = createIsolatedTestClient();
   const original = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD;
+  const originalSystemOwner = process.env.ABACHA_SYSTEM_OWNER_PASSWORD;
   process.env.ABACHA_PLATFORM_ADMIN_PASSWORD = 'PlatformAuthTest123!';
+  process.env.ABACHA_SYSTEM_OWNER_PASSWORD = 'SystemOwnerAuthTest123!';
 
   try {
     await runMigrations(db);
@@ -21,6 +23,18 @@ async function main() {
     assert.strictEqual(platform.user.role, 'platform_admin');
     assert.strictEqual(platform.user.identityType, 'platform');
     assert.ok(platform.token);
+
+    const owner = await auth.loginPlatform({
+      email: process.env.ABACHA_SYSTEM_OWNER_EMAIL || 'systemowner@abacha.internal',
+      password: 'SystemOwnerAuthTest123!',
+    });
+    assert.strictEqual(owner.user.role, 'system_owner');
+    assert.strictEqual(owner.user.identityType, 'platform');
+
+    await assert.rejects(
+      () => auth.login({ email: platform.user.email, password: 'PlatformAuthTest123!', organizationId: 'org_default' }),
+      /PLATFORM_LOGIN_REQUIRED/,
+    );
 
     await assert.rejects(
       () => auth.loginPlatform({
@@ -41,6 +55,8 @@ async function main() {
   } finally {
     if (original === undefined) delete process.env.ABACHA_PLATFORM_ADMIN_PASSWORD;
     else process.env.ABACHA_PLATFORM_ADMIN_PASSWORD = original;
+    if (originalSystemOwner === undefined) delete process.env.ABACHA_SYSTEM_OWNER_PASSWORD;
+    else process.env.ABACHA_SYSTEM_OWNER_PASSWORD = originalSystemOwner;
   }
 }
 
