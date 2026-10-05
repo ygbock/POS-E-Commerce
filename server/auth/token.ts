@@ -15,6 +15,7 @@ export interface TokenClaims {
   orgId: string;          // Organization ID (Tenant Isolation Boundary)
   organizationId?: string;// Organization ID alias
   role: UserRole;         // Server-authoritative role
+  identityType?: 'platform' | 'business_owner' | 'staff' | 'customer';
   permissions: string[];  // Resolved permissions
   locId?: string | null;  // Branch location ID
   locationId?: string | null;
@@ -79,6 +80,7 @@ export function signToken(
     email?: string;
     organizationId: string;
     role: UserRole;
+    identityType?: 'platform' | 'business_owner' | 'staff' | 'customer';
     permissions?: string[];
     locationId?: string | null;
     expiresInSeconds?: number;
@@ -106,6 +108,7 @@ export function signToken(
     orgId: params.organizationId,
     organizationId: params.organizationId,
     role: params.role,
+    identityType: params.identityType,
     permissions,
     locId: params.locationId || null,
     locationId: params.locationId || null,
@@ -210,6 +213,7 @@ export function issueToken(
     email?: string;
     organizationId: string;
     role: UserRole;
+    identityType?: 'platform' | 'business_owner' | 'staff' | 'customer';
     permissions?: string[];
     locationId?: string | null;
   },
@@ -229,6 +233,7 @@ export function issueToken(
     email: claims.email || `${claims.userId}@abacha.internal`,
     organizationId: claims.organizationId,
     role: claims.role,
+    identityType: claims.identityType,
     permissions: claims.permissions,
     locationId: claims.locationId,
     expiresInSeconds: seconds,
