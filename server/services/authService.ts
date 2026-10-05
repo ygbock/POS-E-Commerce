@@ -192,12 +192,16 @@ export class AuthService {
       throw new Error('Invalid email or password');
     }
 
-    const permissions = getPermissionsForRole(user.role);
+    // Canonicalize the persisted role before issuing the session. This keeps
+    // role-based routing/authorization stable even when legacy seed data contains
+    // casing, spaces, or hyphenated role names.
+    const role = normalizeRole(user.role);
+    const permissions = getPermissionsForRole(role);
     const token = signToken({
       userId: user.id,
       email: user.email,
       organizationId: user.organization_id,
-      role: user.role,
+      role,
       permissions,
       locationId: user.location_id,
     });
@@ -209,7 +213,7 @@ export class AuthService {
         organizationId: user.organization_id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role,
         permissions,
         locationId: user.location_id,
       },
@@ -453,6 +457,11 @@ export class AuthService {
           OR policies IS NULL`
     );
 
+    const platformAdminEmail = (process.env.ABACHA_PLATFORM_ADMIN_EMAIL || 'platformadmin@abacha.internal').trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(platformAdminEmail)) {
+      throw new Error('PLATFORM_ADMIN_SEED_EMAIL_INVALID: Set ABACHA_PLATFORM_ADMIN_EMAIL to a valid email address.');
+    }
+
     let platformAdminPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD?.trim();
     if (!platformAdminPassword || platformAdminPassword.length < 12) {
       if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_SEEDING_IN_PRODUCTION === 'true') {
@@ -466,7 +475,7 @@ export class AuthService {
       {
         id: 'usr_platform_admin',
         orgId: orgDefault,
-        email: 'platformadmin@abacha.internal',
+        email: platformAdminEmail,
         name: 'AbaCha Platform Administrator',
         role: 'platform_admin' as UserRole,
         password: platformAdminPassword,
