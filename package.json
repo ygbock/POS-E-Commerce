@@ -75,6 +75,7 @@
     "test:storefront-multi-tenant": "tsx tests/storefront_multi_tenant.test.ts",
     "test:discovery-router": "tsx tests/discovery_router.test.ts",
     "test:discovery-profile": "tsx tests/discovery_business_profile.test.ts",
+    "test:discovery-product": "tsx tests/discovery_product.test.ts",
     "test:discovery-location-map": "tsx tests/discovery_location_map.test.ts"
   },
   "dependencies": {
