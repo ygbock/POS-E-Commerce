@@ -1,3 +1,4 @@
+import { setAuthenticationCookies } from '../auth/sessionCookies.ts';
 import { setAuthenticationCookies } from '../auth/sessionCookies';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -289,7 +290,8 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
         businessName: String(req.body?.businessName || ''),
         businessMode: req.body?.businessMode === 'DISCOVERY_AND_STORE' ? 'DISCOVERY_AND_STORE' : 'DISCOVERY_ONLY',
       });
-      res.status(201).json({ success: true, data: result });
+      setAuthenticationCookies(res, result.token, result.refreshToken);
+      res.status(201).json({ success: true, data: { token: result.token, user: result.user, business: result.business } });
     } catch (err) {
       fail(res, err);
     }
