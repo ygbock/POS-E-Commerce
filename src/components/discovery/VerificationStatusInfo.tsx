@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, ChevronDown, Clock3, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import type { DiscoveryVerificationStatus } from '../../types/discovery';
 
@@ -21,16 +21,27 @@ export const VerificationStatusInfo: React.FC<VerificationStatusInfoProps> = ({ 
   const normalized = String(status || 'UNVERIFIED').toUpperCase();
   const value = copy[normalized] || copy.UNVERIFIED;
   const Icon = icons[normalized] || ShieldQuestion;
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
 
   return (
     <div className={'relative inline-flex ' + className}>
-      <button type="button" onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-label={'Explain verification status: ' + value.title} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 shadow-sm">
+      <button type="button" onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-controls="discovery-verification-info" aria-label={'Explain verification status: ' + value.title} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 shadow-sm">
         <Icon className="w-3.5 h-3.5" aria-hidden="true" />
         <span>About verification</span>
         <ChevronDown className={'w-3 h-3 transition-transform ' + (open ? 'rotate-180' : '')} aria-hidden="true" />
       </button>
       {open && (
-        <div role="dialog" aria-label={value.title} className="absolute z-30 left-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl">
+        <div id="discovery-verification-info" role="region" aria-label={value.title} className="absolute z-30 left-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl">
           <div className="flex items-start gap-3">
             <Icon className="w-4 h-4 mt-1 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
             <div className="min-w-0">
