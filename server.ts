@@ -596,6 +596,22 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   });
 
+  app.get('/api/auth/sessions', requireAuth(), async (req: Request, res: Response) => {
+    const sessions = await authService.listSessions(req.auth!.userId);
+    res.json({ success: true, data: sessions });
+  });
+
+  app.delete('/api/auth/sessions/:sessionId', requireAuth(), async (req: Request, res: Response) => {
+    const revoked = await authService.revokeSession(req.auth!.userId, String(req.params.sessionId));
+    if (!revoked) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'SESSION_NOT_FOUND', message: 'Authentication session not found.' },
+      });
+    }
+    res.json({ success: true, message: 'Authentication session revoked.' });
+  });
+
   // ------------------------------------------------------------------
   // 2. SYSTEM HEALTH & DIAGNOSTICS ENDPOINTS
   // ------------------------------------------------------------------
