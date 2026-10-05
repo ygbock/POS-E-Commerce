@@ -16,6 +16,28 @@ const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECT
 const SEARCH_ATTRIBUTION_EVENTS = new Set(['IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
 const discoverySearchRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 120, message: 'Too many discovery search requests. Please slow down and try again shortly.' });
 const discoveryAttributionRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 180, message: 'Too many discovery attribution events. Please slow down and try again shortly.' });
+const DISCOVERY_SESSION_COOKIE = 'discovery_sid';
+const DISCOVERY_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+function getDiscoverySessionHash(req: Request, res: Response): string {
+  const cookieHeader = String(req.headers.cookie || '');
+  const cookie = cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${DISCOVERY_SESSION_COOKIE}=`));
+  let sessionId = cookie ? decodeURIComponent(cookie.slice(DISCOVERY_SESSION_COOKIE.length + 1)) : '';
+
+  if (!/^[a-f0-9]{32}$/.test(sessionId)) {
+    sessionId = randomUUID().replace(/-/g, '');
+    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    res.setHeader(
+      'Set-Cookie',
+      `${DISCOVERY_SESSION_COOKIE}=${sessionId}; Max-Age=${DISCOVERY_SESSION_MAX_AGE_SECONDS}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+    );
+  }
+
+  return createHash('sha256').update(`discovery-session:${sessionId}`).digest('hex');
+}
 
 export function createDiscoveryRouter(db: DatabaseClient) {
   const router = express.Router();
@@ -1933,30 +1955,67 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-014: analytics + moderation endpoints
   // ------------------------------------------------------------------
-  router.post('/analytics/events', async(req,res,next)=>{try{
-    const type=String(req.body?.eventType||'');
+  router.post('/analytics/events', discoveryAttributionRateLimiter, async(req,res,next)=>{try{
+    const type=String(req.body?.eventType||'').trim().toUpperCase();
     if(!ANALYTICS_EVENTS.has(type))throw new Error('VALIDATION_ERROR:Unsupported analytics event.');
-    const businessId=req.body?.businessId?String(req.body.businessId):null;
-    const productId=req.body?.productId?String(req.body.productId):null;
-    const serviceId=req.body?.serviceId?String(req.body.serviceId):null;
+
+    const eventId = req.body?.eventId == null || req.body?.eventId === ''
+      ? `evt_${randomUUID().replace(/-/g,'')}`
+      : String(req.body.eventId).trim();
+    if(!/^evt_[a-f0-9]{32}$/.test(eventId)) {
+      throw new Error('VALIDATION_ERROR:eventId must be a generated analytics event id.');
+    }
+
+    const businessId=req.body?.businessId?String(req.body.businessId).trim():null;
+    const productId=req.body?.productId?String(req.body.productId).trim():null;
+    const serviceId=req.body?.serviceId?String(req.body.serviceId).trim():null;
     const metadata=req.body?.metadata??{};
     if(metadata===null||typeof metadata!=='object'||Array.isArray(metadata))throw new Error('VALIDATION_ERROR:metadata must be an object.');
     if(Buffer.byteLength(JSON.stringify(metadata),'utf8')>8192)throw new Error('VALIDATION_ERROR:metadata exceeds 8192 bytes.');
+
     if(type!=='SEARCH'&&!businessId)throw new Error('VALIDATION_ERROR:businessId is required for this analytics event.');
     if(businessId&&!(await businessService.getPublicProfile(businessId)))throw new Error('NOT_FOUND:Discovery business not found.');
+
+    if(productId){
+      const p=await db.query(
+        `SELECT p.id, p.organization_id
+           FROM products p
+           JOIN discovery_businesses b
+             ON b.organization_id=p.organization_id
+          WHERE p.id=$1
+            AND b.id=$2
+            AND b.listing_status='PUBLISHED'
+            AND b.is_discoverable=TRUE
+            AND (b.organization_id IS NULL OR EXISTS(
+              SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
+            ))
+            AND p.status='active'
+          LIMIT 1`,
+        [productId,businessId],
+      );
+      if(!p.rows[0])throw new Error('NOT_FOUND:Discovery product not found.');
+    }
+
     if(serviceId){
       const s=await db.query(`SELECT s.id FROM discovery_services s JOIN discovery_businesses b ON b.id=s.business_id WHERE s.id=$1 AND s.is_active=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))`,[serviceId]);
       if(!s.rows[0])throw new Error('NOT_FOUND:Discovery service not found.');
       if(businessId){const belongs=await db.query('SELECT 1 FROM discovery_services WHERE id=$1 AND business_id=$2',[serviceId,businessId]);if(!belongs.rows[0])throw new Error('VALIDATION_ERROR:serviceId does not belong to businessId.');}
     }
+
     if((type==='SERVICE_VIEW'||type==='SERVICE_REQUEST')&&!serviceId)throw new Error('VALIDATION_ERROR:serviceId is required for this analytics event.');
     if(type==='PRODUCT_VIEW'&&!productId)throw new Error('VALIDATION_ERROR:productId is required for PRODUCT_VIEW.');
-    const raw=`${req.ip}|${req.headers['user-agent']||''}`;
-    const sessionHash=createHash('sha256').update(raw).digest('hex');
-    await db.query(`INSERT INTO discovery_analytics_events(id,business_id,product_id,service_id,event_type,session_hash,actor_user_id,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[`evt_${randomUUID().replace(/-/g,'')}`,businessId,productId,serviceId,type,sessionHash,req.auth?.userId||null,metadata]);
-    res.status(202).json({success:true});
+
+    const sessionHash=getDiscoverySessionHash(req,res);
+    const inserted=await db.query(
+      `INSERT INTO discovery_analytics_events(id,business_id,product_id,service_id,event_type,session_hash,actor_user_id,metadata)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
+      [eventId,businessId,productId,serviceId,type,sessionHash,req.auth?.userId||null,metadata],
+    );
+
+    res.status(202).json({success:true,data:{eventId,recorded:inserted.rows.length===1}});
   }catch(err){next(err);}});
-  
   router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
     const status=String(req.query.status||'');
