@@ -37,7 +37,7 @@ export const UserManagementView: React.FC = () => {
   const filtered=useMemo(()=>users.filter(u=>[u.name,u.email,u.role].join(' ').toLowerCase().includes(query.toLowerCase())),[users,query]);
   const updateRole=async(user:UserRow, role:string)=>{
     setError('');
-    try{const r=await fetch('/api/users/'+user.id+'/role',{method:'PATCH',headers:authClient.getAuthHeaders(),body:JSON.stringify({role})});const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Unable to change role.');await load();}catch(e:any){setError(e?.message||'Unable to change role.');}
+    try{const r=await fetch('/api/users/'+user.id,{method:'PUT',headers:authClient.getAuthHeaders(),body:JSON.stringify({role})});const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Unable to change role.');await load();}catch(e:any){setError(e?.message||'Unable to change role.');}
   };
   const updateStatus=async(user:UserRow)=>{
     setError('');
