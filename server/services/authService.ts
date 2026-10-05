@@ -443,6 +443,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       role: user.role,
+      identityType: 'staff',
       permissions,
       locationId: user.location_id,
     };
