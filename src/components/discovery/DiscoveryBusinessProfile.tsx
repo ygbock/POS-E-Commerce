@@ -236,7 +236,15 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
     if (onBack) {
       onBack();
     } else {
-      window.location.assign('/discover');
+      let lastPath = null;
+      try {
+        lastPath = sessionStorage.getItem('abacha.discovery.last_search_path');
+      } catch { /* ignore */ }
+      if (lastPath) {
+        window.location.assign(lastPath);
+      } else {
+        window.location.assign('/discover');
+      }
     }
   };
 
@@ -579,7 +587,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
         </section>
 
         {/* Content Layout */}
-        <div className="grid lg:grid-cols-[1fr_340px] gap-6">
+        <div className="ui-form-grid lg:grid-cols-[1fr_340px] gap-6">
           <div className="space-y-6">
             {/* Storefront Integration Box */}
             {s.show_products && (
@@ -617,7 +625,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                     {services.length} services
                   </span>
                 </div>
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="ui-form-grid ui-form-grid--wide sm:grid-cols-2 gap-4">
                   {services.map((svc) => (
                     <ServiceCard
                       key={svc.id}

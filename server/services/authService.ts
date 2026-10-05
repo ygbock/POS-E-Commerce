@@ -612,6 +612,14 @@ export class AuthService {
           role: u.role,
           is_active: true,
         });
+      } else {
+        const { hash, salt } = hashPassword(u.password);
+        await this.db.query(
+          `UPDATE users 
+           SET password_hash = $1, password_salt = $2, role = $3, is_active = TRUE
+           WHERE id = $4 AND organization_id = $5`,
+          [hash, salt, u.role, existing.id, u.orgId]
+        );
       }
     }
 

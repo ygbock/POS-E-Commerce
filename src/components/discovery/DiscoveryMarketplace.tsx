@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DiscoveryHome } from './DiscoveryHome';
 import { DiscoverySearchResults } from './DiscoverySearchResults';
 import { DiscoveryBusinessProfile } from './DiscoveryBusinessProfile';
@@ -29,6 +29,14 @@ export const DiscoveryMarketplace: React.FC = () => {
     }
     return 'customer';
   });
+
+  useEffect(() => {
+    if (route.name !== 'discover-business' && route.name !== 'discover-service' && route.name !== 'not-found') {
+      try {
+        sessionStorage.setItem('abacha.discovery.last_search_path', window.location.pathname + window.location.search);
+      } catch { /* ignore */ }
+    }
+  }, [route]);
 
   const requireCustomerAuth = (path: string) => {
     if (authClient.getToken()) return true;
@@ -65,7 +73,10 @@ export const DiscoveryMarketplace: React.FC = () => {
       return (
         <DiscoveryServiceDetailPage
           serviceId={route.serviceId}
-          onBack={() => navigate('discover-home')}
+          onBack={() => {
+            const lastPath = sessionStorage.getItem('abacha.discovery.last_search_path');
+            navigate(lastPath || 'discover-home');
+          }}
           onRequestService={(service) =>
             navigate('/discover/request-service?serviceId=' + encodeURIComponent(service.id) + '&serviceName=' + encodeURIComponent(service.name))
           }
@@ -78,7 +89,10 @@ export const DiscoveryMarketplace: React.FC = () => {
       return (
         <DiscoveryBusinessProfile
           businessId={route.businessId}
-          onBack={() => navigate('discover-home')}
+          onBack={() => {
+            const lastPath = sessionStorage.getItem('abacha.discovery.last_search_path');
+            navigate(lastPath || 'discover-home');
+          }}
           onRequestService={(service) =>
             navigate(
               '/discover/request-service?serviceId=' +
