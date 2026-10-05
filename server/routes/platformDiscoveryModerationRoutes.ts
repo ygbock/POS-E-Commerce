@@ -81,7 +81,7 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
       const status = String(req.body?.status || '').trim().toUpperCase();
       const reason = String(req.body?.reason || '').trim().slice(0, 4000) || undefined;
       const issues = Array.isArray(req.body?.issues) ? req.body.issues : [];
-      if (!['UNDER_REVIEW','APPROVED','REJECTED','PUBLISHED'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Decision status must be UNDER_REVIEW, APPROVED, REJECTED, or PUBLISHED.'}});
+      if (!['UNDER_REVIEW','APPROVED','REJECTED','PUBLISHED','SUSPENDED'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Decision status must be UNDER_REVIEW, APPROVED, REJECTED, PUBLISHED, or SUSPENDED.'}});
       if (status === 'REJECTED' && !reason && issues.length === 0) return res.status(422).json({success:false,error:{code:'REJECTION_REASON_REQUIRED',message:'Select at least one moderation issue or provide an overall rejection note.'}});
       const allowedIssues = new Set(['identity','description','contact','category','location','coordinates','offering','store']);
       const normalizedIssues = issues.map((item:any) => ({key:String(item?.key || '').trim().toLowerCase(),detail:String(item?.detail || '').trim().slice(0,1000) || null})).filter((item:any) => allowedIssues.has(item.key));
@@ -91,8 +91,34 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
       if (status === 'UNDER_REVIEW') updated = await discoveryService.review(req.params.id, actor, reason);
       else if (status === 'APPROVED') updated = await discoveryService.approve(req.params.id, actor, reason);
       else if (status === 'PUBLISHED') updated = await discoveryService.publish(req.params.id, actor, reason);
+      else if (status === 'SUSPENDED') updated = await discoveryService.suspend(req.params.id, actor, reason);
       else updated = await discoveryService.reject(req.params.id, actor, reason, undefined, normalizedIssues);
       res.json({success:true,data:updated});
+    } catch (err) { next(err); }
+  });
+
+  router.get('/history', ...guard, async (req, res, next) => {
+    try {
+      const limit = Math.min(200, Math.max(1, Number.parseInt(String(req.query.limit || '100'), 10) || 100));
+      const r = await db.query(
+        `SELECT id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,created_at
+           FROM discovery_trust_events
+          ORDER BY created_at DESC
+          LIMIT $1`,
+        [limit],
+      );
+      const listing = await db.query(
+        `SELECT e.id,e.business_id,'BUSINESS' AS entity_type,e.id AS entity_id,'LISTING_STATUS_CHANGED' AS event_type,
+                e.from_status,e.to_status,e.actor_user_id,e.reason,e.created_at
+           FROM discovery_listing_events e
+          ORDER BY e.created_at DESC
+          LIMIT $1`,
+        [limit],
+      );
+      const rows = [...r.rows, ...listing.rows]
+        .sort((a: any,b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, limit);
+      res.json({ success:true, data:rows });
     } catch (err) { next(err); }
   });
 
