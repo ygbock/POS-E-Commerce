@@ -692,7 +692,7 @@ export class AuthService {
           `UPDATE users
              SET email = $1, name = $2, password_hash = $3, password_salt = $4,
                  role = $5, identity_type = $6, is_active = TRUE, updated_at = CURRENT_TIMESTAMP
-           WHERE id = $6 AND organization_id = $7`,
+           WHERE id = $7 AND organization_id = $8`,
           [u.email, u.name, hash, salt, u.role, getIdentityTypeForRole(u.role), existing.id, u.orgId],
         );
       }
