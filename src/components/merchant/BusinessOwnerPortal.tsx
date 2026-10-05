@@ -461,6 +461,27 @@ export const BusinessOwnerPortal: React.FC = () => {
                           </div>
                         </div>
                       )}
+                      <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Business administration</p>
+                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {[
+                            { label: 'Users', workspace: 'users', icon: Users },
+                            { label: 'Locations', workspace: 'locations', icon: MapPin },
+                            { label: 'Customers', workspace: 'crm', icon: Users },
+                            { label: 'Suppliers', workspace: 'suppliers', icon: Wrench },
+                          ].map(({ label, workspace, icon: Icon }) => (
+                            <button
+                              key={workspace}
+                              type="button"
+                              onClick={() => window.location.assign(`/?workspace=${workspace}&businessId=${encodeURIComponent(business.id)}`)}
+                              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                            >
+                              <Icon className="h-3.5 w-3.5 text-indigo-600" />
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </article>
                 );
