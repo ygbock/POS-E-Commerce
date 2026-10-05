@@ -1,8 +1,8 @@
 /**
  * Frontend Authentication Client (SEC-001)
  *
- * Manages server-issued cryptographic JWTs, handles login/logout,
- * and attaches Authorization: Bearer <token> headers to outbound requests.
+ * Manages server-issued authentication sessions, handles login/logout,
+ * and relies on HttpOnly cookies for browser credentials.
  */
 
 export interface AuthUser {
@@ -127,7 +127,6 @@ class AuthClient {
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
     if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, data.data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     }
     return data.data.user;
@@ -151,7 +150,6 @@ class AuthClient {
     this.currentUser = data.data.user;
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, data.data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     }
 
