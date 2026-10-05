@@ -212,7 +212,7 @@ async function main() {
   try {
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
-    const publicSearchResponse = await fetch(baseUrl + '/api/discovery/businesses?limit=200');
+    const publicSearchResponse = await fetch(baseUrl + '/api/discovery/businesses?limit=100');
     assert.strictEqual(publicSearchResponse.status, 200);
     const publicSearchBody = await publicSearchResponse.json();
     assert.strictEqual(publicSearchBody?.success, true);
