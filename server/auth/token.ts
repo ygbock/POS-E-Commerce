@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { UserRole, getPermissionsForRole } from './roles';
+import { UserRole, getPermissionsForRole, getIdentityTypeForRole } from './roles';
 
 /**
  * Token Management and Cryptographic Verification (SEC-001)
@@ -194,6 +194,14 @@ export function verifyToken(token: string, customSecret?: string): TokenClaims {
   if (payload.iat && typeof payload.iat === 'number' && payload.iat > now + 60) {
     throw new TokenVerificationError('Token issued in the future (clock skew error)', 'MALFORMED');
   }
+
+  // Identity realm is derived from the authoritative role. A mismatched realm claim
+  // indicates token tampering or an invalid legacy token and must fail closed.
+  const expectedIdentityType = getIdentityTypeForRole(payload.role);
+  if (payload.identityType && payload.identityType !== expectedIdentityType) {
+    throw new TokenVerificationError('Token identity realm does not match role', 'MALFORMED');
+  }
+  payload.identityType = expectedIdentityType;
 
   // Mandatory Subject and Organization
   if (!payload.sub || !payload.orgId || !payload.role) {
