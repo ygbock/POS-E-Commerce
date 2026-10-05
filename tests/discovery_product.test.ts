@@ -22,7 +22,7 @@ assert.match(search, /handleProductSelect/);
 assert.match(search, /recordResultEvent\(product, 'PRODUCT_VIEW'\)/);
 assert.match(search, /<ProductDiscoveryCard key=\{prod\.variant_id\} product=\{prod\} onSelect=\{handleProductSelect\}/);
 
-assert.match(api, /eventType: 'IMPRESSION' \| 'VIEW' \| 'PRODUCT_VIEW' \| 'SERVICE_VIEW'/);
+assert.match(types, /eventType: 'IMPRESSION' \| 'VIEW' \| 'CONTACT' \| 'DIRECTION_CLICK' \| 'STORE_CLICK' \| 'PRODUCT_VIEW' \| 'SERVICE_VIEW' \| 'SERVICE_REQUEST' \| 'ORDER_CLICK'/);
 assert.ok(api.includes('/api/discovery/search/events'));
 
 assert.match(types, /export interface DiscoveryProduct/);
