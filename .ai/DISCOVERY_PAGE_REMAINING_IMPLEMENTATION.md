@@ -120,15 +120,18 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Verify location privacy messaging.
 
 ### DISC-PAGE-006 — Product Discovery
-- [ ] Verify product cards and images.
-- [ ] Verify price visibility settings.
-- [ ] Verify stock visibility and availability badges.
-- [ ] Verify merchant identity.
-- [ ] Verify product-to-store navigation.
-- [ ] Verify tenant/store resolution.
-- [ ] Verify unavailable products.
-- [ ] Verify product search/filter behavior.
-- [ ] Verify product analytics events.
+- [x] Product cards and lazy-loaded images.
+- [x] Price visibility follows merchant `show_prices` settings.
+- [x] Stock visibility follows merchant `show_stock_status` settings and availability badges.
+- [x] Merchant identity and location are displayed.
+- [x] Product-to-store navigation resolves through the merchant slug/id.
+- [x] Tenant/store resolution is server-authoritative through published, discoverable business + active organization joins.
+- [x] Unavailable products remain discoverable with zero-stock availability state when otherwise eligible.
+- [x] Product search/filter behavior is handled by the unified Discovery search API, including query, category, location, radius and sort.
+- [x] Product result analytics emit `PRODUCT_VIEW` attribution when selected.
+- [x] Dedicated PAGE-006 regression coverage is registered in `test:discovery`.
+
+**IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
 
 ### DISC-PAGE-007 — Service Discovery and RFQ
 - [ ] Verify service cards and service detail.
@@ -278,7 +281,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 ### Wave 2 — Complete customer discovery
 4. DISC-PAGE-004 Business Profile — **IMPLEMENTATION COMPLETE**
 5. DISC-PAGE-005 Location and Map — **IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
-6. DISC-PAGE-006 Product Discovery
+6. DISC-PAGE-006 Product Discovery — **IMPLEMENTATION COMPLETE; VALIDATION ACTIVE**
 7. DISC-PAGE-007 Service/RFQ
 
 ### Wave 3 — Complete platform workflows
