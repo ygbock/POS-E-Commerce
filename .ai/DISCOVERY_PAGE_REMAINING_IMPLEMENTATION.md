@@ -258,10 +258,15 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] Preserve independent business/product/service section loading.
 - [x] Preserve 300-listing search performance regression coverage.
 - [x] Add dedicated production-readiness regression gate and register it in `test:discovery`.
+- [x] Normalize malformed Discovery search URL numeric parameters instead of propagating `NaN` into API requests.
+- [x] Add runtime image fallbacks for failed business/product Discovery assets.
+- [x] Confirm search remains submit-driven (no per-keystroke request storm); request cancellation remains active for superseded searches.
 - [ ] Measure initial Discovery browser load in a production-like deployment.
 - [ ] Detect duplicate API requests with browser/network instrumentation.
+- [x] Static code verification confirms Discovery search is submit-driven and superseded requests are cancelled.
 - [ ] Verify search debouncing where appropriate.
 - [ ] Verify slow API/network interruption in a browser.
+- [x] Implement image fallback behavior for failed business/product image loads.
 - [ ] Verify image fallback behavior under failed/slow asset loads.
 - [ ] Verify production bundle impact against the release baseline.
 - [ ] Run the new production-readiness regression locally.
@@ -353,6 +358,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] PAGE-011 Analytics/Event Verification implementation.
 - [x] PAGE-012 Accessibility and Responsive Hardening implementation.
 - [x] PAGE-013 initial Performance/Resilience hardening: bounded pagination and public rate limiting.
+- [x] PAGE-013 resilience hardening: malformed URL-number normalization and Discovery image fallbacks.
 - [x] Discovery accessibility, analytics, moderation, lifecycle, search, service, customer-workspace and performance regression coverage registered in `test:discovery`.
 - [x] Latest PAGE-012 CI run passed.
 
