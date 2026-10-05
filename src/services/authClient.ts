@@ -90,7 +90,6 @@ class AuthClient {
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
     if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, data.data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     }
     return { ...data.data.user, business: data.data.business };
@@ -110,7 +109,6 @@ class AuthClient {
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
     if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, data.data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     }
     return data.data.user;
@@ -161,15 +159,13 @@ class AuthClient {
   }
 
   async logout(): Promise<void> {
-    if (this.currentToken) {
-      try {
-        await fetch('/api/auth/logout', this.getRequestInit({
-          method: 'POST',
-          headers: this.getAuthHeaders(),
-        }));
-      } catch {
-        // Continue clearing local state even if network fails.
-      }
+    try {
+      await fetch('/api/auth/logout', this.getRequestInit({
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      }));
+    } catch {
+      // Continue clearing local state even if network fails.
     }
 
     this.currentToken = null;
