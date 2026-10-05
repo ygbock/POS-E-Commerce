@@ -20,7 +20,7 @@ export type UserRole =
 
 export const VALID_ROLES: UserRole[] = [
   'super_admin','admin','manager','cashier','inventory_manager','purchasing_manager','sales_user','viewer',
-  'system_owner','platform_admin','platform_support','platform_finance',
+  'system_owner','platform_admin','platform_support','platform_finance','business_owner','customer',
 ];
 
 export const ROLES = {
