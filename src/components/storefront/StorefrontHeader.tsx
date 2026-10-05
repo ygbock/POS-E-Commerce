@@ -22,7 +22,22 @@ export const StorefrontHeader: React.FC<StorefrontHeaderProps> = (p) => {
     <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-10 py-3"><div className="flex items-center gap-3">
       <button type="button" onClick={()=>setMenuOpen(v=>!v)} className="lg:hidden h-11 w-11 inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700" aria-label={menuOpen?'Close navigation menu':'Open navigation menu'} aria-expanded={menuOpen}>{menuOpen?<X/>:<Menu/>}</button>
       <button type="button" onClick={()=>go(()=>p.setActiveSection('home'))} className="flex items-center gap-2 min-w-0" aria-label="Go to storefront home">{logo?<img src={logo} alt="" className="h-10 w-10 rounded-xl object-cover"/>:<span className="h-10 w-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><Gift className="h-5 w-5"/></span>}<span className="font-black truncate">{tenant?.name||'Store'}</span></button>
-      <nav className="hidden lg:flex items-center gap-1 ml-4" aria-label="Primary navigation"><button type="button" onClick={()=>p.setActiveSection('home')} className="px-3 py-2 rounded-lg text-sm">Home</button><button type="button" onClick={()=>p.setActiveSection('catalog')} className="px-3 py-2 rounded-lg text-sm">Shop</button></nav>
+      <nav className="hidden lg:flex items-center gap-1 ml-4" aria-label="Primary navigation">
+        <button type="button" onClick={()=>p.setActiveSection('home')} className="px-3 py-2 rounded-lg text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Home</button>
+        <button type="button" onClick={()=>p.setActiveSection('catalog')} className="px-3 py-2 rounded-lg text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Shop</button>
+        {p.onOpenAdmin && (
+          <button type="button" onClick={p.onOpenAdmin} className="px-3 py-2 rounded-lg text-sm text-sky-600 dark:text-sky-400 font-bold hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors flex items-center gap-1.5" title="Access merchant administration dashboard">
+            <LayoutDashboard className="h-4 w-4" />
+            <span>Admin</span>
+          </button>
+        )}
+        {p.onOpenPos && (
+          <button type="button" onClick={p.onOpenPos} className="px-3 py-2 rounded-lg text-sm text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors flex items-center gap-1.5" title="Access POS cashier register">
+            <Monitor className="h-4 w-4" />
+            <span>POS</span>
+          </button>
+        )}
+      </nav>
       <div className="relative flex-1 max-w-2xl mx-auto"><label htmlFor="storefront-search" className="sr-only">Search products</label><div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3"><Search className="h-4 w-4 text-slate-400"/><input id="storefront-search" value={p.searchQuery} onChange={e=>p.setSearchQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&p.searchQuery.trim())p.setActiveSection('catalog')}} placeholder="Search products…" className="w-full bg-transparent py-2.5 text-sm outline-none"/></div></div>
       <div className="flex items-center gap-1"><button type="button" onClick={p.onOpenWishlist} className="h-11 w-11 rounded-xl flex items-center justify-center" aria-label="Wishlist"><Heart className="h-5 w-5"/></button><button type="button" onClick={p.onOpenCart} className="relative h-11 w-11 rounded-xl flex items-center justify-center" aria-label={'Cart, '+cartCount+' items'}><ShoppingCart className="h-5 w-5"/>{cartCount>0&&<span aria-hidden="true" className="absolute -top-1 -right-1 min-w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center px-1">{cartCount}</span>}</button><button type="button" onClick={p.onOpenAccount} className="hidden sm:flex h-11 w-11 rounded-xl items-center justify-center" aria-label="Customer account"><User className="h-5 w-5"/></button></div>
     </div></div>
