@@ -23,7 +23,7 @@ assert.match(search, /recordResultEvent\(product, 'PRODUCT_VIEW'\)/);
 assert.match(search, /<ProductDiscoveryCard key=\{prod\.variant_id\} product=\{prod\} onSelect=\{handleProductSelect\}/);
 
 assert.match(api, /eventType: 'IMPRESSION' \| 'VIEW' \| 'PRODUCT_VIEW' \| 'SERVICE_VIEW'/);
-assert.match(api, /'/api\/discovery\/search\/events'/);
+assert.match(api, /\\/api\\/discovery\\/search\\/events/);
 
 assert.match(types, /export interface DiscoveryProduct/);
 assert.match(types, /variant_id: string/);
