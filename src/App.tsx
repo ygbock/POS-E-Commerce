@@ -26,6 +26,7 @@ import { SubscriptionsManagementView } from './components/platform/Subscriptions
 import { PlatformDiscoveryCategoriesView } from './components/platform/PlatformDiscoveryCategoriesView';
 import { UserManagementView } from './components/admin/UserManagementView';
 import { LocationManagementView } from './components/admin/LocationManagementView';
+import { SupplierManagementView } from './components/purchasing/SupplierManagementView';
 import { isPlatformRole } from './components/platform/platformAccess';
 import { DiscoveryMarketplace } from './components/discovery/DiscoveryMarketplace';
 import { LoginPage } from './components/auth/LoginPage';
@@ -84,7 +85,7 @@ const MainLayout: React.FC = () => {
   const requestedBusinessId = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('businessId')
     : null;
-  const workspaceTabs = new Set(['dashboard', 'catalog', 'inventory', 'orders', 'pos']);
+  const workspaceTabs = new Set(['dashboard', 'catalog', 'inventory', 'orders', 'pos', 'users', 'locations', 'crm', 'suppliers', 'purchasing']);
   const [activeTab, setActiveTab] = useState<string>(() =>
     isPlatform ? 'platform-dashboard' : (requestedWorkspace && workspaceTabs.has(requestedWorkspace) ? requestedWorkspace : 'storefront')
   );
@@ -161,6 +162,7 @@ const MainLayout: React.FC = () => {
             {(activeTab === 'discovery' || activeTab === 'discovery-admin') && <DiscoveryMarketplace />}
             {activeTab === 'users' && <UserManagementView />}
             {activeTab === 'locations' && <LocationManagementView />}
+            {activeTab === 'suppliers' && <SupplierManagementView />}
             {activeTab === 'pos' && <PosTerminal />}
             {(activeTab === 'catalog' || activeTab === 'products') && <ProductManagement storeBusinessId={requestedBusinessId} />}
             {(activeTab === 'inventory' || activeTab === 'stock' || activeTab === 'movements' || activeTab === 'transfers' || activeTab === 'stocktaking') && (
@@ -212,7 +214,7 @@ export default function App() {
   const isMerchantSignupPath = window.location.pathname === '/business/signup';
   const isMerchantSigninPath = window.location.pathname === '/business/signin';
   const requestedWorkspace = new URLSearchParams(window.location.search).get('workspace');
-  const hasAuthenticatedWorkspaceRequest = ['dashboard', 'catalog', 'inventory', 'orders', 'pos'].includes(requestedWorkspace || '');
+  const hasAuthenticatedWorkspaceRequest = ['dashboard', 'catalog', 'inventory', 'orders', 'pos', 'users', 'locations', 'crm', 'suppliers', 'purchasing'].includes(requestedWorkspace || '');
 
   if (isMerchantSignupPath) {
     return <BusinessOwnerSignup />;
