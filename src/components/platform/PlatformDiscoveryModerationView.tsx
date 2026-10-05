@@ -23,7 +23,7 @@ interface ListingQueueMeta {
   hasPreviousPage: boolean;
 }
 
-type Queue = 'listings' | 'verification' | 'claims' | 'reviews' | 'reports' | 'search';
+type Queue = 'listings' | 'verification' | 'claims' | 'reviews' | 'reports' | 'history' | 'search';
 
 interface SearchRankingConfig {
   id: string;
@@ -64,6 +64,7 @@ const queueMeta: Record<Queue, { label: string; description: string; icon: React
   claims: { label: 'Claims', description: 'Ownership claims for discovery businesses.', icon: <UserCheck className="w-4 h-4" /> },
   reviews: { label: 'Reviews', description: 'Customer reviews awaiting moderation.', icon: <FileCheck2 className="w-4 h-4" /> },
   reports: { label: 'Reports', description: 'Business and service abuse reports.', icon: <Flag className="w-4 h-4" /> },
+  history: { label: 'History', description: 'Immutable moderation and trust decision history.', icon: <Clock className="w-4 h-4" /> },
   search: { label: 'Search', description: 'Search quality analytics and platform ranking controls.', icon: <BarChart3 className="w-4 h-4" /> },
 };
 
@@ -114,6 +115,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
     if (queue === 'reports' && reportsFilter) return `/api/platform/discovery/moderation/reports?status=${encodeURIComponent(reportsFilter)}`;
     if (queue === 'reviews') return '/api/platform/discovery/moderation/reviews?status=PENDING';
     if (queue === 'search') return '/api/platform/discovery/search-analytics?days=' + searchDays;
+    if (queue === 'history') return '/api/platform/discovery/moderation/history?limit=100';
     return `/api/platform/discovery/moderation/${queue}`;
   }, [queue, reportsFilter, listingStatusFilter, listingPage, listingPageSize, listingSearch, listingModeFilter, listingVerificationFilter, listingIssuesFilter, searchDays]);
 
@@ -272,7 +274,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             <div>
               <label htmlFor="listing-status-filter" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</label>
               <select id="listing-status-filter" value={listingStatusFilter} onChange={(e) => { setListingStatusFilter(e.target.value); setListingPage(1); }} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
-                <option value="SUBMITTED">Submitted</option><option value="UNDER_REVIEW">Under review</option><option value="REJECTED">Rejected</option><option value="APPROVED">Approved</option><option value="PUBLISHED">Published</option>
+                <option value="SUBMITTED">Submitted</option><option value="UNDER_REVIEW">Under review</option><option value="REJECTED">Rejected</option><option value="APPROVED">Approved</option><option value="PUBLISHED">Published</option><option value="SUSPENDED">Suspended</option>
               </select>
             </div>
             <div>
@@ -309,6 +311,43 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
         </div>
       )}
 
+
+      {queue === 'history' && (
+        <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-100 p-5 dark:border-slate-800">
+            <h2 className="text-sm font-black text-slate-900 dark:text-white">Moderation history</h2>
+            <p className="mt-1 text-xs text-slate-500">Server-recorded listing lifecycle and trust decisions. Actor, status transition, reason and timestamp are retained for auditability.</p>
+          </div>
+          {loading ? (
+            <div className="p-10 text-center text-sm text-slate-500"><RefreshCw className="mx-auto mb-2 h-5 w-5 animate-spin" />Loading history…</div>
+          ) : items.length === 0 ? (
+            <div className="p-10 text-center text-sm text-slate-500">No moderation history records found.</div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {items.map((item) => (
+                <article key={String(item.id)} className="p-5">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-black text-slate-900 dark:text-white">{String(item.event_type)}</span>
+                        {statusBadge(String(item.to_status || '—'))}
+                        <span className="text-[10px] font-mono text-slate-400">{String(item.entity_type)}</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">Business: {String(item.business_id || '—')} · Entity: {String(item.entity_id || '—')}</p>
+                      <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{String(item.from_status || 'INIT')} → {String(item.to_status || '—')}</p>
+                      {item.reason && <p className="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">{String(item.reason)}</p>}
+                    </div>
+                    <div className="text-right text-[10px] text-slate-400">
+                      <div>{new Date(String(item.created_at)).toLocaleString()}</div>
+                      <div className="mt-1 font-mono">Actor: {String(item.actor_user_id || 'system')}</div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {queue === 'search' && searchAnalytics && searchRanking && (
         <div className="space-y-5">
@@ -502,6 +541,9 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                             <button type="button" disabled={busyId===item.id} onClick={() => void decide(item,'HIDDEN')} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Hide</button>
                             <button type="button" disabled={busyId===item.id} onClick={() => void decide(item,'REJECTED')} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Reject</button>
                           </>
+                        )}
+                        {queue === 'listings' && (
+                          <button type="button" disabled={busyId===selectedListing?.id} onClick={() => void decideListing('SUSPENDED')} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Suspend listing</button>
                         )}
                         {queue === 'reports' && (
                           <>
