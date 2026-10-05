@@ -24,7 +24,7 @@ async function main() {
   assert.match(service, /FOR UPDATE/);
   assert.match(service, /Received quantity exceeds the remaining purchase-order quantity/);
 
-  assert.match(routes, /GET', requireAuth\(\), requirePermission\(PERMISSIONS\.PURCHASES_VIEW\)/);
+  assert.match(routes, /router\.get\('\/purchase-orders', requireAuth\(\), requirePermission\(PERMISSIONS\.PURCHASES_VIEW\)/);
   assert.match(routes, /router\.post\('\/purchase-orders'/);
   assert.match(routes, /router\.post\('\/purchase-orders\/:id\/receive'/);
   assert.match(routes, /PERMISSIONS\.INVENTORY_RECEIVE/);
