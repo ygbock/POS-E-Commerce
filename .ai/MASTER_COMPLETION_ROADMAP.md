@@ -372,6 +372,28 @@ Remaining TASK-MERCHANT-2 hardening:
 
 #### TASK-MERCHANT-3 — Purchasing and receiving
 
+**Status: IMPLEMENTED — CI validation gate active**
+
+Implemented:
+- Tenant-scoped purchase-order list/detail/create APIs.
+- Draft → Sent → Approved and cancellation lifecycle guards.
+- Exact-decimal quantity and money validation.
+- Transactional receiving with purchase-order and line row locks.
+- Over-receipt prevention and partial/full receipt transitions.
+- Persistent purchase receipts with tenant-scoped idempotency.
+- Receiving-to-inventory mutation through the canonical InventoryRepository ledger in the same transaction.
+- Receipt-linked inventory movement references and purchase receiving audit events.
+- Purchase receipt history API.
+- Purchasing UI and auto-replenishment now use the authoritative purchasing APIs rather than client-side PO/stock mutation.
+- Regression contract: tests/merchant_purchasing.test.ts, registered as test:merchant-purchasing and included in npm test.
+
+Implementation evidence:
+- e4fc1804, f0ddd12f, d072c611, 37a06fd9, 4a3a1d41, 4698c0dc, d6542579, 69666d3c, 71e9aa94.
+
+Validation remaining:
+- CI lint/build and full regression must pass before TASK-MERCHANT-3 is signed off.
+- Production verification must confirm purchase → receive → inventory balance/movement against a real tenant database.
+
 - purchase orders;
 - supplier orders;
 - receiving;
