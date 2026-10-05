@@ -11,7 +11,16 @@ export function useDiscoveryRoute() {
   }, []);
 
   const navigate = useCallback((next: DiscoveryRoute | string, replace = false) => {
-    const path = typeof next === 'string' ? next : buildDiscoveryPath(next);
+    let path = '';
+    if (typeof next === 'string') {
+      if (next.startsWith('/')) {
+        path = next;
+      } else {
+        path = buildDiscoveryPath({ name: next as any });
+      }
+    } else {
+      path = buildDiscoveryPath(next);
+    }
     if (path === window.location.pathname + window.location.search) return;
     if (replace) {
       window.history.replaceState({}, '', path);
