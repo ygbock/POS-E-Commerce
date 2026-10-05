@@ -147,7 +147,7 @@ export class PurchasingService {
            expected_date,subtotal,tax_amount,shipping_fee,total_amount,notes,created_by,idempotency_key)
          VALUES($1,$2,$3,$4,$5,'Draft','Unpaid',$6,$7,$8,$9,$10,$11,$12,$13)`,
         [id,organizationId,input.supplier_id,input.destination_location_id,poNumber,input.expected_date || null,
-         subtotal.toFixed(2),tax.toFixed(2),shipping.toFixed(2),total.toFixed(2),input.notes || null,actor.name || actor.userId,input.idempotency_key || null],
+         subtotal,tax,shipping,total,input.notes || null,actor.name || actor.userId,input.idempotency_key || null],
       );
 
       for (const item of normalizedItems) {
