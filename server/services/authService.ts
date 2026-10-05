@@ -198,6 +198,11 @@ export class AuthService {
     // role-based routing/authorization stable even when legacy seed data contains
     // casing, spaces, or hyphenated role names.
     const role = normalizeRole(user.role);
+    // Control-plane identities must use the dedicated platform authentication
+    // boundary. Never issue a platform session from the tenant login endpoint.
+    if (isPlatformRole(role)) {
+      throw new Error('PLATFORM_LOGIN_REQUIRED: Platform operators must sign in through the platform control plane.');
+    }
     const permissions = getPermissionsForRole(role);
     const token = signToken({
       userId: user.id,
