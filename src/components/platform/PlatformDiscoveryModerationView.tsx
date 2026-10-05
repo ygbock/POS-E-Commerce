@@ -542,9 +542,6 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                             <button type="button" disabled={busyId===item.id} onClick={() => void decide(item,'REJECTED')} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Reject</button>
                           </>
                         )}
-                        {queue === 'listings' && (
-                          <button type="button" disabled={busyId===selectedListing?.id} onClick={() => void decideListing('SUSPENDED')} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Suspend listing</button>
-                        )}
                         {queue === 'reports' && (
                           <>
                             <button type="button" disabled={busyId===item.id} onClick={() => void decide(item,'UNDER_REVIEW')} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Under review</button>
@@ -614,6 +611,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                   {selectedListing.status === 'SUBMITTED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('UNDER_REVIEW')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Start review</button>}
                   {selectedListing.status === 'UNDER_REVIEW' && <><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('APPROVED')} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white">Approve</button><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('REJECTED')} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white">Reject & request changes</button></>}
                   {selectedListing.status === 'APPROVED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('PUBLISHED')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Publish listing</button>}
+                  {['PUBLISHED','PAUSED'].includes(selectedListing.status) && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('SUSPENDED')} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white">Suspend listing</button>}
                 </div>
               </div>
             )}
