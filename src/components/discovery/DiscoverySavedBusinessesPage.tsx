@@ -3,6 +3,7 @@ import { ArrowLeft, Heart, MapPin, RefreshCw, Store, Trash2, AlertCircle } from 
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryFavoriteBusiness } from '../../types/discovery';
 import { DiscoveryMobileBottomNav } from './DiscoveryMobileBottomNav';
+import { authClient } from '../../services/authClient';
 
 interface DiscoverySavedBusinessesPageProps {
   onBack?: () => void;
@@ -29,7 +30,10 @@ export const DiscoverySavedBusinessesPage: React.FC<DiscoverySavedBusinessesPage
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!authClient.getToken()) { setError('Sign in is required to view saved businesses.'); setLoading(false); return; }
+    void load();
+  }, [load]);
 
   const remove = async (businessId: string) => {
     try {
