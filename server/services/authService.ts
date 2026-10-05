@@ -123,6 +123,7 @@ export class AuthService {
       ipAddress: session.ip_address,
       accessExpiresAt: new Date(Date.now() + ACCESS_SESSION_TTL_SECONDS * 1000),
       refreshExpiresAt: new Date(session.refresh_expires_at),
+      eventType: 'REFRESH_ROTATED',
     });
     await replaceAuthSession(this.db, session.id, nextSession.id);
 
