@@ -629,6 +629,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                       onRequestService={(selected) => {
                         window.location.assign(`/discover/request-service?serviceId=${encodeURIComponent(selected.id)}&serviceName=${encodeURIComponent(selected.name)}`);
                       }}
+                      onOpenService={(selected) => {
+                        void discoveryApi.trackEvent({ eventType: 'SERVICE_VIEW', businessId: selected.business_id, serviceId: selected.id });
+                        window.location.assign('/discover/service/' + encodeURIComponent(selected.id));
+                      }}
                     />
                   ))}
                 </div>
