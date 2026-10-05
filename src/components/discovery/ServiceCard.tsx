@@ -6,12 +6,14 @@ import { VerificationBadge } from './VerificationBadge';
 interface ServiceCardProps {
   service: DiscoveryService;
   onRequestService?: (service: DiscoveryService) => void;
+  onOpenService?: (service: DiscoveryService) => void;
   className?: string;
 }
 
 export const ServiceCard: React.FC<ServiceCardProps> = ({
   service,
   onRequestService,
+  onOpenService,
   className = '',
 }) => {
   const priceDisplay =
@@ -21,6 +23,10 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
   return (
     <article
+      onClick={() => onOpenService?.(service)}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenService?.(service); } }}
+      role={onOpenService ? 'link' : undefined}
+      tabIndex={onOpenService ? 0 : undefined}
       className={`group rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex flex-col justify-between shadow-2xs hover:shadow-xl hover:border-slate-300 dark:hover:border-slate-700 transition-all ${className}`}
       aria-labelledby={`service-title-${service.id}`}
     >
@@ -82,7 +88,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
         <button
           type="button"
-          onClick={() => onRequestService && onRequestService(service)}
+          onClick={(event) => { event.stopPropagation(); onRequestService?.(service); }}
           className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95"
         >
           <Send className="w-3.5 h-3.5" aria-hidden="true" />
