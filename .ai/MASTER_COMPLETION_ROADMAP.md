@@ -34,7 +34,7 @@ The current completion problem is therefore primarily **product-operating comple
 |---|---|---|
 | Gate 0 — Baseline | **COMPLETE** | Main is CI-green; core invariants are protected |
 | Gate 1 — Discovery/Search | **SUBSTANTIALLY COMPLETE / FINAL HARDENING** | Core Discovery marketplace and search capabilities are implemented; richer admin UX, public API documentation and representative production-scale verification remain |
-| Gate 2 — Merchant Operating System | **CURRENT WORKSTREAM** | Daily merchant operations still have significant workflow/UI gaps |
+| Gate 2 — Merchant Operating System | **CURRENT WORKSTREAM — TASK-MERCHANT-1 IMPLEMENTED; VERIFICATION ACTIVE** | Merchant command center and operational entry points are implemented; broader daily workflow gaps remain |
 | Gate 3 — Payments/Financial | **NOT COMPLETE** | Provider integrations, reconciliation, settlement and production verification remain |
 | Gate 4 — Reporting/Analytics | **NOT COMPLETE** | A complete server-aggregated reporting layer remains |
 | Gate 5 — Communications/Support | **PARTIAL** | Notification/customer communication foundations exist; complete delivery/support operations remain |
@@ -381,6 +381,14 @@ Gate 1 should no longer block core merchant workflow implementation; remaining i
 - Discovery management;
 - settings/security UX.
 
+### TASK-MERCHANT-1 evidence
+
+- Merchant overview API is business-membership scoped and resolves commerce metrics from the server-side organization.
+- Merchant command center exposes readiness, operational alerts and direct Catalog/Inventory/Orders/POS actions for Discovery-and-Store businesses.
+- Quick operations preserve `businessId` when entering the main tenant workspace.
+- Regression contract: `tests/merchant_workspace_consolidation.test.ts`, registered as `test:merchant-workspace` and included in `npm test`.
+- Implementation commits: `7a840fd2`, `f9785c38`, `938788e0`, `d14e390c`.
+
 ### Gate 2 exit criterion
 
 A pilot merchant must be able to operate daily sales, inventory, purchasing, customers, returns and shift/cash workflows **without developer or database intervention**.
@@ -610,7 +618,7 @@ Full production additionally requires:
 The active sequence is now:
 
 1. **Roadmap reconciliation — COMPLETE with this document.**
-2. **Gate 2 / TASK-MERCHANT-1 — Merchant workspace consolidation.**
+2. **Gate 2 / TASK-MERCHANT-1 — Merchant workspace consolidation — IMPLEMENTED; verification active.**
 3. TASK-MERCHANT-2 — Users, locations, CRM and suppliers.
 4. TASK-MERCHANT-3 — Purchasing and receiving.
 5. TASK-MERCHANT-4 — Returns/exchanges and shift/cash reconciliation.
