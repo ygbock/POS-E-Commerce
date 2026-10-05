@@ -76,7 +76,8 @@
     "test:discovery-router": "tsx tests/discovery_router.test.ts",
     "test:discovery-profile": "tsx tests/discovery_business_profile.test.ts",
     "test:discovery-product": "tsx tests/discovery_product.test.ts",
-    "test:discovery-location-map": "tsx tests/discovery_location_map.test.ts"
+    "test:discovery-location-map": "tsx tests/discovery_location_map.test.ts",
+    "test:discovery-service": "tsx tests/discovery_service.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
