@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
-import { UserRole } from '../auth/roles';
+import { UserRole, getIdentityTypeForRole } from '../auth/roles';
 
 export interface UserRecord {
   id: string;
@@ -72,7 +72,7 @@ export class UserRepository {
         passHash,
         passSalt,
         user.role,
-        user.identity_type || null,
+        user.identity_type || getIdentityTypeForRole(user.role),
         locId,
         user.is_active ?? true,
       ]
