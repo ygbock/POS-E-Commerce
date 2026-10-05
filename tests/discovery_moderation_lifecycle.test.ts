@@ -212,6 +212,38 @@ async function main() {
   try {
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
+    // Owner lifecycle controls: pause hides the listing, republish restores it,
+    // and archive permanently removes it from public Discovery.
+    const paused = await service.pause(business.id, merchant, 'Owner temporarily paused the listing.');
+    assert.strictEqual(paused.listing_status, 'PAUSED');
+    assert.strictEqual(paused.is_discoverable, false);
+    assert.ok(!(await service.listPublished({ limit: 200 })).some((listing) => listing.id === business.id));
+
+    const republished = await service.publish(business.id, merchant, 'Owner resumed the paused listing.');
+    assert.strictEqual(republished.listing_status, 'PUBLISHED');
+    assert.strictEqual(republished.is_discoverable, true);
+    assert.ok((await service.listPublished({ limit: 200 })).some((listing) => listing.id === business.id));
+
+    const archived = await service.archive(business.id, merchant, 'Owner permanently retired the listing.');
+    assert.strictEqual(archived.listing_status, 'ARCHIVED');
+    assert.strictEqual(archived.is_discoverable, false);
+    assert.ok(!(await service.listPublished({ limit: 200 })).some((listing) => listing.id === business.id));
+
+    const lifecycleHistory = await db.query(
+      'SELECT from_status,to_status,reason,actor_user_id FROM discovery_listing_events WHERE business_id=$1 ORDER BY created_at ASC',
+      [business.id],
+    );
+    const historyStatuses = lifecycleHistory.rows.map((row: any) => row.to_status);
+    assert.ok(historyStatuses.includes('SUBMITTED'));
+    assert.ok(historyStatuses.includes('UNDER_REVIEW'));
+    assert.ok(historyStatuses.includes('REJECTED'));
+    assert.ok(historyStatuses.includes('APPROVED'));
+    assert.ok(historyStatuses.includes('PUBLISHED'));
+    assert.ok(historyStatuses.includes('PAUSED'));
+    assert.ok(historyStatuses.includes('ARCHIVED'));
+    assert.ok(lifecycleHistory.rows.some((row: any) => row.to_status === 'PAUSED' && row.actor_user_id === merchant.userId));
+    assert.ok(lifecycleHistory.rows.some((row: any) => row.to_status === 'ARCHIVED' && row.actor_user_id === merchant.userId));
+
     const publicSearchResponse = await fetch(baseUrl + '/api/discovery/businesses?limit=200');
     assert.strictEqual(publicSearchResponse.status, 200);
     const publicSearchBody = await publicSearchResponse.json();
