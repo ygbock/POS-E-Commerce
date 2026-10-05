@@ -2027,9 +2027,31 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(!(await owned(req,req.params.id,'business.analytics.view')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Analytics access forbidden.'}});
     const days=Math.min(Math.max(Number(req.query.days||30),1),365);
     const r=await db.query("SELECT event_type,COUNT(*)::int AS count,COUNT(DISTINCT session_hash)::int AS unique_sessions FROM discovery_analytics_events WHERE business_id=$1 AND created_at>=CURRENT_TIMESTAMP-($2||' days')::interval GROUP BY event_type ORDER BY count DESC",[req.params.id,String(days)]);
-    const counts:Record<string,number>={}; for(const row of r.rows) counts[String(row.event_type)]=Number(row.count)||0;
-    const impressions=counts.IMPRESSION||0; const views=counts.VIEW||0; const conversions=(counts.CONTACT||0)+(counts.DIRECTION_CLICK||0)+(counts.SERVICE_REQUEST||0)+(counts.STORE_CLICK||0);
-    const summary={business_id:req.params.id,timeframe:String(days)+'d',impressions,profile_views:views,phone_clicks:counts.CONTACT||0,whatsapp_clicks:0,direction_clicks:counts.DIRECTION_CLICK||0,website_clicks:0,service_inquiries:counts.SERVICE_REQUEST||0,store_visits:counts.STORE_CLICK||0,conversion_rate:views>0?conversions/views:0};
+    const counts:Record<string,number>={}; let uniqueSessions=0;
+    for(const row of r.rows) {
+      counts[String(row.event_type)]=Number(row.count)||0;
+      uniqueSessions += Number(row.unique_sessions)||0;
+    }
+    const impressions=counts.IMPRESSION||0;
+    const views=counts.VIEW||0;
+    const conversions=(counts.CONTACT||0)+(counts.DIRECTION_CLICK||0)+(counts.SERVICE_REQUEST||0)+(counts.STORE_CLICK||0);
+    const summary={
+      business_id:req.params.id,
+      timeframe:String(days)+'d',
+      impressions,
+      profile_views:views,
+      phone_clicks:counts.CONTACT||0,
+      whatsapp_clicks:0,
+      direction_clicks:counts.DIRECTION_CLICK||0,
+      website_clicks:0,
+      service_inquiries:counts.SERVICE_REQUEST||0,
+      store_visits:counts.STORE_CLICK||0,
+      product_views:counts.PRODUCT_VIEW||0,
+      service_views:counts.SERVICE_VIEW||0,
+      order_clicks:counts.ORDER_CLICK||0,
+      unique_sessions:uniqueSessions,
+      conversion_rate:views>0?conversions/views:0,
+    };
     res.json({success:true,periodDays:days,data:summary,events:r.rows});
   }catch(err){next(err);}});
 
