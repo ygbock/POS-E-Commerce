@@ -271,6 +271,11 @@ export const discoveryApi = {
     return request<DiscoveryCategory[]>(`/api/discovery/businesses/${encodeURIComponent(businessId)}/categories`);
   },
 
+  /** Get a single published, discoverable service by id. */
+  async getService(serviceId: string): Promise<DiscoveryService> {
+    return request<DiscoveryService>(`/api/discovery/services/${encodeURIComponent(serviceId)}`);
+  },
+
   /**
    * Get public services offered by a business
    */
