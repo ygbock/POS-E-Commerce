@@ -30,7 +30,7 @@ async function main() {
   await db.query(
     `INSERT INTO discovery_businesses
       (id,public_id,name,slug,business_type,business_mode,listing_status,verification_status,is_discoverable,organization_id,created_by_user_id,phone)
-     VALUES ('disc_prod_business','DISC-PROD-1','Production Gate Business','production-gate-business','Services','DISCOVERY_ONLY','PUBLISHED','VERIFIED',TRUE,'disc_prod_org','disc-prod-user','+23276123456')
+     VALUES ('disc_prod_business','DISC-PROD-1','Production Gate Business','production-gate-business','Services','DISCOVERY_AND_STORE','PUBLISHED','VERIFIED',TRUE,'disc_prod_org','disc-prod-user','+23276123456')
      ON CONFLICT (id) DO NOTHING`,
   );
 
