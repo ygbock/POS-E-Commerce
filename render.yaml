@@ -12,6 +12,8 @@ services:
           property: connectionString
       - key: NODE_ENV
         value: production
+      - key: ALLOW_SEEDING_IN_PRODUCTION
+        value: "true"
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRY

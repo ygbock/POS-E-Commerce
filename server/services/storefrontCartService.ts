@@ -265,15 +265,17 @@ export class StorefrontCartService {
       ? 0n
       : fulfillmentMethod === 'Express Delivery'
       ? expressShippingCents
-      : subtotalCents >= freeShippingThresholdCents
+      : (freeShippingThresholdCents > 0n && subtotalCents >= freeShippingThresholdCents)
         ? 0n
         : standardShippingCents;
 
     const totalCents = subtotalCents + taxCents + shippingCents;
     const amountToFreeShippingCents =
-      subtotalCents >= freeShippingThresholdCents
+      (freeShippingThresholdCents > 0n && subtotalCents >= freeShippingThresholdCents)
         ? 0n
-        : freeShippingThresholdCents - subtotalCents;
+        : freeShippingThresholdCents > 0n
+        ? freeShippingThresholdCents - subtotalCents
+        : 0n;
 
     return {
       items: validatedItems,

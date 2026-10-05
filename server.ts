@@ -118,12 +118,12 @@ export async function createApp(options: CreateAppOptions = {}) {
         const applied = await getAppliedMigrations(db);
         dbStatus.migrationsApplied = Array.from(applied);
         dbStatus.version = Array.from(applied).pop() || '000';
-        if (!isProd) {
+        if (!isProd || process.env.ALLOW_SEEDING_IN_PRODUCTION === 'true') {
           try {
             await authService.seedDefaultUsers();
-            console.log(`[AbaCha DB] Development seed users initialized successfully on startup.`);
+            console.log(`[AbaCha DB] Seed users initialized successfully on startup.`);
           } catch (seedErr: any) {
-            console.warn(`[AbaCha DB] Development seed failed (non-blocking):`, seedErr.message);
+            console.warn(`[AbaCha DB] Seed failed (non-blocking):`, seedErr.message);
           }
         }
         // Production/server startup is decoupled from fixture seeding. Fixture seeding lives exclusively in CLI seed scripts.

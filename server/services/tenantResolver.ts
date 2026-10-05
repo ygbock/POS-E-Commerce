@@ -329,6 +329,9 @@ export async function resolveStorefrontTenant(
   const requiredPolicyMoney = (field: string): number => {
     const value = rawPolicies[field];
     if (value === undefined || value === null || String(value).trim() === '') {
+      if (field === 'freeShippingThreshold') {
+        return 0;
+      }
       throw new ApiError('STORE_POLICY_MISSING', `Store shipping policy '${field}' is not configured.`, 500);
     }
     const numeric = Number(value);

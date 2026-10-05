@@ -236,7 +236,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
     if (onBack) {
       onBack();
     } else {
-      window.history.back();
+      window.location.assign('/discover');
     }
   };
 
