@@ -608,9 +608,18 @@ export class AuthService {
     ];
 
     for (const u of defaultUsers) {
-      const existing = await this.userRepo.findByEmail(u.orgId, u.email);
+      // Reconcile seeded identities by stable ID first. This is critical for
+      // platform-admin credentials: the configured email may legitimately change
+      // between environments or bootstrap rotations, while usr_platform_admin
+      // must remain the same account rather than causing a duplicate-ID insert.
+      const existingById = await this.db.query<UserRecord>(
+        'SELECT * FROM users WHERE id=$1 AND organization_id=$2 LIMIT 1',
+        [u.id, u.orgId],
+      );
+      const existing = existingById.rows[0] || await this.userRepo.findByEmail(u.orgId, u.email);
+
+      const { hash, salt } = hashPassword(u.password);
       if (!existing) {
-        const { hash, salt } = hashPassword(u.password);
         await this.userRepo.createUser({
           id: u.id,
           organization_id: u.orgId,
@@ -622,12 +631,12 @@ export class AuthService {
           is_active: true,
         });
       } else {
-        const { hash, salt } = hashPassword(u.password);
         await this.db.query(
-          `UPDATE users 
-           SET password_hash = $1, password_salt = $2, role = $3, is_active = TRUE
-           WHERE id = $4 AND organization_id = $5`,
-          [hash, salt, u.role, existing.id, u.orgId]
+          `UPDATE users
+             SET email = $1, name = $2, password_hash = $3, password_salt = $4,
+                 role = $5, is_active = TRUE, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $6 AND organization_id = $7`,
+          [u.email, u.name, hash, salt, u.role, existing.id, u.orgId],
         );
       }
     }
