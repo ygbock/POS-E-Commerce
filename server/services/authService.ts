@@ -375,7 +375,7 @@ export class AuthService {
     const email = credentials.email.toLowerCase().trim();
     if (!email || !credentials.password) throw new Error('Invalid platform credentials');
 
-    const result = await this.db.query<UserRecord>(
+    const queryResult = await this.db.query<UserRecord>(
       `SELECT u.*
          FROM users u
          WHERE LOWER(u.email)=LOWER($1)
@@ -384,7 +384,7 @@ export class AuthService {
          LIMIT 1`,
       [email],
     );
-    const user = result.rows[0];
+    const user = queryResult.rows[0];
     if (!user) throw new Error('Invalid platform credentials');
     const role = normalizeRole(user.role);
     if (!isPlatformRole(role)) throw new Error('PLATFORM_ACCESS_DENIED');
