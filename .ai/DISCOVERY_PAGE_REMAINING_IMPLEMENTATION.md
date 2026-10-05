@@ -1,6 +1,6 @@
 # AbaCha Discovery Page — Remaining Implementation Plan
 
-**Status:** Active — PAGE-001 through PAGE-012 implementation complete; PAGE-013 production hardening in progress
+**Status:** Release verification — PAGE-001 through PAGE-012 implementation complete; PAGE-013 automated hardening passed; PAGE-014 automated release gate passed; PAGE-015 handoff documentation complete.
 **Scope:** Customer-facing Discovery experience and the end-to-end workflows required to make `/discover` production-ready.
 
 ## 1. Objective
@@ -29,7 +29,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 | Admin moderation UI | IMPLEMENTED |
 | Analytics/Event Verification | IMPLEMENTED |
 | Accessibility/Responsive Hardening | IMPLEMENTED |
-| Production readiness | IN PROGRESS — PAGE-013 |
+| Production readiness | AUTOMATED GATE PASSED — PAGE-013; manual verification pending |
 
 ## 3. Remaining Implementation
 
@@ -247,7 +247,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 ### DISC-PAGE-013 — Performance and Resilience
 
-**Implementation status:** IN PROGRESS; AUTOMATED PRODUCTION HARDENING GATE PASSED. Existing Discovery search cancellation, independent section loading, 300-listing performance coverage, production asset/build validation and rate limiting are retained; PAGE-013 now hardens public pagination, malformed URL handling, asset resilience and rate-limit coverage. Browser/manual release verification remains.
+**Implementation status:** AUTOMATED HARDENING COMPLETE; browser/manual production verification remains. Existing Discovery search cancellation, independent section loading, 300-listing performance coverage, production asset/build validation and rate limiting are retained; PAGE-013 now hardens public pagination, malformed URL handling, asset resilience and rate-limit coverage. Browser/manual release verification remains.
 
 - [x] Bounded public search pagination (`limit` 1–100; `offset` 0–10,000).
 - [x] Reject non-integer/NaN pagination input with `VALIDATION_ERROR` instead of allowing malformed database parameters.
@@ -273,7 +273,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] CI production-readiness, Discovery aggregate, TypeScript/lint and production build gates passed on `401fb83c995253a494b252309cbc389352507117`.
 ### DISC-PAGE-014 — End-to-End QA and Release Gate
 
-**Status:** IN PROGRESS — automated release-gate contract added; final local/manual verification remains.
+**Status:** AUTOMATED RELEASE GATE PASSED — final local/manual verification remains.
 
 **Automated:**
 - [x] CI `npm run test:discovery` / Authoritative Domain Regression Suites passed.
@@ -318,6 +318,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] Document moderation workflow in the release checklist/runbook.
 - [x] Document production monitoring and rollback triggers in `.ai/DISCOVERY_PRODUCTION_HANDOFF.md`.
 - [ ] Record final local/manual test results.
+- [x] Release sign-off record created: `.ai/DISCOVERY_RELEASE_SIGNOFF.md`.
 - [x] Create Discovery release checklist: `.ai/DISCOVERY_RELEASE_CHECKLIST.md`.
 - [x] Create Discovery production handoff runbook: `.ai/DISCOVERY_PRODUCTION_HANDOFF.md`.
 
@@ -342,7 +343,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 ### Wave 4 — Production hardening
 11. DISC-PAGE-011 Analytics — **IMPLEMENTATION COMPLETE; VALIDATED IN CI**
 12. DISC-PAGE-012 Accessibility/Mobile — **IMPLEMENTATION COMPLETE; CI PASSED**
-13. DISC-PAGE-013 Performance/Resilience — **IMPLEMENTATION IN PROGRESS**
+13. DISC-PAGE-013 Performance/Resilience — **AUTOMATED HARDENING COMPLETE; MANUAL VERIFICATION PENDING**
 
 ### Wave 5 — Release
 14. DISC-PAGE-014 QA and Release Gate
@@ -372,12 +373,14 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 ### Remaining release-gate work
 - [ ] Complete PAGE-013 browser-level performance/resilience verification.
+- [x] CI confirmed green for current release documentation state.
 - [x] Add machine-checked PAGE-014 release-gate contract coverage.
 - [ ] Run/record final `npm run test:discovery` locally.
 - [ ] Run/record final `npx tsc --noEmit` locally.
 - [ ] Run/record final `npm run build` locally.
 - [ ] Complete DISC-PAGE-014 end-to-end QA and release gate.
-- [ ] Complete DISC-PAGE-015 documentation and production handoff.
+- [x] Complete DISC-PAGE-015 documentation and production handoff.
+- [ ] Record final release sign-off after manual verification.
 
 ## 6. Definition of Done
 
