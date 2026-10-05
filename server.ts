@@ -1,3 +1,5 @@
+import { setAuthenticationCookies, clearAuthenticationCookies, readCookie } from './server/auth/sessionCookies';
+import { REFRESH_COOKIE } from './server/auth/session';
 import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID, randomInt } from 'node:crypto';
 import path from 'path';
@@ -498,7 +500,8 @@ export async function createApp(options: CreateAppOptions = {}) {
           email: String(req.body?.email || ''),
           password: String(req.body?.password || ''),
         });
-        return res.json({ success: true, data: result });
+        setAuthenticationCookies(res, result.token, result.refreshToken);
+        return res.json({ success: true, data: { token: result.token, user: result.user } });
       } catch {
         return res.status(401).json({
           success: false,
@@ -522,9 +525,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     async (req: Request, res: Response) => {
       try {
         const result = await authService.login(req.body);
+        setAuthenticationCookies(res, result.token, result.refreshToken);
         return res.json({
           success: true,
-          data: result,
+          data: { token: result.token, user: result.user },
         });
       } catch (err: any) {
         const msg = err?.message || '';
@@ -555,11 +559,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   });
 
+  app.post('/api/auth/refresh', authRateLimiter, async (req: Request, res: Response) => {
+    const refreshToken = readCookie(req, REFRESH_COOKIE);
+    if (!refreshToken) {
+      return res.status(401).json({ success: false, error: { code: 'INVALID_REFRESH_TOKEN', message: 'Refresh session required.' } });
+    }
+    try {
+      const result = await authService.refreshSession(refreshToken);
+      setAuthenticationCookies(res, result.token, result.refreshToken);
+      return res.json({ success: true, data: { token: result.token, user: result.user } });
+    } catch (err: any) {
+      clearAuthenticationCookies(res);
+      const code = err?.message === 'REFRESH_TOKEN_REUSE_DETECTED' ? 'REFRESH_TOKEN_REUSE_DETECTED' : 'INVALID_REFRESH_TOKEN';
+      return res.status(401).json({ success: false, error: { code, message: 'Authentication session is no longer valid.' } });
+    }
+  });
+
   app.post('/api/auth/logout', requireAuth(), async (req: Request, res: Response) => {
-    const token = req.headers.authorization?.replace('Bearer ', '').trim();
+    const token = req.headers.authorization?.replace('Bearer ', '').trim() || readCookie(req, 'abacha_access');
     if (token) {
       await authService.logout(token);
     }
+    clearAuthenticationCookies(res);
     res.json({
       success: true,
       message: 'Session successfully revoked',
