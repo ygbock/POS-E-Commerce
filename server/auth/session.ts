@@ -170,3 +170,36 @@ export async function replaceAuthSession(
     [oldSessionId, newSessionId],
   );
 }
+
+
+export async function listUserSessions(
+  db: DatabaseClient,
+  userId: string,
+): Promise<SessionRecord[]> {
+  const result = await db.query<SessionRecord>(
+    `SELECT * FROM auth_sessions
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+        AND refresh_expires_at > CURRENT_TIMESTAMP
+      ORDER BY last_seen_at DESC`,
+    [userId],
+  );
+  return result.rows;
+}
+
+export async function revokeUserSession(
+  db: DatabaseClient,
+  userId: string,
+  sessionId: string,
+  reason = 'user-revoked',
+): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
+           revoke_reason = COALESCE(revoke_reason, $3)
+     WHERE id = $1 AND user_id = $2
+     RETURNING id`,
+    [sessionId, userId, reason],
+  );
+  return result.rows.length > 0;
+}
