@@ -273,12 +273,13 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [x] CI production-readiness, Discovery aggregate, TypeScript/lint and production build gates passed on `401fb83c995253a494b252309cbc389352507117`.
 ### DISC-PAGE-014 — End-to-End QA and Release Gate
 
-**Status:** PENDING FINAL PAGE-013 HARDENING AND MANUAL RELEASE VERIFICATION.
+**Status:** IN PROGRESS — automated release-gate contract added; final local/manual verification remains.
 
 **Automated:**
 - [x] CI `npm run test:discovery` / Authoritative Domain Regression Suites passed.
 - [x] CI Discovery frontend/router/API regression coverage passed.
 - [ ] Local reproduction of the complete Discovery gate.
+- [x] Dedicated Discovery release-gate contract test added and registered in `test:discovery`.
 - [ ] Discovery API-client tests.
 - [ ] Discovery HTTP authorization tests.
 - [ ] Discovery search tests.
@@ -369,6 +370,7 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 ### Remaining release-gate work
 - [ ] Complete PAGE-013 browser-level performance/resilience verification.
+- [x] Add machine-checked PAGE-014 release-gate contract coverage.
 - [ ] Run/record final `npm run test:discovery` locally.
 - [ ] Run/record final `npx tsc --noEmit` locally.
 - [ ] Run/record final `npm run build` locally.
