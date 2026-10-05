@@ -83,7 +83,8 @@
     "test:discovery-accessibility": "tsx tests/discovery_accessibility_responsive.test.ts",
     "test:discovery-release-gate": "tsx tests/discovery_release_gate.test.ts",
     "test:discovery-production-readiness": "tsx tests/discovery_production_readiness.test.ts",
-    "test:merchant-workspace": "tsx tests/merchant_workspace_consolidation.test.ts"
+    "test:merchant-workspace": "tsx tests/merchant_workspace_consolidation.test.ts",
+    "test:auth-routing": "tsx tests/auth_routing_platform_credentials.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
