@@ -203,18 +203,25 @@ Complete Discovery so customers can search businesses, products and services; fi
 
 
 ### DISC-PAGE-011 — Analytics/Event Verification
-- [ ] Search events.
-- [ ] Impression events.
-- [ ] Listing views.
-- [ ] Contact events.
-- [ ] Direction clicks.
-- [ ] Store clicks.
-- [ ] Product views.
-- [ ] Service views.
-- [ ] Service requests.
-- [ ] Order/store conversion clicks.
-- [ ] Privacy-preserving session identity.
-- [ ] Merchant analytics summaries.
+**Implementation status:** COMPLETE; VALIDATION ACTIVE. Discovery analytics ingestion now has server-side event validation, idempotent event IDs, bounded attribution rate limiting, privacy-preserving HttpOnly session identity, published-target validation for businesses/products/services, and richer merchant analytics summaries.
+
+- [x] Search events.
+- [x] Impression events.
+- [x] Listing views.
+- [x] Contact events.
+- [x] Direction clicks.
+- [x] Store clicks.
+- [x] Product views.
+- [x] Service views.
+- [x] Service requests.
+- [x] Order/store conversion clicks.
+- [x] Privacy-preserving session identity.
+- [x] Merchant analytics summaries.
+- [x] Generic analytics event verification regression coverage.
+- [ ] Run the full Discovery test gate.
+- [ ] Run `npx tsc --noEmit`.
+- [ ] Run `npm run build`.
+- [ ] Perform runtime/manual analytics verification.
 
 ### DISC-PAGE-012 — Accessibility and Responsive Hardening
 - [ ] Keyboard navigation.
