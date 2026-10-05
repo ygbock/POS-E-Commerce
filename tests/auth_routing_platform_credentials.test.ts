@@ -24,6 +24,9 @@ async function main() {
   assert.match(authClient, /PERSONA_ROLE_MISMATCH/);
   assert.match(authClient, /'Platform Admin': 'platform_admin'/);
 
+  const commerce = read('src/context/CommerceContext.tsx');
+  assert.match(commerce, /business_owner:\s*'Business Owner'/);
+
   const login = read('src/components/auth/LoginPage.tsx');
   assert.match(login, /user\.role === 'business_owner'/);
   assert.match(login, /fetch\('\/api\/merchant\/me'/);
