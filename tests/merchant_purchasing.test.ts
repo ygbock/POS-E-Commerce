@@ -28,7 +28,7 @@ async function main() {
   assert.match(routes, /router\.post\('\/purchase-orders'/);
   assert.match(routes, /router\.post\('\/purchase-orders\/:id\/receive'/);
   assert.match(routes, /PERMISSIONS\.INVENTORY_RECEIVE/);
-  assert.match(routes, /Idempotency-Key/);
+  assert.match(routes, /x-idempotency-key/);
 
   assert.doesNotMatch(ui, /receivePurchaseOrderGoods\(receivingPo\.id/);
   assert.match(ui, /\/api\/purchase-orders/);
