@@ -309,15 +309,17 @@ Complete Discovery so customers can search businesses, products and services; fi
 **Release gate:** no P0/P1 Discovery defects; TypeScript, build and Discovery tests pass; direct URLs work after refresh; real database data renders; merchant-to-public and customer-to-store/service journeys work; security boundaries pass; no mock production data is required.
 
 ### DISC-PAGE-015 — Documentation and Production Handoff
-- [ ] Update Discovery implementation status.
-- [ ] Update Phase 5 roadmap.
-- [ ] Document final public, merchant and admin routes.
-- [ ] Document API and environment dependencies.
-- [ ] Document map/location configuration.
-- [ ] Document moderation workflow.
-- [ ] Document production monitoring.
-- [ ] Record final test results.
-- [ ] Create Discovery release checklist.
+**Status:** IN PROGRESS — release checklist and production handoff runbook created; operator-executed release evidence remains.
+- [x] Update Discovery implementation status.
+- [x] Update Phase 5 roadmap/checklist status.
+- [x] Document final public, merchant and admin routes in the release checklist.
+- [x] Document API and environment dependencies in the release checklist/runbook.
+- [x] Document map/location configuration in the release checklist.
+- [x] Document moderation workflow in the release checklist/runbook.
+- [x] Document production monitoring and rollback triggers in `.ai/DISCOVERY_PRODUCTION_HANDOFF.md`.
+- [ ] Record final local/manual test results.
+- [x] Create Discovery release checklist: `.ai/DISCOVERY_RELEASE_CHECKLIST.md`.
+- [x] Create Discovery production handoff runbook: `.ai/DISCOVERY_PRODUCTION_HANDOFF.md`.
 
 ## 4. Execution Waves
 
