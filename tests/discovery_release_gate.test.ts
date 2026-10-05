@@ -45,7 +45,7 @@ async function main() {
   const discoveryAggregate = scripts['test:discovery'] ?? '';
   for (const script of requiredScripts.filter((name) => name !== 'test:discovery' && name !== 'test:discovery-search')) {
     assert.ok(
-      discoveryAggregate.split(/\\s*&&\\s*/).some((step) => step.trim() === `npm run ${script}`),
+      discoveryAggregate.split(/\s*&&\s*/).some((step) => step.trim() === `npm run ${script}`),
       `Discovery aggregate must invoke ${script} through npm run`,
     );
   }
