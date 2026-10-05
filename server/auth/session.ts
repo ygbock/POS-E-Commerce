@@ -59,6 +59,7 @@ export async function createAuthSession(
     ipAddress?: string | null;
     accessExpiresAt: Date;
     refreshExpiresAt: Date;
+    eventType?: string;
   },
 ): Promise<SessionRecord> {
   const id = generateSessionId();
@@ -77,7 +78,13 @@ export async function createAuthSession(
       input.accessExpiresAt.toISOString(),input.refreshExpiresAt.toISOString(),
     ],
   );
-  return result.rows[0];
+  const session = result.rows[0];
+  await db.query(
+    `INSERT INTO auth_session_events (session_id,user_id,event_type,metadata)
+     VALUES ($1,$2,$3,$4::jsonb)`,
+    [session.id, session.user_id, input.eventType || 'LOGIN', JSON.stringify({ role: session.role, identityType: session.identity_type })],
+  );
+  return session;
 }
 
 export async function findSessionByRefreshToken(
@@ -117,6 +124,13 @@ export async function revokeAuthSession(
      WHERE id = $1`,
     [sessionId, reason],
   );
+  const session = await db.query<{ user_id: string }>('SELECT user_id FROM auth_sessions WHERE id=$1 LIMIT 1', [sessionId]);
+  if (session.rows[0]) {
+    await db.query(
+      `INSERT INTO auth_session_events (session_id,user_id,event_type,metadata) VALUES ($1,$2,'SESSION_REVOKED',$3::jsonb)`,
+      [sessionId, session.rows[0].user_id, JSON.stringify({ reason })],
+    );
+  }
 }
 
 export async function revokeAuthSessionFamily(
@@ -131,6 +145,13 @@ export async function revokeAuthSessionFamily(
      WHERE refresh_token_family_id = $1`,
     [familyId, reason],
   );
+  const sessions = await db.query<{ id: string; user_id: string }>('SELECT id,user_id FROM auth_sessions WHERE refresh_token_family_id=$1', [familyId]);
+  for (const session of sessions.rows) {
+    await db.query(
+      `INSERT INTO auth_session_events (session_id,user_id,event_type,metadata) VALUES ($1,$2,'REFRESH_REUSE_DETECTED',$3::jsonb)`,
+      [session.id, session.user_id, JSON.stringify({ reason })],
+    );
+  }
 }
 
 export async function revokeAllUserSessions(
@@ -144,6 +165,10 @@ export async function revokeAllUserSessions(
            revoke_reason = COALESCE(revoke_reason, $2)
      WHERE user_id = $1 AND revoked_at IS NULL`,
     [userId, reason],
+  );
+  await db.query(
+    `INSERT INTO auth_session_events (user_id,event_type,metadata) VALUES ($1,'LOGOUT_ALL',$2::jsonb)`,
+    [userId, JSON.stringify({ reason })],
   );
 }
 
