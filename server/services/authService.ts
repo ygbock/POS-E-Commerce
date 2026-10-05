@@ -444,6 +444,15 @@ export class AuthService {
        ON CONFLICT (id) DO NOTHING`
     );
 
+    // Explicitly update and backfill standard shipping policies for all seeded organisations
+    await this.db.query(
+      `UPDATE organizations
+       SET policies = '{"freeShippingThreshold": 75.00, "standardShippingFee": 9.99, "expressShippingFee": 19.99, "shippingPolicy": "Standard shipping delivers within 3-5 business days.", "returnPolicy": "Returns accepted within 30 days of receipt in original condition.", "warrantyPolicy": "Standard 1-year manufacturer warranty applies.", "deliveryPromise": "Orders placed before 2 PM dispatch same-day.", "pickupEnabled": true, "pickupInstructions": "Ready for pickup within 2 hours."}'::jsonb
+       WHERE id IN ('org_default', 'org_secondary', 'org_ygbock', 'org_list_only_1', 'org_list_only_2', 'org_list_inv_1', 'org_list_inv_2')
+          OR policies = '{}'::jsonb
+          OR policies IS NULL`
+    );
+
     let platformAdminPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD?.trim();
     if (!platformAdminPassword || platformAdminPassword.length < 12) {
       if (process.env.NODE_ENV !== 'production') {

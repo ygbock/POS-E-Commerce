@@ -401,7 +401,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
           </div>
 
           <div className="p-5 sm:p-8">
-            <div className="flex flex-col lg:flex-row lg:items-end gap-5">
+            <div className="ui-page-header flex flex-col lg:flex-row lg:items-end gap-5 !mb-0">
               {/* Business Logo */}
               <div className="-mt-16 sm:-mt-20 w-24 h-24 sm:w-32 sm:h-32 rounded-3xl bg-white dark:bg-slate-900 border-4 border-white dark:border-slate-900 shadow-xl overflow-hidden flex items-center justify-center shrink-0">
                 {b.logo_url ? (
@@ -414,7 +414,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
               </div>
 
               {/* Title & Metadata */}
-              <div className="min-w-0 flex-1">
+              <div className="ui-page-header__copy min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white">
                     {b.name}
@@ -825,7 +825,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
               <div><h2 id="discovery-report-title" className="text-lg font-black text-slate-900 dark:text-white">Report {b.name}</h2><p className="mt-1 text-xs text-slate-500">Tell AbaCha what needs review about this listing.</p></div>
               <button type="button" onClick={() => !reportSubmitting && setReportOpen(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close report form"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleReportSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleReportSubmit} className="p-5 ui-form-grid">
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Reason *
                 <select value={reportForm.reasonCode} onChange={(e) => setReportForm((v) => ({ ...v, reasonCode: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm">
                   <option value="INACCURATE_INFORMATION">Inaccurate information</option><option value="DUPLICATE_LISTING">Duplicate listing</option><option value="FRAUD_OR_SCAM">Fraud or scam</option><option value="INAPPROPRIATE_CONTENT">Inappropriate content</option><option value="CLOSED_BUSINESS">Business is closed</option><option value="OTHER">Other</option>
@@ -835,7 +835,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 <textarea maxLength={5000} rows={5} value={reportForm.description} onChange={(e) => setReportForm((v) => ({ ...v, description: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm resize-y" />
               </label>
               {reportMessage && <p role="status" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{reportMessage}</p>}
-              <div className="flex justify-end gap-2"><button type="button" onClick={() => setReportOpen(false)} disabled={reportSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button><button type="submit" disabled={reportSubmitting} className="px-5 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold disabled:opacity-60">{reportSubmitting ? 'Submitting…' : 'Submit Report'}</button></div>
+              <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setReportOpen(false)} disabled={reportSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button><button type="submit" disabled={reportSubmitting} className="px-5 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold disabled:opacity-60">{reportSubmitting ? 'Submitting…' : 'Submit Report'}</button></div>
             </form>
           </div>
         </div>
@@ -849,7 +849,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
               <div><h2 id="discovery-review-title" className="text-lg font-black text-slate-900 dark:text-white">Review {b.name}</h2><p className="mt-1 text-xs text-slate-500">Your review will be published after moderation.</p></div>
               <button type="button" onClick={() => !reviewSubmitting && setReviewOpen(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close review form"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleReviewSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleReviewSubmit} className="p-5 ui-form-grid">
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Rating *
                 <select value={reviewForm.rating} onChange={(e) => setReviewForm((v) => ({ ...v, rating: Number(e.target.value) }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm">{[5,4,3,2,1].map((value) => <option key={value} value={value}>{value} / 5</option>)}</select>
               </label>
@@ -863,7 +863,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 <textarea required maxLength={5000} rows={6} value={reviewForm.body} onChange={(e) => setReviewForm((v) => ({ ...v, body: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm resize-y" />
               </label>
               {reviewMessage && <p role="status" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{reviewMessage}</p>}
-              <div className="flex justify-end gap-2"><button type="button" onClick={() => setReviewOpen(false)} disabled={reviewSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button><button type="submit" disabled={reviewSubmitting} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-60">{reviewSubmitting ? 'Submitting…' : 'Submit Review'}</button></div>
+              <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setReviewOpen(false)} disabled={reviewSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button><button type="submit" disabled={reviewSubmitting} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-60">{reviewSubmitting ? 'Submitting…' : 'Submit Review'}</button></div>
             </form>
           </div>
         </div>
@@ -882,7 +882,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleClaimSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleClaimSubmit} className="p-5 ui-form-grid">
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Your name *
                 <input required maxLength={160} value={claimForm.claimantName} onChange={(e) => setClaimForm((v) => ({ ...v, claimantName: e.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
               </label>
@@ -892,9 +892,9 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Ownership evidence *
                 <textarea required maxLength={5000} rows={6} value={claimForm.evidence} onChange={(e) => setClaimForm((v) => ({ ...v, evidence: e.target.value }))} placeholder="Registration details, license information, official contact details, or other evidence that can help verify your authority…" className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm resize-y" />
               </label>
-              <p className="text-[11px] text-slate-500">Do not submit passwords, payment credentials, or other secrets. Supporting documents can be requested during review.</p>
+              <p className="text-[11px] text-slate-500 leading-normal">Do not submit passwords, payment credentials, or other secrets. Supporting documents can be requested during review.</p>
               {claimMessage && <p role="status" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{claimMessage}</p>}
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setClaimOpen(false)} disabled={claimSubmitting} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button>
                 <button type="submit" disabled={claimSubmitting} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-60">{claimSubmitting ? 'Submitting…' : 'Submit Claim'}</button>
               </div>
@@ -916,8 +916,8 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleContactSubmit} className="p-5 space-y-4">
-              <div className="grid sm:grid-cols-2 gap-3">
+            <form onSubmit={handleContactSubmit} className="p-5 ui-form-grid">
+              <div className="ui-form-grid ui-form-grid--wide">
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Name
                   <input required maxLength={160} value={contactForm.customerName} onChange={(e) => setContactForm((v) => ({...v, customerName: e.target.value}))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm" />
                 </label>
@@ -935,7 +935,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 <textarea required maxLength={10000} rows={5} value={contactForm.message} onChange={(e) => setContactForm((v) => ({...v, message: e.target.value}))} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm resize-y" />
               </label>
               {contactMessage && <p role="status" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{contactMessage}</p>}
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setContactOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Cancel</button>
                 <button type="submit" disabled={contactSubmitting} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-60">{contactSubmitting ? 'Sending…' : 'Send Inquiry'}</button>
               </div>
@@ -967,7 +967,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                 </p>
               </div>
             ) : (
-              <form onSubmit={handleServiceQuoteSubmit} className="space-y-4">
+              <form onSubmit={handleServiceQuoteSubmit} className="ui-form-grid">
                 <div>
                   <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
                     Request Quote for
@@ -980,7 +980,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                   </p>
                 </div>
 
-                <div className="space-y-3 text-xs">
+                <div className="ui-form-grid text-xs">
                   <div>
                     <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Your Requirements *
@@ -995,7 +995,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="ui-form-grid ui-form-grid--wide">
                     <div>
                       <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Your Name *
@@ -1024,7 +1024,7 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="ui-form-grid ui-form-grid--wide">
                     <div>
                       <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Email Address
