@@ -381,7 +381,21 @@ Gate 1 should no longer block core merchant workflow implementation; remaining i
 - Discovery management;
 - settings/security UX.
 
-### TASK-MERCHANT-1 evidence
+### Authentication and workspace routing hardening
+
+**Status:** IMPLEMENTED — regression coverage added; CI/local execution remains the validation gate.
+
+Resolved before advancing to TASK-MERCHANT-2:
+- Business-owner sign-in from storefront now resolves the authenticated user's assigned business through `GET /api/merchant/me`.
+- Inventory/catalog/orders/POS management targets are translated into the tenant management shell with the server-resolved `businessId`.
+- Business owners without a requested operational target land on their assigned business workspace rather than the public Discovery landing page.
+- Persisted roles are canonicalized through `normalizeRole()` before JWT issuance and frontend role checks.
+- Development platform-admin seed credentials now support `ABACHA_PLATFORM_ADMIN_EMAIL` and `ABACHA_PLATFORM_ADMIN_PASSWORD`, with validation/whitespace normalization.
+- Development persona credentials are normalized consistently and must resolve to the expected role; a mismatched Platform Admin persona is rejected instead of silently entering the wrong workspace.
+- Regression contract: `tests/auth_routing_platform_credentials.test.ts`, registered as `test:auth-routing` and included in `npm test`.
+- Implementation commits: `22b7a7d4`, `1034a68b`, `ddb5ba90`, `0586d34c`, `e23b0421`, `7cb0f9c6`, `6b0161f1`.
+
+## TASK-MERCHANT-1 evidence
 
 - Merchant overview API is business-membership scoped and resolves commerce metrics from the server-side organization.
 - Merchant command center exposes readiness, operational alerts and direct Catalog/Inventory/Orders/POS actions for Discovery-and-Store businesses.
