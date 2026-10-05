@@ -224,17 +224,24 @@ Complete Discovery so customers can search businesses, products and services; fi
 - [ ] Perform runtime/manual analytics verification.
 
 ### DISC-PAGE-012 — Accessibility and Responsive Hardening
-- [ ] Keyboard navigation.
-- [ ] Screen-reader labels.
-- [ ] Focus management and modal traps.
-- [ ] Escape-key handling.
-- [ ] Touch target sizing.
-- [ ] Mobile search and filters.
-- [ ] Mobile map/cards/navigation.
-- [ ] Tablet layout.
-- [ ] Desktop layout.
-- [ ] Dark mode.
-- [ ] No horizontal overflow.
+**Implementation status:** COMPLETE; VALIDATION ACTIVE. Discovery-specific accessibility and responsive hardening is implemented across filters, verification information, map controls, mobile navigation spacing, touch targets, keyboard dismissal, focus trapping, reduced-motion handling, and horizontal-overflow safety.
+
+- [x] Keyboard navigation.
+- [x] Screen-reader labels.
+- [x] Focus management and modal traps.
+- [x] Escape-key handling.
+- [x] Touch target sizing.
+- [x] Mobile search and filters.
+- [x] Mobile map/cards/navigation.
+- [x] Tablet layout.
+- [x] Desktop layout.
+- [x] Dark mode.
+- [x] No horizontal overflow.
+- [x] Dedicated static accessibility/responsive regression coverage.
+- [ ] Run the full Discovery test gate.
+- [ ] Run `npx tsc --noEmit`.
+- [ ] Run `npm run build`.
+- [ ] Perform browser/manual verification at mobile, tablet and desktop breakpoints.
 
 ### DISC-PAGE-013 — Performance and Resilience
 - [ ] Measure initial Discovery load.
