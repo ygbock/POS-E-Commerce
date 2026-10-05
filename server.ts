@@ -575,10 +575,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  app.post('/api/auth/logout', requireAuth(), async (req: Request, res: Response) => {
+  app.post('/api/auth/logout', async (req: Request, res: Response) => {
     const token = req.headers.authorization?.replace('Bearer ', '').trim() || readCookie(req, 'abacha_access');
+    const refreshToken = readCookie(req, REFRESH_COOKIE);
     if (token) {
       await authService.logout(token);
+    }
+    if (refreshToken) {
+      await authService.logoutWithRefreshToken(refreshToken);
     }
     clearAuthenticationCookies(res);
     res.json({
