@@ -62,7 +62,7 @@ export class UserRepository {
       `INSERT INTO users (
         id, organization_id, email, name, password_hash, password_salt,
         role, identity_type, location_id, is_active
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
       [
         userId,
