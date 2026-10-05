@@ -30,6 +30,7 @@ async function main() {
   const business = await service.create({
     name: 'Analytics Verification Hub',
     shortDescription: 'Analytics test business',
+    phone: '+23276123456',
     businessMode: 'DISCOVERY_AND_STORE',
     organizationId: 'disc_analytics_org',
   }, actor);
