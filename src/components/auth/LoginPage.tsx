@@ -35,13 +35,61 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       }
       localStorage.setItem('abacha_login_email', email.trim());
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-      const safeRedirect = mode === 'platform'
-        ? (redirectParam && redirectParam.startsWith('/platform') && !redirectParam.startsWith('//') ? redirectParam : '/platform')
-        : redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
-          ? redirectParam
-          : (user.role === 'business_owner' || window.location.pathname.startsWith('/business'))
-            ? '/business'
-            : '/discover';
+
+      if (mode === 'platform') {
+        const safePlatformRedirect =
+          redirectParam && redirectParam.startsWith('/platform') && !redirectParam.startsWith('//')
+            ? redirectParam
+            : '/platform';
+        window.location.assign(safePlatformRedirect);
+        onAuthenticated(user);
+        return;
+      }
+
+      if (user.role === 'business_owner') {
+        // Business owners must always land in the management plane after a
+        // storefront-originated login. Resolve their assigned business from
+        // the authenticated server session rather than trusting a client-
+        // supplied businessId.
+        const merchantResponse = await fetch('/api/merchant/me', {
+          headers: authClient.getAuthHeaders(),
+        });
+        const merchantPayload = await merchantResponse.json().catch(() => null);
+        const assignedBusinesses = Array.isArray(merchantPayload?.data?.businesses)
+          ? merchantPayload.data.businesses
+          : [];
+
+        const redirectUrl = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+          ? new URL(redirectParam, window.location.origin)
+          : null;
+        const requestedWorkspace =
+          redirectUrl?.searchParams.get('workspace') ||
+          ({ '/inventory': 'inventory', '/stock': 'inventory', '/catalog': 'catalog', '/products': 'catalog', '/orders': 'orders', '/pos': 'pos', '/dashboard': 'dashboard' } as Record<string, string>)[redirectUrl?.pathname || ''] ||
+          null;
+        const requestedBusinessId = redirectUrl?.searchParams.get('businessId');
+        const assignedBusiness =
+          (requestedBusinessId && assignedBusinesses.find((business: any) => business.id === requestedBusinessId)) ||
+          assignedBusinesses.find((business: any) => business.business_mode === 'DISCOVERY_AND_STORE') ||
+          assignedBusinesses[0];
+
+        if (requestedWorkspace && assignedBusiness?.id) {
+          const params = new URLSearchParams({
+            workspace: requestedWorkspace,
+            businessId: assignedBusiness.id,
+          });
+          window.location.assign('/?' + params.toString());
+        } else if (assignedBusiness?.id) {
+          window.location.assign('/business/' + encodeURIComponent(assignedBusiness.id));
+        } else {
+          window.location.assign('/business');
+        }
+        onAuthenticated(user);
+        return;
+      }
+
+      const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+        ? redirectParam
+        : '/discover';
 
       // Complete the journey the user started before authentication instead of
       // dropping them back on a generic landing page.
