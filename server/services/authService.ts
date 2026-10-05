@@ -524,9 +524,6 @@ export class AuthService {
     }
 
     const systemOwnerPassword = process.env.ABACHA_SYSTEM_OWNER_PASSWORD?.trim();
-    if (!systemOwnerPassword || systemOwnerPassword.length < 12) {
-      throw new Error('SYSTEM_OWNER_SEED_PASSWORD_REQUIRED: Set ABACHA_SYSTEM_OWNER_PASSWORD (minimum 12 characters) before running the seed.');
-    }
 
     const platformAdminEmail = (process.env.ABACHA_PLATFORM_ADMIN_EMAIL || 'platformadmin@abacha.internal').trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(platformAdminEmail)) {
@@ -543,14 +540,14 @@ export class AuthService {
     }
 
     const defaultUsers = [
-      {
+      ...(systemOwnerPassword && systemOwnerPassword.length >= 12 ? [{
         id: 'usr_system_owner',
         orgId: orgDefault,
         email: systemOwnerEmail,
         name: 'AbaCha System Owner',
         role: 'system_owner' as UserRole,
         password: systemOwnerPassword,
-      },
+      }] : []),
       {
         id: 'usr_platform_admin',
         orgId: orgDefault,
