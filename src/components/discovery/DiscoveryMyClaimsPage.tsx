@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Clock3, XCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
 import type { DiscoveryBusinessClaim } from '../../types/discovery';
+import { authClient } from '../../services/authClient';
 
 interface Props {
   onBack?: () => void;
@@ -32,7 +33,14 @@ export const DiscoveryMyClaimsPage: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    if (!authClient.getToken()) {
+      setError('Sign in is required to view your ownership claims.');
+      setLoading(false);
+      return;
+    }
+    void load();
+  }, []);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
