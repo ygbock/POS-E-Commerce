@@ -304,13 +304,13 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const setCurrentRole = (role: Role) => {
-    setCurrentRoleState(role);
-    try {
-      localStorage.setItem(`${STORAGE_KEY}_role`, JSON.stringify(role));
-    } catch {
-      // ignore
-    }
-    void authClient.loginAsPersona(role).then(applyAuthenticatedUser);
+    // Role changes are authentication requests, not client-side privilege changes.
+    // Never mutate the effective role before the server has authenticated the
+    // requested development persona. Production has no persona-switch privilege.
+    if (!import.meta.env.DEV) return;
+    void authClient.loginAsPersona(role).then((user) => {
+      if (user) applyAuthenticatedUser(user);
+    });
   };
 
   useEffect(() => {
