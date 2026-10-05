@@ -63,6 +63,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
   const [resubmitReason, setResubmitReason] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [submittedNotice, setSubmittedNotice] = useState(false);
+  const [lifecycleReason, setLifecycleReason] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -169,6 +170,26 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
       await load();
     } catch (err) {
       setError(err instanceof DiscoveryApiError ? err.message : 'The approved listing could not be published.');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const runLifecycleAction = async (action: 'pause' | 'archive' | 'resume') => {
+    setActionBusy(true);
+    setError(null);
+    try {
+      const reason = lifecycleReason.trim() || undefined;
+      const updated = action === 'pause'
+        ? await discoveryApi.pauseBusiness(business.id, reason || 'Business owner temporarily paused the listing.')
+        : action === 'archive'
+          ? await discoveryApi.archiveBusiness(business.id, reason || 'Business owner archived the listing.')
+          : await discoveryApi.publishBusiness(business.id, reason || 'Business owner republished the paused listing.');
+      onUpdate(updated);
+      setLifecycleReason('');
+      await load();
+    } catch (err) {
+      setError(err instanceof DiscoveryApiError ? err.message : 'The listing lifecycle action could not be completed.');
     } finally {
       setActionBusy(false);
     }
@@ -700,6 +721,36 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
 
           </div>
         </div>
+      )}
+
+      {(business.listing_status === 'PUBLISHED' || business.listing_status === 'PAUSED') && (
+        <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+            <div className="flex-1">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Listing lifecycle controls</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Pause temporarily hides a live listing. Republish restores a paused listing. Archive permanently retires it.
+              </p>
+              <input value={lifecycleReason} onChange={(e) => setLifecycleReason(e.target.value)} maxLength={1000}
+                placeholder="Optional reason for this lifecycle change"
+                className="mt-3 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {business.listing_status === 'PUBLISHED' && (
+                <button type="button" disabled={actionBusy} onClick={() => void runLifecycleAction('pause')}
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50">Pause listing</button>
+              )}
+              {business.listing_status === 'PAUSED' && (
+                <button type="button" disabled={actionBusy} onClick={() => void runLifecycleAction('resume')}
+                  className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50">Republish listing</button>
+              )}
+              <button type="button" disabled={actionBusy} onClick={() => {
+                if (window.confirm('Archive this Discovery listing? Archived listings cannot be edited or republished.')) void runLifecycleAction('archive');
+              }}
+                className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-800 hover:bg-rose-100 disabled:opacity-50">Archive listing</button>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Modern, Floating Sticky Glassmorphism Actions Panel (Rule I Cap Compliant) */}
