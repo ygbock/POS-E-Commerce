@@ -26,6 +26,8 @@ async function main() {
 
   const commerce = read('src/context/CommerceContext.tsx');
   assert.match(commerce, /business_owner:\s*'Business Owner'/);
+  assert.match(commerce, /const existingUser = authClient\.getUser\(\)/);
+  assert.match(commerce, /Never replace.*platform\/merchant session/s);
 
   const login = read('src/components/auth/LoginPage.tsx');
   assert.match(login, /user\.role === 'business_owner'/);
