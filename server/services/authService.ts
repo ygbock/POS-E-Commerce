@@ -4,9 +4,13 @@ import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
+import { signToken, verifyToken, TokenClaims } from '../auth/token';
+import { createAuthSession, generateRefreshToken, findSessionByRefreshToken, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
 export interface LoginResult {
   token: string;
+  /** Internal-only refresh credential. Defined non-enumerably so API JSON never exposes it. */
+  refreshToken?: string;
   user: {
     id: string;
     organizationId: string;
@@ -37,6 +41,124 @@ export class AuthService {
    * Authenticate a user with email, password, and mandatory organization ID.
    * Fail-closed: Never falls back to default tenant implicitly.
    */
+
+  private async attachSecureSession(
+    result: LoginResult,
+    input: {
+      userId: string;
+      organizationId: string;
+      identityType: AuthIdentityType;
+      role: UserRole;
+      deviceId?: string | null;
+      userAgent?: string | null;
+      ipAddress?: string | null;
+    },
+  ): Promise<LoginResult> {
+    const claims = verifyToken(result.token);
+    const refreshToken = generateRefreshToken();
+    const now = Date.now();
+    await createAuthSession(this.db, {
+      userId: input.userId,
+      organizationId: input.organizationId,
+      identityType: input.identityType,
+      role: input.role,
+      accessJti: claims.jti,
+      refreshToken,
+      deviceId: input.deviceId,
+      userAgent: input.userAgent,
+      ipAddress: input.ipAddress,
+      accessExpiresAt: new Date(now + ACCESS_SESSION_TTL_SECONDS * 1000),
+      refreshExpiresAt: new Date(now + REFRESH_SESSION_TTL_SECONDS * 1000),
+    });
+    Object.defineProperty(result, 'refreshToken', {
+      value: refreshToken,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+    return result;
+  }
+
+  async refreshSession(refreshToken: string): Promise<LoginResult> {
+    if (!refreshToken || refreshToken.length < 40) {
+      throw new Error('INVALID_REFRESH_TOKEN');
+    }
+
+    const session = await findSessionByRefreshToken(this.db, refreshToken);
+    if (!session) throw new Error('INVALID_REFRESH_TOKEN');
+
+    if (session.revoked_at) {
+      // A previously rotated refresh token was presented again. Revoke the entire
+      // family so an attacker cannot continue using a stolen descendant token.
+      await revokeAuthSessionFamily(this.db, session.refresh_token_family_id, 'refresh-token-reuse');
+      throw new Error('REFRESH_TOKEN_REUSE_DETECTED');
+    }
+
+    if (new Date(session.refresh_expires_at).getTime() <= Date.now()) {
+      await revokeAuthSession(this.db, session.id, 'refresh-expired');
+      throw new Error('REFRESH_TOKEN_EXPIRED');
+    }
+
+    const permissions = getPermissionsForRole(session.role);
+    const accessToken = signToken({
+      userId: session.user_id,
+      email: undefined,
+      organizationId: session.organization_id,
+      role: session.role,
+      identityType: session.identity_type,
+      permissions,
+      expiresInSeconds: ACCESS_SESSION_TTL_SECONDS,
+    });
+    const accessClaims = verifyToken(accessToken);
+    const nextRefreshToken = generateRefreshToken();
+    const nextSession = await createAuthSession(this.db, {
+      userId: session.user_id,
+      organizationId: session.organization_id,
+      identityType: session.identity_type,
+      role: session.role,
+      accessJti: accessClaims.jti,
+      refreshToken: nextRefreshToken,
+      refreshFamilyId: session.refresh_token_family_id,
+      deviceId: session.device_id,
+      userAgent: session.user_agent,
+      ipAddress: session.ip_address,
+      accessExpiresAt: new Date(Date.now() + ACCESS_SESSION_TTL_SECONDS * 1000),
+      refreshExpiresAt: new Date(session.refresh_expires_at),
+    });
+    await replaceAuthSession(this.db, session.id, nextSession.id);
+
+    const user = await this.userRepo.findById(session.user_id, session.organization_id);
+    if (!user || !user.is_active) {
+      await revokeAuthSession(this.db, nextSession.id, 'user-inactive');
+      throw new Error('INVALID_REFRESH_TOKEN');
+    }
+
+    const result: LoginResult = {
+      token: accessToken,
+      user: {
+        id: user.id,
+        organizationId: user.organization_id,
+        email: user.email,
+        name: user.name,
+        role: session.role,
+        identityType: session.identity_type,
+        permissions,
+        locationId: user.location_id,
+      },
+    };
+    Object.defineProperty(result, 'refreshToken', {
+      value: nextRefreshToken,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+    return result;
+  }
+
+  async logoutAllSessions(userId: string): Promise<void> {
+    await revokeAllUserSessions(this.db, userId, 'logout-all');
+  }
+
   async registerBusinessOwner(input: {
     name: string;
     email: string;
@@ -141,13 +263,21 @@ export class AuthService {
       role: 'business_owner',
       identityType: 'business_owner',
       permissions,
+      expiresInSeconds: ACCESS_SESSION_TTL_SECONDS,
     });
 
-    return {
+    const result: LoginResult = {
       token,
       user: { id: userId, organizationId, email, name, role: 'business_owner', identityType: 'business_owner', permissions },
       business: { id: businessId, publicId, name: businessName, slug, businessMode: input.businessMode, listingStatus: 'DRAFT' },
-    };
+    } as any;
+    await this.attachSecureSession(result, {
+      userId,
+      organizationId,
+      identityType: 'business_owner',
+      role: 'business_owner',
+    });
+    return result;
   }
 
   async login(credentials: {
@@ -212,9 +342,10 @@ export class AuthService {
       identityType: getIdentityTypeForRole(role),
       permissions,
       locationId: user.location_id,
+      expiresInSeconds: ACCESS_SESSION_TTL_SECONDS,
     });
 
-    return {
+    const result: LoginResult = {
       token,
       user: {
         id: user.id,
@@ -227,6 +358,13 @@ export class AuthService {
         locationId: user.location_id,
       },
     };
+    await this.attachSecureSession(result, {
+      userId: user.id,
+      organizationId: user.organization_id,
+      identityType: getIdentityTypeForRole(role),
+      role,
+    });
+    return result;
   }
 
   /**
@@ -264,8 +402,9 @@ export class AuthService {
       identityType: 'platform',
       permissions,
       locationId: user.location_id,
+      expiresInSeconds: ACCESS_SESSION_TTL_SECONDS,
     });
-    return {
+    const result: LoginResult = {
       token,
       user: {
         id: user.id,
@@ -278,6 +417,13 @@ export class AuthService {
         locationId: user.location_id,
       },
     };
+    await this.attachSecureSession(result, {
+      userId: user.id,
+      organizationId: user.organization_id,
+      identityType: 'platform',
+      role,
+    });
+    return result;
   }
 
   /**
@@ -321,9 +467,14 @@ export class AuthService {
       if (claims.jti) {
         const expiresAt = new Date(claims.exp * 1000);
         await this.userRepo.revokeToken(claims.jti, claims.sub, expiresAt);
+        const session = await this.db.query<{ id: string }>(
+          'SELECT id FROM auth_sessions WHERE access_jti = $1 LIMIT 1',
+          [claims.jti],
+        );
+        if (session.rows[0]) await revokeAuthSession(this.db, session.rows[0].id, 'logout');
       }
     } catch {
-      // If token is already invalid or expired, no revocation needed
+      // If token is already invalid or expired, no revocation needed.
     }
   }
 
