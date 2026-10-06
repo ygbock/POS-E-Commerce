@@ -221,10 +221,49 @@ export async function revokeUserSession(
   const result = await db.query(
     `UPDATE auth_sessions
        SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
-           revoke_reason = COALESCE(revoke_reason, $3)
-     WHERE id = $1 AND user_id = $2
+           revoke_reason = COALESCE(revoke_reason, $3),
+           last_seen_at = CURRENT_TIMESTAMP
+     WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
      RETURNING id`,
     [sessionId, userId, reason],
   );
-  return result.rows.length > 0;
+  if (!result.rows.length) return false;
+  await db.query(
+    `INSERT INTO auth_session_events (session_id,user_id,event_type,metadata)
+     VALUES ($1,$2,'SESSION_REVOKED',$3::jsonb)`,
+    [sessionId, userId, JSON.stringify({ reason })],
+  );
+  return true;
+}
+
+export async function revokeAllOtherUserSessions(
+  db: DatabaseClient,
+  userId: string,
+  currentSessionId: string,
+  reason = 'logout-other-sessions',
+): Promise<number> {
+  const result = await db.query<{ id: string }>(
+    `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
+           revoke_reason = COALESCE(revoke_reason, $3),
+           last_seen_at = CURRENT_TIMESTAMP
+     WHERE user_id = $1
+       AND id <> $2
+       AND revoked_at IS NULL
+     RETURNING id`,
+    [userId, currentSessionId, reason],
+  );
+  for (const session of result.rows) {
+    await db.query(
+      `INSERT INTO auth_session_events (session_id,user_id,event_type,metadata)
+       VALUES ($1,$2,'SESSION_REVOKED',$3::jsonb)`,
+      [session.id, userId, JSON.stringify({ reason })],
+    );
+  }
+  await db.query(
+    `INSERT INTO auth_session_events (session_id,user_id,event_type,metadata)
+     VALUES ($1,$2,'LOGOUT_OTHER_SESSIONS',$3::jsonb)`,
+    [currentSessionId, userId, JSON.stringify({ reason, revokedCount: result.rows.length })],
+  );
+  return result.rows.length;
 }
