@@ -627,7 +627,7 @@ export class AuthService {
       await this.db.query('UPDATE users SET password_hash=$1,password_salt=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$3',[hashed.hash,hashed.salt,row.id]);
       await this.db.query('UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=$1',[row.token_id]);
       await this.db.query('UPDATE revoked_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=$1 AND revoked_at IS NULL',[row.id]);
-      await revokeAllUserSessions(this.db, row.id, 'password-reset');
+      await revokeAllUserSessions(this.db, row.id, 'password-reset', 'PASSWORD_RESET_SESSION_REVOCATION');
       await this.db.query(
         `INSERT INTO auth_session_events (user_id,event_type,metadata)
          VALUES ($1,'PASSWORD_RESET_COMPLETED',$2::jsonb)`,
