@@ -139,27 +139,55 @@ export class PlatformMfaService {
     }
   }
 
-  async createChallenge(userId: string): Promise<PlatformMfaChallenge> {
+  async createChallenge(userId: string, purpose: 'LOGIN' | 'ENROLLMENT' = 'LOGIN'): Promise<PlatformMfaChallenge> {
     await this.getPlatformUser(userId);
 
-    if (!(await this.isEnabled(userId))) throw new Error('MFA_NOT_ENABLED');
+    if (purpose === 'LOGIN' && !(await this.isEnabled(userId))) throw new Error('MFA_NOT_ENABLED');
 
     const challenge = generateMfaChallenge();
     const expiresAt = new Date(Date.now() + CHALLENGE_TTL_SECONDS * 1000);
 
     await this.db.query(
       `INSERT INTO platform_mfa_challenges
-        (id,user_id,challenge_hash,expires_at)
-       VALUES ($1,$2,$3,$4)`,
+        (id,user_id,challenge_hash,purpose,expires_at)
+       VALUES ($1,$2,$3,$4,$5)`,
       [
         `mfc_${crypto.randomBytes(16).toString('hex')}`,
         userId,
         hashMfaChallenge(challenge),
+        purpose,
         expiresAt.toISOString(),
       ],
     );
 
     return { challenge, expiresAt: expiresAt.toISOString() };
+  }
+
+  async resolveChallenge(challenge: string, purpose: 'LOGIN' | 'ENROLLMENT'): Promise<UserRecord> {
+    const result = await this.db.query<any>(
+      `SELECT c.user_id, u.*
+         FROM platform_mfa_challenges c
+         JOIN users u ON u.id=c.user_id
+        WHERE c.challenge_hash=$1
+          AND c.purpose=$2
+          AND c.used_at IS NULL
+          AND c.expires_at>CURRENT_TIMESTAMP
+          AND u.is_active=TRUE
+        LIMIT 1`,
+      [hashMfaChallenge(challenge), purpose],
+    );
+    const user = result.rows[0];
+    if (!user || !isPlatformRole(user.role)) throw new Error('INVALID_MFA_CHALLENGE');
+    return user as UserRecord;
+  }
+
+  async markEnrollmentChallengeUsed(challenge: string): Promise<void> {
+    await this.db.query(
+      `UPDATE platform_mfa_challenges
+          SET used_at=CURRENT_TIMESTAMP
+        WHERE challenge_hash=$1 AND purpose='ENROLLMENT' AND used_at IS NULL`,
+      [hashMfaChallenge(challenge)],
+    );
   }
 
   async verifyChallenge(challenge: string, code: string): Promise<UserRecord> {
