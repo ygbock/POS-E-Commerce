@@ -105,7 +105,7 @@ async function main() {
     organizationId: 'org_default',
   });
   const fifthClaims = verifyToken(fifth.token);
-  const revokedOthers = await auth.revokeOtherSessions(fifthSessionUserId(fifth, fifthClaims, fourthSession), fifthClaims.jti);
+  const revokedOthers = await auth.revokeOtherSessions(fourthSession.rows[0].user_id, fifthClaims.jti);
   assert.ok(revokedOthers >= 1, 'logout-other-sessions must revoke at least the previous session');
   await assert.rejects(
     () => auth.verifySession(fourth.token),
@@ -120,12 +120,12 @@ async function main() {
         AND event_type IN ('SESSION_REVOKED','LOGOUT_OTHER_SESSIONS')
       ORDER BY occurred_at DESC
       LIMIT 20`,
-    [fifthSessionUserId(fifth, fifthClaims, fourthSession)],
+    [fourthSession.rows[0].user_id],
   );
   assert.ok(revocationEvents.rows.some((row: any) => row.event_type === 'LOGOUT_OTHER_SESSIONS'));
   assert.ok(revocationEvents.rows.some((row: any) => row.event_type === 'SESSION_REVOKED'));
 
-  await auth.logoutAllSessions(fifthSessionUserId(fifth, fifthClaims, fourthSession));
+  await auth.logoutAllSessions(fourthSession.rows[0].user_id);
   await assert.rejects(
     () => auth.verifySession(fourth.token),
     (err: any) => err?.code === 'REVOKED',
@@ -139,7 +139,3 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-
-function fifthSessionUserId(_login: any, _claims: any, session: any): string {
-  return session.rows[0].user_id;
-}
