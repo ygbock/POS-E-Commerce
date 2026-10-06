@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS platform_mfa_challenges (
   id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   challenge_hash VARCHAR(64) NOT NULL UNIQUE,
+  purpose VARCHAR(32) NOT NULL DEFAULT 'LOGIN' CHECK (purpose IN ('LOGIN','ENROLLMENT')),
   expires_at TIMESTAMPTZ NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   used_at TIMESTAMPTZ,
