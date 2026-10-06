@@ -26,6 +26,15 @@ async function main() {
   assert.equal(ownerMeBefore.rows[0].email_verified_at, null);
   assert.equal(ownerMeBefore.rows[0].identity_type, 'business_owner');
 
+  // Login remains available while unverified so the account can reach verification.
+  const unverifiedLogin = await authService.login({
+    email: 'verification-owner@example.test',
+    password: 'VerificationOwner123!',
+    organizationId: owner.user.organizationId,
+  });
+  assert.equal(unverifiedLogin.user.identityType, 'business_owner');
+  assert.ok(unverifiedLogin.token);
+
   const { hash: staffHash, salt: staffSalt } = hashPassword('VerificationStaff123!');
   const staffId = 'usr_verification_staff';
   await db.query(
