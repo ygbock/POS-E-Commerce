@@ -175,45 +175,53 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
             </a>
           </div>
 
-{mfaChallenge ? (          <div className="mb-6 pr-6">
-            <h2 className="text-xl font-bold text-slate-900">{mfaEnrollment ? 'Secure your platform account' : 'Verify your platform sign in'}</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {mfaEnrollment ? 'Set up an authenticator app, then enter the six-digit code it generates.' : 'Enter the six-digit code from your authenticator app. A recovery code may also be used.'}
-            </p>
-          </div>
-
-          {mfaEnrollment && mfaSecret && (
-            <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-              <p className="font-semibold text-slate-900">Authenticator secret</p>
-              <p className="mt-1 break-all font-mono text-xs text-slate-700">{mfaSecret}</p>
-              <p className="mt-3 text-xs text-slate-500">Add this secret to your authenticator app, then enter the generated six-digit code below.</p>
-            </div>
-          )}
-
-          {recoveryCodes && (
-            <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
-              <p className="font-semibold text-amber-900">Save your recovery codes now</p>
-              <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-xs text-amber-950">
-                {recoveryCodes.map((code) => <div key={code} className="rounded bg-white px-2 py-1">{code}</div>)}
-              </div>
-              <button type="button" onClick={() => finishPlatformAuthentication(authClient.getUser()!)} className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2.5 font-semibold text-white">I saved my recovery codes</button>
-            </div>
-          )}
-
-          {!recoveryCodes && (
+{mfaChallenge ? (
             <>
-              <label className="block text-sm font-medium text-slate-700">
-                {mfaEnrollment ? 'Authenticator code' : 'MFA code or recovery code'}
-                <input type="text" inputMode="numeric" autoComplete="one-time-code" required autoFocus value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 font-mono tracking-widest outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200" placeholder={mfaEnrollment ? '123456' : '123456 or recovery code'} />
-              </label>
-              <button type="submit" disabled={loading} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
-                {loading ? 'Verifying…' : mfaEnrollment ? 'Enable MFA & continue' : 'Verify & continue'}
-              </button>
+              <div className="mb-6 pr-6">
+                <h2 className="text-xl font-bold text-slate-900">{mfaEnrollment ? 'Secure your platform account' : 'Verify your platform sign in'}</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {mfaEnrollment
+                    ? 'Set up an authenticator app, then enter the six-digit code it generates.'
+                    : 'Enter the six-digit code from your authenticator app. A recovery code may also be used.'}
+                </p>
+              </div>
+
+              {mfaEnrollment && mfaSecret && (
+                <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <p className="font-semibold text-slate-900">Authenticator secret</p>
+                  <p className="mt-1 break-all font-mono text-xs text-slate-700">{mfaSecret}</p>
+                  <p className="mt-3 text-xs text-slate-500">Add this secret to your authenticator app, then enter the generated six-digit code below.</p>
+                </div>
+              )}
+
+              {recoveryCodes && (
+                <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+                  <p className="font-semibold text-amber-900">Save your recovery codes now</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-xs text-amber-950">
+                    {recoveryCodes.map((code) => <div key={code} className="rounded bg-white px-2 py-1">{code}</div>)}
+                  </div>
+                  <button type="button" onClick={() => finishPlatformAuthentication(authClient.getUser()!)} className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2.5 font-semibold text-white">I saved my recovery codes</button>
+                </div>
+              )}
+
+              {!recoveryCodes && (
+                <>
+                  <label className="block text-sm font-medium text-slate-700">
+                    {mfaEnrollment ? 'Authenticator code' : 'MFA code or recovery code'}
+                    <input type="text" inputMode="numeric" autoComplete="one-time-code" required autoFocus value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 font-mono tracking-widest outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200" placeholder={mfaEnrollment ? '123456' : '123456 or recovery code'} />
+                  </label>
+                  <button type="submit" disabled={loading} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
+                    {loading ? 'Verifying…' : mfaEnrollment ? 'Enable MFA & continue' : 'Verify & continue'}
+                  </button>
+                </>
+              )}
             </>
-          )) : (          <div className="mb-6 pr-6">
-            <h2 className="text-xl font-bold text-slate-900">{mode === 'platform' ? 'Platform administrator sign in' : 'Sign in'}</h2>
-            <p className="mt-1 text-sm text-slate-500">{mode === 'platform' ? 'Use an authorized platform operator account.' : 'Use your authorized account to continue.'}</p>
-          </div>)}
+          ) : (
+            <div className="mb-6 pr-6">
+              <h2 className="text-xl font-bold text-slate-900">{mode === 'platform' ? 'Platform administrator sign in' : 'Sign in'}</h2>
+              <p className="mt-1 text-sm text-slate-500">{mode === 'platform' ? 'Use an authorized platform operator account.' : 'Use your authorized account to continue.'}</p>
+            </div>
+          )}
 
           {error && (
             <div role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
