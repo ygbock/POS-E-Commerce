@@ -3,6 +3,7 @@ import { UserRole, hasPermission, isPlatformRole, AuthIdentityType, getIdentityT
 import { AuthService } from '../services/authService';
 import { TokenClaims } from '../auth/token';
 import { ACCESS_COOKIE } from '../auth/session';
+import { DatabaseClient } from '../db/client';
 
 /**
  * Authenticated Request Context (SEC-001)
@@ -94,7 +95,7 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
  * applied only to protected operational routes and derives verification state from the
  * current users row rather than from browser-controlled state or a stale JWT claim.
  */
-export function requireVerifiedEmail(...identityTypes: AuthIdentityType[]) {
+export function requireVerifiedEmail(db: DatabaseClient, ...identityTypes: AuthIdentityType[]) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
       return res.status(401).json({
@@ -112,14 +113,6 @@ export function requireVerifiedEmail(...identityTypes: AuthIdentityType[]) {
     }
 
     try {
-      const db = (req.app as any).get?.('db') as { query?: Function } | undefined;
-      if (!db?.query) {
-        return res.status(503).json({
-          success: false,
-          error: { code: 'EMAIL_VERIFICATION_UNAVAILABLE', message: 'Email verification status is temporarily unavailable.' },
-        });
-      }
-
       const result = await db.query(
         `SELECT email_verified_at
            FROM users
