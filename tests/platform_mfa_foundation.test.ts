@@ -10,6 +10,7 @@ import {
   generateRecoveryCodes,
   generateTotpCode,
   generateTotpSecret,
+  generateRecoveryCodeSalt,
   hashRecoveryCode,
   verifyTotpCode,
 } from '../server/auth/platformMfa';
@@ -56,7 +57,9 @@ async function main() {
   assert.equal(recoveryCodes.length, MFA_CONSTANTS.recoveryCodeCount);
   assert.ok(new Set(recoveryCodes).size === recoveryCodes.length);
   assert.ok(recoveryCodes.every((code) => /^[A-F0-9]{12}$/.test(code)));
-  assert.notEqual(hashRecoveryCode(recoveryCodes[0]), recoveryCodes[0]);
+  const recoverySalt = generateRecoveryCodeSalt();
+  const recoveryHash = hashRecoveryCode(recoveryCodes[0], recoverySalt);
+  assert.match(recoveryHash, /^[a-f0-9]{64}$/);
 
   // RFC 6238 SHA-1 test vector at T=59.
   const rfcSecret = base32Encode(Buffer.from('12345678901234567890', 'ascii'));
