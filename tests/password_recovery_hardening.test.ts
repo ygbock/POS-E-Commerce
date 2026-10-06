@@ -29,9 +29,9 @@ async function main() {
   assert.equal(firstToken.rows[0].token_hash.length, 64);
 
   const requestedAudit = await db.query(
-    `SELECT details::text AS details
-       FROM audit_logs
-      WHERE user_id='usr_super_admin' AND action='password_reset_requested'
+    `SELECT metadata::text AS details
+       FROM audit_events
+      WHERE organization_id='org_default' AND entity_id='usr_super_admin' AND action='password_reset_requested'
       ORDER BY created_at DESC
       LIMIT 1`,
   );
@@ -105,8 +105,8 @@ async function main() {
   // Completion audit contains only non-sensitive state.
   const completedAudit = await db.query(
     `SELECT details::text AS details
-       FROM audit_logs
-      WHERE user_id='usr_super_admin' AND action='password_reset_completed'
+       FROM audit_events
+      WHERE organization_id='org_default' AND entity_id='usr_super_admin' AND action='password_reset_completed'
       ORDER BY created_at DESC
       LIMIT 1`,
   );
