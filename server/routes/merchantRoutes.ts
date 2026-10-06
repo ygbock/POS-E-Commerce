@@ -3,7 +3,7 @@ import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
 import { AuthService } from '../services/authService.ts';
-import { requireAuth, requirePermission } from '../middleware/auth.ts';
+import { requireAuth, requirePermission, requireVerifiedEmail } from '../middleware/auth.ts';
 import { AuditRepository } from '../repositories/auditRepository.ts';
 import { assertBusinessPermission } from '../services/discoveryBusinessAccess.ts';
 import { getPermissionsForRole, PERMISSIONS } from '../auth/roles.ts';
@@ -372,7 +372,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.post('/businesses/:id/team/invitations', requireAuth(), async (req, res, next) => {
+  router.post('/businesses/:id/team/invitations', requireAuth(), requireVerifiedEmail(db, 'business_owner'), async (req, res, next) => {
     try {
       const actorRole = await requireTeamManager(req, req.params.id);
       const email = normalizeEmail(req.body?.email);
@@ -435,7 +435,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.post('/businesses/:id/team/invitations/:invitationId/revoke', requireAuth(), async (req, res) => {
+  router.post('/businesses/:id/team/invitations/:invitationId/revoke', requireAuth(), requireVerifiedEmail(db, 'business_owner'), async (req, res) => {
     try {
       await requireTeamManager(req, req.params.id);
       const result = await db.query(
@@ -453,7 +453,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.post('/businesses/:id/team/members/:userId/role', requireAuth(), async (req, res) => {
+  router.post('/businesses/:id/team/members/:userId/role', requireAuth(), requireVerifiedEmail(db, 'business_owner'), async (req, res) => {
     try {
       await requireTeamManager(req, req.params.id, 'OWNER');
       const role = req.body?.role === 'MANAGER' ? 'MANAGER' : req.body?.role === 'STAFF' ? 'STAFF' : '';
@@ -474,7 +474,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.post('/businesses/:id/team/members/:userId/deactivate', requireAuth(), async (req, res) => {
+  router.post('/businesses/:id/team/members/:userId/deactivate', requireAuth(), requireVerifiedEmail(db, 'business_owner'), async (req, res) => {
     try {
       const actorRole = await requireTeamManager(req, req.params.id);
       const target = await db.query(
@@ -503,7 +503,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.post('/businesses/:id/team/invitations/:invitationId/accept', requireAuth(), async (req, res) => {
+  router.post('/businesses/:id/team/invitations/:invitationId/accept', requireAuth(), requireVerifiedEmail(db), async (req, res) => {
     try {
       const invitation = await db.query(
         `SELECT id,business_id,invited_email,role,status,expires_at
@@ -558,7 +558,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
     }
   });
 
-  router.post('/businesses', requireAuth(), async (req, res, next) => {
+  router.post('/businesses', requireAuth(), requireVerifiedEmail(db, 'business_owner'), async (req, res, next) => {
     try {
       const businessMode = req.body?.businessMode === 'DISCOVERY_AND_STORE' ? 'DISCOVERY_AND_STORE' : 'DISCOVERY_ONLY';
       const name = String(req.body?.businessName || '').trim();
@@ -603,7 +603,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
    * selectable. The authenticated membership resolves the business, and every
    * commerce query uses the business' server-resolved organization_id.
    */
-  router.get('/businesses/:id/overview', requireAuth(), async (req, res) => {
+  router.get('/businesses/:id/overview', requireAuth(), requireVerifiedEmail(db, 'business_owner'), async (req, res) => {
     try {
       const businessId = String(req.params.id || '').trim();
       if (!businessId) throw new Error('VALIDATION_ERROR:Business id is required.');
