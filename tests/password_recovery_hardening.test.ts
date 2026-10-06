@@ -104,7 +104,7 @@ async function main() {
 
   // Completion audit contains only non-sensitive state.
   const completedAudit = await db.query(
-    `SELECT details::text AS details
+    `SELECT metadata::text AS details
        FROM audit_events
       WHERE organization_id='org_default' AND entity_id='usr_super_admin' AND action='password_reset_completed'
       ORDER BY created_at DESC
