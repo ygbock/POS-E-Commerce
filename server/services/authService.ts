@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { UserRepository, UserRecord } from '../repositories/userRepository';
+import { AuditRepository } from '../repositories/auditRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
@@ -621,19 +622,24 @@ export class AuthService {
       // Audit metadata must never contain the raw reset credential. The delivery
       // integration receives the token out-of-band through the configured
       // application boundary; the audit record contains only non-sensitive facts.
-      await this.db.query(
-        `INSERT INTO audit_logs (id, organization_id, user_id, action, details, created_at)
-         VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)`,
-        [
-          randomBytes(16).toString('hex'),
-          orgId,
-          user.id,
-          'password_reset_requested',
-          JSON.stringify({
+      await new AuditRepository(this.db).recordEvent(
+        {
+          id: randomBytes(16).toString('hex'),
+          organization_id: orgId,
+          actor_id: null,
+          actor_name: 'System',
+          actor_role: 'System',
+          action: 'password_reset_requested',
+          entity_type: 'AUTH_PASSWORD_RESET',
+          entity_id: user.id,
+          severity: 'Medium',
+          result: 'SUCCESS',
+          metadata: {
             resetUrlBase: resetUrl,
             expiresInSeconds: 30 * 60,
-          }),
-        ],
+          },
+        },
+        this.db,
       );
       await this.db.query('COMMIT');
     } catch (error) {
@@ -689,16 +695,21 @@ export class AuthService {
       );
       await revokeAllUserSessions(this.db, row.id, 'password-reset');
 
-      await this.db.query(
-        `INSERT INTO audit_logs (id, organization_id, user_id, action, details, created_at)
-         VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)`,
-        [
-          randomBytes(16).toString('hex'),
-          row.organization_id,
-          row.id,
-          'password_reset_completed',
-          JSON.stringify({ tokenConsumed: true }),
-        ],
+      await new AuditRepository(this.db).recordEvent(
+        {
+          id: randomBytes(16).toString('hex'),
+          organization_id: row.organization_id,
+          actor_id: row.id,
+          actor_name: row.name || row.email || row.id,
+          actor_role: row.role || 'System',
+          action: 'password_reset_completed',
+          entity_type: 'AUTH_PASSWORD_RESET',
+          entity_id: row.id,
+          severity: 'Medium',
+          result: 'SUCCESS',
+          metadata: { tokenConsumed: true },
+        },
+        this.db,
       );
       await this.db.query('COMMIT');
     } catch (error) {
