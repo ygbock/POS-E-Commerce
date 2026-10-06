@@ -22,7 +22,7 @@ async function main() {
     `SELECT id, token_hash, created_at, used_at
        FROM password_reset_tokens
       WHERE user_id='usr_super_admin' AND used_at IS NULL
-      ORDER BY created_at DESC
+      ORDER BY timestamp DESC
       LIMIT 1`,
   );
   assert.equal(firstToken.rows.length, 1);
@@ -32,7 +32,7 @@ async function main() {
     `SELECT metadata::text AS details
        FROM audit_events
       WHERE organization_id='org_default' AND entity_id='usr_super_admin' AND action='password_reset_requested'
-      ORDER BY created_at DESC
+      ORDER BY timestamp DESC
       LIMIT 1`,
   );
   assert.equal(requestedAudit.rows.length, 1);
@@ -107,7 +107,7 @@ async function main() {
     `SELECT metadata::text AS details
        FROM audit_events
       WHERE organization_id='org_default' AND entity_id='usr_super_admin' AND action='password_reset_completed'
-      ORDER BY created_at DESC
+      ORDER BY timestamp DESC
       LIMIT 1`,
   );
   assert.equal(completedAudit.rows.length, 1);
