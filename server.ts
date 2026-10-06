@@ -598,7 +598,32 @@ export async function createApp(options: CreateAppOptions = {}) {
       success: true,
       message: 'All authentication sessions successfully revoked',
     });
-  });
+
+
+  app.post('/api/auth/logout-other-sessions', requireAuth(), async (req: Request, res: Response) => {
+    if (!req.auth?.jti) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'SESSION_CONTEXT_UNAVAILABLE', message: 'Current authentication session could not be resolved.' },
+      });
+    }
+    try {
+      const revokedCount = await authService.revokeOtherSessions(req.auth.userId, req.auth.jti);
+      return res.json({
+        success: true,
+        data: { revokedCount },
+        message: 'All other sessions revoked successfully.',
+      });
+    } catch (err: any) {
+      if (err?.message === 'SESSION_NOT_FOUND') {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'SESSION_CONTEXT_UNAVAILABLE', message: 'Current authentication session could not be resolved.' },
+        });
+      }
+      throw err;
+    }
+  });  });
 
   app.get('/api/auth/sessions', requireAuth(), async (req: Request, res: Response) => {
     const sessions = await authService.listSessions(req.auth!.userId);
@@ -2693,8 +2718,9 @@ export async function createApp(options: CreateAppOptions = {}) {
         if (!targetIsActive) {
           try {
             await userRepo.revokeToken(`rev_user_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User suspended');
+            await authService.logoutAllSessions(id);
           } catch (tokErr) {
-            console.warn('[Auth] Failed to revoke user token on suspension:', tokErr);
+            console.warn('[Auth] Failed to revoke user authentication sessions on suspension:', tokErr);
           }
         }
 
@@ -2866,8 +2892,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
         try {
           await userRepo.revokeToken(`rev_del_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User deleted');
+          await authService.logoutAllSessions(id);
         } catch (tokErr) {
-          console.warn('[Auth] Failed to revoke user token on deletion:', tokErr);
+          console.warn('[Auth] Failed to revoke user authentication sessions on deletion:', tokErr);
         }
 
         const deleted = await userRepo.deleteUser(id, targetOrgId);

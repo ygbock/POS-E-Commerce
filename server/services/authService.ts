@@ -4,7 +4,7 @@ import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
-import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
+import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, revokeAllOtherUserSessions, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
 export interface BusinessSummary {
   id: string;
@@ -207,6 +207,14 @@ export class AuthService {
 
   async revokeSession(userId: string, sessionId: string): Promise<boolean> {
     return revokeUserSession(this.db, userId, sessionId);
+  }
+
+  async revokeOtherSessions(userId: string, currentAccessJti: string): Promise<number> {
+    const currentSession = await findSessionByAccessJti(this.db, currentAccessJti);
+    if (!currentSession || currentSession.user_id !== userId) {
+      throw new Error('SESSION_NOT_FOUND');
+    }
+    return revokeAllOtherUserSessions(this.db, userId, currentSession.id, 'logout-other-sessions');
   }
 
   async registerBusinessOwner(input: {
@@ -619,6 +627,12 @@ export class AuthService {
       await this.db.query('UPDATE users SET password_hash=$1,password_salt=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$3',[hashed.hash,hashed.salt,row.id]);
       await this.db.query('UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=$1',[row.token_id]);
       await this.db.query('UPDATE revoked_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=$1 AND revoked_at IS NULL',[row.id]);
+      await revokeAllUserSessions(this.db, row.id, 'password-reset', 'PASSWORD_RESET_SESSION_REVOCATION');
+      await this.db.query(
+        `INSERT INTO auth_session_events (user_id,event_type,metadata)
+         VALUES ($1,'PASSWORD_RESET_COMPLETED',$2::jsonb)`,
+        [row.id, JSON.stringify({ source: 'password-reset' })],
+      );
       await this.db.query('COMMIT');
     } catch(e){ await this.db.query('ROLLBACK'); throw e; }
   }
