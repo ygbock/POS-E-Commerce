@@ -9,6 +9,7 @@ import { Product, ProductVariant, CatalogAttribute, Category, Brand } from './sr
 import { getDatabaseClient, DatabaseClient } from './server/db/client.ts';
 import { runMigrations, getAppliedMigrations } from './server/db/migrator.ts';
 import { AuthService } from './server/services/authService.ts';
+import { EmailVerificationService, UnconfiguredEmailVerificationDelivery } from './server/services/emailVerificationService.ts';
 import { UserRepository } from './server/repositories/userRepository.ts';
 import { OrderRepository, OrderRecord, OrderItemRecord, PaymentRecord } from './server/repositories/orderRepository.ts';
 import { CustomerRepository } from './server/repositories/customerRepository.ts';
@@ -89,6 +90,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   let db: DatabaseClient;
   let authService: AuthService;
+  let emailVerificationService: EmailVerificationService;
 
   if (options.db) {
     db = options.db;
@@ -143,6 +145,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
     }
   }
+
+  emailVerificationService = new EmailVerificationService(db, {
+    delivery: new UnconfiguredEmailVerificationDelivery(),
+  });
 
   // Repositories
   const userRepo = new UserRepository(db);
@@ -551,6 +557,79 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
     }
   );
+
+  app.post('/api/auth/verify-email/request', authRateLimiter, requireAuth(), async (req: Request, res: Response) => {
+    try {
+      const result = await emailVerificationService.requestVerification(req.auth!.userId);
+      if (result.status === 'ALREADY_VERIFIED') {
+        return res.status(200).json({
+          success: true,
+          data: { status: 'ALREADY_VERIFIED' },
+          message: 'Your email address is already verified.',
+        });
+      }
+
+      return res.status(202).json({
+        success: true,
+        data: { status: 'SENT', expiresAt: result.expiresAt },
+        message: 'Verification instructions have been sent to your email address.',
+      });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      if (code === 'EMAIL_DELIVERY_NOT_CONFIGURED') {
+        return res.status(503).json({
+          success: false,
+          error: {
+            code: 'EMAIL_VERIFICATION_UNAVAILABLE',
+            message: 'Email verification is temporarily unavailable.',
+          },
+        });
+      }
+      if (code === 'NOT_FOUND') {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ACCOUNT_NOT_FOUND', message: 'Active account not found.' },
+        });
+      }
+      return res.status(500).json({
+        success: false,
+        error: { code: 'EMAIL_VERIFICATION_FAILED', message: 'Unable to issue email verification instructions.' },
+      });
+    }
+  });
+
+  app.post('/api/auth/verify-email/confirm', authRateLimiter, async (req: Request, res: Response) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    if (!token || token.length < 20) {
+      return res.status(422).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'A valid verification token is required.' },
+      });
+    }
+
+    try {
+      const result = await emailVerificationService.confirmVerification(token);
+      return res.status(200).json({
+        success: true,
+        data: { status: result.status },
+        message: result.status === 'ALREADY_VERIFIED'
+          ? 'Your email address is already verified.'
+          : 'Email address verified successfully.',
+      });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      if (code === 'EMAIL_CHANGED') {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_VERIFICATION_TOKEN', message: 'This verification link is no longer valid.' },
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_VERIFICATION_TOKEN', message: 'This verification link is invalid or expired.' },
+      });
+    }
+  });
 
   app.get('/api/auth/me', requireAuth(), (req: Request, res: Response) => {
     res.json({
