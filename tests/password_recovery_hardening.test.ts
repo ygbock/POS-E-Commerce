@@ -22,7 +22,7 @@ async function main() {
     `SELECT id, token_hash, created_at, used_at
        FROM password_reset_tokens
       WHERE user_id='usr_super_admin' AND used_at IS NULL
-      ORDER BY timestamp DESC
+      ORDER BY created_at DESC
       LIMIT 1`,
   );
   assert.equal(firstToken.rows.length, 1);
