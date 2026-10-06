@@ -145,8 +145,17 @@ export function generateRecoveryCodes(): string[] {
   );
 }
 
-export function hashRecoveryCode(code: string): string {
-  return crypto.createHash('sha256').update(code.trim().toUpperCase(), 'utf8').digest('hex');
+export function generateRecoveryCodeSalt(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+export function hashRecoveryCode(code: string, salt: string): string {
+  return crypto.scryptSync(code.trim().toUpperCase(), Buffer.from(salt, 'hex'), 32).toString('hex');
+}
+
+export function recoveryCodeMatches(code: string, salt: string, expectedHash: string): boolean {
+  const actual = hashRecoveryCode(code, salt);
+  return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expectedHash, 'hex'));
 }
 
 export function hashMfaChallenge(challenge: string): string {
