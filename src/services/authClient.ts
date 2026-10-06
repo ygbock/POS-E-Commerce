@@ -5,6 +5,13 @@
  * and attaches Authorization: Bearer <token> headers to outbound requests.
  */
 
+export class PlatformMfaChallengeError extends Error {
+  constructor(public readonly code: 'MFA_REQUIRED' | 'MFA_ENROLLMENT_REQUIRED', public readonly challenge: string, public readonly expiresAt: string) {
+    super(code);
+    this.name = 'PlatformMfaChallengeError';
+  }
+}
+
 export interface AuthUser {
   id: string;
   organizationId?: string;
@@ -122,6 +129,10 @@ class AuthClient {
     }));
     const data = await res.json();
     if (!res.ok || !data.success) {
+      const code = data.error?.code;
+      if ((code === 'MFA_REQUIRED' || code === 'MFA_ENROLLMENT_REQUIRED') && data.data?.challenge) {
+        throw new PlatformMfaChallengeError(code, data.data.challenge, data.data.expiresAt);
+      }
       throw new Error(data.error?.message || 'Platform authentication failed');
     }
     this.currentToken = data.data.token;
@@ -129,6 +140,45 @@ class AuthClient {
     if (typeof window !== 'undefined') {
       localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     }
+    return data.data.user;
+  }
+
+  async setupPlatformMfa(challenge: string): Promise<{ secret: string; otpauthUri: string; expiresAt: string }> {
+    const res = await fetch('/api/auth/platform/mfa/setup', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challenge }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to initialize platform MFA.');
+    return data.data;
+  }
+
+  async confirmPlatformMfaEnrollment(challenge: string, code: string): Promise<{ user: AuthUser; recoveryCodes: string[] }> {
+    const res = await fetch('/api/auth/platform/mfa/confirm-enrollment', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challenge, code }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to complete platform MFA enrollment.');
+    this.currentToken = data.data.token;
+    this.currentUser = data.data.user;
+    if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
+    return { user: data.data.user, recoveryCodes: data.data.recoveryCodes };
+  }
+
+  async verifyPlatformMfa(challenge: string, code: string): Promise<AuthUser> {
+    const res = await fetch('/api/auth/platform/mfa/verify', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challenge, code }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to verify platform MFA.');
+    this.currentToken = data.data.token;
+    this.currentUser = data.data.user;
+    if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
     return data.data.user;
   }
 
