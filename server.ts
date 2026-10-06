@@ -2718,8 +2718,9 @@ export async function createApp(options: CreateAppOptions = {}) {
         if (!targetIsActive) {
           try {
             await userRepo.revokeToken(`rev_user_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User suspended');
+            await authService.logoutAllSessions(id);
           } catch (tokErr) {
-            console.warn('[Auth] Failed to revoke user token on suspension:', tokErr);
+            console.warn('[Auth] Failed to revoke user authentication sessions on suspension:', tokErr);
           }
         }
 
@@ -2891,8 +2892,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
         try {
           await userRepo.revokeToken(`rev_del_${id}_${Date.now()}`, id, new Date(Date.now() + 86400000 * 30), 'User deleted');
+          await authService.logoutAllSessions(id);
         } catch (tokErr) {
-          console.warn('[Auth] Failed to revoke user token on deletion:', tokErr);
+          console.warn('[Auth] Failed to revoke user authentication sessions on deletion:', tokErr);
         }
 
         const deleted = await userRepo.deleteUser(id, targetOrgId);
