@@ -158,6 +158,7 @@ export async function revokeAllUserSessions(
   db: DatabaseClient,
   userId: string,
   reason = 'logout-all',
+  eventType = 'LOGOUT_ALL',
 ): Promise<void> {
   await db.query(
     `UPDATE auth_sessions
@@ -167,8 +168,8 @@ export async function revokeAllUserSessions(
     [userId, reason],
   );
   await db.query(
-    `INSERT INTO auth_session_events (user_id,event_type,metadata) VALUES ($1,'LOGOUT_ALL',$2::jsonb)`,
-    [userId, JSON.stringify({ reason })],
+    `INSERT INTO auth_session_events (user_id,event_type,metadata) VALUES ($1,$2,$3::jsonb)`,
+    [userId, eventType, JSON.stringify({ reason })],
   );
 }
 
