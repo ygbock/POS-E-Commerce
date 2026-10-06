@@ -199,6 +199,7 @@ export class PlatformMfaService {
         `SELECT *
            FROM platform_mfa_challenges
           WHERE challenge_hash=$1
+            AND purpose='LOGIN'
             AND used_at IS NULL
             AND expires_at>CURRENT_TIMESTAMP
           FOR UPDATE`,
