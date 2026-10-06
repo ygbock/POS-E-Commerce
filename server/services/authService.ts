@@ -693,7 +693,7 @@ export class AuthService {
         `INSERT INTO audit_logs (id, organization_id, user_id, action, details, created_at)
          VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)`,
         [
-          crypto.randomBytes(16).toString('hex'),
+          randomBytes(16).toString('hex'),
           row.organization_id,
           row.id,
           'password_reset_completed',
