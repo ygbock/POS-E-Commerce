@@ -4,7 +4,7 @@ import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
-import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
+import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, revokeAllOtherUserSessions, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
 export interface BusinessSummary {
   id: string;
@@ -207,6 +207,14 @@ export class AuthService {
 
   async revokeSession(userId: string, sessionId: string): Promise<boolean> {
     return revokeUserSession(this.db, userId, sessionId);
+  }
+
+  async revokeOtherSessions(userId: string, currentAccessJti: string): Promise<number> {
+    const currentSession = await findSessionByAccessJti(this.db, currentAccessJti);
+    if (!currentSession || currentSession.user_id !== userId) {
+      throw new Error('SESSION_NOT_FOUND');
+    }
+    return revokeAllOtherUserSessions(this.db, userId, currentSession.id, 'logout-other-sessions');
   }
 
   async registerBusinessOwner(input: {
