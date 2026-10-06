@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { UserRepository, UserRecord } from '../repositories/userRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
@@ -603,10 +603,9 @@ export class AuthService {
       return;
     }
 
-    const crypto = require('crypto');
-    const rawToken = crypto.randomBytes(32).toString('base64url');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const id = crypto.randomBytes(24).toString('hex');
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const id = randomBytes(24).toString('hex');
 
     await this.db.query('BEGIN');
     try {
@@ -626,7 +625,7 @@ export class AuthService {
         `INSERT INTO audit_logs (id, organization_id, user_id, action, details, created_at)
          VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)`,
         [
-          crypto.randomBytes(16).toString('hex'),
+          randomBytes(16).toString('hex'),
           orgId,
           user.id,
           'password_reset_requested',
@@ -652,8 +651,7 @@ export class AuthService {
       throw new Error('VALIDATION_ERROR: Password must be at least 12 characters');
     }
 
-    const crypto = require('crypto');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     const hashed = hashPassword(newPassword);
 
     await this.db.query('BEGIN');
