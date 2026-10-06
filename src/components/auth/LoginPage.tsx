@@ -1,6 +1,6 @@
 import React, { FormEvent, useEffect, useState } from 'react';
 import { ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
-import { authClient, AuthUser } from '../../services/authClient';
+import { authClient, AuthUser, PlatformMfaChallengeError } from '../../services/authClient';
 
 interface LoginPageProps {
   onAuthenticated: (user: AuthUser) => void;
@@ -13,11 +13,48 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState<string | null>(null);
+  const [mfaEnrollment, setMfaEnrollment] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   useEffect(() => {
     const remembered = localStorage.getItem('abacha_login_email');
     if (remembered) setEmail(remembered);
   }, []);
+
+  const finishPlatformAuthentication = (user: AuthUser) => {
+    localStorage.setItem('abacha_login_email', email.trim());
+    const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+    const safePlatformRedirect =
+      redirectParam && redirectParam.startsWith('/platform') && !redirectParam.startsWith('//')
+        ? redirectParam
+        : '/platform';
+    window.location.assign(safePlatformRedirect);
+    onAuthenticated(user);
+  };
+
+  const submitMfa = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!mfaChallenge) return;
+    setError('');
+    setLoading(true);
+    try {
+      if (mfaEnrollment) {
+        const result = await authClient.confirmPlatformMfaEnrollment(mfaChallenge, mfaCode.trim());
+        setRecoveryCodes(result.recoveryCodes);
+        finishPlatformAuthentication(result.user);
+      } else {
+        const user = await authClient.verifyPlatformMfa(mfaChallenge, mfaCode.trim());
+        finishPlatformAuthentication(user);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to verify the MFA code.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -39,20 +76,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
 
       if (mode === 'platform') {
-        const safePlatformRedirect =
-          redirectParam && redirectParam.startsWith('/platform') && !redirectParam.startsWith('//')
-            ? redirectParam
-            : '/platform';
-        window.location.assign(safePlatformRedirect);
-        onAuthenticated(user);
+        finishPlatformAuthentication(user);
         return;
       }
 
       if (user.role === 'business_owner') {
-        // Business owners must always land in the management plane after a
-        // storefront-originated login. Resolve their assigned business from
-        // the authenticated server session rather than trusting a client-
-        // supplied businessId.
         const merchantResponse = await fetch('/api/merchant/me', {
           headers: authClient.getAuthHeaders(),
         });
@@ -92,17 +120,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
         ? redirectParam
         : '/discover';
-
-      // Complete the journey the user started before authentication instead of
-      // dropping them back on a generic landing page.
       window.location.assign(safeRedirect);
       onAuthenticated(user);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign in. Please check your credentials.');
+      if (err instanceof PlatformMfaChallengeError) {
+        setMfaChallenge(err.challenge);
+        setMfaEnrollment(err.code === 'MFA_ENROLLMENT_REQUIRED');
+        if (err.code === 'MFA_ENROLLMENT_REQUIRED') {
+          try {
+            const enrollment = await authClient.setupPlatformMfa(err.challenge);
+            setMfaSecret(enrollment.secret);
+          } catch (setupError) {
+            setError(setupError instanceof Error ? setupError.message : 'Unable to initialize MFA enrollment.');
+            setMfaChallenge(null);
+          }
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Unable to sign in. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center px-4 py-8 relative">
@@ -124,7 +164,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
           <p className="mt-2 text-sm text-slate-400">{mode === 'platform' ? 'Platform Control Plane' : 'Unified Commerce Platform'}</p>
         </div>
 
-        <form onSubmit={submit} className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xl relative">
+        <form onSubmit={mfaChallenge ? submitMfa : submit} className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xl relative">
           <div className="absolute top-6 right-6">
             <a
               href="/discover"
@@ -135,10 +175,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
             </a>
           </div>
 
-          <div className="mb-6 pr-6">
-            <h2 className="text-xl font-bold text-slate-900">{mode === 'platform' ? 'Platform administrator sign in' : 'Sign in'}</h2>
-            <p className="mt-1 text-sm text-slate-500">{mode === 'platform' ? 'Use an authorized platform operator account.' : 'Use your authorized account to continue.'}</p>
-          </div>
+{mfaChallenge ? mfaBlock : contentMarker}
 
           {error && (
             <div role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -146,6 +183,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
             </div>
           )}
 
+          {!mfaChallenge && (<>
           <label className="block text-sm font-medium text-slate-700">
             Email
             <input
@@ -182,6 +220,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
               </button>
             </div>
           </label>
+
+          </>)}
 
           <button
             type="submit"
