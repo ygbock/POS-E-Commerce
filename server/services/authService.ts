@@ -5,6 +5,8 @@ import { AuditRepository } from '../repositories/auditRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
+import { PlatformMfaService } from './platformMfaService';
+import { hashMfaChallenge } from '../auth/platformMfa';
 import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
 export interface BusinessSummary {
@@ -36,6 +38,7 @@ export interface LoginResult {
 export class AuthService {
   private userRepo: UserRepository;
   private db: DatabaseClient;
+  private platformMfa: PlatformMfaService;
 
   constructor(clientOrUserRepo?: DatabaseClient | UserRepository, maybeAuditRepoOrClient?: any) {
     if (clientOrUserRepo && typeof (clientOrUserRepo as any).createUser === 'function') {
@@ -45,6 +48,7 @@ export class AuthService {
       this.db = (clientOrUserRepo as DatabaseClient) || getDatabaseClient();
       this.userRepo = new UserRepository(this.db);
     }
+    this.platformMfa = new PlatformMfaService(this.db);
   }
 
   /**
@@ -446,26 +450,9 @@ export class AuthService {
    * tenant/business authentication: the email must resolve to a platform role,
    * and tenant selection is never accepted from the client.
    */
-  async loginPlatform(credentials: { email: string; password: string }): Promise<LoginResult> {
-    const email = credentials.email.toLowerCase().trim();
-    if (!email || !credentials.password) throw new Error('Invalid platform credentials');
-
-    const queryResult = await this.db.query<UserRecord>(
-      `SELECT u.*
-         FROM users u
-         WHERE LOWER(u.email)=LOWER($1)
-           AND u.is_active=TRUE
-           AND u.role IN ('system_owner','platform_admin','platform_support','platform_finance')
-         LIMIT 1`,
-      [email],
-    );
-    const user = queryResult.rows[0];
-    if (!user) throw new Error('Invalid platform credentials');
+  private async issuePlatformSession(user: UserRecord): Promise<LoginResult> {
     const role = normalizeRole(user.role);
     if (!isPlatformRole(role)) throw new Error('PLATFORM_ACCESS_DENIED');
-    if (!verifyPassword(credentials.password, user.password_hash, user.password_salt)) {
-      throw new Error('Invalid platform credentials');
-    }
 
     const permissions = getPermissionsForRole(role);
     const token = signToken({
@@ -498,6 +485,73 @@ export class AuthService {
       role,
     });
     return result;
+  }
+
+  /**
+   * Platform operators must complete TOTP MFA before a durable platform
+   * session is issued. First-time platform operators are sent through the
+   * enrollment challenge instead of receiving a bypass session.
+   */
+  async loginPlatform(credentials: { email: string; password: string }): Promise<LoginResult> {
+    const email = credentials.email.toLowerCase().trim();
+    if (!email || !credentials.password) throw new Error('Invalid platform credentials');
+
+    const queryResult = await this.db.query<UserRecord>(
+      `SELECT u.*
+         FROM users u
+         WHERE LOWER(u.email)=LOWER($1)
+           AND u.is_active=TRUE
+           AND u.role IN ('system_owner','platform_admin','platform_support','platform_finance')
+         LIMIT 1`,
+      [email],
+    );
+    const user = queryResult.rows[0];
+    if (!user) throw new Error('Invalid platform credentials');
+
+    const role = normalizeRole(user.role);
+    if (!isPlatformRole(role)) throw new Error('PLATFORM_ACCESS_DENIED');
+    if (!verifyPassword(credentials.password, user.password_hash, user.password_salt)) {
+      throw new Error('Invalid platform credentials');
+    }
+
+    if (await this.platformMfa.isEnabled(user.id)) {
+      const challenge = await this.platformMfa.createChallenge(user.id, 'LOGIN');
+      const error: any = new Error('MFA_REQUIRED');
+      error.code = 'MFA_REQUIRED';
+      error.challenge = challenge.challenge;
+      error.expiresAt = challenge.expiresAt;
+      throw error;
+    }
+
+    const enrollment = await this.platformMfa.createChallenge(user.id, 'ENROLLMENT');
+    const error: any = new Error('MFA_ENROLLMENT_REQUIRED');
+    error.code = 'MFA_ENROLLMENT_REQUIRED';
+    error.challenge = enrollment.challenge;
+    error.expiresAt = enrollment.expiresAt;
+    throw error;
+  }
+
+  async beginPlatformMfaEnrollment(challenge: string): Promise<{ secret: string; otpauthUri: string; expiresAt: string }> {
+    const user = await this.platformMfa.resolveChallenge(challenge, 'ENROLLMENT');
+    const enrollment = await this.platformMfa.beginEnrollment(user.id);
+    const result = await this.db.query<{ expires_at: string }>(
+      'SELECT expires_at FROM platform_mfa_challenges WHERE challenge_hash=$1 AND purpose=\'ENROLLMENT\' AND used_at IS NULL LIMIT 1',
+      [hashMfaChallenge(challenge)],
+    );
+    return { ...enrollment, expiresAt: result.rows[0]?.expires_at || new Date(Date.now() + 300000).toISOString() };
+  }
+
+  async confirmPlatformMfaEnrollment(challenge: string, code: string): Promise<{ login: LoginResult; recoveryCodes: string[] }> {
+    const user = await this.platformMfa.resolveChallenge(challenge, 'ENROLLMENT');
+    const recoveryCodes = await this.platformMfa.confirmEnrollment(user.id, code);
+    await this.platformMfa.markEnrollmentChallengeUsed(challenge);
+    const login = await this.issuePlatformSession(user);
+    return { login, recoveryCodes };
+  }
+
+  async verifyPlatformMfa(challenge: string, code: string): Promise<LoginResult> {
+    const user = await this.platformMfa.verifyChallenge(challenge, code);
+    return this.issuePlatformSession(user);
   }
 
   /**
