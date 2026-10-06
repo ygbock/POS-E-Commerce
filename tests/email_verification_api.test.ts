@@ -46,33 +46,43 @@ async function main() {
     const requestBody = await requestResponse.json();
     assert.equal(requestBody.error.code, 'EMAIL_VERIFICATION_UNAVAILABLE');
 
+    let verificationUrl = '';
     const delivery: EmailVerificationDelivery = {
-      async sendVerificationEmail() {},
+      async sendVerificationEmail(input) {
+        verificationUrl = input.verificationUrl;
+      },
     };
     const verificationService = new EmailVerificationService(db, {
       delivery,
       verificationBaseUrl: 'https://app.example.test',
     });
     const issued = await verificationService.requestVerification('usr_verification_api');
+    assert.equal(issued.status, 'SENT');
+    assert.match(verificationUrl, /^https:\/\/app\.example\.test\/verify-email\?token=/);
 
+    const token = new URL(verificationUrl).searchParams.get('token');
+    assert.ok(token);
     const tokenRow = await db.query(
       'SELECT token_hash FROM email_verification_tokens WHERE user_id=$1 AND used_at IS NULL',
       ['usr_verification_api'],
     );
     assert.equal(tokenRow.rows.length, 1);
+    assert.notEqual(tokenRow.rows[0].token_hash, token);
 
-    const rawToken = (await import('node:crypto')).randomBytes(32).toString('base64url');
-    assert.notEqual(rawToken, tokenRow.rows[0].token_hash);
-    assert.equal(issued.status, 'SENT');
+    const confirmResponse = await fetch(`${baseUrl}/api/auth/verify-email/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(confirmResponse.status, 200);
+    const confirmBody = await confirmResponse.json();
+    assert.equal(confirmBody.data.status, 'VERIFIED');
 
-    const token = verificationService;
-    const deliveryUrl = await (async () => {
-      const raw = (await import('node:crypto')).createHash('sha256');
-      // The actual raw token is intentionally not exposed by the service.
-      // Confirm the public route separately with a controlled challenge below.
-      return raw;
-    })();
-    void deliveryUrl;
+    const verified = await db.query(
+      'SELECT email_verified_at FROM users WHERE id=$1',
+      ['usr_verification_api'],
+    );
+    assert.ok(verified.rows[0].email_verified_at);
 
     const invalidResponse = await fetch(`${baseUrl}/api/auth/verify-email/confirm`, {
       method: 'POST',
