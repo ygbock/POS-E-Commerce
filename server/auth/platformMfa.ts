@@ -22,7 +22,7 @@ function requireMfaEncryptionKey(): Buffer {
 }
 
 export function generateTotpSecret(): string {
-  return crypto.randomBytes(20).toString('base64');
+  return base32Encode(crypto.randomBytes(20));
 }
 
 export function base32Encode(input: Buffer): string {
