@@ -92,7 +92,40 @@ async function main() {
     password: 'SuperAdmin123!',
     organizationId: 'org_default',
   });
-  await auth.logoutAllSessions(thirdSession.rows[0].user_id);
+  const fourthClaims = verifyToken(fourth.token);
+  const fourthSession = await db.query(
+    'SELECT id,user_id FROM auth_sessions WHERE access_jti=$1',
+    [fourthClaims.jti],
+  );
+  assert.equal(fourthSession.rows.length, 1);
+
+  const fifth = await auth.login({
+    email: 'superadmin@abacha.internal',
+    password: 'SuperAdmin123!',
+    organizationId: 'org_default',
+  });
+  const fifthClaims = verifyToken(fifth.token);
+  const revokedOthers = await auth.revokeOtherSessions(fifthSessionUserId(fifth, fifthClaims, fourthSession), fifthClaims.jti);
+  assert.ok(revokedOthers >= 1, 'logout-other-sessions must revoke at least the previous session');
+  await assert.rejects(
+    () => auth.verifySession(fourth.token),
+    (err: any) => err?.code === 'REVOKED',
+    'logout-other-sessions must invalidate prior sessions',
+  );
+  await auth.verifySession(fifth.token);
+
+  const revocationEvents = await db.query(
+    `SELECT event_type,metadata FROM auth_session_events
+      WHERE user_id=$1
+        AND event_type IN ('SESSION_REVOKED','LOGOUT_OTHER_SESSIONS')
+      ORDER BY occurred_at DESC
+      LIMIT 20`,
+    [fifthSessionUserId(fifth, fifthClaims, fourthSession)],
+  );
+  assert.ok(revocationEvents.rows.some((row: any) => row.event_type === 'LOGOUT_OTHER_SESSIONS'));
+  assert.ok(revocationEvents.rows.some((row: any) => row.event_type === 'SESSION_REVOKED'));
+
+  await auth.logoutAllSessions(fifthSessionUserId(fifth, fifthClaims, fourthSession));
   await assert.rejects(
     () => auth.verifySession(fourth.token),
     (err: any) => err?.code === 'REVOKED',
@@ -106,3 +139,7 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+function fifthSessionUserId(_login: any, _claims: any, session: any): string {
+  return session.rows[0].user_id;
+}
