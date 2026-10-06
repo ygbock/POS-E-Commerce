@@ -253,8 +253,8 @@ export class AuthService {
       );
 
       await this.db.query(
-        `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,'business_owner',TRUE)`,
+        `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,identity_type,is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,'business_owner','business_owner',TRUE)`,
         [userId, organizationId, email, name, hash, salt],
       );
 
