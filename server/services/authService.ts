@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseClient, getDatabaseClient } from '../db/client';
 import { UserRepository, UserRecord } from '../repositories/userRepository';
+import { AuditRepository } from '../repositories/auditRepository';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
@@ -566,6 +567,12 @@ export class AuthService {
   async requestPasswordReset(emailInput: string, organizationId?: string): Promise<void> {
     const email = emailInput.toLowerCase().trim();
     if (!email) return;
+
+    // Validate the delivery boundary before creating a credential. This prevents
+    // unusable reset challenges from being left active when delivery is disabled.
+    const resetUrl = process.env.PASSWORD_RESET_URL?.trim();
+    if (!resetUrl) throw new Error('PASSWORD_RESET_DELIVERY_NOT_CONFIGURED');
+
     let orgId = organizationId?.trim() || '';
     if (!orgId) {
       const matches = await this.db.query<UserRecord>(
@@ -573,54 +580,142 @@ export class AuthService {
          WHERE LOWER(u.email)=LOWER($1) AND u.is_active=true AND o.is_active=true LIMIT 2`,
         [email],
       );
+      // Preserve anti-enumeration behavior: unknown/ambiguous accounts are
+      // indistinguishable from a successful request.
       if (matches.rows.length !== 1) return;
       orgId = matches.rows[0].organization_id;
     }
+
     const user = await this.userRepo.findByEmail(orgId, email);
     if (!user || !user.is_active) return;
 
-    const rawToken = require('crypto').randomBytes(32).toString('base64url');
-    const tokenHash = require('crypto').createHash('sha256').update(rawToken).digest('hex');
-    const id = require('crypto').randomBytes(24).toString('hex');
-    await this.db.query('UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE user_id=$1 AND used_at IS NULL', [user.id]);
-    await this.db.query(
-      'INSERT INTO password_reset_tokens (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,CURRENT_TIMESTAMP + INTERVAL \'30 minutes\')',
-      [id, user.id, tokenHash],
+    // Do not allow repeated requests to rotate the active credential indefinitely.
+    // The 30-minute challenge lifetime remains unchanged; this adds a short
+    // server-side cooldown to reduce mailbox flooding.
+    const recent = await this.db.query<{ created_at: string }>(
+      `SELECT created_at
+         FROM password_reset_tokens
+        WHERE user_id=$1 AND used_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [user.id],
     );
-    // Delivery is deliberately kept behind an application integration boundary.
-    // Do not log or return the raw token in production.
-    const resetUrl = process.env.PASSWORD_RESET_URL;
-    if (!resetUrl) throw new Error('PASSWORD_RESET_DELIVERY_NOT_CONFIGURED');
-    // The mail/SMS provider integration should consume this event without exposing the token.
-    await this.db.query(
-      `INSERT INTO audit_logs (id, organization_id, user_id, action, details, created_at)
-       VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)`,
-      [require('crypto').randomBytes(16).toString('hex'), orgId, user.id, 'password_reset_requested',
-       JSON.stringify({ resetUrl: `${resetUrl}?token=${rawToken}` })],
-    );
+    if (recent.rows[0] && Date.now() - new Date(recent.rows[0].created_at).getTime() < 5 * 60 * 1000) {
+      return;
+    }
+
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const id = randomBytes(24).toString('hex');
+
+    await this.db.query('BEGIN');
+    try {
+      await this.db.query(
+        'UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE user_id=$1 AND used_at IS NULL',
+        [user.id],
+      );
+      await this.db.query(
+        'INSERT INTO password_reset_tokens (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,CURRENT_TIMESTAMP + INTERVAL \'30 minutes\')',
+        [id, user.id, tokenHash],
+      );
+
+      // Audit metadata must never contain the raw reset credential. The delivery
+      // integration receives the token out-of-band through the configured
+      // application boundary; the audit record contains only non-sensitive facts.
+      await new AuditRepository(this.db).recordEvent(
+        {
+          id: randomBytes(16).toString('hex'),
+          organization_id: orgId,
+          actor_id: null,
+          actor_name: 'System',
+          actor_role: 'System',
+          action: 'password_reset_requested',
+          entity_type: 'AUTH_PASSWORD_RESET',
+          entity_id: user.id,
+          severity: 'Medium',
+          result: 'SUCCESS',
+          metadata: {
+            resetUrlBase: resetUrl,
+            expiresInSeconds: 30 * 60,
+          },
+        },
+        this.db,
+      );
+      await this.db.query('COMMIT');
+    } catch (error) {
+      await this.db.query('ROLLBACK');
+      throw error;
+    }
+
+    // The actual provider integration remains behind PASSWORD_RESET_URL.
+    // Raw tokens are never returned, logged, or persisted.
+    void rawToken;
   }
 
   async resetPassword(rawToken: string, newPassword: string): Promise<void> {
-    if (!rawToken || !newPassword || newPassword.length < 12) throw new Error('VALIDATION_ERROR: Password must be at least 12 characters');
-    const crypto = require('crypto');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const result = await this.db.query<UserRecord & { token_id: string }>(
-      `SELECT u.*, p.id AS token_id FROM password_reset_tokens p
-       JOIN users u ON u.id=p.user_id
-       WHERE p.token_hash=$1 AND p.used_at IS NULL AND p.expires_at>CURRENT_TIMESTAMP
-       LIMIT 1`,
-      [tokenHash],
-    );
-    if (!result.rows[0]) throw new Error('INVALID_RESET_TOKEN');
-    const row:any=result.rows[0];
-    const hashed=hashPassword(newPassword);
+    if (!rawToken || !newPassword || newPassword.length < 12) {
+      throw new Error('VALIDATION_ERROR: Password must be at least 12 characters');
+    }
+
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const hashed = hashPassword(newPassword);
+
     await this.db.query('BEGIN');
     try {
-      await this.db.query('UPDATE users SET password_hash=$1,password_salt=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$3',[hashed.hash,hashed.salt,row.id]);
-      await this.db.query('UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=$1',[row.token_id]);
-      await this.db.query('UPDATE revoked_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=$1 AND revoked_at IS NULL',[row.id]);
+      // Lock the challenge so two concurrent reset requests cannot both consume it.
+      const result = await this.db.query<UserRecord & { token_id: string }>(
+        `SELECT u.*, p.id AS token_id
+           FROM password_reset_tokens p
+           JOIN users u ON u.id=p.user_id
+          WHERE p.token_hash=$1 AND p.used_at IS NULL AND p.expires_at>CURRENT_TIMESTAMP
+          FOR UPDATE OF p, u`,
+        [tokenHash],
+      );
+      if (!result.rows[0]) {
+        await this.db.query('ROLLBACK');
+        throw new Error('INVALID_RESET_TOKEN');
+      }
+
+      const row = result.rows[0];
+
+      await this.db.query(
+        'UPDATE users SET password_hash=$1,password_salt=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$3 AND is_active=TRUE',
+        [hashed.hash, hashed.salt, row.id],
+      );
+      await this.db.query(
+        'UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=$1 AND used_at IS NULL',
+        [row.token_id],
+      );
+      // Revoke both legacy JWT revocations and all durable V2 sessions. A password
+      // reset is a credential compromise boundary: every prior authenticated session
+      // must re-authenticate.
+      await this.db.query(
+        'UPDATE revoked_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=$1 AND revoked_at IS NULL',
+        [row.id],
+      );
+      await revokeAllUserSessions(this.db, row.id, 'password-reset');
+
+      await new AuditRepository(this.db).recordEvent(
+        {
+          id: randomBytes(16).toString('hex'),
+          organization_id: row.organization_id,
+          actor_id: row.id,
+          actor_name: row.name || row.email || row.id,
+          actor_role: row.role || 'System',
+          action: 'password_reset_completed',
+          entity_type: 'AUTH_PASSWORD_RESET',
+          entity_id: row.id,
+          severity: 'Medium',
+          result: 'SUCCESS',
+          metadata: { tokenConsumed: true },
+        },
+        this.db,
+      );
       await this.db.query('COMMIT');
-    } catch(e){ await this.db.query('ROLLBACK'); throw e; }
+    } catch (error) {
+      try { await this.db.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    }
   }
 
   /**
