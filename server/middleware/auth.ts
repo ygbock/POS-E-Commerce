@@ -3,6 +3,7 @@ import { UserRole, hasPermission, isPlatformRole, AuthIdentityType, getIdentityT
 import { AuthService } from '../services/authService';
 import { TokenClaims } from '../auth/token';
 import { ACCESS_COOKIE } from '../auth/session';
+import { DatabaseClient } from '../db/client';
 
 /**
  * Authenticated Request Context (SEC-001)
@@ -83,6 +84,65 @@ export function createAuthenticateMiddleware(authService?: AuthService) {
       // Failed authentication: leave req.auth undefined.
       // Internal error details are NOT stored on request or leaked to clients.
       next();
+    }
+  };
+}
+
+/**
+ * Middleware: Enforce server-authoritative email verification for selected identity realms.
+ *
+ * Login remains available so users can reach verification/recovery flows. This gate is
+ * applied only to protected operational routes and derives verification state from the
+ * current users row rather than from browser-controlled state or a stale JWT claim.
+ */
+export function requireVerifiedEmail(db: DatabaseClient, ...identityTypes: AuthIdentityType[]) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.auth) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required.' },
+      });
+    }
+
+    if (identityTypes.length > 0 && !identityTypes.includes(req.auth.identityType || getIdentityTypeForRole(req.auth.role))) {
+      return next();
+    }
+
+    if (isPlatformRole(req.auth.role) || req.auth.identityType === 'platform') {
+      return next();
+    }
+
+    try {
+      const result = await db.query(
+        `SELECT email_verified_at
+           FROM users
+          WHERE id=$1 AND organization_id=$2 AND is_active=TRUE
+          LIMIT 1`,
+        [req.auth.userId, req.auth.organizationId],
+      );
+      if (!result.rows[0]) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Authenticated account is no longer available.' },
+        });
+      }
+
+      if (!result.rows[0].email_verified_at) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'EMAIL_VERIFICATION_REQUIRED',
+            message: 'Please verify your email address before using this feature.',
+          },
+        });
+      }
+
+      next();
+    } catch {
+      return res.status(503).json({
+        success: false,
+        error: { code: 'EMAIL_VERIFICATION_UNAVAILABLE', message: 'Email verification status is temporarily unavailable.' },
+      });
     }
   };
 }

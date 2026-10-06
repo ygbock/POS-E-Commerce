@@ -26,8 +26,8 @@ async function main() {
     organizationId: 'org_default',
   });
 
-  const app = await createApp({ db, authService, skipVite: true });
-  const server = http.createServer(app);
+  const appContext = await createApp({ db, authService, skipVite: true });
+  const server = http.createServer(appContext.app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;

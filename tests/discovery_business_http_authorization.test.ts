@@ -67,6 +67,15 @@ async function main() {
   await createMember('http-manager-a', 'http-manager-a@example.test', 'HTTP Manager A', ownerA.user.organizationId);
   await createMember('http-staff-a', 'http-staff-a@example.test', 'HTTP Staff A', ownerA.user.organizationId);
 
+  // This authorization matrix exercises merchant operations; mark its synthetic actors
+  // as verified so the Phase 3B realm gate does not mask the existing authorization cases.
+  await db.query(
+    `UPDATE users
+        SET email_verified_at=CURRENT_TIMESTAMP
+      WHERE id IN ($1,$2,$3,$4)`,
+    [ownerA.user.id, ownerB.user.id, 'http-manager-a', 'http-staff-a'],
+  );
+
   await db.query(
     `INSERT INTO discovery_business_memberships (business_id,user_id,role,is_active)
      VALUES ($1,$2,'MANAGER',TRUE),($1,$3,'STAFF',TRUE)`,
