@@ -20,7 +20,7 @@ export class UnconfiguredPasswordResetDelivery implements PasswordResetDelivery 
 }
 
 export function buildPasswordResetUrl(baseUrl: string, token: string): string {
-  const url = new URL('/reset-password', baseUrl.replace(/\/\+\$/, ''));
+  const url = new URL('/reset-password', baseUrl.replace(/\/+$/, ''));
   url.searchParams.set('token', token);
   return url.toString();
 }
@@ -28,5 +28,5 @@ export function buildPasswordResetUrl(baseUrl: string, token: string): string {
 export function normalizePasswordResetBaseUrl(value?: string): string {
   const base = value?.trim() || process.env.PASSWORD_RESET_URL?.trim() || process.env.APP_BASE_URL?.trim();
   if (!base) throw new Error('PASSWORD_RESET_DELIVERY_NOT_CONFIGURED');
-  return base.replace(/\/\+\$/, '');
+  return base.replace(/\/+$/, '');
 }
