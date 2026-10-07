@@ -508,7 +508,23 @@ export async function createApp(options: CreateAppOptions = {}) {
         });
         setAuthenticationCookies(res, result.token, result.refreshToken);
         return res.json({ success: true, data: { token: result.token, user: result.user } });
-      } catch {
+      } catch (err: any) {
+        const code = err?.code || String(err?.message || '').split(':')[0];
+        if (code === 'MFA_REQUIRED' || code === 'MFA_ENROLLMENT_REQUIRED') {
+          return res.status(202).json({
+            success: false,
+            error: {
+              code,
+              message: code === 'MFA_REQUIRED'
+                ? 'A second authentication factor is required.'
+                : 'Platform MFA enrollment is required before access is granted.',
+            },
+            data: {
+              challenge: err.challenge,
+              expiresAt: err.expiresAt,
+            },
+          });
+        }
         return res.status(401).json({
           success: false,
           error: {
@@ -519,6 +535,80 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
     }
   );
+
+  app.post('/api/auth/platform/mfa/setup', authRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const challenge = typeof req.body?.challenge === 'string' ? req.body.challenge.trim() : '';
+      if (!challenge) {
+        return res.status(422).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'MFA enrollment challenge is required.' } });
+      }
+      const result = await authService.beginPlatformMfaEnrollment(challenge);
+      return res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      return res.status(code === 'MFA_ALREADY_ENABLED' ? 409 : 400).json({
+        success: false,
+        error: {
+          code: code || 'MFA_ENROLLMENT_FAILED',
+          message: code === 'MFA_ALREADY_ENABLED' ? 'Platform MFA is already enabled.' : 'Unable to initialize platform MFA enrollment.',
+        },
+      });
+    }
+  });
+
+  app.post('/api/auth/platform/mfa/confirm-enrollment', authRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const challenge = typeof req.body?.challenge === 'string' ? req.body.challenge.trim() : '';
+      const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+      if (!challenge || !/^\\d{6}$/.test(code)) {
+        return res.status(422).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid MFA enrollment challenge and six-digit code are required.' } });
+      }
+      const result = await authService.confirmPlatformMfaEnrollment(challenge, code);
+      setAuthenticationCookies(res, result.login.token, result.login.refreshToken);
+      return res.status(200).json({
+        success: true,
+        data: {
+          token: result.login.token,
+          user: result.login.user,
+          recoveryCodes: result.recoveryCodes,
+        },
+      });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      return res.status(code === 'INVALID_MFA_CODE' ? 401 : 400).json({
+        success: false,
+        error: {
+          code: code || 'MFA_ENROLLMENT_FAILED',
+          message: code === 'INVALID_MFA_CODE' ? 'The MFA code is invalid or expired.' : 'Unable to complete platform MFA enrollment.',
+        },
+      });
+    }
+  });
+
+  app.post('/api/auth/platform/mfa/verify', authRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const challenge = typeof req.body?.challenge === 'string' ? req.body.challenge.trim() : '';
+      const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+      if (!challenge || !code) {
+        return res.status(422).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'MFA challenge and verification code are required.' } });
+      }
+      const result = await authService.verifyPlatformMfa(challenge, code);
+      setAuthenticationCookies(res, result.token, result.refreshToken);
+      return res.status(200).json({
+        success: true,
+        data: { token: result.token, user: result.user },
+      });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      return res.status(code === 'INVALID_MFA_CODE' ? 401 : 400).json({
+        success: false,
+        error: {
+          code: code || 'MFA_VERIFICATION_FAILED',
+          message: code === 'INVALID_MFA_CODE' ? 'The MFA code is invalid or expired.' : 'Unable to verify platform MFA.',
+        },
+      });
+    }
+  });
 
   app.post(
     '/api/auth/login',

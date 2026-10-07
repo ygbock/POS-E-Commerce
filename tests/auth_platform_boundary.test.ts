@@ -10,29 +10,44 @@ async function main() {
   process.env.ABACHA_PLATFORM_ADMIN_PASSWORD = 'PlatformAuthTest123!';
   process.env.ABACHA_SYSTEM_OWNER_PASSWORD = 'SystemOwnerAuthTest123!';
 
+  const platformEmail = process.env.ABACHA_PLATFORM_ADMIN_EMAIL || 'platformadmin@abacha.internal';
+  const systemOwnerEmail = process.env.ABACHA_SYSTEM_OWNER_EMAIL || 'systemowner@abacha.internal';
+
   try {
     await runMigrations(db);
     const auth = new AuthService(db);
     await auth.seedDefaultUsers();
 
-    const platform = await auth.loginPlatform({
-      email: process.env.ABACHA_PLATFORM_ADMIN_EMAIL || 'platformadmin@abacha.internal',
-      password: 'PlatformAuthTest123!',
-    });
+    const platformMfaEnrollment = await assert.rejects(
+      () => auth.loginPlatform({
+        email: platformEmail,
+        password: 'PlatformAuthTest123!',
+      }),
+      (error: any) => {
+        assert.strictEqual(error?.code, 'MFA_ENROLLMENT_REQUIRED');
+        assert.match(error?.challenge || '', /^[A-Za-z0-9_-]{40,}$/);
+        assert.ok(error?.expiresAt);
+        return true;
+      },
+    );
+    assert.strictEqual(platformMfaEnrollment, undefined);
 
-    assert.strictEqual(platform.user.role, 'platform_admin');
-    assert.strictEqual(platform.user.identityType, 'platform');
-    assert.ok(platform.token);
-
-    const owner = await auth.loginPlatform({
-      email: process.env.ABACHA_SYSTEM_OWNER_EMAIL || 'systemowner@abacha.internal',
-      password: 'SystemOwnerAuthTest123!',
-    });
-    assert.strictEqual(owner.user.role, 'system_owner');
-    assert.strictEqual(owner.user.identityType, 'platform');
+    const ownerMfaEnrollment = await assert.rejects(
+      () => auth.loginPlatform({
+        email: systemOwnerEmail,
+        password: 'SystemOwnerAuthTest123!',
+      }),
+      (error: any) => {
+        assert.strictEqual(error?.code, 'MFA_ENROLLMENT_REQUIRED');
+        assert.match(error?.challenge || '', /^[A-Za-z0-9_-]{40,}$/);
+        assert.ok(error?.expiresAt);
+        return true;
+      },
+    );
+    assert.strictEqual(ownerMfaEnrollment, undefined);
 
     await assert.rejects(
-      () => auth.login({ email: platform.user.email, password: 'PlatformAuthTest123!', organizationId: 'org_default' }),
+      () => auth.login({ email: platformEmail, password: 'PlatformAuthTest123!', organizationId: 'org_default' }),
       /PLATFORM_LOGIN_REQUIRED/,
     );
 
