@@ -31,13 +31,23 @@ Authentication is split into four server-authoritative identity realms:
 - Request authentication exposes `req.auth.identityType`.
 - Platform and tenant login tests are covered by `tests/auth_platform_boundary.test.ts`.
 
-## Next hardening phase
+## Phase 3F — Authentication Operational Hardening
 
-1. Move browser sessions from localStorage JWTs to Secure/HttpOnly cookies.
-2. Add rotating refresh sessions and device/session revocation.
-3. Add explicit email verification and account recovery flows per identity realm.
-4. Add platform MFA enforcement.
-5. Add session management UI for users and platform operators.
-6. Add login/audit events with rate-limit and anomaly controls.
-7. Replace legacy persona/demo auto-login with an explicit development-only test harness.
-8. Add end-to-end browser journeys for customer, business owner, staff and platform operator.
+The authentication foundation now includes:
+
+- Secure/HttpOnly browser session cookies with rotating refresh sessions.
+- Refresh-token family reuse detection and session revocation.
+- Password reset token hashing, transactional consumption, session invalidation, and a provider-neutral delivery boundary.
+- Email verification token hashing, replay protection, and realm-specific enforcement.
+- Platform-only TOTP MFA with encrypted secrets, recovery codes, short-lived challenges, and TOTP replay protection.
+- Production/staging startup validation for authentication cryptographic material and delivery dependencies.
+- Proxy-aware, server-derived rate-limit identity; arbitrary client-supplied forwarded-IP headers are not trusted directly.
+- Production seeding is fail-closed and cannot be enabled through an environment override.
+
+### Remaining operational work
+
+1. Connect approved production email delivery providers to the password-reset and email-verification boundaries.
+2. Add distributed rate limiting for horizontally scaled deployments using a shared store or trusted edge control.
+3. Add platform MFA lifecycle management: disable/re-enroll, recovery-code regeneration, and controlled lost-authenticator recovery.
+4. Expand authentication security-event coverage and anomaly detection across all four identity realms.
+5. Complete end-to-end browser journeys for customer, business owner, staff, and platform operator authentication.
