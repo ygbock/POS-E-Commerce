@@ -134,6 +134,39 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
       throw new Error('[AbaCha Config Fatal] Production JWT_SECRET must be a high-entropy string of at least 32 characters.');
     }
 
+    // 5. Authentication security configuration
+    // Production/staging must have the cryptographic material and delivery
+    // boundaries required by the authentication flows. Fail at startup rather
+    // than allowing a first user to discover the missing dependency later.
+    const mfaKey = env.MFA_ENCRYPTION_KEY?.trim();
+    if (!mfaKey || !((/^[0-9a-fA-F]{64}$/.test(mfaKey)) || Buffer.from(mfaKey, 'base64').length === 32)) {
+      throw new Error('[AbaCha Config Fatal] MFA_ENCRYPTION_KEY must be configured as a 32-byte base64 or 64-character hex key in staging/production.');
+    }
+
+    const resetBaseUrl = env.PASSWORD_RESET_URL?.trim() || env.APP_BASE_URL?.trim();
+    if (!resetBaseUrl) {
+      throw new Error('[AbaCha Config Fatal] PASSWORD_RESET_URL or APP_BASE_URL is required for password reset delivery in staging/production.');
+    }
+    try {
+      const parsedResetUrl = new URL(resetBaseUrl);
+      if (parsedResetUrl.protocol !== 'https:') {
+        throw new Error('invalid protocol');
+      }
+    } catch {
+      throw new Error('[AbaCha Config Fatal] PASSWORD_RESET_URL/APP_BASE_URL must be a valid HTTPS URL in staging/production.');
+    }
+
+    if (env.EMAIL_VERIFICATION_DELIVERY_CONFIGURED !== 'true') {
+      throw new Error('[AbaCha Config Fatal] EMAIL_VERIFICATION_DELIVERY_CONFIGURED=true is required in staging/production.');
+    }
+    if (env.PASSWORD_RESET_DELIVERY_CONFIGURED !== 'true') {
+      throw new Error('[AbaCha Config Fatal] PASSWORD_RESET_DELIVERY_CONFIGURED=true is required in staging/production.');
+    }
+
+    if (isProduction && env.ALLOW_SEEDING_IN_PRODUCTION === 'true') {
+      throw new Error('[AbaCha Config Fatal] Production seeding is permanently disabled. Remove ALLOW_SEEDING_IN_PRODUCTION.');
+    }
+
     // 5. Configurable Cross-Environment Separation Contract
     if (isStaging) {
       if (env.PRODUCTION_DATABASE_URL && dbUrl && dbUrl === env.PRODUCTION_DATABASE_URL.trim()) {
@@ -219,6 +252,10 @@ export function getSanitizedEnvironmentReport(env: NodeJS.ProcessEnv = process.e
     'PGHOST',
     'JWT_SECRET',
     'APP_URL',
+    'MFA_ENCRYPTION_KEY',
+    'PASSWORD_RESET_URL',
+    'EMAIL_VERIFICATION_DELIVERY_CONFIGURED',
+    'PASSWORD_RESET_DELIVERY_CONFIGURED',
   ];
 
   const statuses: EnvironmentVariableStatus[] = varsToCheck.map((name) => {
