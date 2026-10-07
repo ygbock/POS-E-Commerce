@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
 import { PlatformMfaService } from './platformMfaService';
+import { PasswordResetDelivery, UnconfiguredPasswordResetDelivery, buildPasswordResetUrl, normalizePasswordResetBaseUrl } from './passwordResetDelivery';
 import { hashMfaChallenge } from '../auth/platformMfa';
 import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
@@ -39,8 +40,9 @@ export class AuthService {
   private userRepo: UserRepository;
   private db: DatabaseClient;
   private platformMfa: PlatformMfaService;
+  private passwordResetDelivery: PasswordResetDelivery;
 
-  constructor(clientOrUserRepo?: DatabaseClient | UserRepository, maybeAuditRepoOrClient?: any) {
+  constructor(clientOrUserRepo?: DatabaseClient | UserRepository, maybeAuditRepoOrClient?: any, passwordResetDelivery?: PasswordResetDelivery) {
     if (clientOrUserRepo && typeof (clientOrUserRepo as any).createUser === 'function') {
       this.userRepo = clientOrUserRepo as UserRepository;
       this.db = (clientOrUserRepo as any).defaultClient || (maybeAuditRepoOrClient && typeof maybeAuditRepoOrClient.query === 'function' ? maybeAuditRepoOrClient : getDatabaseClient());
@@ -49,6 +51,7 @@ export class AuthService {
       this.userRepo = new UserRepository(this.db);
     }
     this.platformMfa = new PlatformMfaService(this.db);
+    this.passwordResetDelivery = passwordResetDelivery || new UnconfiguredPasswordResetDelivery();
   }
 
   /**
@@ -622,11 +625,7 @@ export class AuthService {
     const email = emailInput.toLowerCase().trim();
     if (!email) return;
 
-    // Validate the delivery boundary before creating a credential. This prevents
-    // unusable reset challenges from being left active when delivery is disabled.
-    const resetUrl = process.env.PASSWORD_RESET_URL?.trim();
-    if (!resetUrl) throw new Error('PASSWORD_RESET_DELIVERY_NOT_CONFIGURED');
-
+    
     let orgId = organizationId?.trim() || '';
     if (!orgId) {
       const matches = await this.db.query<UserRecord>(
@@ -661,6 +660,8 @@ export class AuthService {
     const rawToken = randomBytes(32).toString('base64url');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     const id = randomBytes(24).toString('hex');
+    const resetBaseUrl = normalizePasswordResetBaseUrl();
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
     await this.db.query('BEGIN');
     try {
@@ -669,8 +670,8 @@ export class AuthService {
         [user.id],
       );
       await this.db.query(
-        'INSERT INTO password_reset_tokens (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,CURRENT_TIMESTAMP + INTERVAL \'30 minutes\')',
-        [id, user.id, tokenHash],
+        'INSERT INTO password_reset_tokens (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,$4)',
+        [id, user.id, tokenHash, expiresAt.toISOString()],
       );
 
       // Audit metadata must never contain the raw reset credential. The delivery
@@ -689,7 +690,6 @@ export class AuthService {
           severity: 'Medium',
           result: 'SUCCESS',
           metadata: {
-            resetUrlBase: resetUrl,
             expiresInSeconds: 30 * 60,
           },
         },
@@ -701,9 +701,38 @@ export class AuthService {
       throw error;
     }
 
-    // The actual provider integration remains behind PASSWORD_RESET_URL.
-    // Raw tokens are never returned, logged, or persisted.
-    void rawToken;
+    try {
+      await this.passwordResetDelivery.sendPasswordResetEmail({
+        userId: user.id,
+        email,
+        resetUrl: buildPasswordResetUrl(resetBaseUrl, rawToken),
+        expiresAt,
+      });
+    } catch (error) {
+      await this.db.query(
+        `UPDATE password_reset_tokens
+            SET used_at=COALESCE(used_at,CURRENT_TIMESTAMP)
+          WHERE id=$1 AND used_at IS NULL`,
+        [id],
+      );
+      await new AuditRepository(this.db).recordEvent({
+        id: randomBytes(16).toString('hex'),
+        organization_id: orgId,
+        actor_id: null,
+        actor_name: 'System',
+        actor_role: 'System',
+        action: 'password_reset_delivery_failed',
+        entity_type: 'AUTH_PASSWORD_RESET',
+        entity_id: user.id,
+        severity: 'High',
+        result: 'FAILED',
+        metadata: {
+          deliveryChannel: 'EMAIL',
+          reason: error instanceof Error ? error.message.split(':')[0] : 'DELIVERY_ERROR',
+        },
+      });
+      throw error;
+    }
   }
 
   async resetPassword(rawToken: string, newPassword: string): Promise<void> {

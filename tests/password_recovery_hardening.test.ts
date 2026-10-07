@@ -3,6 +3,15 @@ import crypto from 'node:crypto';
 import { createIsolatedTestClient, DatabaseClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
 import { AuthService } from '../server/services/authService';
+import { PasswordResetDelivery } from '../server/services/passwordResetDelivery';
+
+class TestPasswordResetDelivery implements PasswordResetDelivery {
+  sent: Array<{ userId: string; email: string; resetUrl: string; expiresAt: Date }> = [];
+
+  async sendPasswordResetEmail(input: { userId: string; email: string; resetUrl: string; expiresAt: Date }): Promise<void> {
+    this.sent.push(input);
+  }
+}
 
 async function main() {
   process.env.PASSWORD_RESET_URL = 'https://app.example.test/reset';
@@ -10,7 +19,8 @@ async function main() {
   const db: DatabaseClient = createIsolatedTestClient();
   await runMigrations(db);
 
-  const auth = new AuthService(db);
+  const delivery = new TestPasswordResetDelivery();
+  const auth = new AuthService(db, undefined, delivery);
   await auth.seedDefaultUsers();
 
   // Request flow: unknown accounts remain non-enumerating and known accounts
@@ -27,6 +37,10 @@ async function main() {
   );
   assert.equal(firstToken.rows.length, 1);
   assert.equal(firstToken.rows[0].token_hash.length, 64);
+  assert.equal(delivery.sent.length, 1);
+  const deliveredToken = new URL(delivery.sent[0].resetUrl).searchParams.get('token');
+  assert.ok(deliveredToken);
+  assert.equal(crypto.createHash('sha256').update(deliveredToken!).digest('hex'), firstToken.rows[0].token_hash);
 
   const requestedAudit = await db.query(
     `SELECT metadata::text AS details
@@ -38,6 +52,16 @@ async function main() {
   assert.equal(requestedAudit.rows.length, 1);
   assert.ok(!requestedAudit.rows[0].details.includes('token='));
   assert.ok(!requestedAudit.rows[0].details.includes(firstToken.rows[0].token_hash));
+
+  // Delivery failure must consume the newly created challenge and remain non-enumerating.
+  class FailingDelivery implements PasswordResetDelivery {
+    async sendPasswordResetEmail(): Promise<void> { throw new Error('PROVIDER_UNAVAILABLE'); }
+  }
+  await db.query(`UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE user_id='usr_super_admin' AND used_at IS NULL`);
+  const failingAuth = new AuthService(db, undefined, new FailingDelivery());
+  await assert.rejects(() => failingAuth.requestPasswordReset('superadmin@abacha.internal', 'org_default'), (err: any) => err?.message === 'PROVIDER_UNAVAILABLE');
+  const failedDeliveryToken = await db.query(`SELECT used_at FROM password_reset_tokens WHERE user_id='usr_super_admin' ORDER BY created_at DESC LIMIT 1`);
+  assert.ok(failedDeliveryToken.rows[0]?.used_at);
 
   // Cooldown prevents repeated challenge rotation/mailbox flooding.
   await auth.requestPasswordReset('superadmin@abacha.internal', 'org_default');

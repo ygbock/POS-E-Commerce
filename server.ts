@@ -442,9 +442,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       await authService.requestPasswordReset(String(req.body?.email || ''), req.body?.organizationId ? String(req.body.organizationId) : undefined);
       return res.status(202).json({ success: true, message: 'If the account exists, password reset instructions have been sent.' });
     } catch (err: any) {
-      if (err?.message === 'PASSWORD_RESET_DELIVERY_NOT_CONFIGURED') {
-        return res.status(503).json({ success: false, error: { code: 'PASSWORD_RESET_UNAVAILABLE', message: 'Password reset is temporarily unavailable.' } });
-      }
+      // Preserve account-enumeration resistance: delivery/configuration failures
+      // must not produce a different response for existing accounts.
       return res.status(202).json({ success: true, message: 'If the account exists, password reset instructions have been sent.' });
     }
   });
