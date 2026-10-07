@@ -77,7 +77,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const isProd = process.env.NODE_ENV === 'production';
 
   // Centralized Environment & Runtime Contract Validation (UPG-001)
-  validateEnvironment();
+  const runtimeConfig = validateEnvironment();
+  // Express will only honor forwarded client IPs through this explicitly
+  // configured proxy boundary. This keeps rate-limit identity server-authoritative.
+  app.set('trust proxy', runtimeConfig.trustProxyHops);
 
   // Initialize Database Persistence Layer
   const dbStatus = {
