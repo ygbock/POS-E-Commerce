@@ -91,7 +91,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
   // 1b. Trusted proxy boundary. Rate limiting must use Express's
   // proxy-aware req.ip rather than trusting arbitrary X-Forwarded-For values.
   const trustProxyRaw = env.TRUST_PROXY_HOPS?.trim() || ((isProduction || isStaging) ? '1' : '0');
-  if (!/^\\d+$/.test(trustProxyRaw)) {
+  if (!/^\d+$/.test(trustProxyRaw)) {
     throw new Error('[AbaCha Config Fatal] TRUST_PROXY_HOPS must be a decimal integer between 0 and 5.');
   }
   const trustProxyHops = parseInt(trustProxyRaw, 10);
@@ -182,6 +182,8 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
       if (!parsedAppUrl.hostname || parsedAppUrl.hostname.trim() === '') {
         throw new Error('[AbaCha Config Fatal] Invalid APP_URL: missing hostname.');
       }
+    }
+
     // Authentication security configuration is validated after the core
     // environment/URL isolation checks so malformed configurations report their
     // primary defect rather than an unrelated missing dependency.
@@ -218,7 +220,6 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
       throw new Error('[AbaCha Config Fatal] Production seeding is permanently disabled. Remove ALLOW_SEEDING_IN_PRODUCTION.');
     }
 
-    }
   } else {
     // In dev / test, validate DATABASE_URL and APP_URL syntax if provided
     if (dbUrl) {
