@@ -44,7 +44,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       if (mfaEnrollment) {
         const result = await authClient.confirmPlatformMfaEnrollment(mfaChallenge, mfaCode.trim());
         setRecoveryCodes(result.recoveryCodes);
-        setRecoveryCodes(result.recoveryCodes);
       } else {
         const user = await authClient.verifyPlatformMfa(mfaChallenge, mfaCode.trim());
         finishPlatformAuthentication(user);
@@ -208,7 +207,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
                 <>
                   <label className="block text-sm font-medium text-slate-700">
                     {mfaEnrollment ? 'Authenticator code' : 'MFA code or recovery code'}
-                    <input type="text" inputMode="numeric" autoComplete="one-time-code" required autoFocus value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 font-mono tracking-widest outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200" placeholder={mfaEnrollment ? '123456' : '123456 or recovery code'} />
+                    <input type="text" inputMode={mfaEnrollment ? "numeric" : "text"} autoComplete="one-time-code" required autoFocus value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 font-mono tracking-widest outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200" placeholder={mfaEnrollment ? '123456' : '123456 or recovery code'} />
                   </label>
                   <button type="submit" disabled={loading} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
                     {loading ? 'Verifying…' : mfaEnrollment ? 'Enable MFA & continue' : 'Verify & continue'}
