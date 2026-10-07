@@ -26,6 +26,7 @@ export interface ValidatedConfig {
   databaseUrl?: string;
   pgHost?: string;
   jwtSecretConfigured: boolean;
+  trustProxyHops: number;
 }
 
 export interface EnvironmentValidationReport {
@@ -86,6 +87,17 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
   const isStaging = deployEnv === 'staging';
   const isTest = deployEnv === 'test';
   const isDevelopment = deployEnv === 'development';
+
+  // 1b. Trusted proxy boundary. Rate limiting must use Express's
+  // proxy-aware req.ip rather than trusting arbitrary X-Forwarded-For values.
+  const trustProxyRaw = env.TRUST_PROXY_HOPS?.trim() || ((isProduction || isStaging) ? '1' : '0');
+  if (!/^\\d+$/.test(trustProxyRaw)) {
+    throw new Error('[AbaCha Config Fatal] TRUST_PROXY_HOPS must be a decimal integer between 0 and 5.');
+  }
+  const trustProxyHops = parseInt(trustProxyRaw, 10);
+  if (trustProxyHops < 0 || trustProxyHops > 5) {
+    throw new Error('[AbaCha Config Fatal] TRUST_PROXY_HOPS must be between 0 and 5.');
+  }
 
   // 2. Strict PORT Validation
   const portRaw = env.PORT !== undefined ? env.PORT.trim() : '3000';
@@ -240,6 +252,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
     databaseUrl: dbUrl,
     pgHost,
     jwtSecretConfigured: Boolean(env.JWT_SECRET),
+    trustProxyHops,
   };
 }
 
@@ -255,6 +268,7 @@ export function getSanitizedEnvironmentReport(env: NodeJS.ProcessEnv = process.e
     'PGHOST',
     'JWT_SECRET',
     'APP_URL',
+    'TRUST_PROXY_HOPS',
     'MFA_ENCRYPTION_KEY',
     'PASSWORD_RESET_URL',
     'EMAIL_VERIFICATION_DELIVERY_CONFIGURED',
