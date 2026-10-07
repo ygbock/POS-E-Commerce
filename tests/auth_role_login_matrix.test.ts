@@ -32,6 +32,24 @@ async function createFixture(db: DatabaseClient, fixture: Fixture): Promise<void
   });
 }
 
+async function expectMfaEnrollment(
+  auth: AuthService,
+  fixture: { email: string; password: string },
+): Promise<void> {
+  await assert.rejects(
+    () => auth.loginPlatform({
+      email: fixture.email,
+      password: fixture.password,
+    }),
+    (error: any) => {
+      assert.equal(error?.code, 'MFA_ENROLLMENT_REQUIRED');
+      assert.match(error?.challenge || '', /^[A-Za-z0-9_-]{40,}$/);
+      assert.ok(error?.expiresAt);
+      return true;
+    },
+  );
+}
+
 async function main() {
   const db = createIsolatedTestClient();
   const originalPlatformPassword = process.env.ABACHA_PLATFORM_ADMIN_PASSWORD;
@@ -99,7 +117,7 @@ async function main() {
       assert.deepEqual(claims.permissions, result.user.permissions);
     }
 
-    console.log('[AUTH MATRIX] Successful platform logins');
+    console.log('[AUTH MATRIX] Platform accounts require MFA enrollment');
     const platformCredentials = [
       { email: 'platformadmin@abacha.internal', password: 'PlatformMatrix123!', role: 'platform_admin' as UserRole },
       { email: 'systemowner@abacha.internal', password: 'SystemOwnerMatrix123!', role: 'system_owner' as UserRole },
@@ -107,17 +125,7 @@ async function main() {
     ];
 
     for (const fixture of platformCredentials) {
-      const result = await auth.loginPlatform({
-        email: fixture.email,
-        password: fixture.password,
-      });
-      assert.equal(result.user.role, fixture.role);
-      assert.equal(result.user.identityType, 'platform');
-      assert.ok(result.token);
-
-      const claims = verifyToken(result.token);
-      assert.equal(claims.role, fixture.role);
-      assert.equal(claims.identityType, 'platform');
+      await expectMfaEnrollment(auth, fixture);
     }
 
     console.log('[AUTH MATRIX] Successful customer login');
