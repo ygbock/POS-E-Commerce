@@ -30,6 +30,7 @@ import { validateEnvironment, getSanitizedEnvironmentReport } from '../server/co
 import { createApp } from '../server';
 import { createIsolatedTestClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
+import { createRateLimiter } from '../server/middleware/rateLimiter';
 
 let passedCount = 0;
 let failedCount = 0;
@@ -205,6 +206,22 @@ async function main() {
         () => validateEnvironment({ DEPLOY_ENV: 'invalid_env' as any }),
         /Invalid or unknown DEPLOY_ENV/
       );
+    });
+
+    await runTest('1.7. Rate limiter ignores spoofed X-Forwarded-For when deriving client identity', () => {
+      const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 1 });
+      const responses: number[] = [];
+      const makeResponse = () => ({
+        status(code: number) { responses.push(code); return this; },
+        json() { return this; },
+        setHeader() { return this; },
+      });
+      const next = () => responses.push(200);
+
+      limiter({ ip: '10.0.0.7', socket: { remoteAddress: '10.0.0.7' }, headers: { 'x-forwarded-for': '1.1.1.1' } } as any, makeResponse() as any, next as any);
+      limiter({ ip: '10.0.0.7', socket: { remoteAddress: '10.0.0.7' }, headers: { 'x-forwarded-for': '2.2.2.2' } } as any, makeResponse() as any, next as any);
+
+      assert.deepStrictEqual(responses, [200, 429]);
     });
 
     // ------------------------------------------------------------------
