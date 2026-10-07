@@ -194,6 +194,40 @@ async function main() {
     // ------------------------------------------------------------------
     // 2. PostgreSQL Connection URL Validation
     // ------------------------------------------------------------------
+    await runTest('2.0. authentication security dependencies are mandatory in staging/production', () => {
+      const base = {
+        DEPLOY_ENV: 'production',
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
+        JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+        APP_URL: 'https://production.example.com',
+      };
+      assert.throws(() => validateEnvironment(base), /MFA_ENCRYPTION_KEY/);
+
+      const complete = {
+        ...base,
+        MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+        PASSWORD_RESET_URL: 'https://production.example.com',
+        EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+        PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
+      };
+      const config = validateEnvironment(complete);
+      assert.strictEqual(config.isProduction, true);
+
+      assert.throws(
+        () => validateEnvironment({ ...complete, EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'false' }),
+        /EMAIL_VERIFICATION_DELIVERY_CONFIGURED=true/
+      );
+      assert.throws(
+        () => validateEnvironment({ ...complete, PASSWORD_RESET_DELIVERY_CONFIGURED: 'false' }),
+        /PASSWORD_RESET_DELIVERY_CONFIGURED=true/
+      );
+      assert.throws(
+        () => validateEnvironment({ ...complete, ALLOW_SEEDING_IN_PRODUCTION: 'true' }),
+        /Production seeding is permanently disabled/
+      );
+    });
+
     await runTest('2.1. missing DATABASE_URL in staging (without PGHOST) → FAIL', () => {
       assert.throws(
         () =>
