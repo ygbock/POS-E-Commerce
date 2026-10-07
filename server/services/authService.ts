@@ -690,7 +690,6 @@ export class AuthService {
           severity: 'Medium',
           result: 'SUCCESS',
           metadata: {
-            resetUrlBase: resetBaseUrl,
             expiresInSeconds: 30 * 60,
           },
         },
