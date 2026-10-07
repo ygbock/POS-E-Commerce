@@ -69,6 +69,10 @@ async function main() {
           DATABASE_URL: envVal === 'production' || envVal === 'staging' ? 'postgresql://user:pass@host:5432/db' : undefined,
           JWT_SECRET: envVal === 'production' || envVal === 'staging' ? 'CryptographicallySecureHighEntropyKey32Chars!' : undefined,
           APP_URL: envVal === 'production' || envVal === 'staging' ? 'https://example.com' : undefined,
+          MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+          PASSWORD_RESET_URL: 'https://example.com',
+          EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+          PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         });
 
         assert.strictEqual(res.deployEnv, envVal);
@@ -101,6 +105,10 @@ async function main() {
                   PORT: '3000',
                   DATABASE_URL: 'postgresql://user:pass@host:5432/db',
                   JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
                   APP_URL: 'https://example.com',
                 }),
               new RegExp(`Contradictory environment configuration: DEPLOY_ENV=${dEnv} conflicts with NODE_ENV=${nEnv}`),
@@ -141,6 +149,10 @@ async function main() {
         PORT: '3000',
         DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         APP_URL: 'https://production.example.com',
       });
       assert.strictEqual(resProd.deployEnv, 'production');
@@ -152,6 +164,10 @@ async function main() {
         PORT: '3000',
         DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         APP_URL: 'https://staging.example.com',
       });
       assert.strictEqual(resStaging.deployEnv, 'staging');
@@ -200,7 +216,15 @@ async function main() {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         APP_URL: 'https://production.example.com',
+        MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+        PASSWORD_RESET_URL: 'https://production.example.com',
+        EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+        PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
       };
       assert.throws(() => validateEnvironment(base), /MFA_ENCRYPTION_KEY/);
 
@@ -234,6 +258,10 @@ async function main() {
           validateEnvironment({
             DEPLOY_ENV: 'staging',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
           }),
         /Production environment requires a valid PostgreSQL configuration/
       );
@@ -249,6 +277,10 @@ async function main() {
           DEPLOY_ENV: 'staging',
           DATABASE_URL: secretUrl,
           JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         });
       } catch (err: any) {
         threw = true;
@@ -265,6 +297,10 @@ async function main() {
             DEPLOY_ENV: 'production',
             DATABASE_URL: 'postgresql:///db_without_host',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
           }),
         /Invalid DATABASE_URL/
       );
@@ -276,6 +312,10 @@ async function main() {
             DEPLOY_ENV: 'production',
             DATABASE_URL: 'postgresql://host:5432/',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
           }),
         /Invalid DATABASE_URL/
       );
@@ -287,6 +327,10 @@ async function main() {
             DEPLOY_ENV: 'production',
             DATABASE_URL: 'not-a-valid-url',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
           }),
         /Invalid DATABASE_URL/
       );
@@ -297,6 +341,10 @@ async function main() {
         DEPLOY_ENV: 'staging',
         DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
       });
       assert.strictEqual(res1.databaseUrl, 'postgresql://user:pass@host:5432/staging_db');
 
@@ -304,6 +352,10 @@ async function main() {
         DEPLOY_ENV: 'production',
         DATABASE_URL: 'postgres://user:pass@host:5432/prod_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
       });
       assert.strictEqual(res2.databaseUrl, 'postgres://user:pass@host:5432/prod_db');
     });
@@ -393,6 +445,10 @@ async function main() {
             DEPLOY_ENV: 'staging',
             DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
             APP_URL: 'http://staging.example.com',
           }),
         /APP_URL must use secure HTTPS protocol in staging/
@@ -405,6 +461,10 @@ async function main() {
             DEPLOY_ENV: 'production',
             DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
             APP_URL: 'http://production.example.com',
           }),
         /APP_URL must use secure HTTPS protocol in production/
@@ -415,6 +475,10 @@ async function main() {
         DEPLOY_ENV: 'staging',
         DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         APP_URL: 'https://staging.example.com',
       });
       assert.strictEqual(stagingConf.appUrl, 'https://staging.example.com');
@@ -423,6 +487,10 @@ async function main() {
         DEPLOY_ENV: 'production',
         DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         APP_URL: 'https://production.example.com',
       });
       assert.strictEqual(prodConf.appUrl, 'https://production.example.com');
@@ -435,6 +503,10 @@ async function main() {
             DEPLOY_ENV: 'production',
             DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
             APP_URL: 'not-a-valid-url',
           }),
         /Invalid APP_URL/
@@ -446,6 +518,10 @@ async function main() {
             DEPLOY_ENV: 'staging',
             DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
             APP_URL: 'https://',
           }),
         /Invalid APP_URL/
@@ -460,6 +536,10 @@ async function main() {
             DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
             PRODUCTION_DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
           }),
         /Cross-environment violation: Staging environment cannot use production database/
       );
@@ -472,6 +552,10 @@ async function main() {
             APP_URL: 'https://production.example.com',
             PRODUCTION_APP_URL: 'https://production.example.com',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
           }),
         /Cross-environment violation: Staging APP_URL cannot match production APP_URL/
       );
@@ -483,6 +567,10 @@ async function main() {
             DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
             STAGING_DATABASE_URL: 'postgresql://user:pass@host:5432/staging_db',
             JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
+                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+                  PASSWORD_RESET_URL: 'https://example.com',
+                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
           }),
         /Cross-environment violation: Production environment cannot use staging database/
       );
@@ -500,6 +588,10 @@ async function main() {
         PORT: '3000',
         DATABASE_URL: `postgresql://admin:${dbPassword}@cluster.render.com:5432/abacha_prod`,
         JWT_SECRET: secretVal,
+        MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+        PASSWORD_RESET_URL: 'https://production.example.com',
+        EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
+        PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         APP_URL: 'https://production.example.com',
       });
 
