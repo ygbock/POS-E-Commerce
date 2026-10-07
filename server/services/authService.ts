@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from '../auth/password';
 import { UserRole, getPermissionsForRole, normalizeRole, getIdentityTypeForRole, AuthIdentityType, isPlatformRole } from '../auth/roles';
 import { signToken, verifyToken, TokenClaims } from '../auth/token';
 import { PlatformMfaService } from './platformMfaService';
+import { PasswordResetDelivery, UnconfiguredPasswordResetDelivery, buildPasswordResetUrl, normalizePasswordResetBaseUrl } from './passwordResetDelivery';
 import { hashMfaChallenge } from '../auth/platformMfa';
 import { createAuthSession, generateRefreshToken, hashRefreshToken, findSessionByRefreshToken, findSessionByAccessJti, listUserSessions, revokeUserSession, replaceAuthSession, revokeAuthSession, revokeAuthSessionFamily, revokeAllUserSessions, touchAuthSession, ACCESS_SESSION_TTL_SECONDS, REFRESH_SESSION_TTL_SECONDS } from '../auth/session';
 
@@ -39,8 +40,9 @@ export class AuthService {
   private userRepo: UserRepository;
   private db: DatabaseClient;
   private platformMfa: PlatformMfaService;
+  private passwordResetDelivery: PasswordResetDelivery;
 
-  constructor(clientOrUserRepo?: DatabaseClient | UserRepository, maybeAuditRepoOrClient?: any) {
+  constructor(clientOrUserRepo?: DatabaseClient | UserRepository, maybeAuditRepoOrClient?: any, passwordResetDelivery?: PasswordResetDelivery) {
     if (clientOrUserRepo && typeof (clientOrUserRepo as any).createUser === 'function') {
       this.userRepo = clientOrUserRepo as UserRepository;
       this.db = (clientOrUserRepo as any).defaultClient || (maybeAuditRepoOrClient && typeof maybeAuditRepoOrClient.query === 'function' ? maybeAuditRepoOrClient : getDatabaseClient());
@@ -49,6 +51,7 @@ export class AuthService {
       this.userRepo = new UserRepository(this.db);
     }
     this.platformMfa = new PlatformMfaService(this.db);
+    this.passwordResetDelivery = passwordResetDelivery || new UnconfiguredPasswordResetDelivery();
   }
 
   /**
