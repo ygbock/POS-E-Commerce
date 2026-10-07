@@ -1,5 +1,3 @@
-import { DatabaseClient } from '../db/client';
-
 export interface PasswordResetDelivery {
   sendPasswordResetEmail(input: {
     userId: string;
@@ -31,16 +29,4 @@ export function normalizePasswordResetBaseUrl(value?: string): string {
   const base = value?.trim() || process.env.PASSWORD_RESET_URL?.trim() || process.env.APP_BASE_URL?.trim();
   if (!base) throw new Error('PASSWORD_RESET_DELIVERY_NOT_CONFIGURED');
   return base.replace(/\\/+$/, '');
-}
-
-export async function recordPasswordResetDeliveryFailure(
-  db: DatabaseClient,
-  input: { tokenId: string; organizationId: string; userId: string; reason: string },
-): Promise<void> {
-  await db.query(
-    `UPDATE password_reset_tokens
-        SET used_at=COALESCE(used_at,CURRENT_TIMESTAMP)
-      WHERE id=$1 AND used_at IS NULL`,
-    [input.tokenId],
-  );
 }
