@@ -48,11 +48,12 @@ export function createRateLimiter(options: RateLimiterOptions) {
 
   return (req: Request, res: Response, next: NextFunction) => {
     const now = Date.now();
+    // Never trust X-Forwarded-For directly. Express only derives req.ip
+    // from forwarded headers when the application has explicitly configured
+    // a trusted proxy boundary.
     const key = keyGenerator
       ? keyGenerator(req)
-      : (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ||
-        req.socket.remoteAddress ||
-        'anonymous';
+      : req.ip || req.socket.remoteAddress || 'anonymous';
 
     let record = store.get(key);
     if (!record) {
