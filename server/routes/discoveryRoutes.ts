@@ -243,6 +243,11 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.get('/businesses/mine', requireAuth(), async (req, res, next) => {
     try {
+      // This legacy endpoint predates the dedicated business-owner surface.
+      // Customers must never use it as a business-management/read surface.
+      if (req.auth!.identityType === 'customer' || req.auth!.role === 'customer') {
+        return res.status(403).json({ success: false, error: { code: 'BUSINESS_OWNER_ACCESS_REQUIRED', message: 'Business owner access required.' } });
+      }
       const role = req.auth!.role; const values: unknown[] = []; let where = '';
       if (role === 'super_admin') where = 'TRUE';
       else if (['admin', 'manager'].includes(role) && req.auth!.organizationId) { values.push(req.auth!.organizationId); where = 'organization_id=$1'; }
