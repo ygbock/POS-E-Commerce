@@ -392,7 +392,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // DISC-011: authenticated customer favorites
   // ------------------------------------------------------------------
   // Customer ownership-claim workspace. Only the authenticated claimant's own records are exposed.
-  router.get('/my-claims', requireAuth(), async (req, res, next) => {
+  router.get('/my-claims', requireAuth(), requireCustomerIdentity(), async (req, res, next) => {
     try {
       const result = await db.query(
         `SELECT c.id,c.business_id,c.claimant_user_id,c.claimant_name,c.claimant_email,c.evidence,
@@ -1900,7 +1900,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-012: verification, claims, reviews and abuse reports
   // ------------------------------------------------------------------
-  router.post('/businesses/:id/claims', requireAuth(), async(req,res,next)=>{try{
+  router.post('/businesses/:id/claims', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
     if(b.listing_status==='ARCHIVED')throw new Error('CONFLICT:Archived businesses cannot be claimed.');
