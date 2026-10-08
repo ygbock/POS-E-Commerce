@@ -200,7 +200,10 @@ async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, p
   const location = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/locations', { method: 'POST', token: ownerToken, body: { name: 'Main Branch', locationType: 'STORE', addressLine1: '1 Claim Street', city: 'Freetown', district: 'Western Area Urban', region: 'Western Area', latitude: 8.4840, longitude: -13.2299, isPrimary: true, isActive: true } });
   assert.equal(location.status, 201);
   const locationId = location.body.data.id;
-  const hoursPayload: Array<{ dayOfWeek: number; isClosed: boolean; opensAt?: string; closesAt?: string }> = [1,2,3,4,5,6].map((dayOfWeek) => ({ dayOfWeek, isClosed: false, opensAt: '08:00', closesAt: '18:00' })).concat([{ dayOfWeek: 7, isClosed: true }]);
+  const hoursPayload: Array<{ dayOfWeek: number; isClosed: boolean; opensAt?: string; closesAt?: string }> = [
+    ...[1,2,3,4,5,6].map((dayOfWeek) => ({ dayOfWeek, isClosed: false, opensAt: '08:00', closesAt: '18:00' })),
+    { dayOfWeek: 7, isClosed: true },
+  ];
   const hours = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/locations/' + locationId + '/hours', { method: 'PUT', token: ownerToken, body: { hours: hoursPayload } });
   assert.equal(hours.status, 200);
   const service = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/services', { method: 'POST', token: ownerToken, body: { name: 'Claim Journey Service', description: 'Service configured after ownership claim.', serviceType: 'General', bookingMode: 'REQUEST' } });
