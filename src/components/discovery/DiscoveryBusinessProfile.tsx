@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { DiscoveryLocation, DiscoveryService, DiscoveryReview, DiscoveryPublicBusinessProfile } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
+import { authClient } from '../../services/authClient';
 import { VerificationBadge } from './VerificationBadge';
 import { VerificationStatusInfo } from './VerificationStatusInfo';
 import { DiscoveryRating } from './DiscoveryRating';
@@ -84,6 +85,8 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
   });
   const [quoteSubmitting, setQuoteSubmitting] = useState(false);
   const [quoteSuccess, setQuoteSuccess] = useState(false);
+  const canSubmitOwnershipClaim = authClient.getUser()?.role === 'business_owner'
+    && authClient.getUser()?.identityType === 'business_owner';
 
   useEffect(() => {
     let mounted = true;
@@ -549,14 +552,16 @@ export const DiscoveryBusinessProfile: React.FC<DiscoveryBusinessProfileProps> =
 
                 {/* Quiet Administrative / Feedback Actions */}
                 <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-                  <button
-                    type="button"
-                    onClick={() => { setClaimMessage(null); setClaimOpen(true); }}
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors inline-flex items-center gap-1 text-left"
-                  >
-                    <UserCheck className="w-3 h-3" />
-                    <span>Is this your business? Claim it</span>
-                  </button>
+                  {canSubmitOwnershipClaim && (
+                    <button
+                      type="button"
+                      onClick={() => { setClaimMessage(null); setClaimOpen(true); }}
+                      className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors inline-flex items-center gap-1 text-left"
+                    >
+                      <UserCheck className="w-3 h-3" />
+                      <span>Is this your business? Claim it</span>
+                    </button>
+                  )}
                   <span className="hidden sm:inline text-slate-200 dark:text-slate-800">|</span>
                   <button
                     type="button"

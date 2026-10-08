@@ -69,6 +69,27 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
     } catch (err) { next(err); }
   });
 
+  // Platform-created Discovery listings start unowned. Ownership is established only
+  // when a business-owner claim is approved.
+  router.post('/listings', ...guard, async (req, res, next) => {
+    try {
+      const name = String(req.body?.name || '').trim();
+      if (name.length < 2 || name.length > 255) {
+        return res.status(422).json({ success:false, error:{ code:'VALIDATION_ERROR', message:'Business name must be between 2 and 255 characters.' } });
+      }
+      const actor = { userId:req.auth!.userId, role:req.auth!.role, organizationId:req.auth!.organizationId };
+      const data = await discoveryService.create({
+        ...req.body,
+        name,
+        businessMode: 'DISCOVERY_ONLY',
+        organizationId: null,
+        createdByUserId: req.auth!.userId,
+        submitImmediately: false,
+      }, actor);
+      res.status(201).json({ success:true, data });
+    } catch (err) { next(err); }
+  });
+
   router.get('/listings/:id', ...guard, async (req, res, next) => {
     try {
       const data = await discoveryService.getListingModerationDetail(req.params.id, { userId:req.auth!.userId, role:req.auth!.role, organizationId:req.auth!.organizationId });
@@ -160,11 +181,73 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
       if (!['APPROVED','REJECTED'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'status must be APPROVED or REJECTED.'}});
       const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
       const result=await db.withTransaction(async(tx)=>{
-        const current=await tx.query(`SELECT * FROM discovery_business_claims WHERE id=$1 AND status='PENDING' FOR UPDATE`,[req.params.id]);
+        const current=await tx.query(
+          `SELECT c.*, b.name AS business_name, b.organization_id, b.listing_status
+             FROM discovery_business_claims c
+             JOIN discovery_businesses b ON b.id=c.business_id
+            WHERE c.id=$1 AND c.status='PENDING'
+            FOR UPDATE`,
+          [req.params.id],
+        );
         if(!current.rows[0]) throw new Error('NOT_FOUND:Claim not found.');
         const row=current.rows[0];
-        const updated=await tx.query(`UPDATE discovery_business_claims SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,[status,req.auth!.userId,reason,req.params.id]);
-        await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'CLAIM',$3,'CLAIM_DECIDED','PENDING',$4,$5,$6,$7)`,[eventId('trust'),row.business_id,req.params.id,status,req.auth!.userId,reason,{}]);
+
+        if (status === 'APPROVED') {
+          const claimant = await tx.query(
+            `SELECT id, role, identity_type, is_active
+               FROM users
+              WHERE id=$1
+              FOR UPDATE`,
+            [row.claimant_user_id],
+          );
+          const user = claimant.rows[0];
+          if (!user || !user.is_active || user.role !== 'business_owner' || user.identity_type !== 'business_owner') {
+            throw new Error('CLAIMANT_NOT_ELIGIBLE: Only an active business-owner account can own a claimed Discovery listing.');
+          }
+
+          const existingOwner = await tx.query(
+            `SELECT user_id
+               FROM discovery_business_memberships
+              WHERE business_id=$1 AND role='OWNER' AND is_active=TRUE
+              FOR UPDATE`,
+            [row.business_id],
+          );
+          if (existingOwner.rows.length > 0 && existingOwner.rows[0].user_id !== row.claimant_user_id) {
+            throw new Error('BUSINESS_ALREADY_CLAIMED: This Discovery listing already has an active owner.');
+          }
+
+          await tx.query(
+            `INSERT INTO discovery_business_memberships (business_id,user_id,role,is_active)
+             VALUES ($1,$2,'OWNER',TRUE)
+             ON CONFLICT (business_id,user_id)
+             DO UPDATE SET role='OWNER',is_active=TRUE,updated_at=CURRENT_TIMESTAMP`,
+            [row.business_id, row.claimant_user_id],
+          );
+        }
+
+        const updated=await tx.query(
+          `UPDATE discovery_business_claims
+              SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP
+            WHERE id=$4
+            RETURNING *`,
+          [status,req.auth!.userId,reason,req.params.id],
+        );
+        await tx.query(
+          `INSERT INTO discovery_trust_events
+             (id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata)
+           VALUES($1,$2,'CLAIM',$3,'CLAIM_DECIDED','PENDING',$4,$5,$6,$7)`,
+          [
+            eventId('trust'),
+            row.business_id,
+            req.params.id,
+            status,
+            req.auth!.userId,
+            reason,
+            status === 'APPROVED'
+              ? { ownershipTransferredToUserId: row.claimant_user_id }
+              : {},
+          ],
+        );
         return updated.rows[0];
       });
       res.json({success:true,data:result});

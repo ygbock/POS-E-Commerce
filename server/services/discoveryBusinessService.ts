@@ -52,11 +52,11 @@ export interface DiscoveryLocationInput {
 }
 
 const TRANSITIONS: Record<DiscoveryListingStatus, DiscoveryListingStatus[]> = {
-  DRAFT: ['SUBMITTED', 'ARCHIVED'],
+  DRAFT: ['SUBMITTED', 'UNDER_REVIEW', 'ARCHIVED'],
   SUBMITTED: ['UNDER_REVIEW', 'REJECTED', 'ARCHIVED'],
   UNDER_REVIEW: ['APPROVED', 'REJECTED', 'ARCHIVED'],
   APPROVED: ['PUBLISHED', 'PAUSED', 'ARCHIVED'],
-  PUBLISHED: ['PAUSED', 'SUSPENDED', 'ARCHIVED'],
+  PUBLISHED: ['SUBMITTED', 'PAUSED', 'SUSPENDED', 'ARCHIVED'],
   REJECTED: ['DRAFT', 'ARCHIVED'],
   PAUSED: ['PUBLISHED', 'ARCHIVED'],
   SUSPENDED: ['UNDER_REVIEW', 'ARCHIVED'],
@@ -154,7 +154,10 @@ export class DiscoveryBusinessService {
         created_by_user_id: input.createdByUserId || actor?.userId || null,
       }, tx);
       await this.repository.getSettings(record.id, tx);
-      if (actor?.userId) {
+      // Platform-created listings intentionally remain unowned until a verified
+      // business-owner claim is approved. Business-owner self-service creation
+      // continues to establish the OWNER membership immediately.
+      if (actor?.userId && actor.role === 'business_owner') {
         await tx.query(
           `INSERT INTO discovery_business_memberships (business_id,user_id,role,is_active)
            VALUES ($1,$2,'OWNER',TRUE)`,
@@ -608,6 +611,10 @@ export class DiscoveryBusinessService {
         patch.is_discoverable = true;
         patch.published_at = new Date().toISOString();
         patch.suspended_at = null;
+      } else if (toStatus === 'SUBMITTED') {
+        // Re-review of an already-published listing is an owner-initiated
+        // moderation cycle. Hide the listing while the updated data is reviewed.
+        patch.is_discoverable = false;
       } else if (toStatus === 'SUSPENDED' || toStatus === 'PAUSED' || toStatus === 'ARCHIVED') {
         patch.is_discoverable = false;
         if (toStatus === 'SUSPENDED') patch.suspended_at = new Date().toISOString();
@@ -665,7 +672,9 @@ export class DiscoveryBusinessService {
     // Backward-compatible authorization for platform/tenant administrators and
     // legacy discovery-only creators that predate scoped memberships.
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
-    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'business_owner'].includes(actor.role)) return;
+    // Business owners must always have an explicit active membership. Never infer Discovery ownership from shared organization membership.
+    // Platform/tenant administrators retain the legacy same-organization fallback for administrative workflows.
+    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 

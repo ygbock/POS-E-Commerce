@@ -7,6 +7,7 @@ import {
   FileCheck2,
   Flag,
   RefreshCw,
+  Plus,
   SlidersHorizontal,
   ShieldCheck,
   UserCheck,
@@ -109,6 +110,9 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   const [searchDays, setSearchDays] = useState(30);
   const [searchSaving, setSearchSaving] = useState(false);
   const [searchDirty, setSearchDirty] = useState(false);
+  const [createListingOpen, setCreateListingOpen] = useState(false);
+  const [createListingName, setCreateListingName] = useState('');
+  const [createListingBusy, setCreateListingBusy] = useState(false);
 
   const endpoint = useMemo(() => {
     if (queue === 'listings') return `/api/platform/discovery/moderation/listings?status=${encodeURIComponent(listingStatusFilter)}&page=${listingPage}&pageSize=${listingPageSize}&search=${encodeURIComponent(listingSearch)}&mode=${encodeURIComponent(listingModeFilter)}&verification=${encodeURIComponent(listingVerificationFilter)}&hasIssues=${encodeURIComponent(listingIssuesFilter)}`;
@@ -149,6 +153,31 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   }, [endpoint, listingPage, listingPageSize, queue]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const createPlatformListing = async () => {
+    const name = createListingName.trim();
+    if (name.length < 2 || name.length > 255) {
+      setError('Business name must be between 2 and 255 characters.');
+      return;
+    }
+    setCreateListingBusy(true);
+    setError(null);
+    try {
+      await platformRequest<ModerationItem>('/api/platform/discovery/moderation/listings', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      setCreateListingName('');
+      setCreateListingOpen(false);
+      setListingStatusFilter('DRAFT');
+      setListingPage(1);
+      await load();
+    } catch (err: any) {
+      setError(err?.message || 'Unable to create Discovery listing.');
+    } finally {
+      setCreateListingBusy(false);
+    }
+  };
 
   const openListing = async (item: ModerationItem) => {
     setSelectedListing(item);
@@ -233,15 +262,27 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             Review verification, ownership claims, customer reviews, and abuse reports. Decisions are server-authoritative and audited.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh queue
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {queue === 'listings' && (
+            <button
+              type="button"
+              onClick={() => { setCreateListingOpen(true); setError(null); }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700"
+            >
+              <Plus className="h-4 w-4" />
+              Create listing
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh queue
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -274,7 +315,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             <div>
               <label htmlFor="listing-status-filter" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</label>
               <select id="listing-status-filter" value={listingStatusFilter} onChange={(e) => { setListingStatusFilter(e.target.value); setListingPage(1); }} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
-                <option value="SUBMITTED">Submitted</option><option value="UNDER_REVIEW">Under review</option><option value="REJECTED">Rejected</option><option value="APPROVED">Approved</option><option value="PUBLISHED">Published</option><option value="SUSPENDED">Suspended</option>
+                <option value="DRAFT">Draft</option><option value="SUBMITTED">Submitted</option><option value="UNDER_REVIEW">Under review</option><option value="REJECTED">Rejected</option><option value="APPROVED">Approved</option><option value="PUBLISHED">Published</option><option value="SUSPENDED">Suspended</option>
               </select>
             </div>
             <div>
@@ -491,9 +532,15 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                       </pre>
                     )}
                     {queue === 'claims' && (
-                      <pre className="mt-3 max-h-40 overflow-auto rounded-xl bg-slate-950 p-3 text-[11px] text-slate-200">
+                      <div className="mt-3 space-y-2">
+                        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs dark:border-indigo-900/60 dark:bg-indigo-950/20">
+                          <div className="font-bold text-indigo-900 dark:text-indigo-200">Claimant</div>
+                          <div className="mt-1 font-mono text-[11px] text-indigo-700 dark:text-indigo-300">{String(item.claimant_user_id || 'Unknown claimant')}</div>
+                        </div>
+                        <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950 p-3 text-[11px] text-slate-200">
                         {JSON.stringify(item.evidence || {}, null, 2)}
                       </pre>
+                      </div>
                     )}
                     {queue === 'reviews' && (
                       <div className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -558,6 +605,39 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           </div>
         )}
       </div>
+      {createListingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-labelledby="create-discovery-listing-title">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Platform-created listing</div>
+                <h2 id="create-discovery-listing-title" className="mt-1 text-lg font-black text-slate-900 dark:text-white">Create Discovery listing</h2>
+                <p className="mt-1 text-xs text-slate-500">The listing starts as DRAFT, Discovery-only, and unowned. Ownership is established only after an eligible business-owner claim is approved.</p>
+              </div>
+              <button type="button" onClick={() => { if (!createListingBusy) setCreateListingOpen(false); }} className="rounded-xl border px-3 py-2 text-xs font-bold">Close</button>
+            </div>
+            <label htmlFor="platform-create-listing-name" className="mt-5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Business name</label>
+            <input
+              id="platform-create-listing-name"
+              autoFocus
+              value={createListingName}
+              onChange={(e) => setCreateListingName(e.target.value.slice(0, 255))}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void createPlatformListing(); } }}
+              placeholder="e.g. Freetown Community Pharmacy"
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950"
+              disabled={createListingBusy}
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={createListingBusy} onClick={() => setCreateListingOpen(false)} className="rounded-xl border px-4 py-2.5 text-xs font-bold disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={createListingBusy || createListingName.trim().length < 2} onClick={() => void createPlatformListing()} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                <Plus className="h-4 w-4" />
+                {createListingBusy ? 'Creating…' : 'Create draft listing'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedListing && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 sm:p-8 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Listing moderation review">
           <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 shadow-2xl">
