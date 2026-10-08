@@ -315,7 +315,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             <div>
               <label htmlFor="listing-status-filter" className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</label>
               <select id="listing-status-filter" value={listingStatusFilter} onChange={(e) => { setListingStatusFilter(e.target.value); setListingPage(1); }} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
-                <option value="SUBMITTED">Submitted</option><option value="UNDER_REVIEW">Under review</option><option value="REJECTED">Rejected</option><option value="APPROVED">Approved</option><option value="PUBLISHED">Published</option><option value="SUSPENDED">Suspended</option>
+                <option value="DRAFT">Draft</option><option value="SUBMITTED">Submitted</option><option value="UNDER_REVIEW">Under review</option><option value="REJECTED">Rejected</option><option value="APPROVED">Approved</option><option value="PUBLISHED">Published</option><option value="SUSPENDED">Suspended</option>
               </select>
             </div>
             <div>
