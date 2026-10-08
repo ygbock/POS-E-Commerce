@@ -44,7 +44,8 @@ async function main() {
     VALUES
       ('claim-platform-admin','claim_platform_org','platform@claim.test','Platform Admin','hash','salt','platform_admin','platform',TRUE),
       ('claim-owner','claim_owner_org','owner@claim.test','Business Owner','hash','salt','business_owner','business_owner',TRUE),
-      ('claim-customer','claim_owner_org','customer@claim.test','Customer','hash','salt','customer','customer',TRUE)
+      ('claim-customer','claim_owner_org','customer@claim.test','Customer','hash','salt','customer','customer',TRUE),
+      ('claim-other-owner','claim_owner_org','other-owner@claim.test','Other Business Owner','hash','salt','business_owner','business_owner',TRUE)
   `);
 
   const { app } = await createApp({ db, skipVite: true });
@@ -68,6 +69,9 @@ async function main() {
     role: 'business_owner',
     identityType: 'business_owner',
     permissions: ['business.view', 'business.listing.manage', 'business.listing.submit'],
+  });
+  const otherOwnerToken = signToken({
+    userId: 'claim-other-owner', email: 'other-owner@claim.test', organizationId: 'claim_owner_org', role: 'business_owner', identityType: 'business_owner', permissions: ['business.view', 'business.listing.manage', 'business.listing.submit'],
   });
   const customerToken = signToken({
     userId: 'claim-customer',
@@ -170,7 +174,7 @@ async function main() {
     assert.equal(myBusinesses.status, 200);
     assert.ok(myBusinesses.body.data.some((row: any) => row.id === businessId));
 
-    await postClaimManagementJourney(db, baseUrl, platformToken, ownerToken, customerToken, businessId);
+    await postClaimManagementJourney(db, baseUrl, platformToken, ownerToken, otherOwnerToken, businessId);
 
     const duplicateClaim = await request(baseUrl, `/api/discovery/businesses/${businessId}/claims`, {
       method: 'POST',
