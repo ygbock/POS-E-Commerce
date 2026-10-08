@@ -182,6 +182,63 @@ class AuthClient {
     return data.data.user;
   }
 
+  async registerCustomer(input: {
+    name: string;
+    email: string;
+    phone?: string;
+    password?: string;
+  }): Promise<AuthUser> {
+    const res = await fetch('/api/auth/customer/register', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error?.message || 'Unable to register customer account.');
+    }
+    return data.data.user;
+  }
+
+  async forgotPassword(email: string, organizationId?: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch('/api/auth/forgot-password', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, organizationId }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error?.message || 'Unable to request password reset.');
+    }
+    return data;
+  }
+
+  async resetPassword(token: string, password: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch('/api/auth/reset-password', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, password }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error?.message || 'Unable to reset password.');
+    }
+    return data;
+  }
+
+  async verifyEmailConfirm(token: string): Promise<{ success: boolean; message: string; data?: { status: string } }> {
+    const res = await fetch('/api/auth/verify-email/confirm', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error?.message || 'Email verification failed.');
+    }
+    return data;
+  }
+
   async login(email: string, password: string, organizationId?: string): Promise<AuthUser> {
     const res = await fetch('/api/auth/login', this.getRequestInit({
       method: 'POST',

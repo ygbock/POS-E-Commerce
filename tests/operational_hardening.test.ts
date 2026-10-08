@@ -233,15 +233,7 @@ async function main() {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgresql://user:pass@host:5432/prod_db',
         JWT_SECRET: 'CryptographicallySecureHighEntropyKey32Chars!',
-                  MFA_ENCRYPTION_KEY: 'a'.repeat(64),
-                  PASSWORD_RESET_URL: 'https://example.com',
-                  EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
-                  PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
         APP_URL: 'https://production.example.com',
-        MFA_ENCRYPTION_KEY: 'a'.repeat(64),
-        PASSWORD_RESET_URL: 'https://production.example.com',
-        EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'true',
-        PASSWORD_RESET_DELIVERY_CONFIGURED: 'true',
       };
       assert.throws(() => validateEnvironment(base), /MFA_ENCRYPTION_KEY/);
 

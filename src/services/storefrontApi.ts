@@ -250,6 +250,10 @@ export const storefrontApi = {
     return request<any[]>(`${tenantBase(tenantSlug)}/account/orders`);
   },
 
+  getCustomerProfile(tenantSlug: string) {
+    return request<any>(`${tenantBase(tenantSlug)}/account/profile`);
+  },
+
   getCustomerOrder(tenantSlug: string, orderNumber: string) {
     return request<any>(`${tenantBase(tenantSlug)}/account/orders/${encodeURIComponent(orderNumber)}`);
   },

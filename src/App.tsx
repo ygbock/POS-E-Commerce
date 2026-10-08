@@ -30,6 +30,8 @@ import { SupplierManagementView } from './components/purchasing/SupplierManageme
 import { isPlatformRole } from './components/platform/platformAccess';
 import { DiscoveryMarketplace } from './components/discovery/DiscoveryMarketplace';
 import { LoginPage } from './components/auth/LoginPage';
+import { EmailVerificationPage } from './components/auth/EmailVerificationPage';
+import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { authClient, AuthUser } from './services/authClient';
 import { BusinessOwnerSignup } from './components/merchant/BusinessOwnerSignup';
 import { BusinessOwnerPortal } from './components/merchant/BusinessOwnerPortal';
@@ -213,8 +215,18 @@ export default function App() {
   const isMerchantPath = window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
   const isMerchantSignupPath = window.location.pathname === '/business/signup';
   const isMerchantSigninPath = window.location.pathname === '/business/signin';
+  const isVerifyEmailPath = window.location.pathname === '/verify-email';
+  const isResetPasswordPath = window.location.pathname === '/reset-password';
   const requestedWorkspace = new URLSearchParams(window.location.search).get('workspace');
   const hasAuthenticatedWorkspaceRequest = ['dashboard', 'catalog', 'inventory', 'orders', 'pos', 'users', 'locations', 'crm', 'suppliers', 'purchasing'].includes(requestedWorkspace || '');
+
+  if (isVerifyEmailPath) {
+    return <EmailVerificationPage />;
+  }
+
+  if (isResetPasswordPath) {
+    return <ResetPasswordPage />;
+  }
 
   if (isMerchantSignupPath) {
     return <BusinessOwnerSignup />;

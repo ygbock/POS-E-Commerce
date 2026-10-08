@@ -115,6 +115,41 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [orderHistoryLoading, setOrderHistoryLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState('');
 
+  // Load customer profile when modal opens or user login changes
+  useEffect(() => {
+    if (!isOpen || !tenant?.slug) return;
+    const authUser = authClient.getUser();
+    if (authUser && authUser.role === 'customer') {
+      setOrderHistoryLoading(true);
+      storefrontApi.getCustomerProfile(tenant.slug)
+        .then((response: any) => {
+          const profile = response?.data || response;
+          setActiveCustomerUser({
+            id: profile.id,
+            name: profile.name,
+            email: profile.email,
+            phone: profile.phone,
+            tier: profile.tier || 'Bronze',
+            loyaltyPoints: Number(profile.loyaltyPoints || 0),
+            storeCreditBalance: Number(profile.storeCreditBalance || 0),
+            creditLimit: Number(profile.creditLimit || 0),
+            addresses: profile.addresses || [],
+            customerGroup: profile.customerGroup || 'Retail',
+            registeredAt: profile.registeredAt,
+          } as any);
+        })
+        .catch((err: any) => {
+          console.error('[Customer Profile Load] Failed:', err);
+          setActiveCustomerUser(null);
+        })
+        .finally(() => {
+          setOrderHistoryLoading(false);
+        });
+    } else {
+      setActiveCustomerUser(null);
+    }
+  }, [isOpen, tenant?.slug]);
+
   // Sync initialTab when props change
   useEffect(() => {
     if (isOpen) {
@@ -162,10 +197,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
   // --- Handlers ---
   const handleLogout = () => {
-    setActiveCustomerUser(null);
-    setSignupSuccessMsg('');
-    setSignupError('');
-    setSigninError('');
+    authClient.logout()
+      .then(() => {
+        setActiveCustomerUser(null);
+        setSignupSuccessMsg('');
+        setSignupError('');
+        setSigninError('');
+      })
+      .catch((err) => {
+        console.error('[Customer Logout Failed]:', err);
+        setActiveCustomerUser(null);
+      });
   };
 
   const handleCreateAccount = async (e: React.FormEvent) => {
@@ -181,42 +223,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setSignupError('Please enter a valid email address');
       return;
     }
-    if (!signupPhone.trim()) {
-      setSignupError('Please enter your phone number for delivery and order notifications');
+    if (!signupPassword || signupPassword.length < 12) {
+      setSignupError('Password must be at least 12 characters.');
       return;
     }
 
     try {
-      const generatedUser: Customer = {
-        id: 'cust_' + Math.random().toString(36).substring(2, 9),
+      await authClient.registerCustomer({
         name: signupName.trim(),
         email: signupEmail.trim(),
-        phone: signupPhone.trim(),
-        tier: 'Bronze',
-        loyaltyPoints: 100,
-        storeCreditBalance: 0,
-        creditLimit: 0,
-        totalSpent: 0,
-        ordersCount: 0,
-        addresses: [
-          {
-            id: 'addr_1',
-            label: 'Home',
-            street: signupStreet.trim() || '100 Commerce Way',
-            city: signupCity.trim() || 'Seattle',
-            zip: signupZip.trim() || '98101',
-            isDefault: true
-          }
-        ],
-        customerGroup: 'Retail',
-        registeredAt: new Date().toISOString()
-      };
-      setActiveCustomerUser(generatedUser);
-      setSignupSuccessMsg('🎉 Account created successfully! Welcome to our store.');
+        phone: signupPhone.trim() || undefined,
+        password: signupPassword,
+      });
+      setSignupSuccessMsg('🎉 Account created successfully! Please verify your email and sign in.');
       setSignupName('');
       setSignupEmail('');
       setSignupPhone('');
       setSignupPassword('');
+      setAuthMode('signin');
     } catch (err: any) {
       setSignupError(err instanceof Error ? err.message : 'Registration failed.');
     }
@@ -233,35 +257,33 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
     try {
       const authUser = await authClient.login(signinEmail.trim(), signinPassword);
-      const loggedCustomer: Customer = {
-        id: authUser.id || 'cust_logged_in',
-        name: authUser.name || 'Valued Customer',
-        email: authUser.email || signinEmail.trim(),
-        phone: '—',
-        tier: 'Gold',
-        loyaltyPoints: 350,
-        storeCreditBalance: 15.00,
-        creditLimit: 0,
-        totalSpent: 120.00,
-        ordersCount: 1,
-        addresses: [
-          {
-            id: 'addr_1',
-            label: 'Home',
-            street: '100 Commerce Way',
-            city: 'Seattle',
-            zip: '98101',
-            isDefault: true
-          }
-        ],
-        customerGroup: 'Retail',
-        registeredAt: new Date().toISOString()
-      };
-      setActiveCustomerUser(loggedCustomer);
+      if (authUser.role !== 'customer') {
+        setSigninError('Please use the business owner portal to sign in with non-customer roles.');
+        await authClient.logout();
+        return;
+      }
+
+      if (tenant?.slug) {
+        const response = await storefrontApi.getCustomerProfile(tenant.slug);
+        const profile = response?.data || response;
+        setActiveCustomerUser({
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          phone: profile.phone,
+          tier: profile.tier || 'Bronze',
+          loyaltyPoints: Number(profile.loyaltyPoints || 0),
+          storeCreditBalance: Number(profile.storeCreditBalance || 0),
+          creditLimit: Number(profile.creditLimit || 0),
+          addresses: profile.addresses || [],
+          customerGroup: profile.customerGroup || 'Retail',
+          registeredAt: profile.registeredAt,
+        } as any);
+      }
       setSigninEmail('');
       setSigninPassword('');
     } catch (err: any) {
-      setSigninError(err instanceof Error ? err.message : 'Authentication failed.');
+      setSigninError(err instanceof Error ? err.message : 'Invalid email or password.');
     }
   };
 
@@ -610,13 +632,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         </div>
 
                         <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Phone Number</label>
+                          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Phone Number (optional)</label>
                           <input
                             type="text"
-                            required
                             placeholder="+1 (555) 019-9234"
                             value={signupPhone}
                             onChange={(e) => setSignupPhone(e.target.value)}
+                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-slate-950 dark:text-slate-50"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Password</label>
+                          <input
+                            type="password"
+                            required
+                            placeholder="••••••••••••"
+                            value={signupPassword}
+                            onChange={(e) => setSignupPassword(e.target.value)}
                             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-slate-950 dark:text-slate-50"
                           />
                         </div>

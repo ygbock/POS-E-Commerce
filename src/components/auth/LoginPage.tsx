@@ -19,6 +19,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
+  // Customer registration states
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
   useEffect(() => {
     const remembered = localStorage.getItem('abacha_login_email');
     if (remembered) setEmail(remembered);
@@ -50,6 +57,59 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to verify the MFA code.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitRegister = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      if (!name.trim()) {
+        throw new Error('Please enter your full name');
+      }
+      if (!email.trim() || !email.includes('@')) {
+        throw new Error('Please enter a valid email address');
+      }
+      if (!password || password.length < 12) {
+        throw new Error('Password must be at least 12 characters.');
+      }
+
+      await authClient.registerCustomer({
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim() || undefined,
+        password,
+      });
+
+      setSuccessMessage('🎉 Customer account registered successfully! Please verify your email and sign in.');
+      setIsRegistering(false);
+      setPassword('');
+      setName('');
+      setPhone('');
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : 'Registration failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitForgotPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      if (!email.trim() || !email.includes('@')) {
+        throw new Error('Please enter a valid email address');
+      }
+      await authClient.forgotPassword(email.trim());
+      setSuccessMessage('✉️ If an account with this email exists, we have sent a password reset link.');
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : 'Failed to request password reset link.');
     } finally {
       setLoading(false);
     }
@@ -163,7 +223,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
           <p className="mt-2 text-sm text-slate-400">{mode === 'platform' ? 'Platform Control Plane' : 'Unified Commerce Platform'}</p>
         </div>
 
-        <form onSubmit={mfaChallenge ? submitMfa : submit} className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xl relative">
+        <form
+          onSubmit={
+            mfaChallenge
+              ? submitMfa
+              : isRegistering
+              ? submitRegister
+              : isForgotPassword
+              ? submitForgotPassword
+              : submit
+          }
+          className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xl relative"
+        >
           <div className="absolute top-6 right-6">
             <a
               href="/discover"
@@ -217,8 +288,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
             </>
           ) : (
             <div className="mb-6 pr-6">
-              <h2 className="text-xl font-bold text-slate-900">{mode === 'platform' ? 'Platform administrator sign in' : 'Sign in'}</h2>
-              <p className="mt-1 text-sm text-slate-500">{mode === 'platform' ? 'Use an authorized platform operator account.' : 'Use your authorized account to continue.'}</p>
+              <h2 className="text-xl font-bold text-slate-900">
+                {mode === 'platform'
+                  ? 'Platform administrator sign in'
+                  : isForgotPassword
+                  ? 'Forgot Password'
+                  : isRegistering
+                  ? 'Register Customer Account'
+                  : 'Sign in'}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {mode === 'platform'
+                  ? 'Use an authorized platform operator account.'
+                  : isForgotPassword
+                  ? 'Enter your email address to receive secure instructions to reset your password.'
+                  : isRegistering
+                  ? 'Sign up and get custom perks with security-verified server-side checks.'
+                  : 'Use your authorized account to continue.'}
+              </p>
             </div>
           )}
 
@@ -228,12 +315,97 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
             </div>
           )}
 
-          {!mfaChallenge && (<>
-          <label className="block text-sm font-medium text-slate-700">
+          {successMessage && (
+            <div role="status" className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 animate-fade-in">
+              {successMessage}
+            </div>
+          )}
+
+          {!mfaChallenge && !isRegistering && !isForgotPassword && (
+            <>
+              <label className="block text-sm font-medium text-slate-700">
+                Email
+                <input
+                  type="email"
+                  autoComplete="username"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                  placeholder="you@example.com"
+                />
+              </label>
+
+              <label className="mt-4 block text-sm font-medium text-slate-700">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span>Password</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsForgotPassword(true);
+                      setError('');
+                      setSuccessMessage('');
+                    }}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-11 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 hover:text-slate-700"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </label>
+            </>
+          )}
+
+          {!mfaChallenge && isForgotPassword && (
+            <label className="block text-sm font-medium text-slate-700 animate-fade-in">
+              Email Address
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                placeholder="you@example.com"
+              />
+            </label>
+          )}
+
+          {!mfaChallenge && isRegistering && (<>
+          <label className="block text-sm font-medium text-slate-700 animate-fade-in">
+            Full Name
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+              placeholder="John Doe"
+            />
+          </label>
+
+          <label className="mt-4 block text-sm font-medium text-slate-700 animate-fade-in">
             Email
             <input
               type="email"
-              autoComplete="username"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -242,17 +414,27 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
             />
           </label>
 
-          <label className="mt-4 block text-sm font-medium text-slate-700">
-            Password
+          <label className="mt-4 block text-sm font-medium text-slate-700 animate-fade-in">
+            Phone Number (optional)
+            <input
+              type="text"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+              placeholder="+1 (555) 019-9234"
+            />
+          </label>
+
+          <label className="mt-4 block text-sm font-medium text-slate-700 animate-fade-in">
+            Password (minimum 12 characters)
             <div className="relative mt-1.5">
               <input
                 type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-11 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                placeholder="••••••••"
+                placeholder="••••••••••••"
               />
               <button
                 type="button"
@@ -265,16 +447,45 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
               </button>
             </div>
           </label>
-
           </>)}
 
-{!mfaChallenge && (
+          {!mfaChallenge && (
             <button type="submit" disabled={loading} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
-              {loading ? 'Signing in…' : 'Sign in'}
+              {loading
+                ? isRegistering
+                  ? 'Registering…'
+                  : isForgotPassword
+                  ? 'Sending Link…'
+                  : 'Signing in…'
+                : isRegistering
+                ? 'Register Customer Account'
+                : isForgotPassword
+                ? 'Send Reset Link'
+                : 'Sign in'}
             </button>
           )}
 
-          {mode !== 'platform' && (
+          {!mfaChallenge && (
+            <div className="mt-4 text-center text-xs">
+              {isForgotPassword ? (
+                <button type="button" onClick={() => { setIsForgotPassword(false); setError(''); setSuccessMessage(''); }} className="font-bold text-slate-900 hover:underline">
+                  Back to Sign In
+                </button>
+              ) : mode === 'customer' ? (
+                isRegistering ? (
+                  <button type="button" onClick={() => { setIsRegistering(false); setError(''); }} className="font-bold text-slate-900 hover:underline">
+                    Already have an account? Sign in
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => { setIsRegistering(true); setError(''); }} className="font-bold text-slate-900 hover:underline">
+                    Don't have an account? Create a Customer Account
+                  </button>
+                )
+              ) : null}
+            </div>
+          )}
+
+          {mode !== 'platform' && !isForgotPassword && (
             <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-600">
               <a href="/business/signin" className="font-bold text-slate-900 hover:underline">
                 Business owner sign in

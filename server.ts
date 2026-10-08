@@ -613,6 +613,115 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   app.post(
+    '/api/auth/customer/register',
+    authRateLimiter,
+    async (req: Request, res: Response) => {
+      try {
+        const name = String(req.body?.name || '').trim();
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const phone = req.body?.phone ? String(req.body.phone).trim() : null;
+        const password = String(req.body?.password || '');
+
+        if (!name || name.length < 2) {
+          return res.status(422).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'Full name is required (minimum 2 characters).' }
+          });
+        }
+
+        if (!/^\S+@\S+\.\S+$/.test(email)) {
+          return res.status(422).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'A valid email address is required.' }
+          });
+        }
+
+        if (!password || password.length < 12) {
+          return res.status(422).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'Password must be at least 12 characters.' }
+          });
+        }
+
+        // Check if an account with this email already exists
+        const existing = await db.query(
+          'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+          [email]
+        );
+        if (existing.rows.length > 0) {
+          return res.status(409).json({
+            success: false,
+            error: { code: 'EMAIL_ALREADY_REGISTERED', message: 'An account with this email already exists.' }
+          });
+        }
+
+        const userId = `usr_${randomUUID()}`;
+        const { hash, salt } = hashPassword(password);
+        const defaultOrgId = 'org_default';
+
+        await db.withTransaction(async (tx) => {
+          await tx.query(
+            `INSERT INTO users (id, organization_id, email, name, password_hash, password_salt, role, identity_type, phone, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, 'customer', 'customer', $7, TRUE)`,
+            [userId, defaultOrgId, email, name, hash, salt, phone]
+          );
+
+          await auditRepo.recordEvent({
+            organization_id: defaultOrgId,
+            actor_id: userId,
+            actor_name: email,
+            actor_role: 'customer',
+            action: 'CREATE',
+            entity_type: 'USER',
+            entity_id: userId,
+            metadata: {
+              email,
+              name,
+              identity_type: 'customer',
+              role: 'customer'
+            },
+            severity: 'Info',
+            result: 'SUCCESS'
+          }, tx);
+        });
+
+        // Trigger email verification request
+        let verificationResult = null;
+        try {
+          verificationResult = await emailVerificationService.requestVerification(userId);
+        } catch (verifErr: any) {
+          console.error('[Customer Registration] Email verification trigger failed:', verifErr);
+        }
+
+        return res.status(201).json({
+          success: true,
+          data: {
+            user: {
+              id: userId,
+              email,
+              name,
+              phone,
+              role: 'customer',
+              identityType: 'customer',
+              emailVerified: false
+            },
+            verification: verificationResult
+          }
+        });
+      } catch (err: any) {
+        console.error('[Customer Registration Error]:', err);
+        return res.status(500).json({
+          success: false,
+          error: {
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Unable to register account. Please try again later.'
+          }
+        });
+      }
+    }
+  );
+
+  app.post(
     '/api/auth/login',
     authRateLimiter,
     validateBody((body) => {

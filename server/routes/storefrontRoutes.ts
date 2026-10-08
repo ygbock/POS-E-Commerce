@@ -488,7 +488,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
 
   // Public checkout resolves the tenant from either the canonical URL slug or
   // the request host. Customer IDs are never accepted from an unauthenticated
-  // request. OrderService recalculates price, tax, shipping and stock atomically.
+  // request unless they are authenticated. OrderService recalculates price, tax, shipping and stock atomically.
   const placePublicStorefrontOrder = async (req: Request, res: Response, explicitSlug?: string) => {
     try {
       const config = await resolveStorefrontTenant(req, db, explicitSlug ? { explicitSlug } : undefined);
@@ -499,18 +499,71 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
       }
 
       const customer = req.body?.customer;
+      let customerId = null;
+      let customerDetails = customer ? {
+        name: String(customer.name || '').trim(),
+        email: String(customer.email || '').trim(),
+        phone: String(customer.phone || '').trim(),
+        address: customer.address,
+      } : null;
+
+      if (req.auth) {
+        // Logged-in customer!
+        const authUserId = req.auth.userId;
+        const orgId = config.tenant.id;
+
+        // Find or materialize customer record
+        const custRes = await db.query<any>(
+          `SELECT id FROM customers WHERE organization_id = $1 AND auth_user_id = $2 LIMIT 1`,
+          [orgId, authUserId]
+        );
+        if (custRes.rows[0]) {
+          customerId = custRes.rows[0].id;
+        } else {
+          // Fetch global user info
+          const userRes = await db.query<any>(
+            `SELECT name, email, phone FROM users WHERE id = $1 LIMIT 1`,
+            [authUserId]
+          );
+          const userInfo = userRes.rows[0];
+          const newCustId = `cust_${crypto.randomUUID()}`;
+          const name = userInfo?.name || req.auth.email || customerDetails?.name || 'Customer';
+          const email = userInfo?.email || req.auth.email || customerDetails?.email || null;
+          const phone = userInfo?.phone || customerDetails?.phone || null;
+
+          await db.query(
+            `INSERT INTO customers (
+               id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, auth_user_id, registered_at
+             ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized during storefront checkout', $6, CURRENT_TIMESTAMP)`,
+            [newCustId, orgId, name, email, phone, authUserId]
+          );
+          customerId = newCustId;
+        }
+
+        // Override/ensure customerDetails has valid info using the resolved customer record details
+        if (!customerDetails) {
+          const resolvedCust = await db.query<any>(
+            `SELECT name, email, phone FROM customers WHERE id = $1 LIMIT 1`,
+            [customerId]
+          );
+          if (resolvedCust.rows[0]) {
+            customerDetails = {
+              name: resolvedCust.rows[0].name,
+              email: resolvedCust.rows[0].email || '',
+              phone: resolvedCust.rows[0].phone || '',
+              address: undefined,
+            };
+          }
+        }
+      }
+
       const result = await orders.placeStorefrontOrder({
         organization_id: config.tenant.id,
-        actor_name: 'Guest Storefront Customer',
-        actor_role: 'storefront_customer',
+        actor_name: req.auth ? (customerDetails?.name || req.auth.email || 'Customer') : 'Guest Storefront Customer',
+        actor_role: req.auth ? 'customer' : 'storefront_customer',
         idempotency_key: req.body?.idempotency_key,
-        customer_id: null,
-        customer_details: customer ? {
-          name: String(customer.name || '').trim(),
-          email: String(customer.email || '').trim(),
-          phone: String(customer.phone || '').trim(),
-          address: customer.address,
-        } : null,
+        customer_id: customerId,
+        customer_details: customerDetails,
         fulfillment_method: req.body?.fulfillmentMethod,
         payment_method: req.body?.paymentMethod,
         cart_items: Array.isArray(req.body?.cart_items)
@@ -658,12 +711,109 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   );
 
   // --------------------------------------------------------------------------
+  // 5. AUTHENTICATED CUSTOMER PROFILE
+  // --------------------------------------------------------------------------
+  router.get('/:tenantSlug/account/profile', requireAuth(), async (req: Request, res: Response) => {
+    try {
+      const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
+      // Allow if organization matches OR role is super_admin OR role is customer (global)
+      if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin' && req.auth!.role !== 'customer') {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'TENANT_ACCESS_DENIED', message: 'Customer account is not authorized for this storefront.' },
+        });
+      }
+
+      const orgId = config.tenant.id;
+      const authUserId = req.auth!.userId;
+
+      // 1. Query existing customer record linked to this user's auth_user_id under this organization
+      const custRes = await db.query<any>(
+        `SELECT id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at
+         FROM customers
+         WHERE organization_id = $1 AND auth_user_id = $2
+         LIMIT 1`,
+         [orgId, authUserId]
+      );
+
+      let customer = custRes.rows[0];
+
+      // 2. If it does not exist, lazily materialize/create the CRM customer relationship for this tenant!
+      if (!customer) {
+        // Fetch global user info to make sure we have accurate name/email/phone
+        const userRes = await db.query<any>(
+          `SELECT name, email, phone FROM users WHERE id = $1 LIMIT 1`,
+          [authUserId]
+        );
+        const userInfo = userRes.rows[0];
+        if (!userInfo) {
+          return res.status(404).json({
+            success: false,
+            error: { code: 'USER_NOT_FOUND', message: 'Authenticated user account not found.' }
+          });
+        }
+
+        const newCustId = `cust_${crypto.randomUUID()}`;
+        const name = userInfo.name || req.auth!.email || 'Customer';
+        const email = userInfo.email || req.auth!.email || null;
+        const phone = userInfo.phone || null;
+
+        const insertRes = await db.query<any>(
+          `INSERT INTO customers (
+             id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, auth_user_id, registered_at
+           ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized from global customer account', $6, CURRENT_TIMESTAMP)
+           RETURNING id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at`,
+          [newCustId, orgId, name, email, phone, authUserId]
+        );
+        customer = insertRes.rows[0];
+      }
+
+      // 3. Query customer addresses
+      const addrRes = await db.query<any>(
+        `SELECT id, label, street, city, zip, is_default
+         FROM customer_addresses
+         WHERE customer_id = $1
+         ORDER BY is_default DESC, label ASC`,
+        [customer.id]
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          id: customer.id,
+          organizationId: customer.organization_id,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone || '—',
+          tier: customer.tier,
+          loyaltyPoints: Number(customer.loyalty_points || 0),
+          storeCreditBalance: Number(customer.store_credit_balance || 0),
+          creditLimit: Number(customer.credit_limit || 0),
+          customerGroup: customer.customer_group,
+          notes: customer.notes,
+          registeredAt: customer.registered_at,
+          addresses: addrRes.rows.map((addr: any) => ({
+            id: addr.id,
+            label: addr.label,
+            street: addr.street,
+            city: addr.city,
+            zip: addr.zip,
+            isDefault: addr.is_default
+          }))
+        }
+      });
+    } catch (err) {
+      handleStorefrontError(res, err);
+    }
+  });
+
+  // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER ORDER DETAIL
   // --------------------------------------------------------------------------
   router.get('/:tenantSlug/account/orders/:orderNumber', requireAuth(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
-      if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin') {
+      if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin' && req.auth!.role !== 'customer') {
         return res.status(403).json({
           success: false,
           error: { code: 'TENANT_ACCESS_DENIED', message: 'Customer account is not authorized for this storefront.' },
@@ -740,7 +890,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   router.get('/:tenantSlug/account/orders', requireAuth(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
-      if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin') {
+      if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin' && req.auth!.role !== 'customer') {
         return res.status(403).json({
           success: false,
           error: {
