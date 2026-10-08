@@ -148,6 +148,32 @@ export function requireVerifiedEmail(db: DatabaseClient, ...identityTypes: AuthI
 }
 
 /**
+ * Middleware: Enforce customer-only account APIs.
+ * Customer identity is server-authoritative; business/staff/platform users must
+ * never materialize or read a tenant CRM customer through customer account routes.
+ */
+export function requireCustomerIdentity() {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.auth) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required.' },
+      });
+    }
+
+    const identityType = req.auth.identityType || getIdentityTypeForRole(req.auth.role);
+    if (identityType !== 'customer' || req.auth.role !== 'customer') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'CUSTOMER_ACCESS_REQUIRED', message: 'Customer account access is required.' },
+      });
+    }
+
+    next();
+  };
+}
+
+/**
  * Middleware: Enforce Authenticated Session
  * Rejects unauthenticated requests with HTTP 401 Unauthorized.
  */
