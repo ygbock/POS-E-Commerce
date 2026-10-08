@@ -43,6 +43,7 @@ import {
   requireAuth,
   requirePermission,
   requireTenantAccess,
+  requireCustomerIdentity,
 } from './server/middleware/auth.ts';
 import { authRateLimiter, adminRateLimiter } from './server/middleware/rateLimiter.ts';
 import { requestIdMiddleware } from './server/middleware/requestId.ts';
@@ -837,6 +838,109 @@ export async function createApp(options: CreateAppOptions = {}) {
       success: true,
       data: req.auth,
     });
+  });
+
+  // ------------------------------------------------------------------
+  // CUSTOMER GLOBAL ACCOUNT MANAGEMENT (CUST-3)
+  // ------------------------------------------------------------------
+  app.get('/api/auth/customer/account', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
+    try {
+      const account = await authService.getCustomerAccount(req.auth!.userId);
+      return res.json({ success: true, data: account });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      if (code === 'CUSTOMER_ACCOUNT_NOT_FOUND') {
+        return res.status(404).json({
+          success: false,
+          error: { code, message: 'Customer account not found.' },
+        });
+      }
+      return res.status(500).json({
+        success: false,
+        error: { code: 'CUSTOMER_ACCOUNT_UNAVAILABLE', message: 'Unable to load customer account.' },
+      });
+    }
+  });
+
+  app.patch('/api/auth/customer/account', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
+    try {
+      const account = await authService.updateCustomerAccount(req.auth!.userId, {
+        name: String(req.body?.name || ''),
+        phone: req.body?.phone == null ? null : String(req.body.phone),
+      });
+      return res.json({ success: true, data: account });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      const status = code === 'VALIDATION_ERROR' ? 422 : code === 'CUSTOMER_ACCOUNT_NOT_FOUND' ? 404 : 500;
+      return res.status(status).json({
+        success: false,
+        error: {
+          code: code || 'CUSTOMER_ACCOUNT_UPDATE_FAILED',
+          message: code === 'VALIDATION_ERROR'
+            ? String(err?.message || '').replace(/^VALIDATION_ERROR:\s*/, '')
+            : code === 'CUSTOMER_ACCOUNT_NOT_FOUND'
+              ? 'Customer account not found.'
+              : 'Unable to update customer account.',
+        },
+      });
+    }
+  });
+
+  app.post('/api/auth/customer/change-password', authRateLimiter, requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
+    try {
+      await authService.changeCustomerPassword(
+        req.auth!.userId,
+        String(req.body?.currentPassword || ''),
+        String(req.body?.newPassword || ''),
+      );
+      clearAuthenticationCookies(res);
+      return res.json({
+        success: true,
+        message: 'Password changed successfully. Please sign in again.',
+      });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      const status = code === 'VALIDATION_ERROR' ? 422 : code === 'INVALID_CURRENT_PASSWORD' ? 401 : 500;
+      return res.status(status).json({
+        success: false,
+        error: {
+          code: code || 'CUSTOMER_PASSWORD_CHANGE_FAILED',
+          message: code === 'INVALID_CURRENT_PASSWORD'
+            ? 'Current password is incorrect.'
+            : code === 'VALIDATION_ERROR'
+              ? String(err?.message || '').replace(/^VALIDATION_ERROR:\s*/, '')
+              : 'Unable to change customer password.',
+        },
+      });
+    }
+  });
+
+  app.post('/api/auth/customer/deactivate', authRateLimiter, requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
+    try {
+      await authService.deactivateCustomerAccount(
+        req.auth!.userId,
+        String(req.body?.currentPassword || ''),
+      );
+      clearAuthenticationCookies(res);
+      return res.json({
+        success: true,
+        message: 'Customer account has been deactivated.',
+      });
+    } catch (err: any) {
+      const code = String(err?.message || '').split(':')[0];
+      const status = code === 'VALIDATION_ERROR' ? 422 : code === 'INVALID_CURRENT_PASSWORD' ? 401 : 500;
+      return res.status(status).json({
+        success: false,
+        error: {
+          code: code || 'CUSTOMER_ACCOUNT_DEACTIVATION_FAILED',
+          message: code === 'INVALID_CURRENT_PASSWORD'
+            ? 'Current password is incorrect.'
+            : code === 'VALIDATION_ERROR'
+              ? String(err?.message || '').replace(/^VALIDATION_ERROR:\s*/, '')
+              : 'Unable to deactivate customer account.',
+        },
+      });
+    }
   });
 
   app.post('/api/auth/refresh', authRateLimiter, async (req: Request, res: Response) => {
