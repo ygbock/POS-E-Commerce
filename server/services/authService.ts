@@ -217,6 +217,142 @@ export class AuthService {
     return revokeUserSession(this.db, userId, sessionId);
   }
 
+  async getCustomerAccount(userId: string) {
+    const result = await this.db.query<any>(
+      `SELECT id, organization_id, email, name, phone, email_verified_at, is_active, created_at, updated_at
+         FROM users
+        WHERE id=$1 AND role='customer' AND identity_type='customer'
+        LIMIT 1`,
+      [userId],
+    );
+    const user = result.rows[0];
+    if (!user) throw new Error('CUSTOMER_ACCOUNT_NOT_FOUND');
+    return {
+      id: user.id,
+      organizationId: user.organization_id,
+      email: user.email,
+      name: user.name,
+      phone: user.phone || null,
+      emailVerified: Boolean(user.email_verified_at),
+      isActive: Boolean(user.is_active),
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
+    };
+  }
+
+  async updateCustomerAccount(userId: string, input: { name: string; phone?: string | null }) {
+    const name = String(input.name || '').trim();
+    const phone = input.phone == null ? null : String(input.phone).trim() || null;
+    if (name.length < 2 || name.length > 120) {
+      throw new Error('VALIDATION_ERROR: Full name must be between 2 and 120 characters.');
+    }
+    if (phone && phone.length > 40) {
+      throw new Error('VALIDATION_ERROR: Phone number is too long.');
+    }
+
+    const result = await this.db.query<any>(
+      `UPDATE users
+          SET name=$1, phone=$2, updated_at=CURRENT_TIMESTAMP
+        WHERE id=$3 AND role='customer' AND identity_type='customer' AND is_active=TRUE
+        RETURNING id, organization_id, email, name, phone, email_verified_at, is_active, created_at, updated_at`,
+      [name, phone, userId],
+    );
+    if (!result.rows[0]) throw new Error('CUSTOMER_ACCOUNT_NOT_FOUND');
+
+    await new AuditRepository(this.db).recordEvent({
+      organization_id: result.rows[0].organization_id,
+      actor_id: userId,
+      actor_name: result.rows[0].email,
+      actor_role: 'customer',
+      action: 'UPDATE',
+      entity_type: 'CUSTOMER_ACCOUNT',
+      entity_id: userId,
+      metadata: { fields: ['name', 'phone'] },
+      severity: 'Info',
+      result: 'SUCCESS',
+    });
+
+    return this.getCustomerAccount(userId);
+  }
+
+  async changeCustomerPassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    if (!currentPassword || !newPassword || newPassword.length < 12) {
+      throw new Error('VALIDATION_ERROR: Current password and a new password of at least 12 characters are required.');
+    }
+
+    const result = await this.db.query<any>(
+      `SELECT id, organization_id, email, password_hash, password_salt
+         FROM users
+        WHERE id=$1 AND role='customer' AND identity_type='customer' AND is_active=TRUE
+        LIMIT 1`,
+      [userId],
+    );
+    const user = result.rows[0];
+    if (!user || !verifyPassword(currentPassword, user.password_hash, user.password_salt)) {
+      throw new Error('INVALID_CURRENT_PASSWORD');
+    }
+
+    const { hash, salt } = hashPassword(newPassword);
+    await this.db.query(
+      `UPDATE users
+          SET password_hash=$1, password_salt=$2, updated_at=CURRENT_TIMESTAMP
+        WHERE id=$3 AND role='customer' AND identity_type='customer' AND is_active=TRUE`,
+      [hash, salt, userId],
+    );
+
+    await revokeAllUserSessions(this.db, userId, 'password-changed');
+
+    await new AuditRepository(this.db).recordEvent({
+      organization_id: user.organization_id,
+      actor_id: userId,
+      actor_name: user.email,
+      actor_role: 'customer',
+      action: 'password_changed',
+      entity_type: 'CUSTOMER_ACCOUNT',
+      entity_id: userId,
+      metadata: { sessionsRevoked: true },
+      severity: 'Info',
+      result: 'SUCCESS',
+    });
+  }
+
+  async deactivateCustomerAccount(userId: string, currentPassword: string): Promise<void> {
+    if (!currentPassword) throw new Error('VALIDATION_ERROR: Current password is required.');
+
+    const result = await this.db.query<any>(
+      `SELECT id, organization_id, email, password_hash, password_salt
+         FROM users
+        WHERE id=$1 AND role='customer' AND identity_type='customer' AND is_active=TRUE
+        LIMIT 1`,
+      [userId],
+    );
+    const user = result.rows[0];
+    if (!user || !verifyPassword(currentPassword, user.password_hash, user.password_salt)) {
+      throw new Error('INVALID_CURRENT_PASSWORD');
+    }
+
+    await this.db.query(
+      `UPDATE users
+          SET is_active=FALSE, updated_at=CURRENT_TIMESTAMP
+        WHERE id=$1 AND role='customer' AND identity_type='customer' AND is_active=TRUE`,
+      [userId],
+    );
+    await revokeAllUserSessions(this.db, userId, 'customer-account-deactivated');
+
+    await new AuditRepository(this.db).recordEvent({
+      organization_id: user.organization_id,
+      actor_id: userId,
+      actor_name: user.email,
+      actor_role: 'customer',
+      action: 'customer_account_deactivated',
+      entity_type: 'CUSTOMER_ACCOUNT',
+      entity_id: userId,
+      metadata: { sessionsRevoked: true },
+      severity: 'Info',
+      result: 'SUCCESS',
+    });
+  }
+
   async registerBusinessOwner(input: {
     name: string;
     email: string;
