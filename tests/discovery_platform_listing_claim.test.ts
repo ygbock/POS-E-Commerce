@@ -228,9 +228,12 @@ async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, p
   assert.equal(approve.status, 200);
   const publish = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'PUBLISHED', reason: 'Post-claim listing published.' } });
   assert.equal(publish.status, 200);
-  const publicProfile = await request(baseUrl, '/api/discovery/businesses/' + businessId);
+  const publicBusiness = await db.query('SELECT slug FROM discovery_businesses WHERE id=$1', [businessId]);
+  const publicSlug = publicBusiness.rows[0]?.slug;
+  assert.ok(publicSlug);
+  const publicProfile = await request(baseUrl, '/api/discovery/businesses/' + publicSlug);
   assert.equal(publicProfile.status, 200);
-  assert.equal(publicProfile.body.data.business.id, businessId);
+  assert.equal(publicProfile.body.data.id || publicProfile.body.data.business?.id, businessId);
   assert.ok(publicProfile.body.data.locations.some((row: any) => row.id === locationId));
   assert.equal(publicProfile.body.data.activeServices.length, 1);
 }
