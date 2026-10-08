@@ -1895,7 +1895,14 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses/:id/claims', requireAuth(), requireBusinessOwnerIdentity(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    if(b.listing_status==='ARCHIVED')throw new Error('CONFLICT:Archived businesses cannot be claimed.');
+    if(b.listing_status!=='PUBLISHED' || !b.is_discoverable)throw new Error('CONFLICT:Only published, discoverable listings can be claimed.');
+    const existingOwner=await db.query(
+      `SELECT user_id FROM discovery_business_memberships
+        WHERE business_id=$1 AND role='OWNER' AND is_active=TRUE
+        LIMIT 1`,
+      [req.params.id],
+    );
+    if(existingOwner.rows.length>0)throw new Error('CONFLICT:This business listing has already been claimed.');
     const evidence=req.body?.evidence??{};
     if(evidence===null||typeof evidence!=='object'||Array.isArray(evidence))throw new Error('VALIDATION_ERROR:evidence must be an object.');
     if(Buffer.byteLength(JSON.stringify(evidence),'utf8')>16384)throw new Error('VALIDATION_ERROR:evidence exceeds 16384 bytes.');
