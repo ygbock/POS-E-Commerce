@@ -88,12 +88,13 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
   const readinessPercent = requiredItems.length ? Math.round((readyCount / requiredItems.length) * 100) : 0;
 
   const canResubmit = business.listing_status === 'REJECTED' && Boolean(workspace?.readiness.ready);
-  const canSubmit = business.listing_status === 'DRAFT' && Boolean(workspace?.readiness.ready);
+  const canSubmit = (business.listing_status === 'DRAFT' || business.listing_status === 'PUBLISHED') && Boolean(workspace?.readiness.ready);
   const canPublish = business.listing_status === 'APPROVED';
 
   const actionLabel = useMemo(() => {
     if (business.listing_status === 'REJECTED') return canResubmit ? 'Resubmit for review' : 'Complete required fixes';
     if (business.listing_status === 'DRAFT') return canSubmit ? 'Submit for review' : 'Complete readiness checklist';
+    if (business.listing_status === 'PUBLISHED') return canSubmit ? 'Submit updated listing for review' : 'Complete readiness checklist';
     if (business.listing_status === 'APPROVED') return 'Publish approved listing';
     return statusCopy[business.listing_status] || business.listing_status;
   }, [business.listing_status, canResubmit, canSubmit]);
@@ -779,7 +780,9 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
                   ? 'Moderation approved this listing. Publish it to make the business visible in Discovery.'
                   : canResubmit
                     ? 'All corrections have been made. Ready to submit to compliance audit.'
-                    : 'Great job! Your profile meets all readiness conditions and is ready for platform intake.'}
+                    : business.listing_status === 'PUBLISHED'
+                      ? 'You updated a live listing. Submit the updated profile for platform review; it will be temporarily hidden while the review is active.'
+                      : 'Great job! Your profile meets all readiness conditions and is ready for platform intake.'}
               </div>
             </div>
             <button
@@ -793,7 +796,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
               ) : (
                 <RotateCcw className="w-4 h-4" />
               )}
-              <span>{canPublish ? 'Publish Listing' : canResubmit ? 'Resubmit Certification' : 'Submit for Review'}</span>
+              <span>{canPublish ? 'Publish Listing' : canResubmit ? 'Resubmit Certification' : business.listing_status === 'PUBLISHED' ? 'Submit Updated Listing' : 'Submit for Review'}</span>
             </button>
           </div>
         </section>
