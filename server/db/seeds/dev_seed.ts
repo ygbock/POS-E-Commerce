@@ -8,6 +8,7 @@
  * - Execution in production environment (NODE_ENV === 'production') throws a fatal security error immediately.
  */
 
+import 'dotenv/config';
 import { getDatabaseClient } from '../client';
 import { AuthService } from '../../services/authService';
 
