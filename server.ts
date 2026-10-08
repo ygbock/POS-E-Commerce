@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { setAuthenticationCookies, clearAuthenticationCookies, readCookie } from './server/auth/sessionCookies';
 import { REFRESH_COOKIE } from './server/auth/session';
 import express, { Request, Response, NextFunction } from 'express';
