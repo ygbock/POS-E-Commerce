@@ -38,6 +38,7 @@ assert.match(routes,/WHERE f\.user_id=\$1/);
 assert.match(routes,/WHERE i\.customer_user_id=\$1/);
 assert.match(routes,/WHERE c\.claimant_user_id=\$1/);
 assert.match(routes,/router\.get\('\/favorites', requireAuth\(\), requireCustomerIdentity\(\)/);
+assert.match(routes,/router\.get\('\/my-claims', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.post\('\/service-requests', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.get\('\/service-requests', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.get\('\/service-requests\/:id', requireAuth\(\), requireCustomerIdentity\(\)/);
@@ -46,5 +47,6 @@ assert.match(routes,/router\.post\('\/service-requests\/:id\/quotes\/:quoteId\/a
 assert.match(routes,/router\.post\('\/service-requests\/:id\/quotes\/:quoteId\/decline', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.post\('\/businesses\/:id\/reviews', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.get\('\/contact-inquiries', requireAuth\(\), requireCustomerIdentity\(\)/);
+assert.match(routes,/router\.post\('\/businesses\/:id\/claims', requireAuth\(\), requireCustomerIdentity\(\)/);
 
 console.log('Discovery PAGE-008 customer workspace contract tests passed.');
