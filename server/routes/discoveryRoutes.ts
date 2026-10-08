@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
-import { requireAuth, requireTenantAccess, requireCustomerIdentity } from '../middleware/auth.ts';
+import { requireAuth, requireTenantAccess, requireCustomerIdentity, requireBusinessOwnerIdentity } from '../middleware/auth.ts'
 import { createRateLimiter } from '../middleware/rateLimiter.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
@@ -466,7 +466,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     } catch (err) { next(err); }
   });
 
-  router.post('/businesses', requireAuth(), async (req, res, next) => {
+  router.post('/businesses', requireAuth(), requireBusinessOwnerIdentity(), async (req, res, next) => {
     try {
       const organizationId = req.body?.organizationId === undefined ? req.auth!.organizationId : String(req.body.organizationId || '');
       if (req.auth!.role !== 'super_admin' && organizationId !== req.auth!.organizationId) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant discovery business creation forbidden.' } });

@@ -39,6 +39,7 @@ assert.match(routes,/WHERE i\.customer_user_id=\$1/);
 assert.match(routes,/WHERE c\.claimant_user_id=\$1/);
 assert.match(routes,/router\.get\('\/favorites', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.get\('\/my-claims', requireAuth\(\), requireCustomerIdentity\(\)/);
+assert.match(routes,/router\.post\('\/businesses', requireAuth\(\), requireBusinessOwnerIdentity\(\)/);
 assert.match(routes,/identityType === 'customer' \|\| req\.auth!\.role === 'customer'/);
 assert.match(routes,/router\.post\('\/service-requests', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.get\('\/service-requests', requireAuth\(\), requireCustomerIdentity\(\)/);
