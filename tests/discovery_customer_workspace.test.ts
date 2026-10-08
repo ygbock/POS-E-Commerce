@@ -49,7 +49,7 @@ assert.match(routes,/router\.post\('\/service-requests\/:id\/quotes\/:quoteId\/a
 assert.match(routes,/router\.post\('\/service-requests\/:id\/quotes\/:quoteId\/decline', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.post\('\/businesses\/:id\/reviews', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.get\('\/contact-inquiries', requireAuth\(\), requireCustomerIdentity\(\)/);
-assert.match(routes,/router\.post\('\/businesses\/:id\/claims', requireAuth\(\), requireCustomerIdentity\(\)/);
+assert.match(routes,/router\.post\('\/businesses\/:id\/claims', requireAuth\(\), requireBusinessOwnerIdentity\(\)/);
 assert.match(routes,/router\.post\('\/reports', discoveryReportRateLimiter/);
 assert.match(routes,/exactly one of businessId or serviceId is required/);
 assert.match(routes,/reasonCode exceeds 64 characters/);
