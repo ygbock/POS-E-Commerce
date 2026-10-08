@@ -49,6 +49,11 @@ assert.match(routes,/router\.post\('\/service-requests\/:id\/quotes\/:quoteId\/d
 assert.match(routes,/router\.post\('\/businesses\/:id\/reviews', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.get\('\/contact-inquiries', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.post\('\/businesses\/:id\/claims', requireAuth\(\), requireCustomerIdentity\(\)/);
+assert.match(routes,/router\.post\('\/reports', discoveryReportRateLimiter/);
+assert.match(routes,/exactly one of businessId or serviceId is required/);
+assert.match(routes,/reasonCode exceeds 64 characters/);
+assert.match(routes,/description exceeds 4000 characters/);
+assert.match(routes,/Report target not found/);
 
 console.log('Discovery PAGE-008 customer workspace contract tests passed.');
 

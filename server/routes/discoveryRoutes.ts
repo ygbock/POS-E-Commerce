@@ -16,6 +16,7 @@ const ANALYTICS_EVENTS = new Set(['SEARCH','IMPRESSION','VIEW','CONTACT','DIRECT
 const SEARCH_ATTRIBUTION_EVENTS = new Set(['IMPRESSION','VIEW','CONTACT','DIRECTION_CLICK','STORE_CLICK','PRODUCT_VIEW','SERVICE_VIEW','SERVICE_REQUEST','ORDER_CLICK']);
 const discoverySearchRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 120, message: 'Too many discovery search requests. Please slow down and try again shortly.' });
 const discoveryAttributionRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 180, message: 'Too many discovery attribution events. Please slow down and try again shortly.' });
+const discoveryReportRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 10, message: 'Too many discovery reports. Please try again later.' });
 const DISCOVERY_PUBLIC_PAGE_SIZE = 100;
 const DISCOVERY_MAX_OFFSET = 10000;
 const DISCOVERY_SESSION_COOKIE = 'discovery_sid';
@@ -1907,7 +1908,22 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.get('/businesses/:id/reviews', async(req,res,next)=>{try{const b=await businessService.getPublicProfile(req.params.id);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});if(!b.settings.allow_reviews)return res.json({success:true,summary:{rating:'0.00',count:0},data:[]});const r=await db.query(`SELECT r.id,r.reviewer_name,r.rating,r.title,r.body,r.verified_purchase,r.created_at,rr.response AS merchant_response,rr.created_at AS merchant_response_created_at FROM discovery_reviews r LEFT JOIN discovery_review_responses rr ON rr.review_id=r.id WHERE business_id=$1 AND status='PUBLISHED' ORDER BY verified_purchase DESC,created_at DESC LIMIT 100`,[req.params.id]);const s=await db.query(`SELECT COALESCE(AVG(rating),0)::numeric(3,2) AS rating,COUNT(*)::int AS count FROM discovery_reviews r WHERE r.business_id=$1 AND r.status='PUBLISHED'`,[req.params.id]);res.json({success:true,summary:s.rows[0],data:r.rows});}catch(err){next(err);}});
 
-  router.post('/reports', async(req,res,next)=>{try{if(!req.body?.businessId&&!req.body?.serviceId)throw new Error('VALIDATION_ERROR:businessId or serviceId is required.');if(!String(req.body?.reasonCode||'').trim())throw new Error('VALIDATION_ERROR:reasonCode is required.');const r=await db.query(`INSERT INTO discovery_reports(id,business_id,service_id,reporter_user_id,reason_code,description) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,status,created_at`,[`report_${randomUUID().replace(/-/g,'')}`,req.body.businessId||null,req.body.serviceId||null,req.auth?.userId||null,String(req.body.reasonCode).trim(),req.body.description||null]);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  router.post('/reports', discoveryReportRateLimiter, async(req,res,next)=>{try{
+    const businessId = req.body?.businessId == null ? null : String(req.body.businessId).trim() || null;
+    const serviceId = req.body?.serviceId == null ? null : String(req.body.serviceId).trim() || null;
+    if ((businessId ? 1 : 0) + (serviceId ? 1 : 0) !== 1) throw new Error('VALIDATION_ERROR:exactly one of businessId or serviceId is required.');
+    const reasonCode = String(req.body?.reasonCode || '').trim();
+    if (!reasonCode) throw new Error('VALIDATION_ERROR:reasonCode is required.');
+    if (reasonCode.length > 64) throw new Error('VALIDATION_ERROR:reasonCode exceeds 64 characters.');
+    const description = req.body?.description == null ? null : String(req.body.description).trim() || null;
+    if (description && description.length > 4000) throw new Error('VALIDATION_ERROR:description exceeds 4000 characters.');
+    const target = businessId
+      ? await db.query('SELECT 1 FROM discovery_businesses WHERE id=$1 LIMIT 1', [businessId])
+      : await db.query('SELECT 1 FROM discovery_services WHERE id=$1 LIMIT 1', [serviceId]);
+    if (!target.rows[0]) throw new Error('NOT_FOUND:Report target not found.');
+    const r=await db.query(`INSERT INTO discovery_reports(id,business_id,service_id,reporter_user_id,reason_code,description) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,status,created_at`,[`report_${randomUUID().replace(/-/g,'')}`,businessId,serviceId,req.auth?.userId||null,reasonCode,description]);
+    res.status(201).json({success:true,data:r.rows[0]});
+  }catch(err){next(err);}});
 
   router.get('/businesses/:id/categories', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req, req.params.id, 'business.listing.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});
