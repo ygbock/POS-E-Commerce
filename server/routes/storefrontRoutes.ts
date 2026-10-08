@@ -6,7 +6,7 @@ import { StorefrontCartService, StorefrontCartValidationError } from '../service
 import { OrderService } from '../services/orderService';
 import { SubscriptionService } from '../services/subscriptionService';
 import { PERMISSIONS } from '../auth/roles';
-import { requireAuth, requirePermission, requireTenantAccess } from '../middleware/auth';
+import { requireAuth, requireCustomerIdentity, requirePermission, requireTenantAccess } from '../middleware/auth';
 
 export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderService, subscriptionService?: SubscriptionService): Router {
   const orders = orderService || new OrderService(undefined, undefined, undefined, undefined, db);
@@ -508,6 +508,19 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
       } : null;
 
       if (req.auth) {
+        // Only a global customer identity may use authenticated checkout. Staff,
+        // business owners, and platform operators must use their own operational
+        // surfaces or guest checkout rather than being materialized as CRM customers.
+        if (req.auth.role !== 'customer' || req.auth.identityType !== 'customer') {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'CUSTOMER_CHECKOUT_REQUIRES_CUSTOMER_ACCOUNT',
+              message: 'A customer account is required for authenticated storefront checkout.',
+            },
+          });
+        }
+
         // Logged-in customer!
         const authUserId = req.auth.userId;
         const orgId = config.tenant.id;
@@ -531,13 +544,25 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
           const email = userInfo?.email || req.auth.email || customerDetails?.email || null;
           const phone = userInfo?.phone || customerDetails?.phone || null;
 
-          await db.query(
+          const materialized = await db.query<any>(
             `INSERT INTO customers (
                id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, auth_user_id, registered_at
-             ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized during storefront checkout', $6, CURRENT_TIMESTAMP)`,
-            [newCustId, orgId, name, email, phone, authUserId]
+             ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized during storefront checkout', $6, CURRENT_TIMESTAMP)
+             ON CONFLICT (organization_id, auth_user_id) WHERE auth_user_id IS NOT NULL DO NOTHING
+             RETURNING id`,
+            [newCustId, orgId, name, email, phone, authUserId],
           );
-          customerId = newCustId;
+          customerId = materialized.rows[0]?.id;
+          if (!customerId) {
+            const existingAfterRace = await db.query<{ id: string }>(
+              `SELECT id FROM customers WHERE organization_id=$1 AND auth_user_id=$2 LIMIT 1`,
+              [orgId, authUserId],
+            );
+            customerId = existingAfterRace.rows[0]?.id || null;
+          }
+          if (!customerId) {
+            throw new Error('CUSTOMER_MATERIALIZATION_FAILED: Unable to resolve customer relationship.');
+          }
         }
 
         // Override/ensure customerDetails has valid info using the resolved customer record details
@@ -713,7 +738,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER PROFILE
   // --------------------------------------------------------------------------
-  router.get('/:tenantSlug/account/profile', requireAuth(), async (req: Request, res: Response) => {
+  router.get('/:tenantSlug/account/profile', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
       // Allow if organization matches OR role is super_admin OR role is customer (global)
@@ -762,10 +787,21 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
           `INSERT INTO customers (
              id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, auth_user_id, registered_at
            ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized from global customer account', $6, CURRENT_TIMESTAMP)
+           ON CONFLICT (organization_id, auth_user_id) WHERE auth_user_id IS NOT NULL DO NOTHING
            RETURNING id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at`,
           [newCustId, orgId, name, email, phone, authUserId]
         );
         customer = insertRes.rows[0];
+        if (!customer) {
+          const existingAfterRace = await db.query<any>(
+            `SELECT id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at
+               FROM customers
+              WHERE organization_id=$1 AND auth_user_id=$2
+              LIMIT 1`,
+            [orgId, authUserId],
+          );
+          customer = existingAfterRace.rows[0];
+        }
       }
 
       // 3. Query customer addresses
@@ -810,7 +846,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER ORDER DETAIL
   // --------------------------------------------------------------------------
-  router.get('/:tenantSlug/account/orders/:orderNumber', requireAuth(), async (req: Request, res: Response) => {
+  router.get('/:tenantSlug/account/orders/:orderNumber', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
       if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin' && req.auth!.role !== 'customer') {
@@ -887,7 +923,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER ORDER HISTORY
   // --------------------------------------------------------------------------
-  router.get('/:tenantSlug/account/orders', requireAuth(), async (req: Request, res: Response) => {
+  router.get('/:tenantSlug/account/orders', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
       if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin' && req.auth!.role !== 'customer') {
