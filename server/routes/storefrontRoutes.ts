@@ -531,13 +531,25 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
           const email = userInfo?.email || req.auth.email || customerDetails?.email || null;
           const phone = userInfo?.phone || customerDetails?.phone || null;
 
-          await db.query(
+          const materialized = await db.query<any>(
             `INSERT INTO customers (
                id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, auth_user_id, registered_at
-             ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized during storefront checkout', $6, CURRENT_TIMESTAMP)`,
-            [newCustId, orgId, name, email, phone, authUserId]
+             ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized during storefront checkout', $6, CURRENT_TIMESTAMP)
+             ON CONFLICT (organization_id, auth_user_id) WHERE auth_user_id IS NOT NULL DO NOTHING
+             RETURNING id`,
+            [newCustId, orgId, name, email, phone, authUserId],
           );
-          customerId = newCustId;
+          customerId = materialized.rows[0]?.id;
+          if (!customerId) {
+            const existingAfterRace = await db.query<{ id: string }>(
+              `SELECT id FROM customers WHERE organization_id=$1 AND auth_user_id=$2 LIMIT 1`,
+              [orgId, authUserId],
+            );
+            customerId = existingAfterRace.rows[0]?.id || null;
+          }
+          if (!customerId) {
+            throw new Error('CUSTOMER_MATERIALIZATION_FAILED: Unable to resolve customer relationship.');
+          }
         }
 
         // Override/ensure customerDetails has valid info using the resolved customer record details
@@ -762,10 +774,21 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
           `INSERT INTO customers (
              id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, auth_user_id, registered_at
            ) VALUES ($1, $2, $3, $4, $5, 'Bronze', 0, 0.00, 0.00, 'Retail', 'Materialized from global customer account', $6, CURRENT_TIMESTAMP)
+           ON CONFLICT (organization_id, auth_user_id) WHERE auth_user_id IS NOT NULL DO NOTHING
            RETURNING id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at`,
           [newCustId, orgId, name, email, phone, authUserId]
         );
         customer = insertRes.rows[0];
+        if (!customer) {
+          const existingAfterRace = await db.query<any>(
+            `SELECT id, organization_id, name, email, phone, tier, loyalty_points, store_credit_balance, credit_limit, customer_group, notes, registered_at
+               FROM customers
+              WHERE organization_id=$1 AND auth_user_id=$2
+              LIMIT 1`,
+            [orgId, authUserId],
+          );
+          customer = existingAfterRace.rows[0];
+        }
       }
 
       // 3. Query customer addresses
