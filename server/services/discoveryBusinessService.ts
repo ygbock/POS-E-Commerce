@@ -668,7 +668,7 @@ export class DiscoveryBusinessService {
     // Backward-compatible authorization for platform/tenant administrators and
     // legacy discovery-only creators that predate scoped memberships.
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
-    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'business_owner'].includes(actor.role)) return;
+    // Business owners must always have an explicit active membership. Never infer Discovery ownership from shared organization membership.
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 
