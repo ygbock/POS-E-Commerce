@@ -99,12 +99,21 @@ async function main() {
     );
     assert.equal(membershipBefore.rows.length, 0);
 
+    const review = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
+      method: 'POST',
+      token: platformToken,
+      body: { status: 'UNDER_REVIEW', reason: 'Platform-created listing submitted for moderation.' },
+    });
+    assert.equal(review.status, 200);
+    assert.equal(review.body.data.listing_status, 'UNDER_REVIEW');
+
     const approve = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
       token: platformToken,
       body: { status: 'APPROVED', reason: 'Platform-created listing approved.' },
     });
     assert.equal(approve.status, 200);
+    assert.equal(approve.body.data.listing_status, 'APPROVED');
 
     const publish = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
