@@ -200,6 +200,74 @@ class AuthClient {
     return data.data.user;
   }
 
+  async getCustomerAccount(): Promise<{
+    id: string;
+    organizationId: string;
+    email: string;
+    name: string;
+    phone: string | null;
+    emailVerified: boolean;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    const res = await fetch('/api/auth/customer/account', this.getRequestInit({
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to load customer account.');
+    return data.data;
+  }
+
+  async updateCustomerAccount(input: { name: string; phone?: string | null }) {
+    const res = await fetch('/api/auth/customer/account', this.getRequestInit({
+      method: 'PATCH',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(input),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to update customer account.');
+    this.currentUser = {
+      ...(this.currentUser || {}),
+      id: data.data.id,
+      organizationId: data.data.organizationId,
+      email: data.data.email,
+      name: data.data.name,
+      role: 'customer',
+      identityType: 'customer',
+      permissions: [],
+    } as AuthUser;
+    if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(this.currentUser));
+    return data.data;
+  }
+
+  async changeCustomerPassword(currentPassword: string, newPassword: string): Promise<void> {
+    const res = await fetch('/api/auth/customer/change-password', this.getRequestInit({
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to change customer password.');
+    this.currentToken = null;
+    this.currentUser = null;
+    if (typeof window !== 'undefined') localStorage.removeItem(USER_KEY);
+  }
+
+  async deactivateCustomerAccount(currentPassword: string): Promise<void> {
+    const res = await fetch('/api/auth/customer/deactivate', this.getRequestInit({
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ currentPassword }),
+    }));
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to deactivate customer account.');
+    this.currentToken = null;
+    this.currentUser = null;
+    if (typeof window !== 'undefined') localStorage.removeItem(USER_KEY);
+  }
+
   async forgotPassword(email: string, organizationId?: string): Promise<{ success: boolean; message: string }> {
     const res = await fetch('/api/auth/forgot-password', this.getRequestInit({
       method: 'POST',
