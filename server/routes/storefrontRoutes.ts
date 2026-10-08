@@ -6,7 +6,7 @@ import { StorefrontCartService, StorefrontCartValidationError } from '../service
 import { OrderService } from '../services/orderService';
 import { SubscriptionService } from '../services/subscriptionService';
 import { PERMISSIONS } from '../auth/roles';
-import { requireAuth, requirePermission, requireTenantAccess } from '../middleware/auth';
+import { requireAuth, requireCustomerIdentity, requirePermission, requireTenantAccess } from '../middleware/auth';
 
 export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderService, subscriptionService?: SubscriptionService): Router {
   const orders = orderService || new OrderService(undefined, undefined, undefined, undefined, db);
@@ -713,7 +713,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER PROFILE
   // --------------------------------------------------------------------------
-  router.get('/:tenantSlug/account/profile', requireAuth(), async (req: Request, res: Response) => {
+  router.get('/:tenantSlug/account/profile', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
       // Allow if organization matches OR role is super_admin OR role is customer (global)
@@ -810,7 +810,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER ORDER DETAIL
   // --------------------------------------------------------------------------
-  router.get('/:tenantSlug/account/orders/:orderNumber', requireAuth(), async (req: Request, res: Response) => {
+  router.get('/:tenantSlug/account/orders/:orderNumber', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
       if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin' && req.auth!.role !== 'customer') {
@@ -887,7 +887,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
   // --------------------------------------------------------------------------
   // 5. AUTHENTICATED CUSTOMER ORDER HISTORY
   // --------------------------------------------------------------------------
-  router.get('/:tenantSlug/account/orders', requireAuth(), async (req: Request, res: Response) => {
+  router.get('/:tenantSlug/account/orders', requireAuth(), requireCustomerIdentity(), async (req: Request, res: Response) => {
     try {
       const config = await resolveStorefrontTenant(req, db, { explicitSlug: req.params.tenantSlug });
       if (req.auth!.organizationId !== config.tenant.id && req.auth!.role !== 'super_admin' && req.auth!.role !== 'customer') {
