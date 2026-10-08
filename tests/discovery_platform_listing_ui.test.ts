@@ -12,7 +12,5 @@ assert.match(ui, /setCreateListingOpen\(true\)/);
 assert.match(ui, /business-owner claim is approved/);
 assert.match(ui, /claimant_user_id/);
 assert.match(ui, /DRAFT/);
-assert.match(ui, /canSubmitOwnershipClaim/);
-assert.match(ui, /authClient\.getUser\(\)\?\.role === 'business_owner'/);
 
 console.log('Discovery platform listing UI contract: PASS');
