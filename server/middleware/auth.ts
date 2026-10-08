@@ -152,6 +152,35 @@ export function requireVerifiedEmail(db: DatabaseClient, ...identityTypes: AuthI
  * Customer identity is server-authoritative; business/staff/platform users must
  * never materialize or read a tenant CRM customer through customer account routes.
  */
+/**
+ * Middleware: Enforce business-owner identity for Discovery business management.
+ * Business ownership is a server-authoritative identity boundary; role alone is
+ * insufficient because tenant staff and other realms must not enter this flow.
+ */
+export function requireBusinessOwnerIdentity() {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.auth) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required.' },
+      });
+    }
+
+    const identityType = req.auth.identityType || getIdentityTypeForRole(req.auth.role);
+    if (identityType !== 'business_owner' || req.auth.role !== 'business_owner') {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'BUSINESS_OWNER_ACCESS_REQUIRED',
+          message: 'Business-owner access is required.',
+        },
+      });
+    }
+
+    next();
+  };
+}
+
 export function requireCustomerIdentity() {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
