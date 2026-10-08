@@ -57,29 +57,80 @@ export const DiscoveryHoursEditor: React.FC<DiscoveryHoursEditorProps> = ({
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load locations
+  // Keep the selected branch synchronized with navigation from the Locations panel.
+  useEffect(() => {
+    if (initialLocationId) setSelectedLocationId(initialLocationId);
+  }, [initialLocationId]);
+
+  // Load locations and the server-authoritative saved schedule.
   useEffect(() => {
     let mounted = true;
-    const fetchLocs = async () => {
+    const fetchData = async () => {
+      setLoadingLocations(true);
+      setError(null);
       try {
-        const locs = await discoveryApi.getBusinessLocations(business.id);
+        const [locs, hours] = await Promise.all([
+          discoveryApi.getBusinessLocations(business.id),
+          discoveryApi.getBusinessHours(business.id),
+        ]);
         if (!mounted) return;
         setLocations(locs);
-        if (locs.length > 0 && !selectedLocationId) {
-          const primary = locs.find((l) => l.is_primary) || locs[0];
-          setSelectedLocationId(primary.id);
+        const preferredLocationId = initialLocationId && locs.some((loc) => loc.id === initialLocationId)
+          ? initialLocationId
+          : selectedLocationId && locs.some((loc) => loc.id === selectedLocationId)
+            ? selectedLocationId
+            : (locs.find((l) => l.is_primary) || locs[0])?.id || '';
+        setSelectedLocationId(preferredLocationId);
+
+        if (preferredLocationId) {
+          const saved = hours.filter((row) => row.location_id === preferredLocationId);
+          if (saved.length > 0) {
+            setSchedule(DAYS.map((day) => {
+              const row = saved.find((item) => Number(item.day_of_week) === day.dayOfWeek);
+              return {
+                dayOfWeek: day.dayOfWeek,
+                isClosed: row?.is_closed ?? true,
+                opensAt: row?.opens_at?.slice(0, 5) || '08:30',
+                closesAt: row?.closes_at?.slice(0, 5) || '18:00',
+              };
+            }));
+          }
         }
       } catch (err) {
-        console.error('Failed to load locations', err);
+        if (mounted) setError(err instanceof DiscoveryApiError ? err.message : 'Failed to load business hours.');
       } finally {
         if (mounted) setLoadingLocations(false);
       }
     };
-    void fetchLocs();
+    void fetchData();
     return () => {
       mounted = false;
     };
-  }, [business.id]);
+  }, [business.id, initialLocationId]);
+
+  // When the owner switches branches, load that branch's saved hours instead of
+  // carrying over the previous branch's schedule.
+  useEffect(() => {
+    if (!selectedLocationId) return;
+    let mounted = true;
+    void discoveryApi.getBusinessHours(business.id)
+      .then((hours) => {
+        if (!mounted) return;
+        const saved = hours.filter((row) => row.location_id === selectedLocationId);
+        if (saved.length === 0) return;
+        setSchedule(DAYS.map((day) => {
+          const row = saved.find((item) => Number(item.day_of_week) === day.dayOfWeek);
+          return {
+            dayOfWeek: day.dayOfWeek,
+            isClosed: row?.is_closed ?? true,
+            opensAt: row?.opens_at?.slice(0, 5) || '08:30',
+            closesAt: row?.closes_at?.slice(0, 5) || '18:00',
+          };
+        }));
+      })
+      .catch(() => undefined);
+    return () => { mounted = false; };
+  }, [business.id, selectedLocationId]);
 
   const handleToggleClosed = (dayOfWeek: number) => {
     setSchedule((prev) =>
