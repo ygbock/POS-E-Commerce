@@ -622,6 +622,10 @@ async function main() {
       process.env.NODE_ENV = 'production';
       process.env.DATABASE_URL = 'postgresql://localhost:5432/abacha';
       process.env.JWT_SECRET = 'SuperSecretCryptographicallySecure32Chars!';
+      process.env.MFA_ENCRYPTION_KEY = 'a'.repeat(64);
+      process.env.PASSWORD_RESET_URL = 'https://example.com';
+      process.env.EMAIL_VERIFICATION_DELIVERY_CONFIGURED = 'true';
+      process.env.PASSWORD_RESET_DELIVERY_CONFIGURED = 'true';
 
       const testDb = await createIsolatedTestClient();
       const { app } = await createApp({ db: testDb });
@@ -901,6 +905,14 @@ async function main() {
     await runTest('9.1. /api/health and /api/version expose sanitized revision identity without secrets', async () => {
       const testSha = '9ae4b7528aecd195a9167e1b2a060513cbf83223';
       process.env.GIT_COMMIT_SHA = testSha;
+      process.env.NODE_ENV = 'production';
+      process.env.DEPLOY_ENV = 'production';
+      process.env.DATABASE_URL = 'postgresql://localhost:5432/abacha';
+      process.env.JWT_SECRET = 'SuperSecretCryptographicallySecure32Chars!';
+      process.env.MFA_ENCRYPTION_KEY = 'a'.repeat(64);
+      process.env.PASSWORD_RESET_URL = 'https://example.com';
+      process.env.EMAIL_VERIFICATION_DELIVERY_CONFIGURED = 'true';
+      process.env.PASSWORD_RESET_DELIVERY_CONFIGURED = 'true';
 
       const testDb = await createIsolatedTestClient();
       await runMigrations(testDb);
