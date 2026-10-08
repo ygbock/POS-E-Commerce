@@ -508,6 +508,19 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
       } : null;
 
       if (req.auth) {
+        // Only a global customer identity may use authenticated checkout. Staff,
+        // business owners, and platform operators must use their own operational
+        // surfaces or guest checkout rather than being materialized as CRM customers.
+        if (req.auth.role !== 'customer' || req.auth.identityType !== 'customer') {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'CUSTOMER_CHECKOUT_REQUIRES_CUSTOMER_ACCOUNT',
+              message: 'A customer account is required for authenticated storefront checkout.',
+            },
+          });
+        }
+
         // Logged-in customer!
         const authUserId = req.auth.userId;
         const orgId = config.tenant.id;
