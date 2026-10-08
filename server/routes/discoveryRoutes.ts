@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseClient } from '../db/client.ts';
-import { requireAuth, requireTenantAccess } from '../middleware/auth.ts';
+import { requireAuth, requireTenantAccess, requireCustomerIdentity } from '../middleware/auth.ts';
 import { createRateLimiter } from '../middleware/rateLimiter.ts';
 import { DiscoveryBusinessRepository } from '../repositories/discoveryBusinessRepository.ts';
 import { DiscoveryBusinessService } from '../services/discoveryBusinessService.ts';
@@ -408,7 +408,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     } catch (err) { next(err); }
   });
 
-  router.get('/favorites', requireAuth(), async (req,res,next)=>{try{
+  router.get('/favorites', requireAuth(), requireCustomerIdentity(), async (req,res,next)=>{try{
     const r=await db.query(
       `SELECT f.id AS favorite_id,f.created_at AS favorited_at,b.*
        FROM discovery_business_favorites f
@@ -426,14 +426,14 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:r.rows});
   }catch(err){next(err);}});
 
-  router.get('/businesses/:id/favorite', requireAuth(), async (req,res,next)=>{try{
+  router.get('/businesses/:id/favorite', requireAuth(), requireCustomerIdentity(), async (req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b || b.listing_status!=='PUBLISHED' || !b.is_discoverable) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
     const r=await db.query('SELECT 1 FROM discovery_business_favorites WHERE business_id=$1 AND user_id=$2',[req.params.id,req.auth!.userId]);
     res.json({success:true,data:{businessId:req.params.id,isFavorite:r.rows.length>0}});
   }catch(err){next(err);}});
 
-  router.post('/businesses/:id/favorite', requireAuth(), async (req,res,next)=>{try{
+  router.post('/businesses/:id/favorite', requireAuth(), requireCustomerIdentity(), async (req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b || b.listing_status!=='PUBLISHED' || !b.is_discoverable) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
     if(b.organization_id){
@@ -447,7 +447,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(201).json({success:true,data:{businessId:req.params.id,isFavorite:true}});
   }catch(err){next(err);}});
 
-  router.delete('/businesses/:id/favorite', requireAuth(), async (req,res,next)=>{try{
+  router.delete('/businesses/:id/favorite', requireAuth(), requireCustomerIdentity(), async (req,res,next)=>{try{
     await db.query('DELETE FROM discovery_business_favorites WHERE business_id=$1 AND user_id=$2',[req.params.id,req.auth!.userId]);
     res.json({success:true,data:{businessId:req.params.id,isFavorite:false}});
   }catch(err){next(err);}});
@@ -1317,7 +1317,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data});
   }catch(err){next(err);}});
 
-  router.get('/contact-inquiries', requireAuth(), async(req,res,next)=>{try{
+  router.get('/contact-inquiries', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     const status=String(req.query.status||'');
     if(status && !['OPEN','READ','RESPONDED','CLOSED'].includes(status)) throw new Error('VALIDATION_ERROR:invalid contact inquiry status.');
     const r=await db.query(
@@ -1406,7 +1406,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     });
   };
 
-  router.post('/service-requests', requireAuth(), async(req,res,next)=>{try{
+  router.post('/service-requests', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     const x=req.body||{};
     const customerName=String(x.customerName||'').trim();
     const description=String(x.description||'').trim();
@@ -1523,7 +1523,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(201).json({success:true,data});
   }catch(err){next(err);} });
 
-  router.get('/service-requests', requireAuth(), async(req,res,next)=>{try{
+  router.get('/service-requests', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     const status=String(req.query.status||'');
     const r=await db.query(
       `SELECT id,customer_name,customer_phone,customer_email,description,city,district,region,preferred_date,budget_from,budget_to,status,created_at,updated_at
@@ -1536,7 +1536,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:r.rows});
   }catch(err){next(err);} });
 
-  router.get('/service-requests/:id', requireAuth(), async(req,res,next)=>{try{
+  router.get('/service-requests/:id', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     // Keep the customer detail read to a single database round-trip. This matters
     // for the concurrent request-detail workload because embedded PGlite serializes
     // database access through one mutex; three sequential queries amplify queue time.
@@ -1657,7 +1657,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     );
     res.json({success:true,data:{...r.rows[0],quotes:quotes.rows,events:events.rows}});
   }catch(err){next(err);}});
-  router.post('/service-requests/:id/cancel', requireAuth(), async(req,res,next)=>{try{
+  router.post('/service-requests/:id/cancel', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     const current=await db.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.auth!.userId]);
     if(!current.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found.'}});
     const data=await transitionRequest(req.params.id,'CANCELLED',req.auth!.userId,req.body?.reason||'Cancelled by customer.');
@@ -1834,7 +1834,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(201).json({success:true,data:result});
   }catch(err){next(err);} });
 
-  router.post('/service-requests/:id/quotes/:quoteId/accept', requireAuth(), async(req,res,next)=>{try{
+  router.post('/service-requests/:id/quotes/:quoteId/accept', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     const result=await db.withTransaction(async(tx)=>{
       const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2 FOR UPDATE',[req.params.id,req.auth!.userId]);
       if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
@@ -1861,7 +1861,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:result.request,quote:result.quote});
   }catch(err){next(err);} });
 
-  router.post('/service-requests/:id/quotes/:quoteId/decline', requireAuth(), async(req,res,next)=>{try{
+  router.post('/service-requests/:id/quotes/:quoteId/decline', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{
     const result=await db.withTransaction(async(tx)=>{
       const request=await tx.query('SELECT * FROM discovery_service_requests WHERE id=$1 AND customer_user_id=$2 FOR UPDATE',[req.params.id,req.auth!.userId]);
       if(!request.rows[0])throw new Error('NOT_FOUND:Service request not found.');
@@ -1912,7 +1912,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(201).json({success:true,data:r.rows[0]});
   }catch(err){next(err);}});
 
-  router.post('/businesses/:id/reviews', requireAuth(), async(req,res,next)=>{try{const rating=Number(req.body?.rating);if(!Number.isInteger(rating)||rating<1||rating>5)throw new Error('VALIDATION_ERROR:rating must be an integer from 1 to 5.');const b=await repo.findById(req.params.id);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});let verified=false;const orderId=req.body?.orderId?String(req.body.orderId):null;if(orderId&&b.organization_id){const o=await db.query(`SELECT o.id FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1 AND o.organization_id=$2 AND c.organization_id=$2 AND c.auth_user_id=$3 AND o.status IN ('Delivered','Completed')`,[orderId,b.organization_id,req.auth!.userId]);verified=o.rows.length>0;}const r=await db.query(`INSERT INTO discovery_reviews(id,business_id,reviewer_user_id,reviewer_name,rating,title,body,order_id,verified_purchase,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING') RETURNING *`,[`rev_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,String(req.body?.reviewerName||req.auth!.email||req.auth!.userId),rating,req.body?.title||null,req.body?.body||null,verified?orderId:null,verified]);await trustEvent(req.params.id,'REVIEW',r.rows[0].id,'REVIEW_SUBMITTED',req.auth!.userId,null,'PENDING',null,{verifiedPurchase:verified});res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  router.post('/businesses/:id/reviews', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{const rating=Number(req.body?.rating);if(!Number.isInteger(rating)||rating<1||rating>5)throw new Error('VALIDATION_ERROR:rating must be an integer from 1 to 5.');const b=await repo.findById(req.params.id);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});let verified=false;const orderId=req.body?.orderId?String(req.body.orderId):null;if(orderId&&b.organization_id){const o=await db.query(`SELECT o.id FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1 AND o.organization_id=$2 AND c.organization_id=$2 AND c.auth_user_id=$3 AND o.status IN ('Delivered','Completed')`,[orderId,b.organization_id,req.auth!.userId]);verified=o.rows.length>0;}const r=await db.query(`INSERT INTO discovery_reviews(id,business_id,reviewer_user_id,reviewer_name,rating,title,body,order_id,verified_purchase,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING') RETURNING *`,[`rev_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,String(req.body?.reviewerName||req.auth!.email||req.auth!.userId),rating,req.body?.title||null,req.body?.body||null,verified?orderId:null,verified]);await trustEvent(req.params.id,'REVIEW',r.rows[0].id,'REVIEW_SUBMITTED',req.auth!.userId,null,'PENDING',null,{verifiedPurchase:verified});res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
   router.get('/businesses/:id/reviews', async(req,res,next)=>{try{const b=await businessService.getPublicProfile(req.params.id);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});if(!b.settings.allow_reviews)return res.json({success:true,summary:{rating:'0.00',count:0},data:[]});const r=await db.query(`SELECT r.id,r.reviewer_name,r.rating,r.title,r.body,r.verified_purchase,r.created_at,rr.response AS merchant_response,rr.created_at AS merchant_response_created_at FROM discovery_reviews r LEFT JOIN discovery_review_responses rr ON rr.review_id=r.id WHERE business_id=$1 AND status='PUBLISHED' ORDER BY verified_purchase DESC,created_at DESC LIMIT 100`,[req.params.id]);const s=await db.query(`SELECT COALESCE(AVG(rating),0)::numeric(3,2) AS rating,COUNT(*)::int AS count FROM discovery_reviews r WHERE r.business_id=$1 AND r.status='PUBLISHED'`,[req.params.id]);res.json({success:true,summary:s.rows[0],data:r.rows});}catch(err){next(err);}});
 
