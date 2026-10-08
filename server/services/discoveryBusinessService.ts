@@ -56,7 +56,7 @@ const TRANSITIONS: Record<DiscoveryListingStatus, DiscoveryListingStatus[]> = {
   SUBMITTED: ['UNDER_REVIEW', 'REJECTED', 'ARCHIVED'],
   UNDER_REVIEW: ['APPROVED', 'REJECTED', 'ARCHIVED'],
   APPROVED: ['PUBLISHED', 'PAUSED', 'ARCHIVED'],
-  PUBLISHED: ['PAUSED', 'SUSPENDED', 'ARCHIVED'],
+  PUBLISHED: ['SUBMITTED', 'PAUSED', 'SUSPENDED', 'ARCHIVED'],
   REJECTED: ['DRAFT', 'ARCHIVED'],
   PAUSED: ['PUBLISHED', 'ARCHIVED'],
   SUSPENDED: ['UNDER_REVIEW', 'ARCHIVED'],
@@ -611,6 +611,10 @@ export class DiscoveryBusinessService {
         patch.is_discoverable = true;
         patch.published_at = new Date().toISOString();
         patch.suspended_at = null;
+      } else if (toStatus === 'SUBMITTED') {
+        // Re-review of an already-published listing is an owner-initiated
+        // moderation cycle. Hide the listing while the updated data is reviewed.
+        patch.is_discoverable = false;
       } else if (toStatus === 'SUSPENDED' || toStatus === 'PAUSED' || toStatus === 'ARCHIVED') {
         patch.is_discoverable = false;
         if (toStatus === 'SUSPENDED') patch.suspended_at = new Date().toISOString();
