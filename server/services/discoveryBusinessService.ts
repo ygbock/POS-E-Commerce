@@ -52,7 +52,7 @@ export interface DiscoveryLocationInput {
 }
 
 const TRANSITIONS: Record<DiscoveryListingStatus, DiscoveryListingStatus[]> = {
-  DRAFT: ['SUBMITTED', 'ARCHIVED'],
+  DRAFT: ['SUBMITTED', 'UNDER_REVIEW', 'ARCHIVED'],
   SUBMITTED: ['UNDER_REVIEW', 'REJECTED', 'ARCHIVED'],
   UNDER_REVIEW: ['APPROVED', 'REJECTED', 'ARCHIVED'],
   APPROVED: ['PUBLISHED', 'PAUSED', 'ARCHIVED'],
