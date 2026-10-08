@@ -154,7 +154,10 @@ export class DiscoveryBusinessService {
         created_by_user_id: input.createdByUserId || actor?.userId || null,
       }, tx);
       await this.repository.getSettings(record.id, tx);
-      if (actor?.userId) {
+      // Platform-created listings intentionally remain unowned until a verified
+      // business-owner claim is approved. Business-owner self-service creation
+      // continues to establish the OWNER membership immediately.
+      if (actor?.userId && actor.role === 'business_owner') {
         await tx.query(
           `INSERT INTO discovery_business_memberships (business_id,user_id,role,is_active)
            VALUES ($1,$2,'OWNER',TRUE)`,
