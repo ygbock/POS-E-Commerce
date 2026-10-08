@@ -170,6 +170,8 @@ async function main() {
     assert.equal(myBusinesses.status, 200);
     assert.ok(myBusinesses.body.data.some((row: any) => row.id === businessId));
 
+    await postClaimManagementJourney(db, baseUrl, platformToken, ownerToken, customerToken, businessId);
+
     const duplicateClaim = await request(baseUrl, `/api/discovery/businesses/${businessId}/claims`, {
       method: 'POST',
       token: ownerToken,
@@ -181,6 +183,48 @@ async function main() {
   } finally {
     server.close();
   }
+}
+
+async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, platformToken: string, ownerToken: string, otherOwnerToken: string, businessId: string) {
+  const categories = await db.query("SELECT id FROM discovery_business_categories WHERE is_active=TRUE LIMIT 1");
+  if (!categories.rows[0]) await db.query("INSERT INTO discovery_business_categories (id,name,slug,display_order,is_active) VALUES ('claim_journey_cat','Claim Journey','claim-journey',1,TRUE)");
+  const categoryId = categories.rows[0]?.id || 'claim_journey_cat';
+  await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,$2,TRUE) ON CONFLICT DO NOTHING", [businessId, categoryId]);
+
+  const updated = await request(baseUrl, '/api/discovery/businesses/' + businessId, { method: 'PATCH', token: ownerToken, body: { shortDescription: 'Complete post-claim Discovery profile.', description: 'A fully configured business profile ready for platform moderation.', phone: '+23276000111', email: 'owner@claim.test' } });
+  assert.equal(updated.status, 200);
+  const location = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/locations', { method: 'POST', token: ownerToken, body: { name: 'Main Branch', locationType: 'STORE', addressLine1: '1 Claim Street', city: 'Freetown', district: 'Western Area Urban', region: 'Western Area', latitude: 8.4840, longitude: -13.2299, isPrimary: true, isActive: true } });
+  assert.equal(location.status, 201);
+  const locationId = location.body.data.id;
+  const hoursPayload = [1,2,3,4,5,6].map((dayOfWeek) => ({ dayOfWeek, isClosed: false, opensAt: '08:00', closesAt: '18:00' })).concat([{ dayOfWeek: 7, isClosed: true }]);
+  const hours = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/locations/' + locationId + '/hours', { method: 'PUT', token: ownerToken, body: { hours: hoursPayload } });
+  assert.equal(hours.status, 200);
+  const service = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/services', { method: 'POST', token: ownerToken, body: { name: 'Claim Journey Service', description: 'Service configured after ownership claim.', serviceType: 'General', bookingMode: 'REQUEST' } });
+  assert.equal(service.status, 201);
+  const verification = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/verification', { method: 'POST', token: ownerToken, body: { evidence: { businessRegistration: 'verified-owner-evidence', submittedFor: 'post-claim-journey' } } });
+  assert.equal(verification.status, 201);
+  assert.equal(verification.body.data.status, 'PENDING');
+  const workspace = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/management', { token: ownerToken });
+  assert.equal(workspace.status, 200);
+  assert.equal(workspace.body.data.readiness.ready, true);
+  assert.equal(workspace.body.data.verification.status, 'PENDING');
+  assert.ok(workspace.body.data.locations.some((row: any) => row.id === locationId));
+  const submit = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/submit', { method: 'POST', token: ownerToken, body: { reason: 'Owner completed the Discovery readiness checklist.' } });
+  assert.equal(submit.status, 200);
+  assert.equal(submit.body.data.listing_status, 'SUBMITTED');
+  const otherOwner = await request(baseUrl, '/api/discovery/businesses/' + businessId, { method: 'PATCH', token: otherOwnerToken, body: { description: 'Unauthorized owner attempt' } });
+  assert.equal(otherOwner.status, 403);
+  const review = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'UNDER_REVIEW', reason: 'Post-claim listing moderation.' } });
+  assert.equal(review.status, 200);
+  const approve = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Post-claim listing approved.' } });
+  assert.equal(approve.status, 200);
+  const publish = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'PUBLISHED', reason: 'Post-claim listing published.' } });
+  assert.equal(publish.status, 200);
+  const publicProfile = await request(baseUrl, '/api/discovery/businesses/' + businessId);
+  assert.equal(publicProfile.status, 200);
+  assert.equal(publicProfile.body.data.business.id, businessId);
+  assert.ok(publicProfile.body.data.locations.some((row: any) => row.id === locationId));
+  assert.equal(publicProfile.body.data.activeServices.length, 1);
 }
 
 main().catch((error) => {
