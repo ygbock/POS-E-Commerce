@@ -219,8 +219,13 @@ async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, p
   const submit = await request(baseUrl, '/api/discovery/businesses/' + businessId + '/submit', { method: 'POST', token: ownerToken, body: { reason: 'Owner completed the Discovery readiness checklist.' } });
   assert.equal(submit.status, 200);
   assert.equal(submit.body.data.listing_status, 'SUBMITTED');
+  const competingMembership = await db.query(
+    'SELECT user_id,role,is_active FROM discovery_business_memberships WHERE business_id=$1 AND user_id=$2 AND is_active=TRUE',
+    [businessId, 'claim-other-owner'],
+  );
+  assert.equal(competingMembership.rows.length, 0, `Competing owner unexpectedly has an active membership: ${JSON.stringify(competingMembership.rows)}`);
   const otherOwner = await request(baseUrl, '/api/discovery/businesses/' + businessId, { method: 'PATCH', token: otherOwnerToken, body: { description: 'Unauthorized owner attempt' } });
-  assert.equal(otherOwner.status, 403);
+  assert.equal(otherOwner.status, 403, `Unauthorized competing owner response: ${JSON.stringify(otherOwner.body)}`);
   const review = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'UNDER_REVIEW', reason: 'Post-claim listing moderation.' } });
   assert.equal(review.status, 200);
   const approve = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Post-claim listing approved.' } });
