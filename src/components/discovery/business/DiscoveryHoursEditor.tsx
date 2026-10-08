@@ -77,9 +77,7 @@ export const DiscoveryHoursEditor: React.FC<DiscoveryHoursEditorProps> = ({
         setLocations(locs);
         const preferredLocationId = initialLocationId && locs.some((loc) => loc.id === initialLocationId)
           ? initialLocationId
-          : selectedLocationId && locs.some((loc) => loc.id === selectedLocationId)
-            ? selectedLocationId
-            : (locs.find((l) => l.is_primary) || locs[0])?.id || '';
+          : (locs.find((l) => l.is_primary) || locs[0])?.id || '';
         setSelectedLocationId(preferredLocationId);
 
         if (preferredLocationId) {
