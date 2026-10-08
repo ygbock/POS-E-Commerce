@@ -540,6 +540,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                         <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950 p-3 text-[11px] text-slate-200">
                         {JSON.stringify(item.evidence || {}, null, 2)}
                       </pre>
+                      </div>
                     )}
                     {queue === 'reviews' && (
                       <div className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
