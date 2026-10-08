@@ -67,6 +67,19 @@ async function main() {
   await createMember('http-manager-a', 'http-manager-a@example.test', 'HTTP Manager A', ownerA.user.organizationId);
   await createMember('http-staff-a', 'http-staff-a@example.test', 'HTTP Staff A', ownerA.user.organizationId);
 
+  const { hash: customerHash, salt: customerSalt } = hashPassword('CustomerPassword123!');
+  await userRepo.createUser({
+    id: 'http-customer-a',
+    organizationId: ownerA.user.organizationId,
+    email: 'http-customer-a@example.test',
+    name: 'HTTP Customer A',
+    passwordHash: customerHash,
+    passwordSalt: customerSalt,
+    role: 'customer',
+    identity_type: 'customer',
+    is_active: true,
+  });
+
   // This authorization matrix exercises merchant operations; mark its synthetic actors
   // as verified so the Phase 3B realm gate does not mask the existing authorization cases.
   await db.query(
@@ -87,6 +100,7 @@ async function main() {
     ownerB: { userId: ownerB.user.id, organizationId: ownerB.user.organizationId, role: 'business_owner' },
     managerA: { userId: 'http-manager-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
     staffA: { userId: 'http-staff-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
+    customerA: { userId: 'http-customer-a', organizationId: ownerA.user.organizationId, role: 'customer' },
   };
 
   const app = express();
@@ -145,6 +159,18 @@ async function main() {
     assert.strictEqual(merchantLoginBody?.data?.user?.id, ownerA.user.id);
     assert.strictEqual(merchantLoginBody?.data?.user?.role, 'business_owner');
     assert.ok(merchantLoginBody?.data?.token);
+
+    // CUSTOMER: customer identity must never enter the Discovery business-owner workspace.
+    const customerCreate = await requestJson(baseUrl, '/api/discovery/businesses', actors.customerA, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Customer Must Not Own Listing', businessMode: 'DISCOVERY_ONLY' }),
+    });
+    assert.strictEqual(customerCreate.status, 403);
+    assert.strictEqual(customerCreate.body?.error?.code, 'BUSINESS_OWNER_ACCESS_REQUIRED');
+
+    const customerMine = await requestJson(baseUrl, '/api/discovery/businesses/my', actors.customerA);
+    assert.strictEqual(customerMine.status, 403);
+    assert.strictEqual(customerMine.body?.error?.code, 'BUSINESS_OWNER_ACCESS_REQUIRED');
 
     // OWNER: direct API access to owner-scoped workspaces and management operations.
     const ownerMe = await requestJson(baseUrl, '/api/merchant/me', actors.ownerA);
