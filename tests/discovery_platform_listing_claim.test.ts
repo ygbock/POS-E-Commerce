@@ -162,6 +162,14 @@ async function main() {
     );
     assert.deepEqual(membership.rows, [{ user_id: 'claim-owner', role: 'OWNER', is_active: true }]);
 
+    const myClaims = await request(baseUrl, '/api/discovery/my-claims', { token: ownerToken });
+    assert.equal(myClaims.status, 200);
+    assert.ok(myClaims.body.data.some((row: any) => row.id === claimId));
+
+    const myBusinesses = await request(baseUrl, '/api/discovery/businesses/my', { token: ownerToken });
+    assert.equal(myBusinesses.status, 200);
+    assert.ok(myBusinesses.body.data.some((row: any) => row.id === businessId));
+
     const duplicateClaim = await request(baseUrl, `/api/discovery/businesses/${businessId}/claims`, {
       method: 'POST',
       token: ownerToken,
