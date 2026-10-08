@@ -80,6 +80,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const { tenant, formatCurrency, wishlistIds, toggleWishlist, addToStoreCart, orders } = useStorefrontContext();
 
   const [activeCustomerUser, setActiveCustomerUser] = useState<Customer | null>(null);
+  const [globalAccount, setGlobalAccount] = useState<any>(null);
+  const [accountName, setAccountName] = useState('');
+  const [accountPhone, setAccountPhone] = useState('');
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountMessage, setAccountMessage] = useState('');
+  const [accountError, setAccountError] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [securitySaving, setSecuritySaving] = useState(false);
+  const [deactivatePassword, setDeactivatePassword] = useState('');
+  const [deactivateSaving, setDeactivateSaving] = useState(false);
   const [selectedTab, setSelectedTab] = useState<AccountPortalTab>(initialTab);
 
   // Auth sub-mode for guests: 'signup' vs 'signin'
@@ -121,6 +132,18 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     const authUser = authClient.getUser();
     if (authUser && authUser.role === 'customer') {
       setOrderHistoryLoading(true);
+      setAccountError('');
+      setAccountMessage('');
+      void authClient.getCustomerAccount()
+        .then((account) => {
+          setGlobalAccount(account);
+          setAccountName(account.name || '');
+          setAccountPhone(account.phone || '');
+        })
+        .catch((err) => {
+          setGlobalAccount(null);
+          setAccountError(err instanceof Error ? err.message : 'Unable to load account details.');
+        });
       storefrontApi.getCustomerProfile(tenant.slug)
         .then((response: any) => {
           const profile = response?.data || response;
@@ -284,6 +307,65 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setSigninPassword('');
     } catch (err: any) {
       setSigninError(err instanceof Error ? err.message : 'Invalid email or password.');
+    }
+  };
+
+  const handleSaveAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAccountSaving(true);
+    setAccountError('');
+    setAccountMessage('');
+    try {
+      const account = await authClient.updateCustomerAccount({
+        name: accountName.trim(),
+        phone: accountPhone.trim() || null,
+      });
+      setGlobalAccount(account);
+      setAccountMessage('Profile updated successfully.');
+      setActiveCustomerUser((current) => current ? {
+        ...current,
+        name: account.name,
+        phone: account.phone || '—',
+      } : current);
+    } catch (err: any) {
+      setAccountError(err instanceof Error ? err.message : 'Unable to update profile.');
+    } finally {
+      setAccountSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecuritySaving(true);
+    setAccountError('');
+    setAccountMessage('');
+    try {
+      await authClient.changeCustomerPassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setAccountMessage('Password changed. Please sign in again.');
+      setActiveCustomerUser(null);
+    } catch (err: any) {
+      setAccountError(err instanceof Error ? err.message : 'Unable to change password.');
+    } finally {
+      setSecuritySaving(false);
+    }
+  };
+
+  const handleDeactivateAccount = async () => {
+    if (!window.confirm('Deactivate your customer account? You will be signed out and will need to contact support to restore access.')) return;
+    setDeactivateSaving(true);
+    setAccountError('');
+    try {
+      await authClient.deactivateCustomerAccount(deactivatePassword);
+      setActiveCustomerUser(null);
+      setGlobalAccount(null);
+      setDeactivatePassword('');
+      setAccountMessage('Your customer account has been deactivated.');
+    } catch (err: any) {
+      setAccountError(err instanceof Error ? err.message : 'Unable to deactivate account.');
+    } finally {
+      setDeactivateSaving(false);
     }
   };
 
@@ -482,34 +564,64 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Profile Details */}
+                  {/* Global Account */}
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6">
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-indigo-500" />
+                      <span>Account Profile</span>
+                    </h4>
+                    <p className="text-xs text-slate-500 mb-4">These details belong to your AbaCha customer account and are shared across Discovery and Storefront.</p>
+                    {accountError && <div className="mb-4 p-3 rounded-xl bg-rose-50 text-rose-700 text-xs">{accountError}</div>}
+                    {accountMessage && <div className="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs">{accountMessage}</div>}
+                    <form onSubmit={handleSaveAccount} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <label className="text-xs font-bold text-slate-500">Full Name
+                        <input value={accountName} onChange={(e) => setAccountName(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950" />
+                      </label>
+                      <label className="text-xs font-bold text-slate-500">Phone
+                        <input value={accountPhone} onChange={(e) => setAccountPhone(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950" />
+                      </label>
+                      <div className="text-xs md:col-span-2">
+                        <span className="font-bold text-slate-500 block">Email</span>
+                        <span className="inline-flex mt-1 items-center gap-2 font-semibold">{globalAccount?.email || activeCustomerUser.email}
+                          {globalAccount?.emailVerified ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <span className="text-amber-600">Verification required</span>}
+                        </span>
+                      </div>
+                      <button type="submit" disabled={accountSaving} className="md:col-span-2 w-full sm:w-auto sm:justify-self-start px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                        {accountSaving ? 'Saving…' : 'Save Profile'}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Business-specific CRM Profile */}
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6">
                     <h4 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                       <User className="w-5 h-5 text-indigo-500" />
-                      <span>Profile Information</span>
+                      <span>Business Profile</span>
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-xs text-slate-400 block">Full Name</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{activeCustomerUser.name}</span>
+                      <div><span className="text-xs text-slate-400 block">Tier</span><span className="font-semibold">{activeCustomerUser.tier}</span></div>
+                      <div><span className="text-xs text-slate-400 block">Customer Group</span><span className="font-semibold">{activeCustomerUser.customerGroup}</span></div>
+                      <div><span className="text-xs text-slate-400 block">Primary Delivery Address</span>
+                        {activeCustomerUser.addresses[0] ? <span className="font-semibold">{activeCustomerUser.addresses[0].street}, {activeCustomerUser.addresses[0].city}, {activeCustomerUser.addresses[0].zip}</span> : <span className="text-slate-400">No primary address registered</span>}
                       </div>
-                      <div>
-                        <span className="text-xs text-slate-400 block">Email Address</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{activeCustomerUser.email}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-400 block">Phone Number</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{activeCustomerUser.phone}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-400 block">Primary Delivery Address</span>
-                        {activeCustomerUser.addresses[0] ? (
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {activeCustomerUser.addresses[0].street}, {activeCustomerUser.addresses[0].city}, {activeCustomerUser.addresses[0].zip}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">No primary address registered</span>
-                        )}
+                    </div>
+                  </div>
+
+                  {/* Security */}
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6">
+                    <h4 className="font-bold mb-1 flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" />Security</h4>
+                    <p className="text-xs text-slate-500 mb-4">Changing your password signs out all active sessions.</p>
+                    <form onSubmit={handleChangePassword} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input type="password" required minLength={12} placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950" />
+                      <input type="password" required minLength={12} placeholder="New password (12+ characters)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950" />
+                      <button type="submit" disabled={securitySaving} className="md:col-span-2 w-full sm:w-auto sm:justify-self-start px-5 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-sm disabled:opacity-50">{securitySaving ? 'Changing…' : 'Change Password'}</button>
+                    </form>
+                    <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800">
+                      <p className="text-xs font-bold text-rose-600 mb-2">Danger Zone</p>
+                      <p className="text-xs text-slate-500 mb-3">Deactivating signs you out and prevents future access to this account.</p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input type="password" placeholder="Current password" value={deactivatePassword} onChange={(e) => setDeactivatePassword(e.target.value)} className="flex-1 px-3 py-2.5 rounded-xl border border-rose-200 bg-white dark:bg-slate-950" />
+                        <button type="button" disabled={deactivateSaving || !deactivatePassword} onClick={handleDeactivateAccount} className="px-5 py-2.5 rounded-xl border border-rose-300 text-rose-600 font-bold text-sm disabled:opacity-50">{deactivateSaving ? 'Deactivating…' : 'Deactivate Account'}</button>
                       </div>
                     </div>
                   </div>
