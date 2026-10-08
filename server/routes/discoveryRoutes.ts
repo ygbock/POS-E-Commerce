@@ -1883,20 +1883,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:result});
   }catch(err){next(err);} });
 
-  router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
-    if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
-    const status=String(req.query.status||'');
-    const r=await db.query(
-      `SELECT DISTINCT r.*,m.match_score,m.match_reason
-       FROM discovery_service_requests r
-       JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1
-       WHERE ($2='' OR r.status=$2)
-       ORDER BY r.created_at DESC LIMIT 100`,
-      [req.params.id,status],
-    );
-    res.json({success:true,data:r.rows});
-  }catch(err){next(err);} });
-
   // ------------------------------------------------------------------
   // DISC-012: verification, claims, reviews and abuse reports
   // ------------------------------------------------------------------
@@ -1918,7 +1904,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.post('/reports', async(req,res,next)=>{try{if(!req.body?.businessId&&!req.body?.serviceId)throw new Error('VALIDATION_ERROR:businessId or serviceId is required.');if(!String(req.body?.reasonCode||'').trim())throw new Error('VALIDATION_ERROR:reasonCode is required.');const r=await db.query(`INSERT INTO discovery_reports(id,business_id,service_id,reporter_user_id,reason_code,description) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,status,created_at`,[`report_${randomUUID().replace(/-/g,'')}`,req.body.businessId||null,req.body.serviceId||null,req.auth?.userId||null,String(req.body.reasonCode).trim(),req.body.description||null]);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
-  router.get('/categories', async(req,res,next)=>{try{const r=await db.query(`SELECT c.id,c.parent_id,c.name,c.slug,c.description,c.icon_name,c.display_order,COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE) AS item_count FROM discovery_business_categories c LEFT JOIN discovery_business_category_map bcm ON bcm.category_id=c.id LEFT JOIN discovery_businesses b ON b.id=bcm.business_id WHERE c.is_active=TRUE GROUP BY c.id ORDER BY c.display_order,c.name`);res.json({success:true,data:r.rows.map((x:any)=>({...x,item_count:Number(x.item_count||0)}))});}catch(err){next(err);}});
   router.get('/businesses/:id/categories', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req, req.params.id, 'business.listing.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Category management forbidden.'}});
     const business = await repo.findById(req.params.id);
