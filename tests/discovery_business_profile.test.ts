@@ -64,7 +64,14 @@ async function main() {
   const hidden = await service.getPublicProfile(business.id);
   assert.equal(hidden, null, 'non-published listings must not expose a public profile');
 
-  console.log('Discovery business profile tests passed: 10 assertions');
+
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const profileUi = fs.readFileSync(path.join(process.cwd(), 'src/components/discovery/DiscoveryBusinessProfile.tsx'), 'utf8');
+  assert.match(profileUi, /canSubmitOwnershipClaim/);
+  assert.match(profileUi, /authClient\.getUser\(\)\?\.role === 'business_owner'/);
+
+  console.log('Discovery business profile tests passed: 12 assertions');
 }
 
 main().catch((error) => {
