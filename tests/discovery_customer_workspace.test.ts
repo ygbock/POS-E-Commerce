@@ -50,3 +50,8 @@ assert.match(routes,/router\.get\('\/contact-inquiries', requireAuth\(\), requir
 assert.match(routes,/router\.post\('\/businesses\/:id\/claims', requireAuth\(\), requireCustomerIdentity\(\)/);
 
 console.log('Discovery PAGE-008 customer workspace contract tests passed.');
+
+const categoryRoutes = routes.match(/router\.get\('\/categories'/g) || [];
+assert.strictEqual(categoryRoutes.length, 1, 'Discovery categories route must have one authoritative declaration');
+const providerRequestRoutes = routes.match(/router\.get\('\/businesses\/:id\/service-requests'/g) || [];
+assert.strictEqual(providerRequestRoutes.length, 1, 'Provider service-request route must have one authoritative declaration');
