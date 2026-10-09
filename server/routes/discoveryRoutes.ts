@@ -1521,6 +1521,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
            JOIN discovery_businesses b ON b.id=s.business_id
           WHERE s.id=$1 AND s.is_active=TRUE
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))`,
         [requestedServiceId],
       );
@@ -1557,6 +1558,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
            ) l ON TRUE
           WHERE s.is_active=TRUE
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))
           ORDER BY s.id ASC
           LIMIT 500`,
@@ -1801,6 +1803,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             AND s.business_id=$1
             AND b.listing_status='PUBLISHED'
             AND b.is_discoverable=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND (b.organization_id IS NULL OR EXISTS(
               SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
             ))
