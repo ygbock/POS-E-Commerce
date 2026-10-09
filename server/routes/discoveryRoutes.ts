@@ -1045,6 +1045,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             ORDER BY m.is_primary DESC LIMIT 1
           ) c ON TRUE
           WHERE ${bConditions.join(' AND ')}
+          GROUP BY b.id,o.slug,bds.allow_phone_contact,bds.allow_whatsapp_contact,bds.allow_public_store_link,
+                   l.id,l.name,l.city,l.district,l.region,l.latitude,l.longitude,l.service_radius_km,l.location_quality_status,l.location_source,
+                   c.category_name,c.category_slug
           ORDER BY ${order}
           LIMIT ${bb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? bb(0) : bb(offset)}
         `,businessParams);
