@@ -131,6 +131,8 @@ async function main() {
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_whatsapp_contact, TRUE) THEN b.whatsapp ELSE NULL END AS whatsapp'), 'search results must mask disabled WhatsApp contact');
   assert.ok(routes.includes('locations.map((location) => ({ ...location, phone: null }))'), 'public location endpoint must mask disabled branch phone numbers');
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_public_store_link, TRUE) THEN o.slug ELSE NULL END AS tenant_slug'), 'search results must mask disabled storefront links');
+  assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_prices, TRUE) THEN v.retail_price ELSE NULL END AS retail_price'), 'product search must not return prices when hidden');
+  assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_stock_status, FALSE) THEN COALESCE(SUM(ib.available),0) ELSE NULL END AS available_stock'), 'product search must not return stock counts when hidden');
   assert.ok(routes.includes("b.listing_status='PUBLISHED'") && routes.includes('b.is_discoverable=TRUE'), 'public search must exclude unpublished or undiscoverable listings');
 
   // Categories and listing details.
