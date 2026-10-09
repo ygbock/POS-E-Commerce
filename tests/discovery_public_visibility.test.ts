@@ -129,6 +129,7 @@ async function main() {
   assert.ok(routes.includes('ORDER BY CASE WHEN ${matchingLocationOrder} THEN 0 ELSE 1 END'), 'business search must return a location that matches its filters');
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_phone_contact, TRUE) THEN b.phone ELSE NULL END AS phone'), 'search results must mask disabled phone contact');
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_whatsapp_contact, TRUE) THEN b.whatsapp ELSE NULL END AS whatsapp'), 'search results must mask disabled WhatsApp contact');
+  assert.ok(routes.includes('locations.map((location) => ({ ...location, phone: null }))'), 'public location endpoint must mask disabled branch phone numbers');
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_public_store_link, TRUE) THEN o.slug ELSE NULL END AS tenant_slug'), 'search results must mask disabled storefront links');
   assert.ok(routes.includes("b.listing_status='PUBLISHED'") && routes.includes('b.is_discoverable=TRUE'), 'public search must exclude unpublished or undiscoverable listings');
 
