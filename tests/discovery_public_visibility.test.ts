@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import express from 'express';
+import { createServer } from 'node:http';
+import { createDiscoveryRouter } from '../server/routes/discoveryRoutes';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createIsolatedTestClient, type DatabaseClient } from '../server/db/client';
@@ -50,6 +53,21 @@ async function main() {
     [business.id],
   );
 
+  // Exercise the real public HTTP endpoints, not just equivalent SQL or source strings.
+  const app = express();
+  app.use(express.json());
+  app.use('/api/discovery', createDiscoveryRouter(db));
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Public visibility test server did not expose a port.');
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const getJson = async (route: string) => {
+    const response = await fetch(baseUrl + route);
+    return { status: response.status, body: await response.json() as any };
+  };
+
+  try {
   await db.query(
     `UPDATE discovery_business_settings
         SET allow_phone_contact=FALSE,allow_whatsapp_contact=FALSE,
@@ -57,6 +75,36 @@ async function main() {
       WHERE business_id=$1`,
     [business.id],
   );
+
+  const hiddenSearch = await getJson('/api/discovery/search?type=businesses&city=Freetown&limit=20');
+  assert.equal(hiddenSearch.status, 200, `public business search failed: ${JSON.stringify(hiddenSearch.body)}`);
+  const hiddenSearchBusiness = hiddenSearch.body.data.businesses.find((item: any) => item.id === business.id);
+  assert.ok(hiddenSearchBusiness, 'published listing should appear in the real public search endpoint');
+  assert.equal(hiddenSearchBusiness.phone, null, 'search endpoint must mask disabled phone contact');
+  assert.equal(hiddenSearchBusiness.whatsapp, null, 'search endpoint must mask disabled WhatsApp contact');
+  assert.equal(hiddenSearchBusiness.tenant_slug, null, 'search endpoint must mask disabled public store links');
+  assert.equal(Number(hiddenSearchBusiness.rating), 0, 'search endpoint must suppress ratings when reviews are disabled');
+  assert.equal(Number(hiddenSearchBusiness.review_count), 0, 'search endpoint must suppress review counts when reviews are disabled');
+
+  const hiddenLocations = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/locations`);
+  assert.equal(hiddenLocations.status, 200, `public locations endpoint failed: ${JSON.stringify(hiddenLocations.body)}`);
+  assert.ok(hiddenLocations.body.data.every((location: any) => location.phone === null), 'real locations endpoint must mask branch phone numbers');
+
+  const hiddenReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/reviews`);
+  assert.equal(hiddenReviews.status, 200);
+  assert.deepEqual(hiddenReviews.body.data, [], 'real reviews endpoint must not return reviews when disabled');
+  assert.equal(Number(hiddenReviews.body.summary.count), 0, 'real reviews endpoint must suppress review count when disabled');
+
+  const matchingBranchSearch = await getJson('/api/discovery/search?type=businesses&city=Bo&limit=20');
+  assert.equal(matchingBranchSearch.status, 200, `multi-location search failed: ${JSON.stringify(matchingBranchSearch.body)}`);
+  const matchingSearchBusiness = matchingBranchSearch.body.data.businesses.find((item: any) => item.id === business.id);
+  assert.ok(matchingSearchBusiness, 'active secondary branch must make the listing match the Bo search');
+  assert.equal(matchingSearchBusiness.city, 'Bo', 'search result must describe the branch that matched the filter');
+
+  const categoriesResponse = await getJson('/api/discovery/categories');
+  assert.equal(categoriesResponse.status, 200);
+  assert.ok(categoriesResponse.body.data.some((category: any) => category.id === 'pdv_cat'), 'active category should be returned by the real category endpoint');
+
   const hiddenSettingsProfile = await service.getPublicProfile(business.id);
   assert.ok(hiddenSettingsProfile, 'published and discoverable business should have a public profile');
   assert.equal(hiddenSettingsProfile.business.phone, null, 'disabled phone contact must not leak from profile API');
@@ -74,6 +122,24 @@ async function main() {
       WHERE business_id=$1`,
     [business.id],
   );
+
+  const visibleSearch = await getJson('/api/discovery/search?type=businesses&city=Freetown&limit=20');
+  assert.equal(visibleSearch.status, 200, `visible business search failed: ${JSON.stringify(visibleSearch.body)}`);
+  const visibleSearchBusiness = visibleSearch.body.data.businesses.find((item: any) => item.id === business.id);
+  assert.ok(visibleSearchBusiness);
+  assert.equal(visibleSearchBusiness.phone, '+23276000123');
+  assert.equal(visibleSearchBusiness.whatsapp, '+23277000123');
+  assert.equal(visibleSearchBusiness.tenant_slug, 'pdv-store');
+
+  const visibleLocations = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/locations`);
+  assert.equal(visibleLocations.status, 200);
+  assert.equal(visibleLocations.body.data.find((location: any) => location.id === 'pdv_loc_primary')?.phone, '+23276000999');
+
+  const visibleReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/reviews`);
+  assert.equal(visibleReviews.status, 200);
+  assert.equal(visibleReviews.body.data.length, 1, 'real reviews endpoint should return the published review when enabled');
+  assert.equal(Number(visibleReviews.body.summary.count), 1);
+
   const visibleSettingsProfile = await service.getPublicProfile(business.id);
   assert.ok(visibleSettingsProfile);
   assert.equal(visibleSettingsProfile.business.phone, '+23276000123');
@@ -157,6 +223,9 @@ async function main() {
   assert.equal(await service.getPublicProfile(business.id), null, 'paused listing must not expose a public profile');
 
   console.log('Public Discovery visibility/multi-location regression tests passed: six acceptance areas.');
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 }
 
 main().catch((error) => {
