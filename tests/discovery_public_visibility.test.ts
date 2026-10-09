@@ -76,6 +76,14 @@ async function main() {
     [business.id],
   );
 
+  const hiddenPublicProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
+  assert.equal(hiddenPublicProfile.status, 200, `public profile endpoint failed: ${JSON.stringify(hiddenPublicProfile.body)}`);
+  assert.equal(hiddenPublicProfile.body.data.business.phone, null, 'public profile route must mask disabled phone contact');
+  assert.equal(hiddenPublicProfile.body.data.business.whatsapp, null, 'public profile route must mask disabled WhatsApp contact');
+  assert.equal(hiddenPublicProfile.body.data.business.tenant_slug, null, 'public profile route must mask disabled store links');
+  assert.deepEqual(hiddenPublicProfile.body.data.recentReviews, [], 'public profile route must suppress reviews when disabled');
+  assert.equal(Number(hiddenPublicProfile.body.data.reviewsSummary.count), 0, 'public profile route must suppress review counts when disabled');
+
   const hiddenSearch = await getJson('/api/discovery/search?type=businesses&city=Freetown&limit=20');
   assert.equal(hiddenSearch.status, 200, `public business search failed: ${JSON.stringify(hiddenSearch.body)}`);
   const hiddenSearchBusiness = hiddenSearch.body.data.businesses.find((item: any) => item.id === business.id);
@@ -95,7 +103,44 @@ async function main() {
   assert.deepEqual(hiddenReviews.body.data, [], 'real reviews endpoint must not return reviews when disabled');
   assert.equal(Number(hiddenReviews.body.summary.count), 0, 'real reviews endpoint must suppress review count when disabled');
 
-  const matchingBranchSearch = await getJson('/api/discovery/search?type=businesses&city=Bo&limit=20');
+  // Exercise category, sort, distance, and open-now filters through the public HTTP API.
+  const categorySearch = await getJson('/api/discovery/search?type=businesses&categoryId=pdv_cat&limit=20');
+  assert.equal(categorySearch.status, 200, `category-filtered search failed: ${JSON.stringify(categorySearch.body)}`);
+  assert.ok(categorySearch.body.data.businesses.some((item: any) => item.id === business.id), 'category filter must include a listing mapped to the active category');
+
+  const nameSortedSearch = await getJson('/api/discovery/search?type=businesses&sort=name_asc&limit=20');
+  assert.equal(nameSortedSearch.status, 200, `name-sorted search failed: ${JSON.stringify(nameSortedSearch.body)}`);
+  const nameSortedNames = nameSortedSearch.body.data.businesses.map((item: any) => String(item.name));
+  assert.deepEqual(nameSortedNames, [...nameSortedNames].sort((a: string, b: string) => a.localeCompare(b)), 'name_asc must return alphabetically ordered businesses');
+
+  const distanceSearch = await getJson('/api/discovery/search?type=businesses&lat=7.9640&lng=-11.7380&radiusKm=5&sort=distance&limit=20');
+  assert.equal(distanceSearch.status, 200, `distance search failed: ${JSON.stringify(distanceSearch.body)}`);
+  const distanceBusiness = distanceSearch.body.data.businesses.find((item: any) => item.id === business.id);
+  assert.ok(distanceBusiness, 'distance filter should match the secondary branch coordinates in range');
+  assert.equal(distanceBusiness.city, 'Bo', 'distance-filtered results must return the branch that satisfied the radius');
+  assert.ok(Number(distanceBusiness.distance_km) <= 5, 'distance sort/filter must return a computed distance within the requested radius');
+
+  const now = new Date();
+  const nowDow = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+  await db.query(
+    `INSERT INTO discovery_business_hours (id,location_id,day_of_week,opens_at,closes_at,is_closed)
+     VALUES ('pdv_hours_today','pdv_loc_primary',$1,'00:00','23:59',FALSE)`,
+    [nowDow],
+  );
+  const openNowSearch = await getJson('/api/discovery/search?type=businesses&city=Freetown&openNow=true&limit=20');
+  assert.equal(openNowSearch.status, 200, `open-now search failed: ${JSON.stringify(openNowSearch.body)}`);
+  assert.ok(openNowSearch.body.data.businesses.some((item: any) => item.id === business.id), 'openNow must include a listing with an active branch open at the current UTC time');
+
+  const ratingSortedHidden = await getJson('/api/discovery/search?type=businesses&sort=rating&limit=20');
+  assert.equal(ratingSortedHidden.status, 200, `rating-sorted search failed: ${JSON.stringify(ratingSortedHidden.body)}`);
+  const hiddenRatingSortedBusiness = ratingSortedHidden.body.data.businesses.find((item: any) => item.id === business.id);
+  assert.equal(Number(hiddenRatingSortedBusiness.rating), 0, 'rating sorting must not expose a hidden aggregate rating');
+  assert.equal(Number(hiddenRatingSortedBusiness.review_count), 0, 'review-count sorting must not expose a hidden review count');
+  const reviewCountSortedHidden = await getJson('/api/discovery/search?type=businesses&sort=review_count&limit=20');
+  assert.equal(reviewCountSortedHidden.status, 200, `review-count-sorted search failed: ${JSON.stringify(reviewCountSortedHidden.body)}`);
+  assert.equal(Number(reviewCountSortedHidden.body.data.businesses.find((item: any) => item.id === business.id).review_count), 0, 'review_count sorting must respect disabled review visibility');
+
+  const matchingBranchSearch = await getJson('/api/discovery/search?type=businesses&city=Bo&region=Southern%20Province&limit=20');
   assert.equal(matchingBranchSearch.status, 200, `multi-location search failed: ${JSON.stringify(matchingBranchSearch.body)}`);
   const matchingSearchBusiness = matchingBranchSearch.body.data.businesses.find((item: any) => item.id === business.id);
   assert.ok(matchingSearchBusiness, 'active secondary branch must make the listing match the Bo search');
@@ -122,6 +167,15 @@ async function main() {
       WHERE business_id=$1`,
     [business.id],
   );
+
+  const visiblePublicProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
+  assert.equal(visiblePublicProfile.status, 200, `visible public profile failed: ${JSON.stringify(visiblePublicProfile.body)}`);
+  assert.equal(visiblePublicProfile.body.data.business.phone, '+23276000123');
+  assert.equal(visiblePublicProfile.body.data.business.whatsapp, '+23277000123');
+  assert.equal(visiblePublicProfile.body.data.business.tenant_slug, 'pdv-store');
+  assert.equal(visiblePublicProfile.body.data.recentReviews.length, 1);
+  assert.equal(Number(visiblePublicProfile.body.data.reviewsSummary.rating), 5);
+  assert.equal(Number(visiblePublicProfile.body.data.reviewsSummary.count), 1);
 
   const visibleSearch = await getJson('/api/discovery/search?type=businesses&city=Freetown&limit=20');
   assert.equal(visibleSearch.status, 200, `visible business search failed: ${JSON.stringify(visibleSearch.body)}`);
