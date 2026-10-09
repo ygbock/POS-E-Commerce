@@ -253,6 +253,10 @@ async function main() {
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_public_store_link, TRUE) THEN o.slug ELSE NULL END AS tenant_slug'), 'search results must mask disabled storefront links');
   assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_prices, TRUE) THEN v.retail_price ELSE NULL END AS retail_price'), 'product search must not return prices when hidden');
   assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_stock_status, FALSE) THEN COALESCE(SUM(ib.available),0) ELSE NULL END AS available_stock'), 'product search must not return stock counts when hidden');
+  const suggestionsStart = routes.indexOf("router.get('/search/suggestions'");
+  const suggestionsEnd = routes.indexOf("router.get('/businesses/:id/search-aliases'", suggestionsStart);
+  const suggestionsRoute = routes.slice(suggestionsStart, suggestionsEnd);
+  assert.equal((suggestionsRoute.match(/COALESCE\(\(SELECT ds\.show_products FROM discovery_business_settings ds WHERE ds\.business_id=b\.id\), TRUE\)=TRUE/g) || []).length, 2, 'both product-name and product-alias suggestions must respect the business show_products setting');
   assert.ok(routes.includes("b.listing_status='PUBLISHED'") && routes.includes('b.is_discoverable=TRUE'), 'public search must exclude unpublished or undiscoverable listings');
 
   // Categories and listing details.
