@@ -1106,8 +1106,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const r=await db.query(`
           SELECT p.id AS product_id,p.name AS product_name,p.slug AS product_slug,p.short_description,p.description,p.images,
                  p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
-                 l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,
-                 COALESCE(SUM(ib.available),0) AS available_stock,ds.show_prices,ds.show_stock_status,
+                 l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,v.id AS variant_id,v.sku,v.name AS variant_name,
+                 CASE WHEN COALESCE(ds.show_prices, TRUE) THEN v.retail_price ELSE NULL END AS retail_price,
+                 CASE WHEN COALESCE(ds.show_stock_status, FALSE) THEN COALESCE(SUM(ib.available),0) ELSE NULL END AS available_stock,
+                 ds.show_prices,ds.show_stock_status,
                  ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}
                  ${productRank} AS search_rank,
                  COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='PRODUCT' AND sa.entity_id=p.id AND sa.is_active=TRUE),'') AS search_aliases,
