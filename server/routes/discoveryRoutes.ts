@@ -69,7 +69,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     try {
       const result = await db.query(
         `SELECT c.id, c.parent_id, c.name, c.slug, c.description, c.icon_name, c.is_active, c.display_order, c.created_at, c.updated_at,
-                COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status = 'PUBLISHED' AND b.is_discoverable = TRUE)::int AS item_count
+                COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status = 'PUBLISHED' AND b.is_discoverable = TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations active_org WHERE active_org.id=b.organization_id AND active_org.is_active=TRUE)))::int AS item_count
            FROM discovery_business_categories c
            LEFT JOIN discovery_business_categories child ON child.parent_id = c.id AND child.is_active = TRUE
            LEFT JOIN discovery_business_category_map bcm ON bcm.category_id = c.id OR bcm.category_id = child.id
@@ -188,7 +188,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     await assertBusinessPermission(db, businessId, req.auth.userId, permission);
   };
 
-  const checkBusinessVisibility = async (businessId: string, req: Request) => {
+  const checkBusinessVisibility = async (businessId: string, req: Request): Promise<boolean> => {
     const business = await repo.findById(businessId);
     if (!business) {
       throw new Error('NOT_FOUND:Business not found.');
@@ -198,7 +198,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const org = await db.query('SELECT is_active FROM organizations WHERE id = $1', [business.organization_id]);
       publicVisible = org.rows[0]?.is_active === true;
     }
-    if (publicVisible) return;
+    if (publicVisible) return true;
 
     if (!req.auth?.userId) {
       throw new Error('PERMISSION_DENIED:You are not an active member of this business.');
@@ -211,6 +211,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if (!member.rows[0]) {
       throw new Error('PERMISSION_DENIED:You are not an active member of this business.');
     }
+    return false;
   };
 
   const publicBusiness = async (id: string) => businessService.getPublicProfile(id);
@@ -579,7 +580,20 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/businesses/:id/locations', async (req, res, next) => {
     try {
       await checkBusinessVisibility(req.params.id, req);
-      res.json({ success: true, data: await repo.listLocations(req.params.id, { activeOnly: true }) });
+      const locations = await repo.listLocations(req.params.id, { activeOnly: true });
+      const settings = await repo.getSettings(req.params.id);
+      const membership = req.auth?.userId
+        ? await db.query(
+            `SELECT 1 FROM discovery_business_memberships
+              WHERE business_id=$1 AND user_id=$2 AND is_active=TRUE LIMIT 1`,
+            [req.params.id, req.auth.userId],
+          )
+        : { rows: [] };
+      const canViewInternalContact = membership.rows.length > 0;
+      const data = settings.allow_phone_contact || canViewInternalContact
+        ? locations
+        : locations.map((location) => ({ ...location, phone: null }));
+      res.json({ success: true, data });
     } catch (err) {
       fail(res, err);
     }
@@ -901,12 +915,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const now = new Date();
       const nowDow = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
       const nowTime = now.toISOString().slice(11,19);
-      const distanceExpr = lat != null && lng != null
+      const distanceExprFor = (locationAlias: string) => lat != null && lng != null
         ? `6371 * acos(LEAST(1,GREATEST(-1,
-            cos(radians(${lat}))*cos(radians(l.latitude))*cos(radians(l.longitude)-radians(${lng}))
-            + sin(radians(${lat}))*sin(radians(l.latitude))
+            cos(radians(${lat}))*cos(radians(${locationAlias}.latitude))*cos(radians(${locationAlias}.longitude)-radians(${lng}))
+            + sin(radians(${lat}))*sin(radians(${locationAlias}.latitude))
           )))`
         : null;
+      const distanceExpr = distanceExprFor('l');
 
       const businessParams:any[] = [];
       const bb=(v:any)=>{businessParams.push(v);return `$${businessParams.length}`;};
@@ -938,22 +953,38 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const bCatParam = bb(categoryId);
         bConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id=b.id AND (c.id=${bCatParam} OR c.parent_id=${bCatParam}) AND c.is_active=TRUE)`);
       }
-      if (city) bConditions.push(`lower(l.city)=lower(${bb(city)})`);
-      if (district) bConditions.push(`lower(l.district)=lower(${bb(district)})`);
-      if (region) bConditions.push(`lower(l.region)=lower(${bb(region)})`);
-      if (distanceExpr) {
-        bConditions.push(`${distanceExpr} <= GREATEST(${bb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      // Apply all location filters to one and the same active branch. Matching
+      // separate EXISTS clauses independently can otherwise combine the city of
+      // one branch with the coordinates or hours of another branch.
+      const locationMatchConditions:string[] = [];
+      if (city) locationMatchConditions.push(`lower(lm.city)=lower(${bb(city)})`);
+      if (district) locationMatchConditions.push(`lower(lm.district)=lower(${bb(district)})`);
+      if (region) locationMatchConditions.push(`lower(lm.region)=lower(${bb(region)})`);
+      const matchDistanceExpr = distanceExprFor('lm');
+      if (matchDistanceExpr) {
+        locationMatchConditions.push(`${matchDistanceExpr} <= GREATEST(${bb(radius)}, COALESCE(lm.service_radius_km,0)) AND lm.latitude IS NOT NULL AND lm.longitude IS NOT NULL`);
       }
       if (openNow) {
-        bConditions.push(`EXISTS(
+        locationMatchConditions.push(`EXISTS(
           SELECT 1 FROM discovery_business_hours h
-          WHERE h.location_id=l.id AND h.day_of_week=${bb(nowDow)}
+          WHERE h.location_id=lm.id AND h.day_of_week=${bb(nowDow)}
             AND h.is_closed=FALSE AND h.opens_at<=${bb(nowTime)}::time AND h.closes_at>=${bb(nowTime)}::time
         )`);
       }
+      if (locationMatchConditions.length) {
+        bConditions.push(`EXISTS (
+          SELECT 1 FROM discovery_business_locations lm
+          WHERE lm.business_id=b.id AND lm.is_active=TRUE
+            AND ${locationMatchConditions.join(' AND ')}
+        )`);
+      }
+      const matchingLocationOrder = locationMatchConditions.length
+        ? locationMatchConditions.map((condition) => condition.replaceAll('lm.', 'l.')).join(' AND ')
+        : 'TRUE';
 
-      const ratingExpr = "(SELECT COALESCE(AVG(r.rating),0) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED')";
-      const reviewCountExpr = "(SELECT COUNT(*) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED')";
+      const reviewsAllowedExpr = "COALESCE((SELECT s.allow_reviews FROM discovery_business_settings s WHERE s.business_id=b.id), TRUE)";
+      const ratingExpr = `CASE WHEN ${reviewsAllowedExpr} THEN (SELECT COALESCE(AVG(r.rating),0) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED') ELSE 0 END`;
+      const reviewCountExpr = `CASE WHEN ${reviewsAllowedExpr} THEN (SELECT COUNT(*) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED') ELSE 0 END`;
       const businessRank = bQ
         ? `(
             ts_rank_cd(
@@ -983,8 +1014,12 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           : sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, b.name ASC, b.id ASC`
           : `search_rank DESC, b.name ASC, b.id ASC`;
         const r=await db.query(`
-          SELECT b.id,b.public_id,b.name,b.slug,b.business_type,b.short_description,b.phone,b.whatsapp,b.website,
-                 b.logo_url,b.cover_image_url,b.business_mode,o.slug AS tenant_slug,b.verification_status,
+          SELECT b.id,b.public_id,b.name,b.slug,b.business_type,b.short_description,
+                 CASE WHEN COALESCE(bds.allow_phone_contact, TRUE) THEN b.phone ELSE NULL END AS phone,
+                 CASE WHEN COALESCE(bds.allow_whatsapp_contact, TRUE) THEN b.whatsapp ELSE NULL END AS whatsapp,
+                 b.website,b.logo_url,b.cover_image_url,b.business_mode,
+                 CASE WHEN COALESCE(bds.allow_public_store_link, TRUE) THEN o.slug ELSE NULL END AS tenant_slug,
+                 b.verification_status,
                  l.name AS location_name,l.city,l.district,l.region,l.latitude,l.longitude,l.service_radius_km,l.location_quality_status,l.location_source,
                  c.category_name,c.category_slug,
                  ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}
@@ -994,10 +1029,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                  COUNT(*) OVER() AS total_count
           FROM discovery_businesses b
           LEFT JOIN organizations o ON o.id=b.organization_id
+          LEFT JOIN discovery_business_settings bds ON bds.business_id=b.id
           LEFT JOIN LATERAL (
             SELECT l.* FROM discovery_business_locations l
             WHERE l.business_id=b.id AND l.is_active=TRUE
-            ORDER BY l.is_primary DESC,l.created_at ASC LIMIT 1
+            ORDER BY CASE WHEN ${matchingLocationOrder} THEN 0 ELSE 1 END,
+                     l.is_primary DESC,l.created_at ASC
+            LIMIT 1
           ) l ON TRUE
           LEFT JOIN LATERAL (
             SELECT c.name AS category_name,c.slug AS category_slug
@@ -1007,6 +1045,9 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             ORDER BY m.is_primary DESC LIMIT 1
           ) c ON TRUE
           WHERE ${bConditions.join(' AND ')}
+          GROUP BY b.id,o.slug,bds.allow_phone_contact,bds.allow_whatsapp_contact,bds.allow_public_store_link,
+                   l.id,l.name,l.city,l.district,l.region,l.latitude,l.longitude,l.service_radius_km,l.location_quality_status,l.location_source,
+                   c.category_name,c.category_slug
           ORDER BY ${order}
           LIMIT ${bb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? bb(0) : bb(offset)}
         `,businessParams);
@@ -1047,10 +1088,15 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const pCatParam = pb(categoryId);
         pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id=b.id AND (c.id=${pCatParam} OR c.parent_id=${pCatParam}) AND c.is_active=TRUE)`);
       }
-      if(city) pConditions.push(`lower(l.city)=lower(${pb(city)})`);
-      if(district) pConditions.push(`lower(l.district)=lower(${pb(district)})`);
-      if(region) pConditions.push(`lower(l.region)=lower(${pb(region)})`);
-      if(distanceExpr) pConditions.push(`${distanceExpr} <= GREATEST(${pb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      const productLocationConditions:string[] = [];
+      if(city) productLocationConditions.push(`lower(pl.city)=lower(${pb(city)})`);
+      if(district) productLocationConditions.push(`lower(pl.district)=lower(${pb(district)})`);
+      if(region) productLocationConditions.push(`lower(pl.region)=lower(${pb(region)})`);
+      const productDistanceExpr = distanceExprFor('pl');
+      if(productDistanceExpr) productLocationConditions.push(`${productDistanceExpr} <= GREATEST(${pb(radius)}, COALESCE(pl.service_radius_km,0)) AND pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL`);
+      if(openNow) productLocationConditions.push(`EXISTS(SELECT 1 FROM discovery_business_hours ph WHERE ph.location_id=pl.id AND ph.day_of_week=${pb(nowDow)} AND ph.is_closed=FALSE AND ph.opens_at<=${pb(nowTime)}::time AND ph.closes_at>=${pb(nowTime)}::time)`);
+      if(productLocationConditions.length) pConditions.push(`EXISTS(SELECT 1 FROM discovery_business_locations pl WHERE pl.business_id=b.id AND pl.is_active=TRUE AND ${productLocationConditions.join(' AND ')})`);
+      const productLocationOrder = productLocationConditions.length ? productLocationConditions.map((condition) => condition.replaceAll('pl.', 'l.')).join(' AND ') : 'TRUE';
       const productRank=pQ?`(
         ts_rank_cd(to_tsvector('simple',coalesce(p.name,'') || ' ' || coalesce(p.short_description,'') || ' ' || coalesce(p.description,'') || ' ' || coalesce(p.slug,'')),plainto_tsquery('simple',${pQ}))*${rankingWeights.text}
         + CASE WHEN lower(p.name)=lower(${pQ}) THEN ${rankingWeights.exact} WHEN lower(p.name) LIKE lower(${pQ}) || '%' THEN ${rankingWeights.prefix} ELSE 0 END
@@ -1063,8 +1109,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const r=await db.query(`
           SELECT p.id AS product_id,p.name AS product_name,p.slug AS product_slug,p.short_description,p.description,p.images,
                  p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
-                 l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,v.id AS variant_id,v.sku,v.name AS variant_name,v.retail_price,
-                 COALESCE(SUM(ib.available),0) AS available_stock,ds.show_prices,ds.show_stock_status,
+                 l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,v.id AS variant_id,v.sku,v.name AS variant_name,
+                 CASE WHEN COALESCE(ds.show_prices, TRUE) THEN v.retail_price ELSE NULL END AS retail_price,
+                 CASE WHEN COALESCE(ds.show_stock_status, FALSE) THEN COALESCE(SUM(ib.available),0) ELSE NULL END AS available_stock,
+                 ds.show_prices,ds.show_stock_status,
                  ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}
                  ${productRank} AS search_rank,
                  COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='PRODUCT' AND sa.entity_id=p.id AND sa.is_active=TRUE),'') AS search_aliases,
@@ -1075,10 +1123,17 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
           JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE
           LEFT JOIN discovery_business_settings ds ON ds.business_id=b.id
-          LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE
+          LEFT JOIN LATERAL (
+            SELECT l.* FROM discovery_business_locations l
+            WHERE l.business_id=b.id AND l.is_active=TRUE
+            ORDER BY CASE WHEN ${productLocationOrder} THEN 0 ELSE 1 END,
+                     l.is_primary DESC,l.created_at ASC
+            LIMIT 1
+          ) l ON TRUE
           LEFT JOIN inventory_balances ib ON ib.variant_id=v.id
           WHERE ${pConditions.join(' AND ')}
-          GROUP BY p.id,v.id,b.id,l.id,ds.show_prices,ds.show_stock_status
+          GROUP BY p.id,v.id,b.id,l.id,l.city,l.district,l.region,l.latitude,l.longitude,
+                   l.service_radius_km,l.location_quality_status,l.location_source,ds.show_prices,ds.show_stock_status
           ORDER BY ${sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, p.name ASC, p.id ASC` : order}
           LIMIT ${pb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? pb(0) : pb(offset)}
         `,productParams);
@@ -1117,10 +1172,15 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const sCatParam = sb(categoryId);
         sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_category_map bcm JOIN discovery_business_categories c ON c.id=bcm.category_id WHERE bcm.business_id=b.id AND (c.id=${sCatParam} OR c.parent_id=${sCatParam}) AND c.is_active=TRUE)`);
       }
-      if(city) sConditions.push(`lower(l.city)=lower(${sb(city)})`);
-      if(district) sConditions.push(`lower(l.district)=lower(${sb(district)})`);
-      if(region) sConditions.push(`lower(l.region)=lower(${sb(region)})`);
-      if(distanceExpr) sConditions.push(`${distanceExpr} <= GREATEST(${sb(radius)}, COALESCE(l.service_radius_km,0)) AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL`);
+      const serviceLocationConditions:string[] = [];
+      if(city) serviceLocationConditions.push(`lower(sl.city)=lower(${sb(city)})`);
+      if(district) serviceLocationConditions.push(`lower(sl.district)=lower(${sb(district)})`);
+      if(region) serviceLocationConditions.push(`lower(sl.region)=lower(${sb(region)})`);
+      const serviceDistanceExpr = distanceExprFor('sl');
+      if(serviceDistanceExpr) serviceLocationConditions.push(`${serviceDistanceExpr} <= GREATEST(${sb(radius)}, COALESCE(sl.service_radius_km,0)) AND sl.latitude IS NOT NULL AND sl.longitude IS NOT NULL`);
+      if(openNow) serviceLocationConditions.push(`EXISTS(SELECT 1 FROM discovery_business_hours sh WHERE sh.location_id=sl.id AND sh.day_of_week=${sb(nowDow)} AND sh.is_closed=FALSE AND sh.opens_at<=${sb(nowTime)}::time AND sh.closes_at>=${sb(nowTime)}::time)`);
+      if(serviceLocationConditions.length) sConditions.push(`EXISTS(SELECT 1 FROM discovery_business_locations sl WHERE sl.business_id=b.id AND sl.is_active=TRUE AND ${serviceLocationConditions.join(' AND ')})`);
+      const serviceLocationOrder = serviceLocationConditions.length ? serviceLocationConditions.map((condition) => condition.replaceAll('sl.', 'l.')).join(' AND ') : 'TRUE';
       const serviceRank=sQ?`(
         ts_rank_cd(to_tsvector('simple',coalesce(s.name,'') || ' ' || coalesce(s.description,'') || ' ' || coalesce(s.service_type,'') || ' ' || coalesce(s.service_area_text,'')),plainto_tsquery('simple',${sQ}))*${rankingWeights.text}
         + CASE WHEN lower(s.name)=lower(${sQ}) THEN ${rankingWeights.exact} WHEN lower(s.name) LIKE lower(${sQ}) || '%' THEN ${rankingWeights.prefix} ELSE 0 END
@@ -1139,7 +1199,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           JOIN discovery_businesses b ON b.id=s.business_id
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
           LEFT JOIN organizations o ON o.id=b.organization_id AND o.is_active=TRUE
-          LEFT JOIN discovery_business_locations l ON l.business_id=b.id AND l.is_active=TRUE AND l.is_primary=TRUE
+          LEFT JOIN LATERAL (
+            SELECT l.* FROM discovery_business_locations l
+            WHERE l.business_id=b.id AND l.is_active=TRUE
+            ORDER BY CASE WHEN ${serviceLocationOrder} THEN 0 ELSE 1 END,
+                     l.is_primary DESC,l.created_at ASC
+            LIMIT 1
+          ) l ON TRUE
           WHERE ${sConditions.join(' AND ')}
           ORDER BY ${sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, s.name ASC, s.id ASC` : order}
           LIMIT ${sb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? sb(0) : sb(offset)}
@@ -1932,7 +1998,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.post('/businesses/:id/reviews', requireAuth(), requireCustomerIdentity(), async(req,res,next)=>{try{const rating=Number(req.body?.rating);if(!Number.isInteger(rating)||rating<1||rating>5)throw new Error('VALIDATION_ERROR:rating must be an integer from 1 to 5.');const b=await repo.findById(req.params.id);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});let verified=false;const orderId=req.body?.orderId?String(req.body.orderId):null;if(orderId&&b.organization_id){const o=await db.query(`SELECT o.id FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1 AND o.organization_id=$2 AND c.organization_id=$2 AND c.auth_user_id=$3 AND o.status IN ('Delivered','Completed')`,[orderId,b.organization_id,req.auth!.userId]);verified=o.rows.length>0;}const r=await db.query(`INSERT INTO discovery_reviews(id,business_id,reviewer_user_id,reviewer_name,rating,title,body,order_id,verified_purchase,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING') RETURNING *`,[`rev_${randomUUID().replace(/-/g,'')}`,req.params.id,req.auth!.userId,String(req.body?.reviewerName||req.auth!.email||req.auth!.userId),rating,req.body?.title||null,req.body?.body||null,verified?orderId:null,verified]);await trustEvent(req.params.id,'REVIEW',r.rows[0].id,'REVIEW_SUBMITTED',req.auth!.userId,null,'PENDING',null,{verifiedPurchase:verified});res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
 
-  router.get('/businesses/:id/reviews', async(req,res,next)=>{try{const b=await businessService.getPublicProfile(req.params.id);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});if(!b.settings.allow_reviews)return res.json({success:true,summary:{rating:'0.00',count:0},data:[]});const r=await db.query(`SELECT r.id,r.reviewer_name,r.rating,r.title,r.body,r.verified_purchase,r.created_at,rr.response AS merchant_response,rr.created_at AS merchant_response_created_at FROM discovery_reviews r LEFT JOIN discovery_review_responses rr ON rr.review_id=r.id WHERE business_id=$1 AND status='PUBLISHED' ORDER BY verified_purchase DESC,created_at DESC LIMIT 100`,[req.params.id]);const s=await db.query(`SELECT COALESCE(AVG(rating),0)::numeric(3,2) AS rating,COUNT(*)::int AS count FROM discovery_reviews r WHERE r.business_id=$1 AND r.status='PUBLISHED'`,[req.params.id]);res.json({success:true,summary:s.rows[0],data:r.rows});}catch(err){next(err);}});
+  router.get('/businesses/:id/reviews', async(req,res,next)=>{try{const b=await businessService.getPublicProfile(req.params.id);if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});if(!b.settings.allow_reviews)return res.json({success:true,summary:{rating:'0.00',count:0},data:[]});const r=await db.query(`SELECT r.id,r.reviewer_name,r.rating,r.title,r.body,r.verified_purchase,r.created_at,rr.response AS merchant_response,rr.created_at AS merchant_response_created_at FROM discovery_reviews r LEFT JOIN discovery_review_responses rr ON rr.review_id=r.id WHERE r.business_id=$1 AND r.status='PUBLISHED' ORDER BY r.verified_purchase DESC,r.created_at DESC LIMIT 100`,[req.params.id]);const s=await db.query(`SELECT COALESCE(AVG(r.rating),0)::numeric(3,2) AS rating,COUNT(*)::int AS count FROM discovery_reviews r WHERE r.business_id=$1 AND r.status='PUBLISHED'`,[req.params.id]);res.json({success:true,summary:s.rows[0],data:r.rows});}catch(err){next(err);}});
 
   router.post('/reports', discoveryReportRateLimiter, async(req,res,next)=>{try{
     const businessId = req.body?.businessId == null ? null : String(req.body.businessId).trim() || null;

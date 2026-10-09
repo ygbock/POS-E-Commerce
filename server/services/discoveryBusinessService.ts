@@ -259,14 +259,31 @@ export class DiscoveryBusinessService {
         [id],
       ),
     ]);
+    // Public visibility settings are enforced in the API response, not only by
+    // presentation components. This prevents disabled contact details, reviews,
+    // and storefront links from leaking through direct API consumers.
+    const publicBusiness = {
+      ...business,
+      phone: settings.allow_phone_contact ? business.phone : null,
+      whatsapp: settings.allow_whatsapp_contact ? business.whatsapp : null,
+      tenant_slug: settings.allow_public_store_link ? business.tenant_slug : null,
+    };
+    const publicLocations = locations.map((location) => ({
+      ...location,
+      phone: settings.allow_phone_contact ? location.phone : null,
+    }));
+    const reviewsEnabled = settings.allow_reviews !== false;
+
     return {
-      business,
-      locations,
+      business: publicBusiness,
+      locations: publicLocations,
       categories,
       settings,
       hours: hours.rows,
-      recentReviews: reviews.rows,
-      reviewsSummary: summary.rows[0] || { rating: '0.00', count: 0 },
+      recentReviews: reviewsEnabled ? reviews.rows : [],
+      reviewsSummary: reviewsEnabled
+        ? summary.rows[0] || { rating: '0.00', count: 0 }
+        : { rating: '0.00', count: 0 },
       activeServices: services.rows,
     };
   }

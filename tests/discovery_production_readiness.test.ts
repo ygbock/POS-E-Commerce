@@ -53,7 +53,7 @@ async function main() {
     assert.strictEqual(invalidOffset.body?.error?.code, 'VALIDATION_ERROR');
 
     const bounded = await requestJson(baseUrl, '/api/discovery/search?limit=100&offset=0');
-    assert.strictEqual(bounded.response.status, 200);
+    assert.strictEqual(bounded.response.status, 200, `bounded search failed: ${JSON.stringify(bounded.body)}`);
     assert.strictEqual(Number(bounded.body?.counts?.businesses || 0), 1);
     assert.ok(
       Number(bounded.body?.data?.businesses?.[0]?.resultPosition || 0) >= 1,
