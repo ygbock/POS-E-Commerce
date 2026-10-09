@@ -76,6 +76,13 @@ async function main() {
     [business.id],
   );
 
+  const hiddenBusinessList = await getJson('/api/discovery/businesses?city=Freetown&limit=20');
+  assert.equal(hiddenBusinessList.status, 200, `public business list failed: ${JSON.stringify(hiddenBusinessList.body)}`);
+  const hiddenListedBusiness = hiddenBusinessList.body.data.find((item: any) => item.id === business.id);
+  assert.ok(hiddenListedBusiness, 'published business should appear in the public business list');
+  assert.equal(hiddenListedBusiness.phone, null, 'public business list must mask disabled phone contact');
+  assert.equal(hiddenListedBusiness.whatsapp, null, 'public business list must mask disabled WhatsApp contact');
+
   const hiddenPublicProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
   assert.equal(hiddenPublicProfile.status, 200, `public profile endpoint failed: ${JSON.stringify(hiddenPublicProfile.body)}`);
   assert.equal(hiddenPublicProfile.body.data.business.phone, null, 'public profile route must mask disabled phone contact');
