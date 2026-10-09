@@ -185,6 +185,26 @@ async function main() {
     );
     assert.strictEqual(Number(matchCount.rows[0].count), 1);
 
+    // Disabling service requests must revoke access to previously matched leads and block new quotes.
+    await db.query(
+      'UPDATE discovery_business_settings SET allow_service_requests=FALSE WHERE business_id=$1',
+      [ownerA.business.id],
+    );
+    const disabledProviderDetail = await requestJson(
+      baseUrl,
+      '/api/discovery/businesses/' + ownerA.business.id + '/service-requests/' + requestId,
+      actors.ownerA,
+    );
+    assert.strictEqual(disabledProviderDetail.status, 404, JSON.stringify(disabledProviderDetail.body));
+    const disabledQuote = await requestJson(
+      baseUrl,
+      '/api/discovery/service-requests/' + requestId + '/quotes',
+      actors.ownerA,
+      { method: 'POST', body: JSON.stringify({ businessId: ownerA.business.id, amount: 120 }) },
+    );
+    assert.strictEqual(disabledQuote.status, 403, JSON.stringify(disabledQuote.body));
+    assert.strictEqual(disabledQuote.body?.error?.code, 'SERVICE_REQUESTS_DISABLED');
+
     console.log('Discovery service request matching authorization/hardening tests passed.');
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
