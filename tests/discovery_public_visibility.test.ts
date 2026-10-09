@@ -124,7 +124,7 @@ async function main() {
   const nowDow = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
   await db.query(
     `INSERT INTO discovery_business_hours (id,location_id,day_of_week,opens_at,closes_at,is_closed)
-     VALUES ('pdv_hours_today','pdv_loc_primary',$1,'00:00','23:59',FALSE)`,
+     VALUES ('pdv_hours_today','pdv_loc_primary',$1,'00:00','23:59:59',FALSE)`,
     [nowDow],
   );
   const openNowSearch = await getJson('/api/discovery/search?type=businesses&city=Freetown&openNow=true&limit=20');
