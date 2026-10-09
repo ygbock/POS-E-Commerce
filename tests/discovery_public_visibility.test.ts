@@ -253,6 +253,10 @@ async function main() {
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_public_store_link, TRUE) THEN o.slug ELSE NULL END AS tenant_slug'), 'search results must mask disabled storefront links');
   assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_prices, TRUE) THEN v.retail_price ELSE NULL END AS retail_price'), 'product search must not return prices when hidden');
   assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_stock_status, FALSE) THEN COALESCE(SUM(ib.available),0) ELSE NULL END AS available_stock'), 'product search must not return stock counts when hidden');
+  const attributionStart = routes.indexOf("router.post('/search/events'");
+  const attributionEnd = routes.indexOf("router.post('/businesses/:id/reviews/:reviewId/response'", attributionStart);
+  const attributionRoute = routes.slice(attributionStart, attributionEnd);
+  assert.ok(attributionRoute.includes('COALESCE(ds.show_products,TRUE)=TRUE'), 'product attribution must reject events for products hidden by the owning business');
   assert.ok(routes.includes("b.listing_status='PUBLISHED'") && routes.includes('b.is_discoverable=TRUE'), 'public search must exclude unpublished or undiscoverable listings');
 
   // Categories and listing details.
