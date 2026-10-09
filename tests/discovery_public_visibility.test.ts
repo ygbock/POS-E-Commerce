@@ -263,6 +263,11 @@ async function main() {
   assert.ok(routes.includes("b.listing_status='PUBLISHED'") && routes.includes('b.is_discoverable=TRUE'), 'public search must exclude unpublished or undiscoverable listings');
 
   // Categories and listing details.
+  const favoritesStart = routes.indexOf("router.get('/favorites'");
+  const favoritesEnd = routes.indexOf("router.get('/businesses/:id/favorite'", favoritesStart);
+  const favoritesRoute = routes.slice(favoritesStart, favoritesEnd);
+  assert.ok(favoritesRoute.includes('settings?.allow_phone_contact === false ? null : business.phone'), 'customer favorites must mask disabled phone contact');
+  assert.ok(favoritesRoute.includes('settings?.allow_whatsapp_contact === false ? null : business.whatsapp'), 'customer favorites must mask disabled WhatsApp contact');
   assert.ok(routes.includes("router.get('/categories'"), 'public category endpoint must exist');
   assert.ok(routes.includes('WHERE is_active=TRUE'), 'public category listing must exclude inactive categories');
   assert.ok(categoryUi.includes('FALLBACK_SUBCATEGORIES'), 'category explorer must retain its fallback taxonomy behavior');
