@@ -69,7 +69,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     try {
       const result = await db.query(
         `SELECT c.id, c.parent_id, c.name, c.slug, c.description, c.icon_name, c.is_active, c.display_order, c.created_at, c.updated_at,
-                COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status = 'PUBLISHED' AND b.is_discoverable = TRUE)::int AS item_count
+                COUNT(DISTINCT bcm.business_id) FILTER (WHERE b.listing_status = 'PUBLISHED' AND b.is_discoverable = TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations active_org WHERE active_org.id=b.organization_id AND active_org.is_active=TRUE)))::int AS item_count
            FROM discovery_business_categories c
            LEFT JOIN discovery_business_categories child ON child.parent_id = c.id AND child.is_active = TRUE
            LEFT JOIN discovery_business_category_map bcm ON bcm.category_id = c.id OR bcm.category_id = child.id
