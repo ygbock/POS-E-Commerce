@@ -188,7 +188,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     await assertBusinessPermission(db, businessId, req.auth.userId, permission);
   };
 
-  const checkBusinessVisibility = async (businessId: string, req: Request) => {
+  const checkBusinessVisibility = async (businessId: string, req: Request): Promise<boolean> => {
     const business = await repo.findById(businessId);
     if (!business) {
       throw new Error('NOT_FOUND:Business not found.');
@@ -198,7 +198,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const org = await db.query('SELECT is_active FROM organizations WHERE id = $1', [business.organization_id]);
       publicVisible = org.rows[0]?.is_active === true;
     }
-    if (publicVisible) return;
+    if (publicVisible) return true;
 
     if (!req.auth?.userId) {
       throw new Error('PERMISSION_DENIED:You are not an active member of this business.');
@@ -211,6 +211,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if (!member.rows[0]) {
       throw new Error('PERMISSION_DENIED:You are not an active member of this business.');
     }
+    return false;
   };
 
   const publicBusiness = async (id: string) => businessService.getPublicProfile(id);
@@ -578,8 +579,21 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.get('/businesses/:id/locations', async (req, res, next) => {
     try {
-      await checkBusinessVisibility(req.params.id, req);
-      res.json({ success: true, data: await repo.listLocations(req.params.id, { activeOnly: true }) });
+      const isPublicRequest = await checkBusinessVisibility(req.params.id, req);
+      const locations = await repo.listLocations(req.params.id, { activeOnly: true });
+      const settings = await repo.getSettings(req.params.id);
+      const membership = req.auth?.userId
+        ? await db.query(
+            `SELECT 1 FROM discovery_business_memberships
+              WHERE business_id=$1 AND user_id=$2 AND is_active=TRUE LIMIT 1`,
+            [req.params.id, req.auth.userId],
+          )
+        : { rows: [] };
+      const canViewInternalContact = !isPublicRequest && membership.rows.length > 0;
+      const data = settings.allow_phone_contact || canViewInternalContact
+        ? locations
+        : locations.map((location) => ({ ...location, phone: null }));
+      res.json({ success: true, data });
     } catch (err) {
       fail(res, err);
     }
