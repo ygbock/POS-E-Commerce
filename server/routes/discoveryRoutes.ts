@@ -1281,7 +1281,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const r=await db.query("SELECT 1 FROM discovery_businesses b WHERE b.id=$1 AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))",[entityId]);
         visible=Boolean(r.rows[0]);
       }else if(entityType==='PRODUCT'){
-        const r=await db.query("SELECT 1 FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id WHERE p.id=$1 AND p.status='active' AND p.channels_ecommerce=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE)",[entityId]);
+        const r=await db.query("SELECT 1 FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id LEFT JOIN discovery_business_settings ds ON ds.business_id=b.id WHERE p.id=$1 AND p.status='active' AND p.channels_ecommerce=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND COALESCE(ds.show_products,TRUE)=TRUE AND EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE)",[entityId]);
         visible=Boolean(r.rows[0]);
       }else{
         const r=await db.query("SELECT 1 FROM discovery_services s JOIN discovery_businesses b ON b.id=s.business_id WHERE s.id=$1 AND s.is_active=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))",[entityId]);
