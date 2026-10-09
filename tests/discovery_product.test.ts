@@ -37,7 +37,7 @@ assert.match(routes, /b\.listing_status='PUBLISHED'/);
 assert.match(routes, /b\.is_discoverable=TRUE/);
 assert.match(routes, /COALESCE\(ds\.show_products,TRUE\)=TRUE/);
 assert.match(routes, /ds\.show_prices,ds\.show_stock_status/);
-assert.match(routes, /COALESCE\(SUM\(ib\.available\),0\) AS available_stock/);
+assert.match(routes, /CASE WHEN COALESCE\(ds\.show_stock_status, FALSE\) THEN COALESCE\(SUM\(ib\.available\),0\) ELSE NULL END AS available_stock/);
 assert.match(routes, /JOIN organizations o ON o\.id=b\.organization_id AND o\.is_active=TRUE/);
 
 console.log('Discovery PAGE-006 product discovery contract tests passed.');
