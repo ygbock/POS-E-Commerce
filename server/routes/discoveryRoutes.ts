@@ -786,6 +786,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           WHERE sa.entity_type='SERVICE'
             AND sa.is_active=TRUE
             AND s.is_active=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND lower(sa.normalized_alias) LIKE $1 || '%'
 
           UNION ALL
@@ -800,6 +801,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
              SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
            ))
           WHERE s.is_active=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND lower(s.name) LIKE $1 || '%'
         ) suggestions
         GROUP BY label, type
