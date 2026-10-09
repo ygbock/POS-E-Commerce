@@ -136,7 +136,7 @@ async function main() {
   assert.equal(visibleLocations.body.data.find((location: any) => location.id === 'pdv_loc_primary')?.phone, '+23276000999');
 
   const visibleReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/reviews`);
-  assert.equal(visibleReviews.status, 200);
+  assert.equal(visibleReviews.status, 200, `public reviews endpoint failed: ${JSON.stringify(visibleReviews.body)}`);
   assert.equal(visibleReviews.body.data.length, 1, 'real reviews endpoint should return the published review when enabled');
   assert.equal(Number(visibleReviews.body.summary.count), 1);
 
