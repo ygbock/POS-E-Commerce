@@ -469,7 +469,26 @@ export function createDiscoveryRouter(db: DatabaseClient) {
        LIMIT 100`,
       [req.auth!.userId],
     );
-    res.json({success:true,data:r.rows});
+    const settingsResult = r.rows.length ? await db.query(
+      `SELECT business_id,
+              COALESCE(allow_phone_contact, TRUE) AS allow_phone_contact,
+              COALESCE(allow_whatsapp_contact, TRUE) AS allow_whatsapp_contact
+         FROM discovery_business_settings
+        WHERE business_id = ANY($1::text[])`,
+      [r.rows.map((business: any) => String(business.id))],
+    ) : { rows: [] as any[] };
+    const settingsByBusiness = new Map<string, any>(
+      settingsResult.rows.map((settings: any) => [String(settings.business_id), settings]),
+    );
+    const data = r.rows.map((business: any) => {
+      const settings = settingsByBusiness.get(String(business.id));
+      return {
+        ...business,
+        phone: settings?.allow_phone_contact === false ? null : business.phone,
+        whatsapp: settings?.allow_whatsapp_contact === false ? null : business.whatsapp,
+      };
+    });
+    res.json({success:true,data});
   }catch(err){next(err);}});
 
   router.get('/businesses/:id/favorite', requireAuth(), requireCustomerIdentity(), async (req,res,next)=>{try{
