@@ -564,7 +564,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     try {
       const challenge = typeof req.body?.challenge === 'string' ? req.body.challenge.trim() : '';
       const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
-      if (!challenge || !/^\\d{6}$/.test(code)) {
+      if (!challenge || !/^\d{6}$/.test(code)) {
         return res.status(422).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid MFA enrollment challenge and six-digit code are required.' } });
       }
       const result = await authService.confirmPlatformMfaEnrollment(challenge, code);
@@ -751,7 +751,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           });
         }
         if (msg.includes('PLATFORM_LOGIN_REQUIRED')) {
-          return res.status(403).json({
+          return res.status(401).json({
             success: false,
             error: {
               code: 'PLATFORM_LOGIN_REQUIRED',
@@ -3343,6 +3343,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ------------------------------------------------------------------
   // 9. CENTRALIZED API ERROR HANDLER (API-001 / SEC-001)
   // ------------------------------------------------------------------
+  app.use('/api', (req: Request, res: Response) => {
+    return res.status(404).json({
+      success: false,
+      error: {
+        code: 'API_ROUTE_NOT_FOUND',
+        message: `API endpoint not found: ${req.method} ${req.originalUrl}`,
+      },
+    });
+  });
+
   app.use('/api', (err: any, req: Request, res: Response, _next: NextFunction) => {
     return apiErrorHandler(err, req, res);
   });

@@ -377,7 +377,7 @@ export function createMerchantRouter(db: DatabaseClient, authService: AuthServic
       const actorRole = await requireTeamManager(req, req.params.id);
       const email = normalizeEmail(req.body?.email);
       const role = req.body?.role === 'MANAGER' ? 'MANAGER' : 'STAFF';
-      if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         throw new Error('VALIDATION_ERROR:Enter a valid team member email address.');
       }
       if (actorRole === 'MANAGER' && role === 'MANAGER') {

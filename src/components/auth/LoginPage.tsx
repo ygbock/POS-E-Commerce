@@ -1,5 +1,6 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
+import { ArrowLeft, Check, Copy, Eye, EyeOff, QrCode, X } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { authClient, AuthUser, PlatformMfaChallengeError } from '../../services/authClient';
 
 interface LoginPageProps {
@@ -18,6 +19,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
   const [mfaEnrollment, setMfaEnrollment] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaOtpauthUri, setMfaOtpauthUri] = useState<string | null>(null);
+  const [secretCopied, setSecretCopied] = useState(false);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   // Customer registration states
@@ -210,6 +213,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
           try {
             const enrollment = await authClient.setupPlatformMfa(err.challenge);
             setMfaSecret(enrollment.secret);
+            setMfaOtpauthUri(
+              enrollment.otpauthUri ||
+                `otpauth://totp/${encodeURIComponent(`AbaCha:${email.trim()}`)}?secret=${encodeURIComponent(enrollment.secret)}&issuer=AbaCha&algorithm=SHA1&digits=6&period=30`
+            );
           } catch (setupError) {
             setError(setupError instanceof Error ? setupError.message : 'Unable to initialize MFA enrollment.');
             setMfaChallenge(null);
@@ -272,16 +279,54 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
                 <h2 className="text-xl font-bold text-slate-900">{mfaEnrollment ? 'Secure your platform account' : 'Verify your platform sign in'}</h2>
                 <p className="mt-1 text-sm text-slate-500">
                   {mfaEnrollment
-                    ? 'Set up an authenticator app, then enter the six-digit code it generates.'
+                    ? 'Scan the QR code or enter the secret key in your authenticator app, then enter the six-digit code it generates.'
                     : 'Enter the six-digit code from your authenticator app. A recovery code may also be used.'}
                 </p>
               </div>
 
               {mfaEnrollment && mfaSecret && (
-                <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-                  <p className="font-semibold text-slate-900">Authenticator secret</p>
-                  <p className="mt-1 break-all font-mono text-xs text-slate-700">{mfaSecret}</p>
-                  <p className="mt-3 text-xs text-slate-500">Add this secret to your authenticator app, then enter the generated six-digit code below.</p>
+                <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <div className="flex flex-col items-center mb-4">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-2.5">
+                      <QrCode className="w-4 h-4 text-slate-600" />
+                      <span>Scan with Authenticator App</span>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <QRCodeSVG
+                        value={
+                          mfaOtpauthUri ||
+                          `otpauth://totp/${encodeURIComponent(`AbaCha:${email.trim()}`)}?secret=${encodeURIComponent(mfaSecret)}&issuer=AbaCha&algorithm=SHA1&digits=6&period=30`
+                        }
+                        size={176}
+                        level="M"
+                        includeMargin={false}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-200 pt-3">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-slate-900 text-xs uppercase tracking-wider">Authenticator secret</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(mfaSecret);
+                          setSecretCopied(true);
+                          setTimeout(() => setSecretCopied(false), 2000);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition"
+                      >
+                        {secretCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{secretCopied ? 'Copied' : 'Copy key'}</span>
+                      </button>
+                    </div>
+                    <p className="mt-1.5 break-all rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 select-all">
+                      {mfaSecret}
+                    </p>
+                    <p className="mt-2.5 text-xs text-slate-500">
+                      Scan the QR code above or manually add this secret to your authenticator app, then enter the generated six-digit code below.
+                    </p>
+                  </div>
                 </div>
               )}
 

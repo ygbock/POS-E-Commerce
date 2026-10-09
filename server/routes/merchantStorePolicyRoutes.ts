@@ -24,7 +24,7 @@ function parseMoney(value: unknown, field: string): string {
     throw new Error(`VALIDATION_ERROR:${field} must be a non-negative monetary amount.`);
   }
   const raw = String(value).trim();
-  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw)) {
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) {
     throw new Error(`VALIDATION_ERROR:${field} must be a non-negative amount with at most 2 decimal places.`);
   }
   const numeric = Number(raw);

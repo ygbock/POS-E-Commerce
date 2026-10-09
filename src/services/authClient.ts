@@ -80,6 +80,15 @@ class AuthClient {
     return { ...init, credentials: 'include' };
   }
 
+  private async parseJson(res: Response, fallbackMessage = 'Server is temporarily unavailable. Please try again.'): Promise<any> {
+    const text = await res.text();
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(res.status >= 500 ? 'Server is restarting or temporarily unavailable. Please try again in a moment.' : fallbackMessage);
+    }
+  }
+
   async registerBusinessOwner(input: {
     name: string;
     email: string;
@@ -92,7 +101,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to create business account.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to create business account.');
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
@@ -108,7 +117,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.trim(), password }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to sign in to the business owner portal.');
     if (!res.ok || !data.success) {
       throw new Error(data.error?.message || 'Unable to sign in to the business owner portal.');
     }
@@ -127,7 +136,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.trim(), password }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Platform authentication failed.');
     if (!res.ok || !data.success) {
       const code = data.error?.code;
       if ((code === 'MFA_REQUIRED' || code === 'MFA_ENROLLMENT_REQUIRED') && data.data?.challenge) {
@@ -149,7 +158,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ challenge }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to initialize platform MFA.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to initialize platform MFA.');
     return data.data;
   }
@@ -160,7 +169,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ challenge, code }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to complete platform MFA enrollment.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to complete platform MFA enrollment.');
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
@@ -174,7 +183,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ challenge, code }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to verify platform MFA.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to verify platform MFA.');
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
@@ -193,7 +202,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to register customer account.');
     if (!res.ok || !data.success) {
       throw new Error(data.error?.message || 'Unable to register customer account.');
     }
@@ -215,7 +224,7 @@ class AuthClient {
       method: 'GET',
       headers: this.getAuthHeaders(),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to load customer account.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to load customer account.');
     return data.data;
   }
@@ -226,7 +235,7 @@ class AuthClient {
       headers: this.getAuthHeaders(),
       body: JSON.stringify(input),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to update customer account.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to update customer account.');
     this.currentUser = {
       ...(this.currentUser || {}),
@@ -248,7 +257,7 @@ class AuthClient {
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ currentPassword, newPassword }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to change customer password.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to change customer password.');
     this.currentToken = null;
     this.currentUser = null;
@@ -261,7 +270,7 @@ class AuthClient {
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ currentPassword }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to deactivate customer account.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to deactivate customer account.');
     this.currentToken = null;
     this.currentUser = null;
@@ -274,7 +283,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, organizationId }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to request password reset.');
     if (!res.ok || !data.success) {
       throw new Error(data.error?.message || 'Unable to request password reset.');
     }
@@ -287,7 +296,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, password }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Unable to reset password.');
     if (!res.ok || !data.success) {
       throw new Error(data.error?.message || 'Unable to reset password.');
     }
@@ -300,7 +309,7 @@ class AuthClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
     }));
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Email verification failed.');
     if (!res.ok || !data.success) {
       throw new Error(data.error?.message || 'Email verification failed.');
     }
@@ -316,7 +325,7 @@ class AuthClient {
       body: JSON.stringify(organizationId ? { email, password, organizationId } : { email, password }),
     }));
 
-    const data = await res.json();
+    const data = await this.parseJson(res, 'Authentication failed.');
     if (!res.ok || !data.success) {
       const err: any = new Error(data.error?.message || 'Authentication failed');
       err.code = data.error?.code;

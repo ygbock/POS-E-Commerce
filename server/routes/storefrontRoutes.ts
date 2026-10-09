@@ -654,7 +654,7 @@ export function createStorefrontRouter(db: DatabaseClient, orderService?: OrderS
         [config.tenant.id, orderNumber],
       );
       const order = orderRes.rows[0];
-      const normalizedContact = contact.toLowerCase().replace(/\\s+/g, '');
+      const normalizedContact = contact.toLowerCase().replace(/\s+/g, '');
       const normalizedPhone = contact.replace(/[^0-9]/g, '');
       const emailMatches = order?.customer_email
         ? String(order.customer_email).trim().toLowerCase() === normalizedContact
