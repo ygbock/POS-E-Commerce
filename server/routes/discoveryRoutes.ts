@@ -589,7 +589,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             [req.params.id, req.auth.userId],
           )
         : { rows: [] };
-      const canViewInternalContact = !isPublicRequest && membership.rows.length > 0;
+      const canViewInternalContact = membership.rows.length > 0;
       const data = settings.allow_phone_contact || canViewInternalContact
         ? locations
         : locations.map((location) => ({ ...location, phone: null }));
