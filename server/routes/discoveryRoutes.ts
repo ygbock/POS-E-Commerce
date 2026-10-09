@@ -1132,7 +1132,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           ) l ON TRUE
           LEFT JOIN inventory_balances ib ON ib.variant_id=v.id
           WHERE ${pConditions.join(' AND ')}
-          GROUP BY p.id,v.id,b.id,l.id,ds.show_prices,ds.show_stock_status
+          GROUP BY p.id,v.id,b.id,l.id,l.city,l.district,l.region,l.latitude,l.longitude,
+                   l.service_radius_km,l.location_quality_status,l.location_source,ds.show_prices,ds.show_stock_status
           ORDER BY ${sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, p.name ASC, p.id ASC` : order}
           LIMIT ${pb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? pb(0) : pb(offset)}
         `,productParams);
