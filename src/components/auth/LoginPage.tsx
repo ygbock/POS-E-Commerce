@@ -46,7 +46,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       redirectParam && redirectParam.startsWith('/platform') && !redirectParam.startsWith('//')
         ? redirectParam
         : '/platform';
-    window.location.assign(safePlatformRedirect);
+    window.history.pushState({}, '', safePlatformRedirect);
+    window.dispatchEvent(new PopStateEvent('popstate'));
     onAuthenticated(user);
   };
 
@@ -56,14 +57,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
     setError('');
     setLoading(true);
     try {
+      const normalizedCode = mfaCode.trim().replace(/\s+/g, '');
       if (mfaEnrollment) {
-        const result = await authClient.confirmPlatformMfaEnrollment(mfaChallenge, mfaCode.trim());
+        const result = await authClient.confirmPlatformMfaEnrollment(mfaChallenge, normalizedCode);
         setRecoveryCodes(result.recoveryCodes);
       } else {
-        const user = await authClient.verifyPlatformMfa(mfaChallenge, mfaCode.trim());
+        const user = await authClient.verifyPlatformMfa(mfaChallenge, normalizedCode);
         finishPlatformAuthentication(user);
       }
-    } catch (err) {
+    } catch (err: any) {
+      const code = err?.code || '';
+      if (code === 'INVALID_MFA_CHALLENGE' || code === 'MFA_CHALLENGE_LOCKED') {
+        setMfaChallenge(null);
+        setMfaCode('');
+        setMfaSecret(null);
+        setMfaOtpauthUri(null);
+      }
       setError(err instanceof Error ? err.message : 'Unable to verify the MFA code.');
     } finally {
       setLoading(false);
@@ -349,6 +358,47 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
                   <button type="submit" disabled={loading} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
                     {loading ? 'Verifying…' : mfaEnrollment ? 'Enable MFA & continue' : 'Verify & continue'}
                   </button>
+                  <div className="mt-4 flex flex-col items-center gap-2 text-xs">
+                    {!mfaEnrollment && email && password && (
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={async () => {
+                          setError('');
+                          setLoading(true);
+                          try {
+                            const enrollment = await authClient.resetPlatformMfaEnrollment(email, password);
+                            setMfaChallenge(enrollment.challenge);
+                            setMfaEnrollment(true);
+                            setMfaSecret(enrollment.secret);
+                            setMfaOtpauthUri(enrollment.otpauthUri);
+                            setMfaCode('');
+                          } catch (resetErr: any) {
+                            setError(resetErr instanceof Error ? resetErr.message : 'Unable to reset MFA setup.');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition"
+                      >
+                        Lost authenticator or need a new QR code? Re-setup MFA
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMfaChallenge(null);
+                        setMfaEnrollment(false);
+                        setMfaSecret(null);
+                        setMfaOtpauthUri(null);
+                        setMfaCode('');
+                        setError('');
+                      }}
+                      className="text-slate-500 hover:text-slate-700 hover:underline transition"
+                    >
+                      Back to sign in
+                    </button>
+                  </div>
                 </>
               )}
             </>

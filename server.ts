@@ -560,10 +560,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
+  app.post('/api/auth/platform/mfa/reset-enrollment', authRateLimiter, validateBody(validateLoginPayload), async (req: Request, res: Response) => {
+    try {
+      const result = await authService.resetPlatformMfaEnrollment({
+        email: String(req.body?.email || ''),
+        password: String(req.body?.password || ''),
+      });
+      return res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'MFA_RESET_FAILED',
+          message: 'Unable to reset MFA setup. Please verify your email and password.',
+        },
+      });
+    }
+  });
+
   app.post('/api/auth/platform/mfa/confirm-enrollment', authRateLimiter, async (req: Request, res: Response) => {
     try {
       const challenge = typeof req.body?.challenge === 'string' ? req.body.challenge.trim() : '';
-      const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+      const code = typeof req.body?.code === 'string' ? req.body.code.trim().replace(/\s+/g, '') : '';
       if (!challenge || !/^\d{6}$/.test(code)) {
         return res.status(422).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid MFA enrollment challenge and six-digit code are required.' } });
       }
@@ -579,11 +597,19 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
     } catch (err: any) {
       const code = String(err?.message || '').split(':')[0];
+      const message =
+        code === 'INVALID_MFA_CODE'
+          ? 'The 6-digit authenticator code is invalid or expired. Please enter the current code shown in your app.'
+          : code === 'INVALID_MFA_CHALLENGE'
+          ? 'Your MFA setup challenge expired. Please sign in again to start a fresh setup.'
+          : code === 'MFA_ALREADY_ENABLED'
+          ? 'MFA is already enabled for this account. Please sign in and enter your authenticator code.'
+          : 'Unable to complete platform MFA enrollment.';
       return res.status(code === 'INVALID_MFA_CODE' ? 401 : 400).json({
         success: false,
         error: {
           code: code || 'MFA_ENROLLMENT_FAILED',
-          message: code === 'INVALID_MFA_CODE' ? 'The MFA code is invalid or expired.' : 'Unable to complete platform MFA enrollment.',
+          message,
         },
       });
     }
@@ -592,7 +618,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.post('/api/auth/platform/mfa/verify', authRateLimiter, async (req: Request, res: Response) => {
     try {
       const challenge = typeof req.body?.challenge === 'string' ? req.body.challenge.trim() : '';
-      const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+      const code = typeof req.body?.code === 'string' ? req.body.code.trim().replace(/\s+/g, '') : '';
       if (!challenge || !code) {
         return res.status(422).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'MFA challenge and verification code are required.' } });
       }
@@ -604,11 +630,19 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
     } catch (err: any) {
       const code = String(err?.message || '').split(':')[0];
+      const message =
+        code === 'INVALID_MFA_CODE'
+          ? 'The MFA code is invalid or was already used. Wait for the next 6-digit code in your authenticator app or enter an unused recovery code.'
+          : code === 'INVALID_MFA_CHALLENGE'
+          ? 'Your MFA verification session expired. Please sign in again.'
+          : code === 'MFA_CHALLENGE_LOCKED'
+          ? 'Too many incorrect MFA attempts. Please sign in again to request a new MFA challenge.'
+          : 'Unable to verify platform MFA.';
       return res.status(code === 'INVALID_MFA_CODE' ? 401 : 400).json({
         success: false,
         error: {
           code: code || 'MFA_VERIFICATION_FAILED',
-          message: code === 'INVALID_MFA_CODE' ? 'The MFA code is invalid or expired.' : 'Unable to verify platform MFA.',
+          message,
         },
       });
     }

@@ -71,9 +71,13 @@ class AuthClient {
   }
 
   getAuthHeaders(): Record<string, string> {
-    // Authentication is carried by the HttpOnly session cookie. No bearer token
-    // is persisted in browser storage and JavaScript cannot read the session secret.
-    return { 'Content-Type': 'application/json' };
+    // Authentication is carried by the HttpOnly session cookie. When an in-memory
+    // access token is also available on the current page, include it as Bearer fallback.
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.currentToken) {
+      headers.Authorization = `Bearer ${this.currentToken}`;
+    }
+    return headers;
   }
 
   private getRequestInit(init: RequestInit = {}): RequestInit {
@@ -163,6 +167,17 @@ class AuthClient {
     return data.data;
   }
 
+  async resetPlatformMfaEnrollment(email: string, password: string): Promise<{ challenge: string; secret: string; otpauthUri: string; expiresAt: string }> {
+    const res = await fetch('/api/auth/platform/mfa/reset-enrollment', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), password }),
+    }));
+    const data = await this.parseJson(res, 'Unable to reset platform MFA setup.');
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to reset platform MFA setup.');
+    return data.data;
+  }
+
   async confirmPlatformMfaEnrollment(challenge: string, code: string): Promise<{ user: AuthUser; recoveryCodes: string[] }> {
     const res = await fetch('/api/auth/platform/mfa/confirm-enrollment', this.getRequestInit({
       method: 'POST',
@@ -170,7 +185,11 @@ class AuthClient {
       body: JSON.stringify({ challenge, code }),
     }));
     const data = await this.parseJson(res, 'Unable to complete platform MFA enrollment.');
-    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to complete platform MFA enrollment.');
+    if (!res.ok || !data.success) {
+      const err: any = new Error(data.error?.message || 'Unable to complete platform MFA enrollment.');
+      err.code = data.error?.code;
+      throw err;
+    }
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
     if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
@@ -184,7 +203,11 @@ class AuthClient {
       body: JSON.stringify({ challenge, code }),
     }));
     const data = await this.parseJson(res, 'Unable to verify platform MFA.');
-    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to verify platform MFA.');
+    if (!res.ok || !data.success) {
+      const err: any = new Error(data.error?.message || 'Unable to verify platform MFA.');
+      err.code = data.error?.code;
+      throw err;
+    }
     this.currentToken = data.data.token;
     this.currentUser = data.data.user;
     if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));

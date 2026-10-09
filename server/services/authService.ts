@@ -680,6 +680,45 @@ export class AuthService {
     return { ...enrollment, expiresAt: result.rows[0]?.expires_at || new Date(Date.now() + 300000).toISOString() };
   }
 
+  async resetPlatformMfaEnrollment(credentials: { email: string; password: string }): Promise<{ challenge: string; secret: string; otpauthUri: string; expiresAt: string }> {
+    const email = credentials.email.toLowerCase().trim();
+    if (!email || !credentials.password) throw new Error('Invalid platform credentials');
+
+    const queryResult = await this.db.query<UserRecord>(
+      `SELECT u.*
+         FROM users u
+         WHERE LOWER(u.email)=LOWER($1)
+           AND u.is_active=TRUE
+           AND u.role IN ('system_owner','platform_admin','platform_support','platform_finance')
+         LIMIT 1`,
+      [email],
+    );
+    const user = queryResult.rows[0];
+    if (!user) throw new Error('Invalid platform credentials');
+
+    const role = normalizeRole(user.role);
+    if (!isPlatformRole(role)) throw new Error('PLATFORM_ACCESS_DENIED');
+    if (!verifyPassword(credentials.password, user.password_hash, user.password_salt)) {
+      throw new Error('Invalid platform credentials');
+    }
+
+    await this.db.query('DELETE FROM platform_mfa_recovery_codes WHERE user_id=$1', [user.id]);
+    await this.db.query('DELETE FROM platform_mfa_credentials WHERE user_id=$1', [user.id]);
+    await this.db.query(
+      'UPDATE platform_mfa_challenges SET used_at=CURRENT_TIMESTAMP WHERE user_id=$1 AND used_at IS NULL',
+      [user.id],
+    );
+
+    const enrollmentChallenge = await this.platformMfa.createChallenge(user.id, 'ENROLLMENT');
+    const enrollment = await this.platformMfa.beginEnrollment(user.id);
+    return {
+      challenge: enrollmentChallenge.challenge,
+      secret: enrollment.secret,
+      otpauthUri: enrollment.otpauthUri,
+      expiresAt: enrollmentChallenge.expiresAt,
+    };
+  }
+
   async confirmPlatformMfaEnrollment(challenge: string, code: string): Promise<{ login: LoginResult; recoveryCodes: string[] }> {
     const user = await this.platformMfa.resolveChallenge(challenge, 'ENROLLMENT');
     const recoveryCodes = await this.platformMfa.confirmEnrollment(user.id, code);

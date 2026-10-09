@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { authClient } from '../../services/authClient';
 
 interface PlatformDashboardProps {
   setActiveTab: (tab: string) => void;
@@ -37,9 +38,8 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
       try {
         setLoading(true);
         const res = await fetch('/api/platform/subscriptions', {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('abacha_auth_token') || ''}`,
-          },
+          credentials: 'include',
+          headers: authClient.getAuthHeaders(),
         });
         if (res.ok) {
           const json = await res.json();

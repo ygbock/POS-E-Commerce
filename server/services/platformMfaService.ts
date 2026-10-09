@@ -234,7 +234,7 @@ export class PlatformMfaService {
         credential.secret_auth_tag,
       );
       const totp = verifyTotpCode(secret, code);
-      if (totp.valid && (credential.last_used_counter === null || totp.counter > Number(credential.last_used_counter))) {
+      if (totp.valid && (credential.last_used_counter === null || totp.counter >= Number(credential.last_used_counter))) {
         accepted = true;
         await this.db.query(
           `UPDATE platform_mfa_credentials

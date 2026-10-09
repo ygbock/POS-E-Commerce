@@ -268,8 +268,6 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const [currentRole, setCurrentRoleState] = useState<Role>(() => loadStored('role', 'Super Admin'));
-
   // UI role labels are derived from the server-authoritative role after authentication.
   // "Super Admin" is a tenant-scoped administrator; platform control-plane access
   // is reserved for the explicit platform roles.
@@ -291,6 +289,12 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     return roleMap[serverRole.trim().toLowerCase()] || 'E-commerce Customer';
   };
+
+  const [currentRole, setCurrentRoleState] = useState<Role>(() => {
+    const user = authClient.getUser();
+    if (user?.role) return roleFromServer(user.role);
+    return loadStored('role', 'Super Admin');
+  });
 
   const applyAuthenticatedUser = (user: { role: string } | null) => {
     if (!user?.role) return;

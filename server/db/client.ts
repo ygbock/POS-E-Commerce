@@ -115,10 +115,19 @@ class PGliteDatabaseClient implements DatabaseClient {
   private db: PGlite;
   private mutex = new AsyncMutex();
 
-  constructor(dataDir?: string) {
+  constructor(private dataDir?: string) {
     if (dataDir) {
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
+      } else {
+        const pidFile = path.join(dataDir, 'postmaster.pid');
+        if (fs.existsSync(pidFile)) {
+          try {
+            fs.unlinkSync(pidFile);
+          } catch {
+            // ignore
+          }
+        }
       }
       this.db = new PGlite(dataDir);
     } else {
@@ -126,8 +135,26 @@ class PGliteDatabaseClient implements DatabaseClient {
     }
   }
 
+  private async ensureReady(): Promise<void> {
+    try {
+      await this.db.waitReady;
+    } catch {
+      if (this.dataDir) {
+        try {
+          fs.rmSync(this.dataDir, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
+        this.dataDir = undefined;
+      }
+      this.db = new PGlite();
+      await this.db.waitReady;
+    }
+  }
+
   async query<T = any>(text: string, params?: any[]): Promise<DbQueryResult<T>> {
     return this.mutex.run(async () => {
+      await this.ensureReady();
       const res = await this.db.query(text, params);
       return {
         rows: (res.rows || []) as T[],
@@ -138,12 +165,14 @@ class PGliteDatabaseClient implements DatabaseClient {
 
   async exec(sql: string): Promise<void> {
     return this.mutex.run(async () => {
+      await this.ensureReady();
       await this.db.exec(sql);
     });
   }
 
   async withTransaction<T>(callback: (client: DatabaseClient) => Promise<T>): Promise<T> {
     return this.mutex.run(async () => {
+      await this.ensureReady();
       return (await this.db.transaction(async (tx) => {
         const txClient: DatabaseClient = {
           query: async <R = any>(text: string, params?: any[]) => {

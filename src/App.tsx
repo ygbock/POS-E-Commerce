@@ -196,6 +196,13 @@ const MainLayout: React.FC = () => {
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => authClient.getUser());
   const [authLoading, setAuthLoading] = useState(true);
+  const [pathname, setPathname] = useState<string>(() => window.location.pathname);
+
+  React.useEffect(() => {
+    const onPopState = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   React.useEffect(() => {
     let mounted = true;
@@ -209,14 +216,20 @@ export default function App() {
     return () => { mounted = false; };
   }, []);
 
-  const isLoginPath = window.location.pathname === '/login';
-  const isPlatformSigninPath = window.location.pathname === '/platform/signin';
-  const isPlatformPath = window.location.pathname === '/platform' || window.location.pathname.startsWith('/platform/');
-  const isMerchantPath = window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
-  const isMerchantSignupPath = window.location.pathname === '/business/signup';
-  const isMerchantSigninPath = window.location.pathname === '/business/signin';
-  const isVerifyEmailPath = window.location.pathname === '/verify-email';
-  const isResetPasswordPath = window.location.pathname === '/reset-password';
+  const handleAuthenticated = (user: AuthUser) => {
+    setPathname(window.location.pathname);
+    setAuthUser(user);
+    setAuthLoading(false);
+  };
+
+  const isLoginPath = pathname === '/login';
+  const isPlatformSigninPath = pathname === '/platform/signin';
+  const isPlatformPath = pathname === '/platform' || pathname.startsWith('/platform/');
+  const isMerchantPath = pathname === '/business' || pathname.startsWith('/business/');
+  const isMerchantSignupPath = pathname === '/business/signup';
+  const isMerchantSigninPath = pathname === '/business/signin';
+  const isVerifyEmailPath = pathname === '/verify-email';
+  const isResetPasswordPath = pathname === '/reset-password';
   const requestedWorkspace = new URLSearchParams(window.location.search).get('workspace');
   const hasAuthenticatedWorkspaceRequest = ['dashboard', 'catalog', 'inventory', 'orders', 'pos', 'users', 'locations', 'crm', 'suppliers', 'purchasing'].includes(requestedWorkspace || '');
 
@@ -236,17 +249,17 @@ export default function App() {
   // intentionally separate from merchant/customer login so the control plane
   // boundary is visible and role-checked before entering /platform.
   if (isPlatformSigninPath) {
-    return <LoginPage mode="platform" onAuthenticated={setAuthUser} />;
+    return <LoginPage mode="platform" onAuthenticated={handleAuthenticated} />;
   }
 
   // Keep authentication outside the storefront router. /login must always
   // resolve to the shared login screen, even when reached from a storefront.
   if (isLoginPath) {
-    return <LoginPage onAuthenticated={setAuthUser} />;
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
   }
 
   if (isMerchantSigninPath) {
-    return <LoginPage onAuthenticated={setAuthUser} />;
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
   }
 
   if (!authLoading && isMerchantPath && authUser) {
@@ -254,7 +267,7 @@ export default function App() {
   }
 
   // Public storefront and Discovery routes must be previewable without an admin session.
-  if (!authLoading && !authUser && isPublicDiscoveryPath(window.location.pathname) && !hasAuthenticatedWorkspaceRequest) {
+  if (!authLoading && !authUser && isPublicDiscoveryPath(pathname) && !hasAuthenticatedWorkspaceRequest) {
     return (
       <ErrorBoundary>
         <ToastProvider>
@@ -264,7 +277,7 @@ export default function App() {
     );
   }
 
-  if (!authLoading && !authUser && isPublicStorefrontPath(window.location.pathname)) {
+  if (!authLoading && !authUser && isPublicStorefrontPath(pathname)) {
     return (
       <ErrorBoundary>
         <ToastProvider>
@@ -286,21 +299,21 @@ export default function App() {
   }
 
   if (!authUser) {
-    if (isPlatformPath) return <LoginPage mode="platform" onAuthenticated={setAuthUser} />;
-    if (isMerchantPath) return <LoginPage mode="business" onAuthenticated={setAuthUser} />;
-    return <LoginPage onAuthenticated={setAuthUser} />;
+    if (isPlatformPath) return <LoginPage mode="platform" onAuthenticated={handleAuthenticated} />;
+    if (isMerchantPath) return <LoginPage mode="business" onAuthenticated={handleAuthenticated} />;
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
   }
 
   // A valid session is not sufficient for the platform control plane. Keep
   // tenant/customer identities out of /platform and require a platform role.
   if (isPlatformPath && !['system_owner', 'platform_admin', 'platform_support', 'platform_finance'].includes(authUser.role)) {
     void authClient.logout();
-    return <LoginPage mode="platform" onAuthenticated={setAuthUser} />;
+    return <LoginPage mode="platform" onAuthenticated={handleAuthenticated} />;
   }
 
   // Discovery is the platform landing page. Authenticated users also start here;
   // tenant storefronts are entered explicitly from a business listing.
-  if (isPublicDiscoveryPath(window.location.pathname) && !hasAuthenticatedWorkspaceRequest) {
+  if (isPublicDiscoveryPath(pathname) && !hasAuthenticatedWorkspaceRequest) {
     return (
       <ErrorBoundary>
         <ToastProvider>
