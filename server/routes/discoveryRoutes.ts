@@ -579,7 +579,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   router.get('/businesses/:id/locations', async (req, res, next) => {
     try {
-      const isPublicRequest = await checkBusinessVisibility(req.params.id, req);
+      await checkBusinessVisibility(req.params.id, req);
       const locations = await repo.listLocations(req.params.id, { activeOnly: true });
       const settings = await repo.getSettings(req.params.id);
       const membership = req.auth?.userId
