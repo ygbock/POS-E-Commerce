@@ -122,7 +122,7 @@ async function main() {
   const searchUi = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoverySearchResults.tsx'), 'utf8');
 
   // Search/filtering and public listing visibility.
-  assert.ok(routes.includes("const reviewsAllowedExpr = \"COALESCE(bds.allow_reviews, TRUE)\""), 'search ranking must respect review visibility');
+  assert.ok(routes.includes('const reviewsAllowedExpr = "COALESCE((SELECT s.allow_reviews FROM discovery_business_settings s WHERE s.business_id=b.id), TRUE)"'), 'search ranking must respect review visibility without exposing ratings or review counts when disabled');
   assert.ok(routes.includes('locationMatchConditions'), 'business search must build correlated branch filters');
   assert.ok(routes.includes('productLocationConditions'), 'product search must filter against active branches');
   assert.ok(routes.includes('serviceLocationConditions'), 'service search must filter against active branches');
