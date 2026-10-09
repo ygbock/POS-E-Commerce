@@ -219,6 +219,14 @@ async function main() {
   assert.ok(routes.includes("business.listing_status === 'PUBLISHED' && business.is_discoverable"), 'public subresources must enforce listing visibility');
   assert.ok(routes.includes('o.is_active'), 'public listing routes must enforce organization activation');
 
+  // Category counts must only include businesses that are actually publicly discoverable.
+  await db.query("UPDATE organizations SET is_active=FALSE WHERE id='pdv_org'");
+  const categoriesAfterOrgDeactivation = await getJson('/api/discovery/categories');
+  assert.equal(categoriesAfterOrgDeactivation.status, 200);
+  const fixtureCategory = categoriesAfterOrgDeactivation.body.data.find((category: any) => category.id === 'pdv_cat');
+  assert.ok(fixtureCategory, 'active category remains visible after organization deactivation');
+  assert.equal(Number(fixtureCategory.item_count), 0, 'inactive organizations must not inflate public category counts');
+
   await db.query("UPDATE discovery_businesses SET listing_status='PAUSED' WHERE id=$1", [business.id]);
   assert.equal(await service.getPublicProfile(business.id), null, 'paused listing must not expose a public profile');
 
