@@ -318,7 +318,9 @@ class AuthClient {
 
     const data = await res.json();
     if (!res.ok || !data.success) {
-      throw new Error(data.error?.message || 'Authentication failed');
+      const err: any = new Error(data.error?.message || 'Authentication failed');
+      err.code = data.error?.code;
+      throw err;
     }
 
     this.currentToken = data.data.token;

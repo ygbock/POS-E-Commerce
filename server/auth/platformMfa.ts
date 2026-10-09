@@ -8,7 +8,14 @@ const RECOVERY_CODE_COUNT = 10;
 function requireMfaEncryptionKey(): Buffer {
   const configured = process.env.MFA_ENCRYPTION_KEY?.trim();
   if (!configured) {
-    throw new Error('MFA_ENCRYPTION_KEY_NOT_CONFIGURED');
+    const isProdOrStaging =
+      process.env.NODE_ENV === 'production' ||
+      process.env.DEPLOY_ENV === 'production' ||
+      process.env.DEPLOY_ENV === 'staging';
+    if (isProdOrStaging) {
+      throw new Error('MFA_ENCRYPTION_KEY_NOT_CONFIGURED');
+    }
+    return crypto.createHash('sha256').update('abacha-dev-local-mfa-encryption-key-32-bytes').digest();
   }
 
   if (/^[0-9a-fA-F]{64}$/.test(configured)) {

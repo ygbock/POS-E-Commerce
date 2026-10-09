@@ -8,6 +8,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'customer' }) => {
+  const [activeMode, setActiveMode] = useState<'customer' | 'business' | 'platform'>(mode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,6 +26,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    setActiveMode(mode);
+  }, [mode]);
 
   useEffect(() => {
     const remembered = localStorage.getItem('abacha_login_email');
@@ -120,21 +125,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
     setError('');
     setLoading(true);
     try {
-      const isBusinessOwnerSignIn = mode === 'business' || window.location.pathname === '/business/signin' || window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
-      const user = mode === 'platform'
-        ? await authClient.loginPlatform(email.trim(), password)
-        : isBusinessOwnerSignIn
-          ? await authClient.loginBusinessOwner(email.trim(), password)
-          : await authClient.login(email.trim(), password);
+      const isBusinessOwnerSignIn = activeMode === 'business' || window.location.pathname === '/business/signin' || window.location.pathname === '/business' || window.location.pathname.startsWith('/business/');
+      let effectiveMode = activeMode;
+      let user: AuthUser;
 
-      if (mode === 'platform' && !['system_owner', 'platform_admin', 'platform_support', 'platform_finance'].includes(user.role)) {
+      if (effectiveMode === 'platform') {
+        user = await authClient.loginPlatform(email.trim(), password);
+      } else if (isBusinessOwnerSignIn) {
+        user = await authClient.loginBusinessOwner(email.trim(), password);
+      } else {
+        try {
+          user = await authClient.login(email.trim(), password);
+        } catch (loginErr: any) {
+          if (loginErr?.code === 'PLATFORM_LOGIN_REQUIRED' || String(loginErr?.message || '').includes('Platform operators must sign in')) {
+            effectiveMode = 'platform';
+            setActiveMode('platform');
+            user = await authClient.loginPlatform(email.trim(), password);
+          } else {
+            throw loginErr;
+          }
+        }
+      }
+
+      if (effectiveMode === 'platform' && !['system_owner', 'platform_admin', 'platform_support', 'platform_finance'].includes(user.role)) {
         await authClient.logout();
         throw new Error('PLATFORM_ACCESS_DENIED: This sign-in is restricted to authorized platform operators.');
       }
       localStorage.setItem('abacha_login_email', email.trim());
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
 
-      if (mode === 'platform') {
+      if (effectiveMode === 'platform') {
         finishPlatformAuthentication(user);
         return;
       }
@@ -183,6 +203,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
       onAuthenticated(user);
     } catch (err) {
       if (err instanceof PlatformMfaChallengeError) {
+        setActiveMode('platform');
         setMfaChallenge(err.challenge);
         setMfaEnrollment(err.code === 'MFA_ENROLLMENT_REQUIRED');
         if (err.code === 'MFA_ENROLLMENT_REQUIRED') {
@@ -220,7 +241,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-white text-slate-950 flex items-center justify-center text-2xl font-black">A</div>
           <h1 className="text-3xl font-bold text-white">AbaCha</h1>
-          <p className="mt-2 text-sm text-slate-400">{mode === 'platform' ? 'Platform Control Plane' : 'Unified Commerce Platform'}</p>
+          <p className="mt-2 text-sm text-slate-400">{activeMode === 'platform' ? 'Platform Control Plane' : 'Unified Commerce Platform'}</p>
         </div>
 
         <form
@@ -289,7 +310,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
           ) : (
             <div className="mb-6 pr-6">
               <h2 className="text-xl font-bold text-slate-900">
-                {mode === 'platform'
+                {activeMode === 'platform'
                   ? 'Platform administrator sign in'
                   : isForgotPassword
                   ? 'Forgot Password'
@@ -298,7 +319,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
                   : 'Sign in'}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                {mode === 'platform'
+                {activeMode === 'platform'
                   ? 'Use an authorized platform operator account.'
                   : isForgotPassword
                   ? 'Enter your email address to receive secure instructions to reset your password.'
@@ -471,7 +492,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
                 <button type="button" onClick={() => { setIsForgotPassword(false); setError(''); setSuccessMessage(''); }} className="font-bold text-slate-900 hover:underline">
                   Back to Sign In
                 </button>
-              ) : mode === 'customer' ? (
+              ) : activeMode === 'customer' ? (
                 isRegistering ? (
                   <button type="button" onClick={() => { setIsRegistering(false); setError(''); }} className="font-bold text-slate-900 hover:underline">
                     Already have an account? Sign in
@@ -485,7 +506,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
             </div>
           )}
 
-          {mode !== 'platform' && !isForgotPassword && (
+          {activeMode !== 'platform' && !isForgotPassword && (
             <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-600">
               <a href="/business/signin" className="font-bold text-slate-900 hover:underline">
                 Business owner sign in
@@ -493,6 +514,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
               <span className="mx-2 text-slate-300">•</span>
               <a href="/business/signup" className="font-bold text-slate-900 hover:underline">
                 Register your business
+              </a>
+              <span className="mx-2 text-slate-300">•</span>
+              <a href="/platform/signin" className="font-bold text-slate-900 hover:underline">
+                Platform admin sign in
               </a>
             </div>
           )}

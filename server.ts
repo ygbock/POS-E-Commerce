@@ -750,6 +750,15 @@ export async function createApp(options: CreateAppOptions = {}) {
             },
           });
         }
+        if (msg.includes('PLATFORM_LOGIN_REQUIRED')) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'PLATFORM_LOGIN_REQUIRED',
+              message: 'Platform operators must sign in through the Platform Control Plane.',
+            },
+          });
+        }
         return res.status(401).json({
           success: false,
           error: {
