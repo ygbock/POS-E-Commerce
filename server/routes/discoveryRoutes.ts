@@ -982,7 +982,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         ? locationMatchConditions.map((condition) => condition.replaceAll('lm.', 'l.')).join(' AND ')
         : 'TRUE';
 
-      const reviewsAllowedExpr = "COALESCE(bds.allow_reviews, TRUE)";
+      const reviewsAllowedExpr = "COALESCE((SELECT s.allow_reviews FROM discovery_business_settings s WHERE s.business_id=b.id), TRUE)";
       const ratingExpr = `CASE WHEN ${reviewsAllowedExpr} THEN (SELECT COALESCE(AVG(r.rating),0) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED') ELSE 0 END`;
       const reviewCountExpr = `CASE WHEN ${reviewsAllowedExpr} THEN (SELECT COUNT(*) FROM discovery_reviews r WHERE r.business_id=b.id AND r.status='PUBLISHED') ELSE 0 END`;
       const businessRank = bQ
