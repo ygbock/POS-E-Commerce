@@ -48,6 +48,11 @@ async function main() {
   );
 
   await db.query(
+    'UPDATE discovery_business_settings SET allow_service_requests=FALSE WHERE business_id=$1',
+    [ownerB.business.id],
+  );
+
+  await db.query(
     'INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode,is_active) VALUES ' +
     '($1,$2,\'Solar Installation\',\'solar-installation\',\'Solar panels and battery backup\',\'Solar Energy\',\'QUOTE\',TRUE), ' +
     '($3,$4,\'Plumbing Repairs\',\'plumbing-repairs\',\'Pipes leaks and water systems\',\'Plumbing\',\'QUOTE\',TRUE)',
@@ -149,6 +154,24 @@ async function main() {
     assert.strictEqual(unrelatedInbox.status, 200);
     assert.strictEqual(unrelatedInbox.body?.data?.length, 0);
 
+    // A business that disables service requests must not be eligible for manual matching,
+    // even when its active service otherwise matches the request.
+    const plumbingRequestId = 'match-http-disabled-service-requests';
+    await db.query(
+      "INSERT INTO discovery_service_requests (id,customer_name,description,service_type,city,status) VALUES ($1,'Customer','Need plumbing repairs for leaking pipes','Plumbing','Freetown','OPEN')",
+      [plumbingRequestId],
+    );
+    const disabledBusinessMatch = await requestJson(baseUrl, '/api/discovery/service-requests/' + plumbingRequestId + '/match', actors.ownerB, {
+      method: 'POST',
+      body: JSON.stringify({ businessId: ownerB.business.id }),
+    });
+    assert.strictEqual(disabledBusinessMatch.status, 404, JSON.stringify(disabledBusinessMatch.body));
+    const disabledMatchRows = await db.query(
+      'SELECT 1 FROM discovery_service_request_matches WHERE request_id=$1 AND business_id=$2',
+      [plumbingRequestId, ownerB.business.id],
+    );
+    assert.strictEqual(disabledMatchRows.rows.length, 0);
+
     await db.query('UPDATE discovery_service_requests SET status=\'CLOSED\' WHERE id=$1', [requestId]);
     const terminal = await requestJson(baseUrl, matchPath, actors.ownerA, {
       method: 'POST',
@@ -161,6 +184,26 @@ async function main() {
       [requestId, ownerA.business.id],
     );
     assert.strictEqual(Number(matchCount.rows[0].count), 1);
+
+    // Disabling service requests must revoke access to previously matched leads and block new quotes.
+    await db.query(
+      'UPDATE discovery_business_settings SET allow_service_requests=FALSE WHERE business_id=$1',
+      [ownerA.business.id],
+    );
+    const disabledProviderDetail = await requestJson(
+      baseUrl,
+      '/api/discovery/businesses/' + ownerA.business.id + '/service-requests/' + requestId,
+      actors.ownerA,
+    );
+    assert.strictEqual(disabledProviderDetail.status, 404, JSON.stringify(disabledProviderDetail.body));
+    const disabledQuote = await requestJson(
+      baseUrl,
+      '/api/discovery/service-requests/' + requestId + '/quotes',
+      actors.ownerA,
+      { method: 'POST', body: JSON.stringify({ businessId: ownerA.business.id, amount: 120 }) },
+    );
+    assert.strictEqual(disabledQuote.status, 403, JSON.stringify(disabledQuote.body));
+    assert.strictEqual(disabledQuote.body?.error?.code, 'SERVICE_REQUESTS_DISABLED');
 
     console.log('Discovery service request matching authorization/hardening tests passed.');
   } finally {

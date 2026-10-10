@@ -1521,6 +1521,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
            JOIN discovery_businesses b ON b.id=s.business_id
           WHERE s.id=$1 AND s.is_active=TRUE
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))`,
         [requestedServiceId],
       );
@@ -1557,6 +1558,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
            ) l ON TRUE
           WHERE s.is_active=TRUE
             AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND (b.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))
           ORDER BY s.id ASC
           LIMIT 500`,
@@ -1726,7 +1728,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       `SELECT r.*,m.match_score,m.match_reason
          FROM discovery_service_requests r
          JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$2
-        WHERE r.id=$1`,
+        WHERE r.id=$1
+          AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=$2), TRUE)=TRUE`,
       [requestId,businessId],
     );
     if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service request not found for this business.'}});
@@ -1801,6 +1804,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             AND s.business_id=$1
             AND b.listing_status='PUBLISHED'
             AND b.is_discoverable=TRUE
+            AND COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND (b.organization_id IS NULL OR EXISTS(
               SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE
             ))
@@ -1876,6 +1880,8 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if(!businessId||x.amount==null)throw new Error('VALIDATION_ERROR:businessId and amount are required.');
     const b=await repo.findById(businessId);
     if(!b||!(await owned(req,businessId,'business.leads.manage')))throw new Error('TENANT_ACCESS_DENIED:Business lead management access required to quote.');
+    const serviceRequestSettings=await repo.getSettings(businessId);
+    if(!serviceRequestSettings.allow_service_requests)return res.status(403).json({success:false,error:{code:'SERVICE_REQUESTS_DISABLED',message:'This business has disabled service requests.'}});
     const serviceId=x.serviceId?String(x.serviceId):null;
     const amount=Number(x.amount);
     if(!Number.isFinite(amount)||amount<0||amount>1000000000000)throw new Error('VALIDATION_ERROR:amount must be a finite non-negative number within supported limits.');
@@ -2130,7 +2136,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/businesses/:id/service-requests', requireAuth(), async(req,res,next)=>{try{
     if(!(await owned(req, req.params.id, 'business.leads.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service request access forbidden.'}});
     const status=String(req.query.status||'');
-    const r=await db.query("SELECT DISTINCT r.* FROM discovery_service_requests r LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1 LEFT JOIN discovery_business_locations l ON l.business_id=$1 AND l.is_primary=TRUE AND l.is_active=TRUE WHERE (m.business_id=$1 OR (m.business_id IS NULL AND r.status IN ('OPEN','MATCHED') AND r.city IS NOT NULL AND l.city IS NOT NULL AND lower(r.city)=lower(l.city) AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=$1 AND s.is_active=TRUE))) AND ($2='' OR r.status=$2) ORDER BY r.created_at DESC LIMIT 100",[req.params.id,status]);
+    const r=await db.query("SELECT DISTINCT r.*,m.match_score,m.match_reason FROM discovery_service_requests r LEFT JOIN discovery_service_request_matches m ON m.request_id=r.id AND m.business_id=$1 LEFT JOIN discovery_business_locations l ON l.business_id=$1 AND l.is_primary=TRUE AND l.is_active=TRUE WHERE COALESCE((SELECT ds.allow_service_requests FROM discovery_business_settings ds WHERE ds.business_id=$1), TRUE)=TRUE AND (m.business_id=$1 OR (m.business_id IS NULL AND r.status IN ('OPEN','MATCHED') AND r.city IS NOT NULL AND l.city IS NOT NULL AND lower(r.city)=lower(l.city) AND EXISTS (SELECT 1 FROM discovery_services s WHERE s.business_id=$1 AND s.is_active=TRUE))) AND ($2='' OR r.status=$2) ORDER BY r.created_at DESC LIMIT 100",[req.params.id,status]);
     res.json({success:true,data:r.rows});
   }catch(err){next(err);}});
 
