@@ -13,7 +13,7 @@ const supplierView = read('src/components/purchasing/SupplierManagementView.tsx'
 const userView = read('src/components/admin/UserManagementView.tsx');
 
 for (const workspace of ['users', 'locations', 'crm', 'suppliers']) {
-  assert.match(app, new RegExp(`workspaceTabs = new Set\\(\\[[^\\]]*['"]${workspace}['"]`), `App must accept ${workspace} workspace requests`);
+  assert.match(app, new RegExp(`TENANT_WORKSPACE_TABS = new Set\\(\\[[^\\]]*['"]${workspace}['"]`), `App must accept ${workspace} workspace requests`);
 }
 assert.match(app, /activeTab === 'suppliers' && <SupplierManagementView \/>/);
 assert.match(sidebar, /id: 'users'/);
