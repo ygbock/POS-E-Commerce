@@ -1239,7 +1239,8 @@ async function main() {
         let rateLimited = false;
         let retryAfterHeader = false;
 
-        for (let i = 0; i < 15; i++) {
+        // The auth limiter allows 30 attempts per minute; exceed that threshold to verify 429.
+        for (let i = 0; i < 35; i++) {
           const res = await fetch(`${baseUrl}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
