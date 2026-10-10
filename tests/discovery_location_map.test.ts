@@ -22,6 +22,11 @@ assert.match(search, /region: sp\.get\('region'\)/);
 assert.match(search, /const radiusVal = sp\.get\('radiusKm'\)/);
 assert.match(search, /const parseFinite = \(value: string \| null\): number \| null =>/);
 assert.match(search, /const parsedRadius = parseFinite\(radiusVal\)/);
+assert.match(search, /rawLat >= -90 && rawLat <= 90/);
+assert.match(search, /rawLng >= -180 && rawLng <= 180/);
+assert.match(search, /const hasCoordinatePair = parsedLat != null && parsedLng != null/);
+assert.match(search, /lat: hasCoordinatePair \? parsedLat : undefined/);
+assert.match(search, /lng: hasCoordinatePair \? parsedLng : undefined/);
 assert.match(search, /radiusKm: parsedRadius != null \? Math\.max\(1, Math\.min\(500, parsedRadius\)\) : 25/);
 
 assert.match(map, /selectedPoint/);
