@@ -934,6 +934,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const city = typeof req.query.city === 'string' ? req.query.city.trim().slice(0,128) : null;
       const district = typeof req.query.district === 'string' ? req.query.district.trim().slice(0,128) : null;
       const region = typeof req.query.region === 'string' ? req.query.region.trim().slice(0,128) : null;
+      const locality = typeof req.query.locality === 'string' ? req.query.locality.trim().slice(0,128) : null;
       const lat = req.query.lat != null ? Number(req.query.lat) : null;
       const lng = req.query.lng != null ? Number(req.query.lng) : null;
       const radius = req.query.radiusKm != null ? Number(req.query.radiusKm) : 25;
@@ -1024,6 +1025,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if (city) locationMatchConditions.push(`lower(lm.city)=lower(${bb(city)})`);
       if (district) locationMatchConditions.push(`lower(lm.district)=lower(${bb(district)})`);
       if (region) locationMatchConditions.push(`lower(lm.region)=lower(${bb(region)})`);
+      if (locality) locationMatchConditions.push(`(lower(coalesce(lm.name,''))=lower(${bb(locality)}) OR lower(coalesce(lm.address_line_1,'')) LIKE '%' || lower(${bb(locality)}) || '%' OR lower(coalesce(lm.address_line_2,'')) LIKE '%' || lower(${bb(locality)}) || '%')`);
       const matchDistanceExpr = distanceExprFor('lm');
       if (matchDistanceExpr) {
         locationMatchConditions.push(`${matchDistanceExpr} <= GREATEST(${bb(radius)}, COALESCE(lm.service_radius_km,0)) AND lm.latitude IS NOT NULL AND lm.longitude IS NOT NULL`);
