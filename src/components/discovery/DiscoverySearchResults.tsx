@@ -111,6 +111,7 @@ function readUrlParams(): {
     city: sp.get('city') || undefined,
     district: sp.get('district') || undefined,
     region: sp.get('region') || undefined,
+    locality: sp.get('locality') || undefined,
     lat: hasCoordinatePair ? parsedLat : undefined,
     lng: hasCoordinatePair ? parsedLng : undefined,
     radiusKm: parsedRadius != null ? Math.max(1, Math.min(500, parsedRadius)) : 25,
@@ -641,6 +642,8 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
           <div className="shrink-0 self-start sm:self-auto">
             <DiscoveryLocationSelector
               selectedCity={city}
+              selectedDistrict={district}
+              selectedRegion={region}
               selectedLocality={locality}
               selectedRadiusKm={radiusKm}
               latitude={lat}
