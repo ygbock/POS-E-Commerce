@@ -85,18 +85,35 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       };
     }
     const sp = new URLSearchParams(window.location.search);
+    const parseFinite = (value: string | null): number | undefined => {
+      if (value == null || value.trim() === '') return undefined;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+    const parseCoordinate = (value: string | null, min: number, max: number): number | undefined => {
+      const parsed = parseFinite(value);
+      return parsed != null && parsed >= min && parsed <= max ? parsed : undefined;
+    };
+    const parsedLat = parseCoordinate(sp.get('lat'), -90, 90);
+    const parsedLng = parseCoordinate(sp.get('lng'), -180, 180);
+    const hasCoordinatePair = parsedLat != null && parsedLng != null;
+    const parsedRadius = parseFinite(sp.get('radiusKm'));
+    const rawType = sp.get('type') || 'all';
+    const validTypes: DiscoverySearchType[] = ['all', 'businesses', 'products', 'services'];
+    const rawSort = sp.get('sort') || 'relevance';
+    const validSorts: DiscoverySortOption[] = ['relevance', 'rating', 'review_count', 'name_asc', 'newest', 'distance'];
     return {
       q: sp.get('q') || '',
-      type: (sp.get('type') || 'all') as DiscoverySearchType,
+      type: validTypes.includes(rawType as DiscoverySearchType) ? rawType as DiscoverySearchType : 'all',
       city: sp.get('city') || undefined,
       district: sp.get('district') || undefined,
       region: sp.get('region') || undefined,
-      lat: sp.get('lat') ? Number(sp.get('lat')) : undefined,
-      lng: sp.get('lng') ? Number(sp.get('lng')) : undefined,
-      radiusKm: sp.get('radiusKm') ? Number(sp.get('radiusKm')) : 25,
+      lat: hasCoordinatePair ? parsedLat : undefined,
+      lng: hasCoordinatePair ? parsedLng : undefined,
+      radiusKm: parsedRadius != null ? Math.max(1, Math.min(500, parsedRadius)) : 25,
       openNow: sp.get('openNow') === 'true',
       categoryId: sp.get('categoryId') || undefined,
-      sort: (sp.get('sort') || 'relevance') as DiscoverySortOption,
+      sort: validSorts.includes(rawSort as DiscoverySortOption) ? rawSort as DiscoverySortOption : 'relevance',
     };
   };
 
@@ -222,6 +239,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     setServicesState((prev) => ({ ...prev, status: 'loading' }));
 
     try {
+      const controller = abortControllerRef.current;
       const response = await discoveryApi.search({
         q: query || undefined,
         type: activeType,
@@ -235,7 +253,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         categoryId: filters.categoryId,
         sort,
         limit: 24,
-      });
+      }, { signal: controller?.signal });
 
       const biz = response.data?.businesses || [];
       const prods = response.data?.products || [];
@@ -256,7 +274,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         data: svcs,
       });
     } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (abortControllerRef.current?.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return;
 
       let status = 500;
       let code = 'DISCOVERY_ERROR';
