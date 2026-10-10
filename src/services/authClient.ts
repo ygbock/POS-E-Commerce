@@ -178,6 +178,20 @@ class AuthClient {
     return data.data;
   }
 
+  async skipPlatformMfa(email: string, password: string): Promise<AuthUser> {
+    const res = await fetch('/api/auth/platform/mfa/skip', this.getRequestInit({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), password }),
+    }));
+    const data = await this.parseJson(res, 'Unable to continue without MFA.');
+    if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to continue without MFA.');
+    this.currentToken = data.data.token;
+    this.currentUser = data.data.user;
+    if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
+    return data.data.user;
+  }
+
   async confirmPlatformMfaEnrollment(challenge: string, code: string): Promise<{ user: AuthUser; recoveryCodes: string[] }> {
     const res = await fetch('/api/auth/platform/mfa/confirm-enrollment', this.getRequestInit({
       method: 'POST',

@@ -117,7 +117,7 @@ async function main() {
       assert.deepEqual(claims.permissions, result.user.permissions);
     }
 
-    console.log('[AUTH MATRIX] Platform accounts require MFA enrollment');
+    console.log('[AUTH MATRIX] Platform accounts support optional MFA and policy-enforced MFA enrollment');
     const platformCredentials = [
       { email: 'platformadmin@abacha.internal', password: 'PlatformMatrix123!', role: 'platform_admin' as UserRole },
       { email: 'systemowner@abacha.internal', password: 'SystemOwnerMatrix123!', role: 'system_owner' as UserRole },
@@ -125,7 +125,23 @@ async function main() {
     ];
 
     for (const fixture of platformCredentials) {
-      await expectMfaEnrollment(auth, fixture);
+      const loginRes = await auth.loginPlatform({
+        email: fixture.email,
+        password: fixture.password,
+      });
+      assert.equal(loginRes.user.role, fixture.role);
+      assert.equal(loginRes.user.identityType, 'platform');
+    }
+
+    const originalMfaReq = process.env.ABACHA_PLATFORM_MFA_REQUIRED;
+    process.env.ABACHA_PLATFORM_MFA_REQUIRED = 'true';
+    try {
+      for (const fixture of platformCredentials) {
+        await expectMfaEnrollment(auth, fixture);
+      }
+    } finally {
+      if (originalMfaReq === undefined) delete process.env.ABACHA_PLATFORM_MFA_REQUIRED;
+      else process.env.ABACHA_PLATFORM_MFA_REQUIRED = originalMfaReq;
     }
 
     console.log('[AUTH MATRIX] Successful customer login');

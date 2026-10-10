@@ -6,8 +6,12 @@ import {
   PackageCheck,
   Menu,
   Store,
+  Building2,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
+import { isPlatformRole } from '../platform/platformAccess';
 
 interface AdminMobileBottomNavProps {
   activeTab: string;
@@ -20,7 +24,8 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
   setActiveTab,
   onOpenMobileSidebar,
 }) => {
-  const { orders, heldCarts } = useCommerce();
+  const { currentRole, orders, heldCarts } = useCommerce();
+  const isPlatform = isPlatformRole(currentRole);
 
   const pendingOrdersCount = orders.filter(
     (o) => o.status === 'Pending' || o.status === 'Stock Reserved' || o.status === 'Picking'
@@ -28,7 +33,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
 
   const activeHeldCount = heldCarts.length;
 
-  const navItems = [
+  const tenantNavItems = [
     {
       id: 'dashboard',
       label: 'Overview',
@@ -54,6 +59,37 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
       badgeColor: 'bg-amber-500',
     },
   ];
+
+  const platformNavItems: Array<{
+    id: string;
+    label: string;
+    icon: any;
+    badge?: number;
+    badgeColor?: string;
+  }> = [
+    {
+      id: 'platform-dashboard',
+      label: 'Overview',
+      icon: LayoutDashboard,
+    },
+    {
+      id: 'tenants',
+      label: 'Tenants',
+      icon: Building2,
+    },
+    {
+      id: 'discovery-moderation',
+      label: 'Moderation',
+      icon: Sparkles,
+    },
+    {
+      id: 'discovery-categories',
+      label: 'Categories',
+      icon: Layers,
+    },
+  ];
+
+  const navItems = isPlatform ? platformNavItems : tenantNavItems;
 
   return (
     <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 text-slate-400 px-2 py-1.5 shadow-2xl flex items-center justify-around select-none">
@@ -82,7 +118,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[10px] tracking-tight mt-0.5">{item.label}</span>
+            <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-[68px]">{item.label}</span>
             {isActive && (
               <span className="w-1 h-1 rounded-full bg-sky-400 mt-0.5 animate-pulse" />
             )}
@@ -100,16 +136,18 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({
         <span className="text-[10px] tracking-tight mt-0.5">More</span>
       </button>
 
-      {/* Quick Storefront View Pill */}
-      <button
-        id="mobile-nav-storefront"
-        onClick={() => setActiveTab('storefront')}
-        className="flex flex-col items-center justify-center min-h-[48px] px-2.5 rounded-xl text-emerald-400 hover:text-emerald-300 active:scale-95 transition-all cursor-pointer border border-emerald-500/30 bg-emerald-500/10"
-        title="View Customer Storefront"
-      >
-        <Store className="w-4 h-4 text-emerald-400" />
-        <span className="text-[9px] font-extrabold tracking-tight mt-0.5 text-emerald-300">Store</span>
-      </button>
+      {/* Quick Storefront View Pill (Tenant Roles Only) */}
+      {!isPlatform && (
+        <button
+          id="mobile-nav-storefront"
+          onClick={() => setActiveTab('storefront')}
+          className="flex flex-col items-center justify-center min-h-[48px] px-2.5 rounded-xl text-emerald-400 hover:text-emerald-300 active:scale-95 transition-all cursor-pointer border border-emerald-500/30 bg-emerald-500/10"
+          title="View Customer Storefront"
+        >
+          <Store className="w-4 h-4 text-emerald-400" />
+          <span className="text-[9px] font-extrabold tracking-tight mt-0.5 text-emerald-300">Store</span>
+        </button>
+      )}
     </div>
   );
 };

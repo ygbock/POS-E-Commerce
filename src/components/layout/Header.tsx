@@ -73,6 +73,18 @@ export const Header: React.FC<HeaderProps> = ({
   } as AppNotification));
   const unreadCount = notificationItems.filter((n) => !n.read_at).length;
 
+  const isPlatform = isPlatformRole(currentRole);
+
+  const platformTabTitles: Record<string, string> = {
+    'platform-dashboard': 'Control Plane Dashboard',
+    tenants: 'Tenant Organizations',
+    subscriptions: 'Plans & Subscriptions',
+    support: 'Support & Tenant Operations',
+    security: 'Security & Audit Logs',
+    'discovery-moderation': 'Discovery Trust & Moderation',
+    'discovery-categories': 'Category Governance',
+  };
+
   const rolesList: Role[] = [
     'Super Admin',
     'Business Owner',
@@ -89,9 +101,9 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs flex-shrink-0 transition-colors">
-      {/* Left Menu Toggle + Search Bar */}
-      <div className="flex items-center space-x-2 sm:space-x-4 min-w-0">
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2 sm:gap-4 shadow-xs flex-shrink-0 transition-colors">
+      {/* Left Menu Toggle + Context / Search Bar */}
+      <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
         {/* Mobile & Tablet Drawer Menu Toggle */}
         <button
           id="btn-mobile-sidebar-toggle"
@@ -104,106 +116,134 @@ export const Header: React.FC<HeaderProps> = ({
           {isMobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
 
-        <div className="flex items-center space-x-2 sm:space-x-3 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-150 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full w-32 xs:w-44 sm:w-72 md:w-80 lg:w-96 border border-transparent dark:border-slate-700">
-          <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
-          <input
-            type="text"
-            placeholder="Search SKU..."
-            onClick={onOpenSearch}
-            className="bg-transparent border-none text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none w-full min-w-0"
-          />
-          <kbd className="hidden sm:inline-block text-[10px] bg-white dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-400 dark:text-slate-300 border border-slate-200 dark:border-slate-600 font-mono shadow-xs flex-shrink-0">
-            ⌘K
-          </kbd>
-        </div>
+        {isPlatform ? (
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/70 text-indigo-700 dark:text-indigo-300 text-xs font-bold tracking-tight flex-shrink-0">
+              <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
+              <span>Control Plane</span>
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 truncate">
+                {platformTabTitles[activeTab] || 'Platform Administration'}
+              </h2>
+              <p className="hidden md:block text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Global SaaS governance, tenant operations & marketplace moderation
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center space-x-2 sm:space-x-3 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-150 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full w-32 xs:w-44 sm:w-72 md:w-80 lg:w-96 border border-transparent dark:border-slate-700">
+              <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Search SKU..."
+                onClick={onOpenSearch}
+                className="bg-transparent border-none text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none w-full min-w-0"
+              />
+              <kbd className="hidden sm:inline-block text-[10px] bg-white dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-400 dark:text-slate-300 border border-slate-200 dark:border-slate-600 font-mono shadow-xs flex-shrink-0">
+                ⌘K
+              </kbd>
+            </div>
 
-        {/* Global Quick Launch buttons (Desktop) */}
-        <div className="hidden lg:flex items-center space-x-2 pl-2">
-          <button
-            id="btn-quick-pos"
-            onClick={() => {
-              setActiveTab('pos');
-              if (currentRole === 'E-commerce Customer') setCurrentRole('Cashier');
-            }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-              activeTab === 'pos'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
-                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            <span>POS Register</span>
-          </button>
-          <button
-            id="btn-quick-storefront"
-            onClick={() => setActiveTab('storefront')}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 shadow-xs"
-            title="Switch to public customer storefront"
-          >
-            <Store className="w-3.5 h-3.5 text-sky-600" />
-            <span>View Live Store</span>
-          </button>
-        </div>
+            {/* Global Quick Launch buttons (Desktop - Tenant Roles Only) */}
+            <div className="hidden lg:flex items-center space-x-2 pl-2">
+              <button
+                id="btn-quick-pos"
+                onClick={() => {
+                  setActiveTab('pos');
+                  if (currentRole === 'E-commerce Customer') setCurrentRole('Cashier');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                  activeTab === 'pos'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span>POS Register</span>
+              </button>
+              <button
+                id="btn-quick-storefront"
+                onClick={() => setActiveTab('storefront')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 shadow-xs"
+                title="Switch to public customer storefront"
+              >
+                <Store className="w-3.5 h-3.5 text-sky-600" />
+                <span>View Live Store</span>
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center space-x-2 sm:space-x-3 lg:space-x-4 flex-shrink-0">
-        {/* Branch / Warehouse Selector Badge */}
-        <div className="relative">
-          <button
-            id="btn-location-switcher"
-            onClick={() => {
-              setShowLocMenu(!showLocMenu);
-              setShowRoleMenu(false);
-              setShowNotifs(false);
-            }}
-            className="flex items-center space-x-1.5 sm:space-x-2 bg-blue-50 hover:bg-blue-100/80 text-blue-700 px-2.5 sm:px-3 py-1.5 rounded-lg border border-blue-100 text-xs sm:text-sm font-medium transition-colors"
-            title="Switch Operating Branch or Warehouse"
-          >
-            <MapPin className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-            <span className="font-semibold truncate max-w-[70px] xs:max-w-[110px] sm:max-w-[150px] md:max-w-none">
-              {currentLocation.name}
-            </span>
-            <ChevronDown className="w-3.5 h-3.5 text-blue-500 opacity-70 flex-shrink-0" />
-          </button>
+      <div className="flex items-center space-x-1.5 sm:space-x-2.5 lg:space-x-3 flex-shrink-0">
+        {isPlatform && (
+          <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+            <span className="truncate max-w-[140px]">{currentRole}</span>
+          </div>
+        )}
 
-          {showLocMenu && (
-            <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
-              <div className="px-3 py-1.5 border-b border-slate-100">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Active Location Context</p>
-                <p className="text-xs text-slate-500">Affects POS register & local warehouse views</p>
-              </div>
-              <div className="py-1 max-h-64 overflow-y-auto">
-                {locations.map((loc) => (
-                  <button
-                    key={loc.id}
-                    onClick={() => {
-                      setCurrentLocationId(loc.id);
-                      setShowLocMenu(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
-                      currentLocationId === loc.id ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-1.5 font-medium">
-                        <span>{loc.name}</span>
-                        {loc.isPosEnabled && (
-                          <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">POS</span>
-                        )}
+        {/* Branch / Warehouse Selector Badge (Tenant Roles Only) */}
+        {!isPlatform && (
+          <div className="relative">
+            <button
+              id="btn-location-switcher"
+              onClick={() => {
+                setShowLocMenu(!showLocMenu);
+                setShowRoleMenu(false);
+                setShowNotifs(false);
+              }}
+              className="flex items-center space-x-1.5 sm:space-x-2 bg-blue-50 hover:bg-blue-100/80 text-blue-700 px-2.5 sm:px-3 py-1.5 rounded-lg border border-blue-100 text-xs sm:text-sm font-medium transition-colors"
+              title="Switch Operating Branch or Warehouse"
+            >
+              <MapPin className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+              <span className="font-semibold truncate max-w-[70px] xs:max-w-[110px] sm:max-w-[150px] md:max-w-none">
+                {currentLocation.name}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-blue-500 opacity-70 flex-shrink-0" />
+            </button>
+
+            {showLocMenu && (
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
+                <div className="px-3 py-1.5 border-b border-slate-100">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Active Location Context</p>
+                  <p className="text-xs text-slate-500">Affects POS register & local warehouse views</p>
+                </div>
+                <div className="py-1 max-h-64 overflow-y-auto">
+                  {locations.map((loc) => (
+                    <button
+                      key={loc.id}
+                      onClick={() => {
+                        setCurrentLocationId(loc.id);
+                        setShowLocMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                        currentLocationId === loc.id ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <span>{loc.name}</span>
+                          {loc.isPosEnabled && (
+                            <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">POS</span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-500">{loc.type}</span>
                       </div>
-                      <span className="text-[10px] text-slate-500">{loc.type}</span>
-                    </div>
-                    {currentLocationId === loc.id && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
-                  </button>
-                ))}
+                      {currentLocationId === loc.id && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
-        {/* Role Persona Switcher — development-only. Production role is server-authoritative. */}
-        {import.meta.env.DEV && (
+        {/* Role Persona Switcher — development-only & hidden on Platform Admin Dashboard */}
+        {import.meta.env.DEV && !isPlatform && (
           <div className="relative">
                     <button
                       id="btn-role-switcher"
@@ -364,19 +404,21 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Reset / Demo seed helper */}
-        <button
-          id="btn-reset-demo"
-          onClick={() => {
-            if (confirm('Reset system data to initial baseline seed data?')) {
-              resetToDefaultData();
-            }
-          }}
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          title="Reset Seed Data"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
+        {/* Reset / Demo seed helper (Tenant Roles Only) */}
+        {!isPlatform && (
+          <button
+            id="btn-reset-demo"
+            onClick={() => {
+              if (confirm('Reset system data to initial baseline seed data?')) {
+                resetToDefaultData();
+              }
+            }}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            title="Reset Seed Data"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </header>
   );

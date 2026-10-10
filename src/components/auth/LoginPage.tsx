@@ -358,6 +358,27 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
                   <button type="submit" disabled={loading} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
                     {loading ? 'Verifying…' : mfaEnrollment ? 'Enable MFA & continue' : 'Verify & continue'}
                   </button>
+                  {email && password && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={async () => {
+                        setError('');
+                        setLoading(true);
+                        try {
+                          const user = await authClient.skipPlatformMfa(email.trim(), password);
+                          finishPlatformAuthentication(user);
+                        } catch (skipErr: any) {
+                          setError(skipErr instanceof Error ? skipErr.message : 'Unable to continue without MFA.');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="mt-2.5 w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Skip MFA for now & continue to dashboard
+                    </button>
+                  )}
                   <div className="mt-4 flex flex-col items-center gap-2 text-xs">
                     {!mfaEnrollment && email && password && (
                       <button

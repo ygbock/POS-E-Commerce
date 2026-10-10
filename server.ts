@@ -578,6 +578,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
+  app.post('/api/auth/platform/mfa/skip', authRateLimiter, validateBody(validateLoginPayload), async (req: Request, res: Response) => {
+    try {
+      const result = await authService.skipPlatformMfa({
+        email: String(req.body?.email || ''),
+        password: String(req.body?.password || ''),
+      });
+      setAuthenticationCookies(res, result.token, result.refreshToken);
+      return res.status(200).json({
+        success: true,
+        data: { token: result.token, user: result.user },
+      });
+    } catch (err: any) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_PLATFORM_CREDENTIALS',
+          message: 'Unable to continue without MFA. Please verify your email and password.',
+        },
+      });
+    }
+  });
+
   app.post('/api/auth/platform/mfa/confirm-enrollment', authRateLimiter, async (req: Request, res: Response) => {
     try {
       const challenge = typeof req.body?.challenge === 'string' ? req.body.challenge.trim() : '';

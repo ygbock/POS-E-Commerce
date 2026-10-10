@@ -233,6 +233,34 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Support & Operations</h3>
               <p className="text-xs text-slate-500 mt-1">Extend trial periods, troubleshoot tenant sync, and manage incident overrides.</p>
             </div>
+
+            <div
+              onClick={() => setActiveTab('discovery-moderation')}
+              className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/10 transition-all cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Discovery Trust & Moderation</h3>
+              <p className="text-xs text-slate-500 mt-1">Review marketplace listings, verification requests, claims, and search ranking.</p>
+            </div>
+
+            <div
+              onClick={() => setActiveTab('discovery-categories')}
+              className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/10 transition-all cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Category Governance</h3>
+              <p className="text-xs text-slate-500 mt-1">Manage global discovery category taxonomy, subcategories, and visibility rules.</p>
+            </div>
           </div>
         </div>
 

@@ -96,7 +96,7 @@ export function createRateLimiter(options: RateLimiterOptions) {
  */
 export const authRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 30,
+  maxRequests: 10,
   message: 'Too many authentication attempts. Please try again after one minute.',
 });
 

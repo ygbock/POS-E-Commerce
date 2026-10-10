@@ -97,9 +97,9 @@ const MainLayout: React.FC = () => {
 
   // Enforce strict boundary between platform control plane and tenant operations
   React.useEffect(() => {
-    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support', 'discovery-moderation'];
+    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support', 'security', 'discovery-moderation', 'discovery-categories'];
     if (isPlatform) {
-      if (!platformTabs.includes(activeTab) && activeTab !== 'security') {
+      if (!platformTabs.includes(activeTab)) {
         setActiveTab('platform-dashboard');
       }
     } else {
