@@ -717,7 +717,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
             </button>
           </div>
           <div className={mobileMapOpen ? 'block' : 'hidden sm:block'}>
-            <DiscoveryMapPanel businesses={businessesState.data} onSelectBusiness={handleBusinessSelect} />
+            <DiscoveryMapPanel businesses={businessesState.data} services={servicesState.data} onSelectBusiness={handleBusinessSelect} />
           </div>
         </section>
 

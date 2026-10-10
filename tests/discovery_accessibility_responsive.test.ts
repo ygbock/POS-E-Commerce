@@ -24,7 +24,7 @@ async function main() {
   expectIncludes(filters, 'min-h-[44px]', 'Discovery filter controls must meet the 44px touch target baseline.');
   expectIncludes(verification, "event.key === 'Escape'", 'Verification popover must support Escape dismissal.');
   expectIncludes(verification, 'aria-controls="discovery-verification-info"', 'Verification trigger must identify its expanded content.');
-  expectIncludes(map, 'aria-label="Interactive map of Discovery locations"', 'Map iframe must have an accessible label.');
+  expectIncludes(map, 'aria-label="Interactive map of Discovery locations"', 'Interactive map must have an accessible label.');
   expectIncludes(map, 'min-h-[44px]', 'Map actions must meet the 44px touch target baseline.');
   expectIncludes(nav, 'aria-label="Discovery mobile navigation"', 'Mobile navigation must have an accessible landmark label.');
   expectIncludes(nav, 'min-h-[48px]', 'Mobile navigation controls must provide comfortable touch targets.');
