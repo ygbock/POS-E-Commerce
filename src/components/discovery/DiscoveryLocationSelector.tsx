@@ -174,7 +174,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
             </button>
             <div className="flex items-center gap-1.5 px-1 text-[11px] text-slate-400 dark:text-slate-500">
               <Shield className="w-3 h-3 text-emerald-500 shrink-0" />
-              <span>Your precise coordinates are used only for nearby search.</span>
+              <span>Your coordinates are never shared with public businesses.</span>
             </div>
 
             {geoError && (
@@ -185,7 +185,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
 
             {hasCoords && (
               <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Search radius</label>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Search Radius</label>
                 <div className="grid grid-cols-4 gap-1.5">
                   {RADIUS_OPTIONS.map((km) => (
                     <button key={km} type="button" onClick={() => onLocationChange({ lat: latitude, lng: longitude, radiusKm: km })}
