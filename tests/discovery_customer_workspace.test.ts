@@ -51,6 +51,7 @@ assert.match(routes,/router\.post\('\/businesses\/:id\/reviews', requireAuth\(\)
 assert.match(routes,/router\.get\('\/contact-inquiries', requireAuth\(\), requireCustomerIdentity\(\)/);
 assert.match(routes,/router\.post\('\/businesses\/:id\/claims', requireAuth\(\), requireBusinessOwnerIdentity\(\)/);
 assert.match(routes,/router\.post\('\/reports', discoveryReportRateLimiter/);
+assert.match(routes,/router\.post\('\/businesses\/:id\/contact-inquiries', discoveryContactInquiryRateLimiter/);
 assert.match(routes,/exactly one of businessId or serviceId is required/);
 assert.match(routes,/reasonCode exceeds 64 characters/);
 assert.match(routes,/description exceeds 4000 characters/);

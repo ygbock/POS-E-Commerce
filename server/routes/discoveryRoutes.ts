@@ -17,6 +17,7 @@ const SEARCH_ATTRIBUTION_EVENTS = new Set(['IMPRESSION','VIEW','CONTACT','DIRECT
 const discoverySearchRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 120, message: 'Too many discovery search requests. Please slow down and try again shortly.' });
 const discoveryAttributionRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 180, message: 'Too many discovery attribution events. Please slow down and try again shortly.' });
 const discoveryReportRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 10, message: 'Too many discovery reports. Please try again later.' });
+const discoveryContactInquiryRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 10, message: 'Too many contact inquiries. Please try again later.' });
 const DISCOVERY_PUBLIC_PAGE_SIZE = 100;
 const DISCOVERY_MAX_OFFSET = 10000;
 const DISCOVERY_SESSION_COOKIE = 'discovery_sid';
@@ -1418,7 +1419,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   // ------------------------------------------------------------------
   // DISC-013: customer-to-business contact inquiries
   // ------------------------------------------------------------------
-  router.post('/businesses/:id/contact-inquiries', async (req,res,next)=>{try{
+  router.post('/businesses/:id/contact-inquiries', discoveryContactInquiryRateLimiter, async (req,res,next)=>{try{
     const business=await repo.findById(req.params.id);
     if(!business || business.listing_status!=='PUBLISHED' || !business.is_discoverable) {
       return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business listing not found.'}});
