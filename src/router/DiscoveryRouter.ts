@@ -94,6 +94,7 @@ export function parseDiscoveryPath(
         city: params.get('city') || undefined,
         district: params.get('district') || undefined,
         region: params.get('region') || undefined,
+        locality: params.get('locality') || undefined,
         lat: latVal ? Number(latVal) : undefined,
         lng: lngVal ? Number(lngVal) : undefined,
         radiusKm: radiusVal ? Number(radiusVal) : undefined,
