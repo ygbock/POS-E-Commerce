@@ -41,17 +41,27 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
   const [isLocating, setIsLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [geoLocations, setGeoLocations] = useState<DiscoveryGeoLocation[]>([]);
+  const [geoLocationsLoading, setGeoLocationsLoading] = useState(false);
+  const [geoLocationsError, setGeoLocationsError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let active = true;
-    discoveryApi.getGeoLocations()
-      .then((locations) => {
-        if (active && Array.isArray(locations)) setGeoLocations(locations.filter((location) => location.is_active));
-      })
-      .catch(() => undefined);
-    return () => { active = false; };
+  const loadGeoLocations = useCallback(async () => {
+    setGeoLocationsLoading(true);
+    setGeoLocationsError(null);
+    try {
+      const locations = await discoveryApi.getGeoLocations();
+      setGeoLocations(Array.isArray(locations) ? locations.filter((location) => location.is_active) : []);
+    } catch (error) {
+      setGeoLocationsError(error instanceof Error ? error.message : 'Unable to load available locations.');
+    } finally {
+      setGeoLocationsLoading(false);
+    }
   }, []);
+
+  // Refresh each time the selector opens so platform-managed additions appear without a full page reload.
+  useEffect(() => {
+    if (isOpen) void loadGeoLocations();
+  }, [isOpen, loadGeoLocations]);
 
   const locationsById = useMemo(
     () => new Map(geoLocations.map((location) => [location.id, location])),
@@ -76,16 +86,16 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
   const visibleLocations = useMemo(() => {
     const query = locationQuery.trim().toLocaleLowerCase();
     const candidates = geoLocations.filter((location) => {
-      if (!query) return location.location_type === 'CITY' || location.location_type === 'COMMUNITY';
+      if (!query) return true;
       const trail = getLocationPath(location).map((item) => item.name).join(' ').toLocaleLowerCase();
       return location.name.toLocaleLowerCase().includes(query) || trail.includes(query);
     });
     return candidates
       .sort((a, b) => {
-        const order = { COMMUNITY: 0, CITY: 1, DISTRICT: 2, REGION: 3 };
+        const order = { REGION: 0, DISTRICT: 1, CITY: 2, COMMUNITY: 3 };
         return order[a.location_type] - order[b.location_type] || a.display_order - b.display_order || a.name.localeCompare(b.name);
       })
-      .slice(0, query ? 60 : 36);
+      .slice(0, 60);
   }, [geoLocations, locationQuery, getLocationPath]);
 
   const hasCoords = latitude != null && longitude != null;
@@ -212,7 +222,14 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
                   className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
                 {locationQuery && <button type="button" onClick={() => setLocationQuery('')} aria-label="Clear location search" className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700"><X className="w-3.5 h-3.5" /></button>}
               </div>
-              <div className="mt-2 max-h-64 overflow-y-auto space-y-1" role="listbox" aria-label="Available locations">
+              {geoLocationsLoading && <p className="mt-3 text-center text-xs text-slate-500" role="status">Loading locations…</p>}
+              {geoLocationsError && (
+                <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700" role="alert">
+                  <p>{geoLocationsError}</p>
+                  <button type="button" onClick={() => void loadGeoLocations()} className="mt-2 font-bold underline">Retry loading locations</button>
+                </div>
+              )}
+              <div className="mt-2 max-h-80 overflow-y-auto space-y-1" role="listbox" aria-label="Available locations">
                 {visibleLocations.map((location) => (
                   <button key={location.id} type="button" onClick={() => handleSelectLocation(location)}
                     className="w-full text-left p-2.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-transparent hover:border-blue-100 dark:hover:border-blue-900/40 transition-colors">
@@ -223,7 +240,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
                     <span className="block mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 truncate">{locationTrail(location)}</span>
                   </button>
                 ))}
-                {visibleLocations.length === 0 && <p className="p-3 text-center text-slate-500">No matching locations. Try another spelling or ask the platform to add this place.</p>}
+                {visibleLocations.length === 0 && !geoLocationsLoading && !geoLocationsError && <p className="p-3 text-center text-slate-500">No matching locations. Try another spelling or ask the platform to add this place.</p>}
               </div>
               <button type="button" onClick={handleClearLocation} className="mt-2 text-[11px] text-blue-600 dark:text-blue-400 hover:underline">Clear location filter</button>
               <p className="mt-2 text-[10px] text-slate-400">The list is managed by the platform and expands as verified towns, villages and communities are added.</p>
