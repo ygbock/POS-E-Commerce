@@ -1258,6 +1258,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if(city) serviceLocationConditions.push(`lower(sl.city)=lower(${sb(city)})`);
       if(district) serviceLocationConditions.push(`lower(sl.district)=lower(${sb(district)})`);
       if(region) serviceLocationConditions.push(`lower(sl.region)=lower(${sb(region)})`);
+      if(locality) serviceLocationConditions.push(`(lower(coalesce(sl.name,''))=lower(${sb(locality)}) OR lower(coalesce(sl.address_line_1,'')) LIKE '%' || lower(${sb(locality)}) || '%' OR lower(coalesce(sl.address_line_2,'')) LIKE '%' || lower(${sb(locality)}) || '%')`);
       const serviceDistanceExpr = distanceExprFor('sl');
       if(serviceDistanceExpr) serviceLocationConditions.push(`${serviceDistanceExpr} <= GREATEST(${sb(radius)}, COALESCE(sl.service_radius_km,0)) AND sl.latitude IS NOT NULL AND sl.longitude IS NOT NULL`);
       if(openNow) serviceLocationConditions.push(`EXISTS(SELECT 1 FROM discovery_business_hours sh WHERE sh.location_id=sl.id AND sh.day_of_week=${sb(nowDow)} AND sh.is_closed=FALSE AND sh.opens_at<=${sb(nowTime)}::time AND sh.closes_at>=${sb(nowTime)}::time)`);
@@ -1274,7 +1275,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const order=sort==='name_asc'?'s.name ASC,s.id ASC':`search_rank DESC,s.name ASC,s.id ASC`;
         const serviceSql = `
           SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
-                 b.verification_status,l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,
+                 b.verification_status,l.name AS location_name,l.city,l.district,l.region,l.latitude,l.longitude,l.service_radius_km,l.location_quality_status,l.location_source,
                  ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}${serviceRank} AS search_rank,
                  COALESCE((SELECT string_agg(sa.alias,' ' ORDER BY sa.alias) FROM discovery_search_aliases sa WHERE sa.entity_type='SERVICE' AND sa.entity_id=s.id AND sa.is_active=TRUE),'') AS search_aliases
           FROM discovery_services s
@@ -1324,7 +1325,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         type,
         zeroResults: businessCount + productCount + serviceCount === 0,
         resultCounts: { businesses: businessCount, products: productCount, services: serviceCount },
-        filters: { city, district, region, categoryId, openNow, radiusKm: radius, sort },
+        filters: { city, district, region, locality, categoryId, openNow, radiusKm: radius, sort },
         searchId,
       };
       await db.query(
