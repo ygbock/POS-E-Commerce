@@ -114,6 +114,11 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
     [locations]
   );
 
+  const cities = useMemo(
+    () => locations.filter((l) => l.location_type === 'CITY'),
+    [locations]
+  );
+
   const handleOpenCreate = (type: DiscoveryGeoLocationType, parentId?: string) => {
     setEditingLocation(null);
     setFormLocationType(type);
@@ -125,6 +130,8 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
       setFormParentId(regions[0]?.id || '');
     } else if (type === 'CITY') {
       setFormParentId(districts[0]?.id || '');
+    } else if (type === 'COMMUNITY') {
+      setFormParentId(cities[0]?.id || '');
     } else {
       setFormParentId('');
     }
@@ -262,11 +269,12 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
     }
   };
 
-  // Build 3-tier hierarchy tree: Region -> District -> City
+  // Build the searchable hierarchy: Region -> District -> City/Town -> Community.
   const geoTree = useMemo(() => {
     const searchLower = searchQuery.toLowerCase().trim();
     const districtsByRegion = new Map<string, DiscoveryGeoLocation[]>();
     const citiesByDistrict = new Map<string, DiscoveryGeoLocation[]>();
+    const communitiesByCity = new Map<string, DiscoveryGeoLocation[]>();
 
     locations.forEach((loc) => {
       if (loc.location_type === 'DISTRICT' && loc.parent_id) {
@@ -277,68 +285,51 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
         const list = citiesByDistrict.get(loc.parent_id) || [];
         list.push(loc);
         citiesByDistrict.set(loc.parent_id, list);
+      } else if (loc.location_type === 'COMMUNITY' && loc.parent_id) {
+        const list = communitiesByCity.get(loc.parent_id) || [];
+        list.push(loc);
+        communitiesByCity.set(loc.parent_id, list);
       }
     });
 
-    return regions
-      .map((reg) => {
-        const regDistricts = districtsByRegion.get(reg.id) || [];
-        const regMatches =
-          !searchLower ||
-          reg.name.toLowerCase().includes(searchLower) ||
-          reg.slug.toLowerCase().includes(searchLower);
-
-        const mappedDistricts = regDistricts
-          .map((dist) => {
-            const distCities = citiesByDistrict.get(dist.id) || [];
-            const distMatches =
-              !searchLower ||
-              dist.name.toLowerCase().includes(searchLower) ||
-              dist.slug.toLowerCase().includes(searchLower);
-
-            const filteredCities = searchLower
-              ? distCities.filter(
-                  (c) =>
-                    c.name.toLowerCase().includes(searchLower) ||
-                    c.slug.toLowerCase().includes(searchLower)
-                )
-              : distCities;
-
-            const visible = !searchLower || regMatches || distMatches || filteredCities.length > 0;
-            return {
-              district: dist,
-              cities: distCities,
-              displayCities: regMatches || distMatches ? distCities : filteredCities,
-              visible,
-            };
-          })
-          .filter((d) => d.visible);
-
-        const visible = !searchLower || regMatches || mappedDistricts.length > 0;
-        return {
-          region: reg,
-          districts: mappedDistricts,
-          totalDistricts: regDistricts.length,
-          totalCities: regDistricts.reduce(
-            (sum, d) => sum + (citiesByDistrict.get(d.id)?.length || 0),
-            0
-          ),
-          visible,
-        };
-      })
-      .filter((r) => r.visible);
+    return regions.map((reg) => {
+      const regDistricts = districtsByRegion.get(reg.id) || [];
+      const regMatches = !searchLower || reg.name.toLowerCase().includes(searchLower) || reg.slug.toLowerCase().includes(searchLower);
+      const mappedDistricts = regDistricts.map((dist) => {
+        const distCities = citiesByDistrict.get(dist.id) || [];
+        const distMatches = !searchLower || dist.name.toLowerCase().includes(searchLower) || dist.slug.toLowerCase().includes(searchLower);
+        const mappedCities = distCities.map((city) => {
+          const communities = communitiesByCity.get(city.id) || [];
+          const cityMatches = !searchLower || city.name.toLowerCase().includes(searchLower) || city.slug.toLowerCase().includes(searchLower);
+          const communityMatches = communities.some((community) => community.name.toLowerCase().includes(searchLower) || community.slug.toLowerCase().includes(searchLower));
+          return { ...city, communities, visible: !searchLower || regMatches || distMatches || cityMatches || communityMatches };
+        });
+        const displayCities = mappedCities.filter((city) => city.visible);
+        return { district: dist, cities: mappedCities, displayCities, visible: !searchLower || regMatches || distMatches || displayCities.length > 0 };
+      }).filter((district) => district.visible);
+      return {
+        region: reg,
+        districts: mappedDistricts,
+        totalDistricts: regDistricts.length,
+        totalCities: regDistricts.reduce((sum, dist) => sum + (citiesByDistrict.get(dist.id)?.length || 0), 0),
+        totalCommunities: regDistricts.reduce((sum, dist) => sum + (citiesByDistrict.get(dist.id) || []).reduce((citySum, city) => citySum + (communitiesByCity.get(city.id)?.length || 0), 0), 0),
+        visible: !searchLower || regMatches || mappedDistricts.length > 0,
+      };
+    }).filter((region) => region.visible);
   }, [locations, regions, searchQuery]);
 
   const stats = useMemo(() => {
     const regCount = locations.filter((l) => l.location_type === 'REGION').length;
     const distCount = locations.filter((l) => l.location_type === 'DISTRICT').length;
     const cityCount = locations.filter((l) => l.location_type === 'CITY').length;
+    const communityCount = locations.filter((l) => l.location_type === 'COMMUNITY').length;
     const activeCount = locations.filter((l) => l.is_active).length;
     return {
       total: locations.length,
       regions: regCount,
       districts: distCount,
       cities: cityCount,
+      communities: communityCount,
       active: activeCount,
     };
   }, [locations]);
@@ -397,7 +388,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
       </div>
 
       {/* KPI Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Regions / Provinces
@@ -425,6 +416,16 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
           <div className="mt-1 flex items-baseline gap-1.5">
             <span className="text-xl font-black text-slate-900 dark:text-white">{stats.cities}</span>
             <span className="text-xs text-slate-500">searchable cities</span>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Communities / Villages
+          </span>
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="text-xl font-black text-slate-900 dark:text-white">{stats.communities}</span>
+            <span className="text-xs text-slate-500">local search areas</span>
           </div>
         </div>
 
@@ -470,7 +471,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Filter regions, districts, or cities..."
+            placeholder="Filter regions, districts, towns, villages or communities..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -505,7 +506,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
           <table className="w-full text-left border-collapse min-w-[700px]">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/40 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-                <th className="py-3 px-5">Location Hierarchy (Region → District → City)</th>
+                <th className="py-3 px-5">Location Hierarchy (Region → District → Town/City → Community)</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4">Slug</th>
                 <th className="py-3 px-4 text-center">Order</th>
@@ -530,7 +531,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                geoTree.map(({ region, districts: regDistricts, totalDistricts, totalCities }) => {
+                geoTree.map(({ region, districts: regDistricts, totalDistricts, totalCities, totalCommunities }) => {
                   const isRegExpanded = expandedRegions[region.id] !== false;
                   return (
                     <React.Fragment key={region.id}>
@@ -560,7 +561,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                             <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-2">
                               <span>{region.name}</span>
                               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                                ({totalDistricts} districts, {totalCities} cities)
+                                ({totalDistricts} districts, {totalCities} towns/cities, {totalCommunities} communities)
                               </span>
                             </div>
                           </div>
@@ -819,8 +820,8 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Location Level
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['REGION', 'DISTRICT', 'CITY'] as DiscoveryGeoLocationType[]).map((type) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(['REGION', 'DISTRICT', 'CITY', 'COMMUNITY'] as DiscoveryGeoLocationType[]).map((type) => (
                       <button
                         key={type}
                         type="button"
@@ -829,6 +830,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                           if (type === 'REGION') setFormParentId('');
                           else if (type === 'DISTRICT') setFormParentId(regions[0]?.id || '');
                           else if (type === 'CITY') setFormParentId(districts[0]?.id || '');
+                          else if (type === 'COMMUNITY') setFormParentId(cities[0]?.id || '');
                         }}
                         className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                           formLocationType === type
@@ -836,7 +838,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                             : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
                       >
-                        {type === 'REGION' ? 'Region / Province' : type === 'DISTRICT' ? 'District' : 'City / Town'}
+                        {type === 'REGION' ? 'Region / Province' : type === 'DISTRICT' ? 'District' : type === 'CITY' ? 'City / Town' : 'Community / Village'}
                       </button>
                     ))}
                   </div>
@@ -861,6 +863,19 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                         {reg.name}
                       </option>
                     ))}
+                  </select>
+                </div>
+              )}
+
+              {formLocationType === 'COMMUNITY' && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Parent City / Town</label>
+                  <select required value={formParentId} onChange={(e) => setFormParentId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                    <option value="">Select Parent City / Town...</option>
+                    {cities.map((city) => {
+                      const parentDistrict = districts.find((district) => district.id === city.parent_id);
+                      return <option key={city.id} value={city.id}>{city.name}{parentDistrict ? ` (${parentDistrict.name})` : ''}</option>;
+                    })}
                   </select>
                 </div>
               )}
@@ -901,7 +916,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                     ? 'Region / Province Name'
                     : formLocationType === 'DISTRICT'
                     ? 'District Name'
-                    : 'City / Town Name'}
+                    : formLocationType === 'CITY' ? 'City / Town Name' : 'Community / Village Name'}
                 </label>
                 <input
                   type="text"
@@ -911,7 +926,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                       ? 'e.g. Western Area'
                       : formLocationType === 'DISTRICT'
                       ? 'e.g. Western Area Urban'
-                      : 'e.g. Freetown'
+                      : formLocationType === 'CITY' ? 'e.g. Freetown' : 'e.g. Lumley or Wellington'
                   }
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
