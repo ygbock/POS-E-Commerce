@@ -27,6 +27,7 @@ import { authClient } from '../../services/authClient';
 
 interface DiscoveryHeaderProps {
   selectedCity?: string;
+  selectedLocality?: string;
   selectedRadiusKm?: number;
   latitude?: number | null;
   longitude?: number | null;
@@ -47,6 +48,7 @@ interface DiscoveryHeaderProps {
 
 export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
   selectedCity,
+  selectedLocality,
   selectedRadiusKm = 25,
   latitude,
   longitude,
