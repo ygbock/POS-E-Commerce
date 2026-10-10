@@ -5,6 +5,8 @@ import type { DiscoveryGeoLocation } from '../../types/discovery';
 
 interface DiscoveryLocationSelectorProps {
   selectedCity?: string;
+  selectedDistrict?: string;
+  selectedRegion?: string;
   selectedLocality?: string;
   selectedRadiusKm?: number;
   latitude?: number | null;
@@ -25,6 +27,8 @@ const RADIUS_OPTIONS = [5, 10, 25, 50];
 
 export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps> = ({
   selectedCity = '',
+  selectedDistrict = '',
+  selectedRegion = '',
   selectedLocality = '',
   selectedRadiusKm = 25,
   latitude,
@@ -87,7 +91,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
   const hasCoords = latitude != null && longitude != null;
   const displayText = hasCoords
     ? 'Near my location'
-    : selectedLocality || selectedCity || 'All locations';
+    : selectedLocality || selectedCity || selectedDistrict || selectedRegion || 'All locations';
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
