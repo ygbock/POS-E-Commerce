@@ -642,6 +642,8 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
           <div className="shrink-0 self-start sm:self-auto">
             <DiscoveryLocationSelector
               selectedCity={city}
+              selectedDistrict={district}
+              selectedRegion={region}
               selectedLocality={locality}
               selectedRadiusKm={radiusKm}
               latitude={lat}
