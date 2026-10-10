@@ -391,7 +391,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
   });
 
   // ------------------------------------------------------------------
-  // DISCOVERY GEOGRAPHIC TAXONOMY GOVERNANCE (REGIONS, DISTRICTS, CITIES)
+  // DISCOVERY GEOGRAPHIC TAXONOMY GOVERNANCE (REGIONS, DISTRICTS, CITIES, COMMUNITIES)
   // ------------------------------------------------------------------
   router.get('/discovery/geo-locations', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -399,7 +399,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         `SELECT id, parent_id, location_type, name, slug, display_order, is_active, is_system, created_at, updated_at
            FROM discovery_geo_locations
           ORDER BY
-            CASE location_type WHEN 'REGION' THEN 1 WHEN 'DISTRICT' THEN 2 ELSE 3 END ASC,
+            CASE location_type WHEN 'REGION' THEN 1 WHEN 'DISTRICT' THEN 2 WHEN 'CITY' THEN 3 ELSE 4 END ASC,
             display_order ASC,
             name ASC,
             id ASC`,
@@ -420,8 +420,8 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       const displayOrder = Number(req.body?.displayOrder ?? 0);
       const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
 
-      if (!['REGION', 'DISTRICT', 'CITY'].includes(locationType)) {
-        return badRequest(res, 'INVALID_LOCATION_TYPE', 'Location type must be REGION, DISTRICT, or CITY.');
+      if (!['REGION', 'DISTRICT', 'CITY', 'COMMUNITY'].includes(locationType)) {
+        return badRequest(res, 'INVALID_LOCATION_TYPE', 'Location type must be REGION, DISTRICT, CITY, or COMMUNITY.');
       }
       if (!name || name.length > 128) {
         return badRequest(res, 'INVALID_LOCATION_NAME', 'Location name must be between 1 and 128 characters.');
@@ -449,7 +449,14 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         if (parent.rows[0].location_type !== 'DISTRICT') return badRequest(res, 'INVALID_PARENT_TYPE', 'A City parent must be a DISTRICT.');
       }
 
-      const prefix = locationType === 'REGION' ? 'geo_reg_' : locationType === 'DISTRICT' ? 'geo_dist_' : 'geo_city_';
+      if (locationType === 'COMMUNITY') {
+        if (!parentId) return badRequest(res, 'PARENT_REQUIRED', 'A Community must belong to a parent City or Town.');
+        const parent = await db.query('SELECT id, location_type FROM discovery_geo_locations WHERE id = $1', [parentId]);
+        if (!parent.rows[0]) return res.status(404).json({ success: false, error: { code: 'PARENT_NOT_FOUND', message: 'Parent City or Town not found.' } });
+        if (parent.rows[0].location_type !== 'CITY') return badRequest(res, 'INVALID_PARENT_TYPE', 'A Community parent must be a City or Town.');
+      }
+
+      const prefix = locationType === 'REGION' ? 'geo_reg_' : locationType === 'DISTRICT' ? 'geo_dist_' : locationType === 'CITY' ? 'geo_city_' : 'geo_com_';
       const id = prefix + randomUUID().replace(/-/g, '').slice(0, 20);
 
       const inserted = await db.query(
@@ -504,6 +511,13 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
         const parent = await db.query('SELECT id, location_type FROM discovery_geo_locations WHERE id = $1', [parentId]);
         if (!parent.rows[0] || parent.rows[0].location_type !== 'DISTRICT') {
           return badRequest(res, 'INVALID_PARENT_TYPE', 'A City parent must be a valid District.');
+        }
+      }
+      if (row.location_type === 'COMMUNITY') {
+        if (!parentId) return badRequest(res, 'PARENT_REQUIRED', 'A Community must belong to a parent City or Town.');
+        const parent = await db.query('SELECT id, location_type FROM discovery_geo_locations WHERE id = $1', [parentId]);
+        if (!parent.rows[0] || parent.rows[0].location_type !== 'CITY') {
+          return badRequest(res, 'INVALID_PARENT_TYPE', 'A Community parent must be a valid City or Town.');
         }
       }
 

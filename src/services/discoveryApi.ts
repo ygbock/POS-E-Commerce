@@ -122,6 +122,7 @@ export const discoveryApi = {
     if (filters.city?.trim()) params.set('city', filters.city.trim());
     if (filters.district?.trim()) params.set('district', filters.district.trim());
     if (filters.region?.trim()) params.set('region', filters.region.trim());
+    if (filters.locality?.trim()) params.set('locality', filters.locality.trim());
     if (filters.lat != null) params.set('lat', String(filters.lat));
     if (filters.lng != null) params.set('lng', String(filters.lng));
     if (filters.radiusKm != null) params.set('radiusKm', String(filters.radiusKm));

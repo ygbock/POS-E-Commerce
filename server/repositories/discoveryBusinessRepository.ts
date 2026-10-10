@@ -31,7 +31,7 @@ export interface DiscoveryBusinessSettingsRecord {
 }
 
 export interface DiscoveryBusinessListFilter {
-  categoryId?: string; city?: string; district?: string; region?: string; businessType?: string;
+  categoryId?: string; city?: string; district?: string; region?: string; locality?: string; businessType?: string;
   verificationStatus?: DiscoveryVerificationStatus; limit?: number; offset?: number;
 }
 
@@ -114,6 +114,7 @@ export class DiscoveryBusinessRepository {
     if (filter.city) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.city) = LOWER($X))', filter.city);
     if (filter.district) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.district) = LOWER($X))', filter.district);
     if (filter.region) add('EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND LOWER(l.region) = LOWER($X))', filter.region);
+    if (filter.locality) add("EXISTS (SELECT 1 FROM discovery_business_locations l WHERE l.business_id = b.id AND l.is_active = TRUE AND (LOWER(COALESCE(l.name, '')) = LOWER($X) OR LOWER(COALESCE(l.address_line_1, '')) LIKE '%' || LOWER($X) || '%' OR LOWER(COALESCE(l.address_line_2, '')) LIKE '%' || LOWER($X) || '%'))", filter.locality);
     if (filter.businessType) add('LOWER(b.business_type) = LOWER($X)', filter.businessType);
     if (filter.verificationStatus) add('b.verification_status = $X', filter.verificationStatus);
     const limit = Math.min(Math.max(Number(filter.limit) || 50, 1), 200); const offset = Math.max(Number(filter.offset) || 0, 0);

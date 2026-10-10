@@ -279,7 +279,7 @@ export interface DiscoveryCategory {
   item_count?: number;
 }
 
-export type DiscoveryGeoLocationType = 'REGION' | 'DISTRICT' | 'CITY';
+export type DiscoveryGeoLocationType = 'REGION' | 'DISTRICT' | 'CITY' | 'COMMUNITY';
 
 export interface DiscoveryGeoLocation {
   id: string;
@@ -620,6 +620,7 @@ export interface DiscoverySearchFilters {
   city?: string;
   district?: string;
   region?: string;
+  locality?: string;
   lat?: number;
   lng?: number;
   radiusKm?: number;

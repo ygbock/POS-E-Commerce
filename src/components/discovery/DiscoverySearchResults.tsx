@@ -66,6 +66,7 @@ function readUrlParams(): {
   city?: string;
   district?: string;
   region?: string;
+  locality?: string;
   lat?: number | null;
   lng?: number | null;
   radiusKm: number;
@@ -131,6 +132,7 @@ function applyUrlUpdate(
     city?: string;
     district?: string;
     region?: string;
+    locality?: string;
     lat?: number | null;
     lng?: number | null;
     radiusKm?: number;
@@ -150,6 +152,7 @@ function applyUrlUpdate(
     city: merged.city,
     district: merged.district,
     region: merged.region,
+    locality: merged.locality,
     lat: merged.lat ?? undefined,
     lng: merged.lng ?? undefined,
     radiusKm: merged.radiusKm,
@@ -189,7 +192,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
   // -------------------------------------------------------------------------
   const [urlState, setUrlState] = useState(readUrlParams);
 
-  const { q, type: activeType, city, district, region, lat, lng, radiusKm, openNow, categoryId, sort, page } = urlState;
+  const { q, type: activeType, city, district, region, locality, lat, lng, radiusKm, openNow, categoryId, sort, page } = urlState;
   const [searchDraft, setSearchDraft] = useState(q);
 
   // Derived filter state for DiscoveryFilters
@@ -274,6 +277,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
         city: params.city,
         district: params.district,
         region: params.region,
+        locality: params.locality,
         lat: params.lat ?? undefined,
         lng: params.lng ?? undefined,
         radiusKm: params.radiusKm,
@@ -384,6 +388,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
     city?: string;
     district?: string;
     region?: string;
+    locality?: string;
     lat?: number | null;
     lng?: number | null;
     radiusKm?: number;
@@ -392,6 +397,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
       city: loc.city,
       district: loc.district,
       region: loc.region,
+      locality: loc.locality,
       lat: loc.lat,
       lng: loc.lng,
       radiusKm: loc.radiusKm ?? radiusKm,
@@ -425,6 +431,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
       city: undefined,
       district: undefined,
       region: undefined,
+      locality: undefined,
       lat: null,
       lng: null,
       radiusKm: 25,
@@ -634,6 +641,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
           <div className="shrink-0 self-start sm:self-auto">
             <DiscoveryLocationSelector
               selectedCity={city}
+              selectedLocality={locality}
               selectedRadiusKm={radiusKm}
               latitude={lat}
               longitude={lng}
