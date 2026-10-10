@@ -767,7 +767,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => handleOpenEdit(city)
+                                          onClick={() => handleOpenEdit(city)}
                                           className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
                                           title="Edit City"
                                         >
