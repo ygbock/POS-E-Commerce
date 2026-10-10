@@ -236,7 +236,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
       });
 
       if (points.length > 1) {
-        map.fitBounds(L.latLngBounds(points.map((point) => [point.latitude, point.longitude])), { padding: [36, 36], maxZoom: 14 });
+        map.fitBounds(L.latLngBounds(points.map((point): [number, number] => [point.latitude, point.longitude])), { padding: [36, 36], maxZoom: 14 });
       } else if (points.length === 1) {
         map.setView(center, 14);
       }
