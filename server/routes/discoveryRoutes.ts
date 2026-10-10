@@ -239,7 +239,27 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         limit,
         offset,
       });
-      res.json({ success: true, count: data.length, data });
+      const settingsByBusiness = new Map<string, { allow_phone_contact: boolean; allow_whatsapp_contact: boolean }>();
+      if (data.length) {
+        const settingsResult = await db.query(
+          `SELECT business_id,
+                  COALESCE(allow_phone_contact, TRUE) AS allow_phone_contact,
+                  COALESCE(allow_whatsapp_contact, TRUE) AS allow_whatsapp_contact
+             FROM discovery_business_settings
+            WHERE business_id = ANY($1::text[])`,
+          [data.map((business: any) => String(business.id))],
+        );
+        for (const settings of settingsResult.rows) settingsByBusiness.set(String(settings.business_id), settings as any);
+      }
+      const publicData = data.map((business: any) => {
+        const settings = settingsByBusiness.get(String(business.id));
+        return {
+          ...business,
+          phone: settings?.allow_phone_contact === false ? null : business.phone,
+          whatsapp: settings?.allow_whatsapp_contact === false ? null : business.whatsapp,
+        };
+      });
+      res.json({ success: true, count: publicData.length, data: publicData });
     } catch (err) { next(err); }
   });
 
@@ -449,7 +469,26 @@ export function createDiscoveryRouter(db: DatabaseClient) {
        LIMIT 100`,
       [req.auth!.userId],
     );
-    res.json({success:true,data:r.rows});
+    const settingsResult = r.rows.length ? await db.query(
+      `SELECT business_id,
+              COALESCE(allow_phone_contact, TRUE) AS allow_phone_contact,
+              COALESCE(allow_whatsapp_contact, TRUE) AS allow_whatsapp_contact
+         FROM discovery_business_settings
+        WHERE business_id = ANY($1::text[])`,
+      [r.rows.map((business: any) => String(business.id))],
+    ) : { rows: [] as any[] };
+    const settingsByBusiness = new Map<string, any>(
+      settingsResult.rows.map((settings: any) => [String(settings.business_id), settings]),
+    );
+    const data = r.rows.map((business: any) => {
+      const settings = settingsByBusiness.get(String(business.id));
+      return {
+        ...business,
+        phone: settings?.allow_phone_contact === false ? null : business.phone,
+        whatsapp: settings?.allow_whatsapp_contact === false ? null : business.whatsapp,
+      };
+    });
+    res.json({success:true,data});
   }catch(err){next(err);}});
 
   router.get('/businesses/:id/favorite', requireAuth(), requireCustomerIdentity(), async (req,res,next)=>{try{
@@ -1281,7 +1320,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         const r=await db.query("SELECT 1 FROM discovery_businesses b WHERE b.id=$1 AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))",[entityId]);
         visible=Boolean(r.rows[0]);
       }else if(entityType==='PRODUCT'){
-        const r=await db.query("SELECT 1 FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id WHERE p.id=$1 AND p.status='active' AND p.channels_ecommerce=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE)",[entityId]);
+        const r=await db.query("SELECT 1 FROM products p JOIN discovery_businesses b ON b.organization_id=p.organization_id LEFT JOIN discovery_business_settings ds ON ds.business_id=b.id WHERE p.id=$1 AND p.status='active' AND p.channels_ecommerce=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND COALESCE(ds.show_products,TRUE)=TRUE AND EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE)",[entityId]);
         visible=Boolean(r.rows[0]);
       }else{
         const r=await db.query("SELECT 1 FROM discovery_services s JOIN discovery_businesses b ON b.id=s.business_id WHERE s.id=$1 AND s.is_active=TRUE AND b.listing_status='PUBLISHED' AND b.is_discoverable=TRUE AND (b.organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE))",[entityId]);
