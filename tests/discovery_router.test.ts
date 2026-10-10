@@ -15,6 +15,7 @@ assert.deepEqual(search, {
   city: 'Freetown',
   district: undefined,
   region: undefined,
+  locality: undefined,
   lat: undefined,
   lng: undefined,
   radiusKm: 10,
@@ -45,13 +46,14 @@ const builtSearch = buildDiscoveryPath({
   query: 'phone',
   type: 'products',
   city: 'Freetown',
+  locality: 'Lumley',
   radiusKm: 10,
   openNow: true,
   page: 2,
 });
 assert.equal(
   builtSearch,
-  '/discover/search?q=phone&type=products&city=Freetown&radiusKm=10&openNow=true&page=2'
+  '/discover/search?q=phone&type=products&city=Freetown&locality=Lumley&radiusKm=10&openNow=true&page=2'
 );
 
 const builtBusiness = buildDiscoveryPath({ name: 'discover-business', businessId: 'business/123' });
@@ -60,4 +62,10 @@ assert.equal(builtBusiness, '/discover/business/business%2F123');
 const builtService = buildDiscoveryPath({ name: 'discover-service', serviceId: 'svc_123' });
 assert.equal(builtService, '/discover/service/svc_123');
 
-console.log('Discovery router tests passed: 12 assertions');
+const localitySearch = parseDiscoveryPath('/discover/search', '?q=food&city=Freetown&locality=New+England+Ville');
+assert.equal(localitySearch.name, 'discover-search');
+if (localitySearch.name === 'discover-search') {
+  assert.equal(localitySearch.locality, 'New England Ville');
+}
+
+console.log('Discovery router tests passed: 14 assertions');
