@@ -741,6 +741,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
            )
           WHERE p.status='active'
             AND p.channels_ecommerce=TRUE
+            AND COALESCE((SELECT ds.show_products FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND lower(p.name) LIKE $1 || '%'
 
           UNION ALL
@@ -770,6 +771,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
             AND p.status='active'
             AND p.channels_ecommerce=TRUE
             AND EXISTS (SELECT 1 FROM organizations o WHERE o.id=b.organization_id AND o.is_active=TRUE)
+            AND COALESCE((SELECT ds.show_products FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE
             AND lower(sa.normalized_alias) LIKE $1 || '%'
 
           UNION ALL
