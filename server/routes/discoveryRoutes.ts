@@ -1076,7 +1076,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           : sort === 'newest' ? 'b.published_at DESC NULLS LAST, b.name ASC, b.id ASC'
           : sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, b.name ASC, b.id ASC`
           : `search_rank DESC, b.name ASC, b.id ASC`;
-        const r=await db.query(`
+        const businessSql = `
           SELECT b.id,b.public_id,b.name,b.slug,b.business_type,b.short_description,
                  CASE WHEN COALESCE(bds.allow_phone_contact, TRUE) THEN b.phone ELSE NULL END AS phone,
                  CASE WHEN COALESCE(bds.allow_whatsapp_contact, TRUE) THEN b.whatsapp ELSE NULL END AS whatsapp,
@@ -1113,9 +1113,17 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                    c.category_name,c.category_slug
           ORDER BY ${order}
           LIMIT ${bb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? bb(0) : bb(offset)}
-        `,businessParams);
+        `;
+        const r=await db.query(businessSql,businessParams);
         businessResults=r.rows;
         businessCount = Number(r.rows[0]?.total_count || 0);
+        if (!r.rows.length && !fuzzyEnabled && offset > 0) {
+          const countParams = businessParams.slice();
+          countParams[countParams.length - 2] = 1;
+          countParams[countParams.length - 1] = 0;
+          const countResult = await db.query(businessSql, countParams);
+          businessCount = Number(countResult.rows[0]?.total_count || 0);
+        }
         if (fuzzyEnabled) {
           const ranked = businessResults.map((row:any, index:number) => ({
             row,
@@ -1169,7 +1177,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       let productCount = 0;
       if(type !== 'businesses' && type !== 'services'){
         const order=sort==='name_asc'?'p.name ASC,p.id ASC':`search_rank DESC,p.name ASC`;
-        const r=await db.query(`
+        const productSql = `
           SELECT p.id AS product_id,p.name AS product_name,p.slug AS product_slug,p.short_description,p.description,p.images,
                  p.organization_id,b.id AS business_id,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
                  l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,v.id AS variant_id,v.sku,v.name AS variant_name,
@@ -1199,9 +1207,17 @@ export function createDiscoveryRouter(db: DatabaseClient) {
                    l.service_radius_km,l.location_quality_status,l.location_source,ds.show_prices,ds.show_stock_status
           ORDER BY ${sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, p.name ASC, p.id ASC` : order}
           LIMIT ${pb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? pb(0) : pb(offset)}
-        `,productParams);
+        `;
+        const r=await db.query(productSql,productParams);
         productResults=r.rows;
         productCount = Number(r.rows[0]?.total_count || 0);
+        if (!r.rows.length && !fuzzyEnabled && offset > 0) {
+          const countParams = productParams.slice();
+          countParams[countParams.length - 2] = 1;
+          countParams[countParams.length - 1] = 0;
+          const countResult = await db.query(productSql, countParams);
+          productCount = Number(countResult.rows[0]?.total_count || 0);
+        }
         if (fuzzyEnabled) {
           const ranked = productResults.map((row:any, index:number) => ({
             row,
@@ -1253,7 +1269,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       let serviceCount = 0;
       if(type !== 'businesses' && type !== 'products'){
         const order=sort==='name_asc'?'s.name ASC,s.id ASC':`search_rank DESC,s.name ASC,s.id ASC`;
-        const r=await db.query(`
+        const serviceSql = `
           SELECT s.*,COUNT(*) OVER() AS total_count,b.name AS business_name,b.slug AS business_slug,b.public_id AS business_public_id,
                  b.verification_status,l.city,l.district,l.region,l.service_radius_km,l.location_quality_status,l.location_source,
                  ${distanceExpr ? `${distanceExpr} AS distance_km,` : ''}${serviceRank} AS search_rank,
@@ -1272,9 +1288,17 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           WHERE ${sConditions.join(' AND ')}
           ORDER BY ${sort === 'distance' && distanceExpr ? `${distanceExpr} ASC, s.name ASC, s.id ASC` : order}
           LIMIT ${sb(fuzzyCandidateLimit)} OFFSET ${fuzzyEnabled ? sb(0) : sb(offset)}
-        `,serviceParams);
+        `;
+        const r=await db.query(serviceSql,serviceParams);
         serviceResults=r.rows;
         serviceCount = Number(r.rows[0]?.total_count || 0);
+        if (!r.rows.length && !fuzzyEnabled && offset > 0) {
+          const countParams = serviceParams.slice();
+          countParams[countParams.length - 2] = 1;
+          countParams[countParams.length - 1] = 0;
+          const countResult = await db.query(serviceSql, countParams);
+          serviceCount = Number(countResult.rows[0]?.total_count || 0);
+        }
         if (fuzzyEnabled) {
           const ranked = serviceResults.map((row:any, index:number) => ({
             row,
