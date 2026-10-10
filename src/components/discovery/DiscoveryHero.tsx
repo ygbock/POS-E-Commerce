@@ -129,22 +129,26 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   const [gpsActive, setGpsActive] = useState(latitude != null && longitude != null);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const [fetchedGeoLocations, setFetchedGeoLocations] = useState<DiscoveryGeoLocation[]>([]);
+  const [hasFetchedGeoLocations, setHasFetchedGeoLocations] = useState(false);
   const [fetchedCategories, setFetchedCategories] = useState<DiscoveryCategory[]>([]);
 
-  // Fetch geo locations if not provided by parent
+  // Refresh platform-managed geography whenever the picker opens, so additions appear without a page reload.
   useEffect(() => {
-    if (propGeoLocations && propGeoLocations.length > 0) return;
+    if (!cityDropdownOpen) return;
     let active = true;
     discoveryApi
       .getGeoLocations()
       .then((locs) => {
-        if (active && Array.isArray(locs)) setFetchedGeoLocations(locs);
+        if (active && Array.isArray(locs)) {
+          setFetchedGeoLocations(locs);
+          setHasFetchedGeoLocations(true);
+        }
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [propGeoLocations]);
+  }, [cityDropdownOpen]);
 
   // Fetch categories if not provided by parent
   useEffect(() => {
@@ -162,8 +166,8 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   }, [propCategories]);
 
   const activeGeoLocations = useMemo(
-    () => (propGeoLocations && propGeoLocations.length > 0 ? propGeoLocations : fetchedGeoLocations),
-    [propGeoLocations, fetchedGeoLocations]
+    () => hasFetchedGeoLocations ? fetchedGeoLocations : (propGeoLocations && propGeoLocations.length > 0 ? propGeoLocations : fetchedGeoLocations),
+    [hasFetchedGeoLocations, fetchedGeoLocations, propGeoLocations]
   );
 
   const activeCategories = useMemo(
