@@ -253,7 +253,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         categoryId: filters.categoryId,
         sort,
         limit: 24,
-      }, { signal: controller?.signal });
+      }, { signal: controller.signal });
 
       const biz = response.data?.businesses || [];
       const prods = response.data?.products || [];
