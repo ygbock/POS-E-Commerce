@@ -83,6 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
     security: 'Security & Audit Logs',
     'discovery-moderation': 'Discovery Trust & Moderation',
     'discovery-categories': 'Category Governance',
+    'discovery-locations': 'Search Locations (Regions, Districts & Cities)',
   };
 
   const rolesList: Role[] = [

@@ -186,6 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       'security': ShieldAlert,
       'discovery-moderation': Sparkles,
       'discovery-categories': Layers,
+      'discovery-locations': MapPin,
     };
     return [
       {

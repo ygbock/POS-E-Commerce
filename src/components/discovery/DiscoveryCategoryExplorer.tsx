@@ -15,6 +15,7 @@ import {
   Check,
   BriefcaseBusiness,
   Coffee,
+  GraduationCap,
 } from 'lucide-react';
 import type { DiscoveryCategory } from '../../types/discovery';
 
@@ -83,20 +84,21 @@ const FALLBACK_SUBCATEGORIES: Record<string, Array<{ id: string; name: string; s
   ],
 };
 
-// Map slugs or names to appropriate Lucide icons
-const getCategoryIcon = (slugOrName: string) => {
-  const s = slugOrName.toLowerCase();
-  if (s.includes('food') || s.includes('restaurant') || s.includes('dining')) return Utensils;
-  if (s.includes('tech') || s.includes('electronic') || s.includes('phone')) return Smartphone;
-  if (s.includes('fashion') || s.includes('cloth') || s.includes('apparel')) return Shirt;
-  if (s.includes('health') || s.includes('pharmacy') || s.includes('medical')) return HeartPulse;
-  if (s.includes('beauty') || s.includes('salon') || s.includes('barber')) return Sparkles;
+// Map slugs, names, or icon_name to appropriate Lucide icons
+const getCategoryIcon = (slugOrName: string, iconName?: string | null) => {
+  const s = `${iconName || ''} ${slugOrName}`.toLowerCase();
+  if (s.includes('edu') || s.includes('school') || s.includes('train') || s.includes('grad') || s.includes('book') || s.includes('learn')) return GraduationCap;
+  if (s.includes('food') || s.includes('restaurant') || s.includes('dining') || s.includes('utensil')) return Utensils;
+  if (s.includes('tech') || s.includes('electronic') || s.includes('phone') || s.includes('smart')) return Smartphone;
+  if (s.includes('fashion') || s.includes('cloth') || s.includes('apparel') || s.includes('shirt')) return Shirt;
+  if (s.includes('health') || s.includes('pharmacy') || s.includes('medical') || s.includes('heart')) return HeartPulse;
+  if (s.includes('beauty') || s.includes('salon') || s.includes('barber') || s.includes('sparkle')) return Sparkles;
   if (s.includes('home') || s.includes('furniture') || s.includes('construction') || s.includes('garden')) return Home;
   if (s.includes('auto') || s.includes('car') || s.includes('mechanic')) return Car;
-  if (s.includes('professional') || s.includes('consult') || s.includes('legal')) return BriefcaseBusiness;
-  if (s.includes('repair') || s.includes('plumb') || s.includes('service')) return Wrench;
-  if (s.includes('retail') || s.includes('grocery') || s.includes('market') || s.includes('supermarket')) return ShoppingBag;
-  if (s.includes('cafe') || s.includes('drink') || s.includes('bakery')) return Coffee;
+  if (s.includes('professional') || s.includes('consult') || s.includes('legal') || s.includes('briefcase')) return BriefcaseBusiness;
+  if (s.includes('repair') || s.includes('plumb') || s.includes('service') || s.includes('wrench')) return Wrench;
+  if (s.includes('retail') || s.includes('grocery') || s.includes('market') || s.includes('supermarket') || s.includes('shop') || s.includes('bag')) return ShoppingBag;
+  if (s.includes('cafe') || s.includes('drink') || s.includes('bakery') || s.includes('coffee')) return Coffee;
   return Layers;
 };
 
@@ -255,7 +257,7 @@ export const DiscoveryCategoryExplorer: React.FC<DiscoveryCategoryExplorerProps>
       {/* Grid of Category dropdown cards: 2 cols on mobile, 3 on sm tablet, 4 on md tablet, 5-6 on desktop */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-3">
         {categoryTree.map(({ parent: cat, subcategories }) => {
-          const Icon = getCategoryIcon(cat.slug || cat.name);
+          const Icon = getCategoryIcon(cat.slug || cat.name, cat.icon_name);
           const isOpen = openDropdownId === cat.id;
           const activeSubcategory = subcategories.find((sub) => sub.id === selectedCategoryId);
           const isParentSelected = selectedCategoryId === cat.id;
@@ -339,8 +341,10 @@ export const DiscoveryCategoryExplorer: React.FC<DiscoveryCategoryExplorerProps>
                       }`}
                     >
                       {cat.item_count !== undefined && cat.item_count > 0
-                        ? `${cat.item_count} listings`
-                        : `${subcategories.length} subcategories`}
+                        ? `${cat.item_count} ${cat.item_count === 1 ? 'listing' : 'listings'}`
+                        : subcategories.length > 0
+                        ? `${subcategories.length} ${subcategories.length === 1 ? 'subcategory' : 'subcategories'}`
+                        : cat.description || 'Explore listings'}
                     </p>
                   )}
                 </div>

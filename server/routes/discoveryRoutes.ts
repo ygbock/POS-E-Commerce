@@ -87,6 +87,28 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     }
   });
 
+  // Public Geographic Taxonomy (Regions, Districts, Cities) for main search & selectors
+  router.get('/geo-locations', discoverySearchRateLimiter, async (_req, res, next) => {
+    try {
+      const result = await db.query(
+        `SELECT id, parent_id, location_type, name, slug, display_order, is_active, is_system, created_at, updated_at
+           FROM discovery_geo_locations
+          WHERE is_active = TRUE
+          ORDER BY
+            CASE location_type WHEN 'REGION' THEN 1 WHEN 'DISTRICT' THEN 2 ELSE 3 END ASC,
+            display_order ASC,
+            name ASC,
+            id ASC`,
+      );
+      res.json({
+        success: true,
+        data: result.rows,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   const normalizeLocation = (input: any) => {
     const x = input || {};
     const locationType = String(x.locationType || 'STORE').trim().toUpperCase();

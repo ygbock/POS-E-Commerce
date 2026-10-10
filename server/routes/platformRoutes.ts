@@ -391,6 +391,157 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
   });
 
   // ------------------------------------------------------------------
+  // DISCOVERY GEOGRAPHIC TAXONOMY GOVERNANCE (REGIONS, DISTRICTS, CITIES)
+  // ------------------------------------------------------------------
+  router.get('/discovery/geo-locations', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await db.query(
+        `SELECT id, parent_id, location_type, name, slug, display_order, is_active, is_system, created_at, updated_at
+           FROM discovery_geo_locations
+          ORDER BY
+            CASE location_type WHEN 'REGION' THEN 1 WHEN 'DISTRICT' THEN 2 ELSE 3 END ASC,
+            display_order ASC,
+            name ASC,
+            id ASC`,
+      );
+      res.json({ success: true, data: result.rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/discovery/geo-locations', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const locationType = typeof req.body?.locationType === 'string' ? req.body.locationType.trim().toUpperCase() : '';
+      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+      const rawSlug = typeof req.body?.slug === 'string' ? req.body.slug.trim().toLowerCase() : '';
+      const slug = rawSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const parentId = req.body?.parentId == null || req.body.parentId === '' ? null : String(req.body.parentId).trim();
+      const displayOrder = Number(req.body?.displayOrder ?? 0);
+      const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+
+      if (!['REGION', 'DISTRICT', 'CITY'].includes(locationType)) {
+        return badRequest(res, 'INVALID_LOCATION_TYPE', 'Location type must be REGION, DISTRICT, or CITY.');
+      }
+      if (!name || name.length > 128) {
+        return badRequest(res, 'INVALID_LOCATION_NAME', 'Location name must be between 1 and 128 characters.');
+      }
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 128) {
+        return badRequest(res, 'INVALID_LOCATION_SLUG', 'Location slug must contain lowercase letters, numbers, and hyphens only.');
+      }
+      if (!Number.isInteger(displayOrder)) {
+        return badRequest(res, 'INVALID_DISPLAY_ORDER', 'Display order must be an integer.');
+      }
+
+      if (locationType === 'REGION' && parentId) {
+        return badRequest(res, 'INVALID_PARENT', 'A Region cannot have a parent location.');
+      }
+      if (locationType === 'DISTRICT') {
+        if (!parentId) return badRequest(res, 'PARENT_REQUIRED', 'A District must belong to a parent Region.');
+        const parent = await db.query('SELECT id, location_type, is_active FROM discovery_geo_locations WHERE id = $1', [parentId]);
+        if (!parent.rows[0]) return res.status(404).json({ success: false, error: { code: 'PARENT_NOT_FOUND', message: 'Parent Region not found.' } });
+        if (parent.rows[0].location_type !== 'REGION') return badRequest(res, 'INVALID_PARENT_TYPE', 'A District parent must be a REGION.');
+      }
+      if (locationType === 'CITY') {
+        if (!parentId) return badRequest(res, 'PARENT_REQUIRED', 'A City must belong to a parent District.');
+        const parent = await db.query('SELECT id, location_type, is_active FROM discovery_geo_locations WHERE id = $1', [parentId]);
+        if (!parent.rows[0]) return res.status(404).json({ success: false, error: { code: 'PARENT_NOT_FOUND', message: 'Parent District not found.' } });
+        if (parent.rows[0].location_type !== 'DISTRICT') return badRequest(res, 'INVALID_PARENT_TYPE', 'A City parent must be a DISTRICT.');
+      }
+
+      const prefix = locationType === 'REGION' ? 'geo_reg_' : locationType === 'DISTRICT' ? 'geo_dist_' : 'geo_city_';
+      const id = prefix + randomUUID().replace(/-/g, '').slice(0, 20);
+
+      const inserted = await db.query(
+        `INSERT INTO discovery_geo_locations (id, parent_id, location_type, name, slug, display_order, is_active, is_system)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+         RETURNING *`,
+        [id, parentId, locationType, name, slug, displayOrder, isActive],
+      );
+
+      res.status(201).json({ success: true, data: inserted.rows[0] });
+    } catch (err: any) {
+      if (String(err?.code) === '23505') {
+        return badRequest(res, 'LOCATION_SLUG_EXISTS', 'A location with this slug already exists.');
+      }
+      next(err);
+    }
+  });
+
+  router.patch('/discovery/geo-locations/:id', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return badRequest(res, 'LOCATION_ID_REQUIRED', 'Location ID is required.');
+
+      const current = await db.query('SELECT * FROM discovery_geo_locations WHERE id = $1', [id]);
+      if (!current.rows[0]) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Geographic location not found.' } });
+      }
+      const row = current.rows[0];
+
+      const name = req.body?.name === undefined ? row.name : String(req.body.name).trim();
+      const slug = req.body?.slug === undefined ? row.slug : String(req.body.slug).trim().toLowerCase();
+      const parentId = req.body?.parentId === undefined ? row.parent_id : (req.body.parentId == null || req.body.parentId === '' ? null : String(req.body.parentId).trim());
+      const displayOrder = req.body?.displayOrder === undefined ? row.display_order : Number(req.body.displayOrder);
+      const isActive = req.body?.isActive === undefined ? row.is_active : Boolean(req.body.isActive);
+
+      if (!name || name.length > 128) return badRequest(res, 'INVALID_LOCATION_NAME', 'Location name must be between 1 and 128 characters.');
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 128) return badRequest(res, 'INVALID_LOCATION_SLUG', 'Location slug must contain lowercase letters, numbers, and hyphens only.');
+      if (!Number.isInteger(displayOrder)) return badRequest(res, 'INVALID_DISPLAY_ORDER', 'Display order must be an integer.');
+
+      if (row.location_type === 'REGION' && parentId) {
+        return badRequest(res, 'INVALID_PARENT', 'A Region cannot have a parent location.');
+      }
+      if (row.location_type === 'DISTRICT') {
+        if (!parentId) return badRequest(res, 'PARENT_REQUIRED', 'A District must belong to a parent Region.');
+        const parent = await db.query('SELECT id, location_type FROM discovery_geo_locations WHERE id = $1', [parentId]);
+        if (!parent.rows[0] || parent.rows[0].location_type !== 'REGION') {
+          return badRequest(res, 'INVALID_PARENT_TYPE', 'A District parent must be a valid Region.');
+        }
+      }
+      if (row.location_type === 'CITY') {
+        if (!parentId) return badRequest(res, 'PARENT_REQUIRED', 'A City must belong to a parent District.');
+        const parent = await db.query('SELECT id, location_type FROM discovery_geo_locations WHERE id = $1', [parentId]);
+        if (!parent.rows[0] || parent.rows[0].location_type !== 'DISTRICT') {
+          return badRequest(res, 'INVALID_PARENT_TYPE', 'A City parent must be a valid District.');
+        }
+      }
+
+      const updated = await db.query(
+        `UPDATE discovery_geo_locations
+            SET parent_id = $1, name = $2, slug = $3, display_order = $4, is_active = $5, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $6
+          RETURNING *`,
+        [parentId, name, slug, displayOrder, isActive, id],
+      );
+
+      res.json({ success: true, data: updated.rows[0] });
+    } catch (err: any) {
+      if (String(err?.code) === '23505') {
+        return badRequest(res, 'LOCATION_SLUG_EXISTS', 'A location with this slug already exists.');
+      }
+      next(err);
+    }
+  });
+
+  router.delete('/discovery/geo-locations/:id', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return badRequest(res, 'LOCATION_ID_REQUIRED', 'Location ID is required.');
+
+      const current = await db.query('SELECT * FROM discovery_geo_locations WHERE id = $1', [id]);
+      if (!current.rows[0]) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Geographic location not found.' } });
+      }
+
+      await db.query('DELETE FROM discovery_geo_locations WHERE id = $1', [id]);
+      res.json({ success: true, data: { deletedId: id } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ------------------------------------------------------------------
   // DISCOVERY SEARCH GOVERNANCE
   // ------------------------------------------------------------------
   router.get('/discovery/search-ranking', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY), async (_req: Request, res: Response, next: NextFunction) => {

@@ -24,6 +24,7 @@ import { PlatformDiscoveryModerationView } from './components/platform/PlatformD
 import { TenantManagementView } from './components/platform/TenantManagementView';
 import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
 import { PlatformDiscoveryCategoriesView } from './components/platform/PlatformDiscoveryCategoriesView';
+import { PlatformDiscoveryLocationsView } from './components/platform/PlatformDiscoveryLocationsView';
 import { UserManagementView } from './components/admin/UserManagementView';
 import { LocationManagementView } from './components/admin/LocationManagementView';
 import { SupplierManagementView } from './components/purchasing/SupplierManagementView';
@@ -97,7 +98,7 @@ const MainLayout: React.FC = () => {
 
   // Enforce strict boundary between platform control plane and tenant operations
   React.useEffect(() => {
-    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support', 'security', 'discovery-moderation', 'discovery-categories'];
+    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support', 'security', 'discovery-moderation', 'discovery-categories', 'discovery-locations'];
     if (isPlatform) {
       if (!platformTabs.includes(activeTab)) {
         setActiveTab('platform-dashboard');
@@ -160,6 +161,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'security' && <AuditLogsView />}
             {activeTab === 'discovery-moderation' && <PlatformDiscoveryModerationView />}
             {activeTab === 'discovery-categories' && <PlatformDiscoveryCategoriesView />}
+            {activeTab === 'discovery-locations' && <PlatformDiscoveryLocationsView />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
             {(activeTab === 'discovery' || activeTab === 'discovery-admin') && <DiscoveryMarketplace />}
             {activeTab === 'users' && <UserManagementView />}

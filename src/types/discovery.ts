@@ -279,6 +279,21 @@ export interface DiscoveryCategory {
   item_count?: number;
 }
 
+export type DiscoveryGeoLocationType = 'REGION' | 'DISTRICT' | 'CITY';
+
+export interface DiscoveryGeoLocation {
+  id: string;
+  parent_id?: string | null;
+  location_type: DiscoveryGeoLocationType;
+  name: string;
+  slug: string;
+  display_order: number;
+  is_active: boolean;
+  is_system?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /**
  * Projected product variant in discovery search
  */

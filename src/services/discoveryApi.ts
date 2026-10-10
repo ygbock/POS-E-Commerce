@@ -12,6 +12,7 @@ import type {
   DiscoveryBusinessHours,
   DiscoveryBusinessSettings,
   DiscoveryCategory,
+  DiscoveryGeoLocation,
   DiscoveryService,
   DiscoveryReview,
   DiscoveryReviewsResponse,
@@ -251,6 +252,14 @@ export const discoveryApi = {
    */
   async getCategories(): Promise<DiscoveryCategory[]> {
     const data = await request<DiscoveryCategory[] | null>('/api/discovery/categories');
+    return Array.isArray(data) ? data : [];
+  },
+
+  /**
+   * List all active geographic locations (regions, districts, cities) for discovery selectors
+   */
+  async getGeoLocations(): Promise<DiscoveryGeoLocation[]> {
+    const data = await request<DiscoveryGeoLocation[] | null>('/api/discovery/geo-locations');
     return Array.isArray(data) ? data : [];
   },
 

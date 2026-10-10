@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MapPin, Navigation, ChevronDown, Check, AlertCircle, Shield } from 'lucide-react';
+import { discoveryApi } from '../../services/discoveryApi';
+import type { DiscoveryGeoLocation } from '../../types/discovery';
 
 interface DiscoveryLocationSelectorProps {
   selectedCity?: string;
@@ -17,7 +19,7 @@ interface DiscoveryLocationSelectorProps {
   className?: string;
 }
 
-const CONVENIENCE_CITIES = [
+const DEFAULT_CONVENIENCE_CITIES = [
   'Freetown',
   'Bo',
   'Kenema',
@@ -41,7 +43,26 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
   const [manualRegion, setManualRegion] = useState('');
   const [isLocating, setIsLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const [geoLocations, setGeoLocations] = useState<DiscoveryGeoLocation[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    discoveryApi
+      .getGeoLocations()
+      .then((locs) => {
+        if (active && Array.isArray(locs)) setGeoLocations(locs);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const convenienceCities = useMemo(() => {
+    const dbCities = geoLocations.filter((l) => l.location_type === 'CITY' && l.is_active).map((l) => l.name);
+    return dbCities.length > 0 ? dbCities : DEFAULT_CONVENIENCE_CITIES;
+  }, [geoLocations]);
 
   const hasCoords = latitude != null && longitude != null;
 
@@ -261,7 +282,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {CONVENIENCE_CITIES.map((city) => (
+                {convenienceCities.map((city) => (
                   <button
                     key={city}
                     type="button"

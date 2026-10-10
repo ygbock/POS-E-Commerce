@@ -20,6 +20,7 @@ import type {
   DiscoveryProduct,
   DiscoveryService,
   DiscoveryCategory,
+  DiscoveryGeoLocation,
   DiscoveryDataState,
 } from '../../types/discovery';
 import { discoveryApi, DiscoveryApiError } from '../../services/discoveryApi';
@@ -187,6 +188,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     data: [],
   });
 
+  const [geoLocations, setGeoLocations] = useState<DiscoveryGeoLocation[]>([]);
+
   const [businessesState, setBusinessesState] = useState<SectionState<DiscoveryBusiness>>({
     status: 'loading',
     data: [],
@@ -208,11 +211,17 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const fetchCategories = useCallback(async () => {
     setCategoriesState((prev) => ({ ...prev, status: 'loading' }));
     try {
-      const cats = await discoveryApi.getCategories();
+      const [cats, locs] = await Promise.all([
+        discoveryApi.getCategories(),
+        discoveryApi.getGeoLocations().catch(() => [] as DiscoveryGeoLocation[]),
+      ]);
       setCategoriesState({
         status: cats && cats.length > 0 ? 'loaded' : 'empty',
         data: cats || [],
       });
+      if (locs && locs.length > 0) {
+        setGeoLocations(locs);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to load categories';
       setCategoriesState({
@@ -452,6 +461,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               latitude={latitude}
               longitude={longitude}
               radiusKm={radiusKm}
+              categories={categoriesState.data}
+              selectedCategoryId={filters.categoryId}
+              onSelectCategory={handleCategorySelect}
+              geoLocations={geoLocations}
             />
           </div>
         </div>
@@ -675,7 +688,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Browse businesses, products, and services by city.</p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3">
-              {['Freetown', 'Bo', 'Kenema', 'Makeni', 'Koidu', 'Waterloo'].map((city) => (
+              {(geoLocations.filter((l) => l.location_type === 'CITY' && l.is_active).length > 0
+                ? geoLocations.filter((l) => l.location_type === 'CITY' && l.is_active).map((l) => l.name)
+                : ['Freetown', 'Bo', 'Kenema', 'Makeni', 'Koidu', 'Waterloo']
+              ).map((city) => (
                 <a key={city} href={'/discover/search?city=' + encodeURIComponent(city)}
                   className="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 active:scale-[0.98] min-h-[56px] flex flex-col justify-between">
                   <div className="flex items-center justify-between gap-2">

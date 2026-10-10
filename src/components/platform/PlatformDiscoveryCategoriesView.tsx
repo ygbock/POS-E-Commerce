@@ -21,8 +21,11 @@ import {
   AlertCircle,
   Activity,
   ArrowRight,
+  MapPin,
+  ExternalLink,
 } from 'lucide-react';
 import { authClient } from '../../services/authClient';
+import { PlatformDiscoveryLocationsView } from './PlatformDiscoveryLocationsView';
 
 interface CategoryRecord {
   id: string;
@@ -40,6 +43,7 @@ interface CategoryRecord {
 }
 
 export const PlatformDiscoveryCategoriesView: React.FC = () => {
+  const [activeGovernanceTab, setActiveGovernanceTab] = useState<'categories' | 'locations'>('categories');
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -318,7 +322,59 @@ export const PlatformDiscoveryCategoriesView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Module Title Banner */}
+      {/* Governance Sub-Navigation Bar */}
+      <div className="bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setActiveGovernanceTab('categories')}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeGovernanceTab === 'categories'
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Category Taxonomy</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-black ${
+                activeGovernanceTab === 'categories'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+              }`}
+            >
+              {stats.total}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveGovernanceTab('locations')}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeGovernanceTab === 'locations'
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <MapPin className="w-4 h-4" />
+            <span>Search Locations (Regions, Districts & Cities)</span>
+          </button>
+        </div>
+
+        <a
+          href="/discover"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors"
+        >
+          <span>Preview Discovery Page</span>
+          <ExternalLink className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+        </a>
+      </div>
+
+      {activeGovernanceTab === 'locations' ? (
+        <PlatformDiscoveryLocationsView />
+      ) : (
+        <>
+          {/* Module Title Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/20 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
         <div className="absolute right-0 top-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -843,6 +899,8 @@ export const PlatformDiscoveryCategoriesView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

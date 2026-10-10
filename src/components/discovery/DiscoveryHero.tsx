@@ -12,8 +12,19 @@ import {
   Loader2,
   Check,
   ChevronDown,
+  ShoppingBag,
+  Smartphone,
+  Shirt,
+  HeartPulse,
+  Home,
+  Car,
+  BriefcaseBusiness,
+  Coffee,
+  GraduationCap,
+  Layers,
 } from 'lucide-react';
-import type { DiscoverySearchType } from '../../types/discovery';
+import type { DiscoverySearchType, DiscoveryCategory, DiscoveryGeoLocation } from '../../types/discovery';
+import { discoveryApi } from '../../services/discoveryApi';
 
 interface DiscoveryHeroProps {
   query: string;
@@ -34,12 +45,16 @@ interface DiscoveryHeroProps {
   latitude?: number | null;
   longitude?: number | null;
   radiusKm?: number;
+  categories?: DiscoveryCategory[];
+  selectedCategoryId?: string;
+  onSelectCategory?: (categoryId: string) => void;
+  geoLocations?: DiscoveryGeoLocation[];
   suggestions?: string[];
   className?: string;
 }
 
-// Fixed Provinces/Regions
-const PROVINCES = [
+// Fallback Provinces/Regions when database geoLocations are loading
+const DEFAULT_PROVINCES = [
   'Western Area',
   'Eastern Province',
   'Northern Province',
@@ -47,8 +62,8 @@ const PROVINCES = [
   'North West Province',
 ];
 
-// Districts grouped by Province/Region
-const DISTRICTS_MAP: Record<string, string[]> = {
+// Fallback Districts grouped by Province/Region
+const DEFAULT_DISTRICTS_MAP: Record<string, string[]> = {
   'Western Area': ['Western Area Urban', 'Western Area Rural'],
   'Eastern Province': ['Kenema District', 'Kono District', 'Kailahun District'],
   'Northern Province': ['Bombali District', 'Tonkolili District', 'Koinadugu District', 'Falaba District'],
@@ -56,8 +71,8 @@ const DISTRICTS_MAP: Record<string, string[]> = {
   'North West Province': ['Port Loko District', 'Kambia District', 'Karene District'],
 };
 
-// Cities/Towns grouped by District
-const CITIES_MAP: Record<string, string[]> = {
+// Fallback Cities/Towns grouped by District
+const DEFAULT_CITIES_MAP: Record<string, string[]> = {
   'Western Area Urban': ['Freetown'],
   'Western Area Rural': ['Waterloo'],
   'Bo District': ['Bo'],
@@ -66,6 +81,26 @@ const CITIES_MAP: Record<string, string[]> = {
   'Kono District': ['Koidu'],
   'Port Loko District': ['Port Loko', 'Lunsar'],
   'Koinadugu District': ['Kabala'],
+};
+
+const getHeroCategoryIcon = (slugOrName: string, iconName?: string | null) => {
+  const s = `${iconName || ''} ${slugOrName}`.toLowerCase();
+  if (s.includes('edu') || s.includes('school') || s.includes('train') || s.includes('grad') || s.includes('book')) return GraduationCap;
+  if (s.includes('food') || s.includes('restaurant') || s.includes('dining') || s.includes('utensil')) return Utensils;
+  if (s.includes('tech') || s.includes('electronic') || s.includes('phone') || s.includes('smart')) return Smartphone;
+  if (s.includes('fashion') || s.includes('cloth') || s.includes('apparel') || s.includes('shirt')) return Shirt;
+  if (s.includes('health') || s.includes('pharmacy') || s.includes('medical') || s.includes('heart')) return HeartPulse;
+  if (s.includes('beauty') || s.includes('salon') || s.includes('barber') || s.includes('sparkle')) return SparklesIcon;
+  if (s.includes('home') || s.includes('furniture') || s.includes('construction') || s.includes('garden')) return Home;
+  if (s.includes('auto') || s.includes('car') || s.includes('mechanic')) return Car;
+  if (s.includes('professional') || s.includes('consult') || s.includes('legal') || s.includes('briefcase')) return BriefcaseBusiness;
+  if (s.includes('hvac') || s.includes('wind') || s.includes('ac')) return Wind;
+  if (s.includes('elec') || s.includes('plug')) return Plug;
+  if (s.includes('contract') || s.includes('hammer') || s.includes('build')) return Hammer;
+  if (s.includes('repair') || s.includes('plumb') || s.includes('service') || s.includes('wrench')) return Wrench;
+  if (s.includes('retail') || s.includes('grocery') || s.includes('market') || s.includes('shop') || s.includes('bag')) return ShoppingBag;
+  if (s.includes('cafe') || s.includes('drink') || s.includes('bakery') || s.includes('coffee')) return Coffee;
+  return Layers;
 };
 
 export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
@@ -81,28 +116,129 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   latitude,
   longitude,
   radiusKm = 25,
+  categories: propCategories,
+  selectedCategoryId,
+  onSelectCategory,
+  geoLocations: propGeoLocations,
   className = '',
 }) => {
   const [isLocating, setIsLocating] = useState(false);
   const [gpsActive, setGpsActive] = useState(latitude != null && longitude != null);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [fetchedGeoLocations, setFetchedGeoLocations] = useState<DiscoveryGeoLocation[]>([]);
+  const [fetchedCategories, setFetchedCategories] = useState<DiscoveryCategory[]>([]);
+
+  // Fetch geo locations if not provided by parent
+  useEffect(() => {
+    if (propGeoLocations && propGeoLocations.length > 0) return;
+    let active = true;
+    discoveryApi
+      .getGeoLocations()
+      .then((locs) => {
+        if (active && Array.isArray(locs)) setFetchedGeoLocations(locs);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [propGeoLocations]);
+
+  // Fetch categories if not provided by parent
+  useEffect(() => {
+    if (propCategories && propCategories.length > 0) return;
+    let active = true;
+    discoveryApi
+      .getCategories()
+      .then((cats) => {
+        if (active && Array.isArray(cats)) setFetchedCategories(cats);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [propCategories]);
+
+  const activeGeoLocations = useMemo(
+    () => (propGeoLocations && propGeoLocations.length > 0 ? propGeoLocations : fetchedGeoLocations),
+    [propGeoLocations, fetchedGeoLocations]
+  );
+
+  const activeCategories = useMemo(
+    () => (propCategories && propCategories.length > 0 ? propCategories : fetchedCategories),
+    [propCategories, fetchedCategories]
+  );
 
   // Sync state to props dynamically
   useEffect(() => {
     setGpsActive(latitude != null && longitude != null);
   }, [latitude, longitude]);
 
+  // Available Regions/Provinces from DB or fallback
+  const availableRegions = useMemo(() => {
+    const dbRegions = activeGeoLocations.filter((l) => l.location_type === 'REGION' && l.is_active);
+    if (dbRegions.length > 0) {
+      return dbRegions.map((r) => r.name);
+    }
+    return DEFAULT_PROVINCES;
+  }, [activeGeoLocations]);
+
   // Available districts based on selected region
   const availableDistricts = useMemo(() => {
     if (!selectedRegion) return [];
-    return DISTRICTS_MAP[selectedRegion] || [];
-  }, [selectedRegion]);
+    const dbRegions = activeGeoLocations.filter((l) => l.location_type === 'REGION' && l.is_active);
+    if (dbRegions.length > 0) {
+      const matchedRegion = dbRegions.find((r) => r.name.toLowerCase() === selectedRegion.toLowerCase());
+      if (matchedRegion) {
+        return activeGeoLocations
+          .filter((l) => l.location_type === 'DISTRICT' && l.parent_id === matchedRegion.id && l.is_active)
+          .map((d) => d.name);
+      }
+    }
+    return DEFAULT_DISTRICTS_MAP[selectedRegion] || [];
+  }, [selectedRegion, activeGeoLocations]);
 
-  // Available cities based on selected district
+  // Available cities based on selected district (or all active cities if no district selected)
   const availableCities = useMemo(() => {
-    if (!selectedDistrict) return [];
-    return CITIES_MAP[selectedDistrict] || [];
-  }, [selectedDistrict]);
+    const dbDistricts = activeGeoLocations.filter((l) => l.location_type === 'DISTRICT' && l.is_active);
+    if (dbDistricts.length > 0) {
+      if (selectedDistrict) {
+        const matchedDistrict = dbDistricts.find((d) => d.name.toLowerCase() === selectedDistrict.toLowerCase());
+        if (matchedDistrict) {
+          return activeGeoLocations
+            .filter((l) => l.location_type === 'CITY' && l.parent_id === matchedDistrict.id && l.is_active)
+            .map((c) => c.name);
+        }
+      } else if (selectedRegion) {
+        const dbRegions = activeGeoLocations.filter((l) => l.location_type === 'REGION' && l.is_active);
+        const matchedRegion = dbRegions.find((r) => r.name.toLowerCase() === selectedRegion.toLowerCase());
+        if (matchedRegion) {
+          const regionDistrictIds = new Set(
+            dbDistricts.filter((d) => d.parent_id === matchedRegion.id).map((d) => d.id)
+          );
+          return activeGeoLocations
+            .filter((l) => l.location_type === 'CITY' && l.parent_id && regionDistrictIds.has(l.parent_id) && l.is_active)
+            .map((c) => c.name);
+        }
+      } else {
+        return activeGeoLocations
+          .filter((l) => l.location_type === 'CITY' && l.is_active)
+          .map((c) => c.name);
+      }
+    }
+    if (!selectedDistrict) {
+      return Object.values(DEFAULT_CITIES_MAP).flat();
+    }
+    return DEFAULT_CITIES_MAP[selectedDistrict] || [];
+  }, [selectedDistrict, selectedRegion, activeGeoLocations]);
+
+  // Top-level categories for quick hero pills (includes newly created categories!)
+  const quickCategories = useMemo(() => {
+    const parents = activeCategories.filter((c) => !c.parent_id && c.is_active !== false);
+    if (parents.length > 0) {
+      return parents;
+    }
+    return [];
+  }, [activeCategories]);
 
   // Handle Province/Region dropdown selection
   const handleRegionSelect = (region: string) => {
@@ -192,7 +328,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                 className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 dark:bg-slate-900/60 backdrop-blur-md border border-white/10 dark:border-slate-800 text-white dark:text-slate-200 text-[10.5px] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none min-w-[125px] sm:min-w-[145px] pr-8"
               >
                 <option value="" className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 font-bold">All Regions</option>
-                {PROVINCES.map((prov) => (
+                {availableRegions.map((prov) => (
                   <option key={prov} value={prov} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
                     {prov}
                   </option>
@@ -291,15 +427,11 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
 
                       <div className="h-px bg-slate-100 dark:bg-slate-800/80 my-1 shrink-0" />
 
-                      {/* Filtered cities list based on District selected above */}
+                      {/* Filtered cities list based on District or Region selected above */}
                       <div className="overflow-y-auto max-h-44 space-y-0.5">
-                        {!selectedDistrict ? (
+                        {availableCities.length === 0 ? (
                           <div className="p-3 text-center text-xs font-semibold text-slate-400 dark:text-slate-500 italic">
-                            Select a District above to view local cities/towns
-                          </div>
-                        ) : availableCities.length === 0 ? (
-                          <div className="p-3 text-center text-xs font-semibold text-slate-400 dark:text-slate-500 italic">
-                            No specific cities listed for this district
+                            No cities listed for this selection
                           </div>
                         ) : (
                           availableCities.map((cityName) => {
@@ -372,75 +504,84 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
             </button>
           </form>
 
-          {/* Quick Category Buttons: Centered single-line container with no borders, no background, and no scrolling */}
+          {/* Quick Category Buttons: Dynamically rendered from platform-governed categories */}
           <div className="pt-3 sm:pt-4">
-            <div className="flex items-center justify-between sm:justify-center gap-0.5 min-[360px]:gap-1 sm:gap-3.5 py-1 w-full text-[8.5px] min-[360px]:text-[9.5px] sm:text-xs md:text-sm font-bold select-none flex-nowrap">
-              <button
-                type="button"
-                onClick={() => {
-                  onQueryChange('Restaurants');
-                  onSearch('Restaurants');
-                }}
-                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
-              >
-                <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Restaurants</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onQueryChange('Plumbers');
-                  onSearch('Plumbers');
-                }}
-                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
-              >
-                <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Plumbers</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onQueryChange('Nail Salons');
-                  onSearch('Nail Salons');
-                }}
-                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
-              >
-                <SparklesIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Nail Salons</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onQueryChange('HVAC Contractors');
-                  onSearch('HVAC Contractors');
-                }}
-                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
-              >
-                <Wind className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>HVAC Contractors</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onQueryChange('Electricians');
-                  onSearch('Electricians');
-                }}
-                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
-              >
-                <Plug className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Electricians</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onQueryChange('General Contractors');
-                  onSearch('General Contractors');
-                }}
-                className="flex items-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-3.5 py-1.5 bg-transparent hover:text-amber-400 text-white transition-all whitespace-nowrap shrink-0 active:scale-95"
-              >
-                <Hammer className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>General Contractors</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 py-1 w-full text-[10px] sm:text-xs font-bold select-none">
+              {quickCategories.length > 0 ? (
+                quickCategories.map((cat) => {
+                  const Icon = getHeroCategoryIcon(cat.slug || cat.name, cat.icon_name);
+                  const isSelected = selectedCategoryId === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        if (onSelectCategory) {
+                          onSelectCategory(cat.id);
+                        } else {
+                          onQueryChange(cat.name);
+                          onSearch(cat.name);
+                        }
+                      }}
+                      className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap shrink-0 active:scale-95 cursor-pointer ${
+                        isSelected
+                          ? 'bg-amber-400 text-slate-950 shadow-sm'
+                          : 'bg-white/10 hover:bg-white/20 text-white hover:text-amber-300 border border-white/10'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-slate-950' : 'text-amber-400'}`} />
+                      <span>{cat.name}</span>
+                    </button>
+                  );
+                })
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onQueryChange('Restaurants');
+                      onSearch('Restaurants');
+                    }}
+                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                  >
+                    <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Restaurants</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onQueryChange('Plumbers');
+                      onSearch('Plumbers');
+                    }}
+                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                  >
+                    <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Plumbers</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onQueryChange('Nail Salons');
+                      onSearch('Nail Salons');
+                    }}
+                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                  >
+                    <SparklesIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Nail Salons</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onQueryChange('Electricians');
+                      onSearch('Electricians');
+                    }}
+                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                  >
+                    <Plug className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Electricians</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -2,7 +2,7 @@ import type { Role } from '../../types';
 import { isPlatformRole } from './platformAccess';
 
 export interface PlatformNavItem {
-  id: 'platform-dashboard' | 'tenants' | 'subscriptions' | 'support' | 'security' | 'discovery-moderation' | 'discovery-categories';
+  id: 'platform-dashboard' | 'tenants' | 'subscriptions' | 'support' | 'security' | 'discovery-moderation' | 'discovery-categories' | 'discovery-locations';
   label: string;
 }
 
@@ -29,6 +29,7 @@ export function getPlatformNavigation(role: Role | string): PlatformNavItem[] {
         { id: 'security', label: 'Security & Audit Logs' },
         { id: 'discovery-moderation', label: 'Discovery Trust & Moderation' },
         { id: 'discovery-categories', label: 'Category Governance' },
+        { id: 'discovery-locations', label: 'Search Locations' },
       ];
     case 'System Owner':
     default:
@@ -40,6 +41,7 @@ export function getPlatformNavigation(role: Role | string): PlatformNavItem[] {
         { id: 'security', label: 'Security & Audit Logs' },
         { id: 'discovery-moderation', label: 'Discovery Trust & Moderation' },
         { id: 'discovery-categories', label: 'Category Governance' },
+        { id: 'discovery-locations', label: 'Search Locations' },
       ];
   }
 }
