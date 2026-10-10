@@ -94,7 +94,7 @@ export function buildStorefrontPath(route: StorefrontRoute): string {
   const prefix = route.tenantSlug ? `/store/${encodeURIComponent(route.tenantSlug)}` : '';
 
   switch (route.name) {
-    case 'home': return `${prefix}/`;
+    case 'home': return route.tenantSlug ? `${prefix}/` : '/store';
     case 'discover': return `${prefix}/discover`;
     case 'discover-search': {
       const sp = new URLSearchParams();

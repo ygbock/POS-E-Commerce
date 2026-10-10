@@ -24,6 +24,7 @@ export interface AuthUser {
 }
 
 const USER_KEY = 'abacha_auth_user';
+const TOKEN_KEY = 'abacha_auth_session_token';
 
 /**
  * Demo persona credentials are intentionally supplied through Vite development
@@ -58,6 +59,37 @@ class AuthClient {
         } catch {
           this.currentUser = null;
         }
+      }
+      try {
+        const cachedToken = sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
+        if (cachedToken) {
+          this.currentToken = cachedToken;
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }
+
+  private persistSession(token: string | null, user: AuthUser | null) {
+    this.currentToken = token;
+    this.currentUser = user;
+    if (typeof window !== 'undefined') {
+      try {
+        if (user) {
+          localStorage.setItem(USER_KEY, JSON.stringify(user));
+        } else {
+          localStorage.removeItem(USER_KEY);
+        }
+        if (token) {
+          sessionStorage.setItem(TOKEN_KEY, token);
+          localStorage.setItem(TOKEN_KEY, token);
+        } else {
+          sessionStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(TOKEN_KEY);
+        }
+      } catch {
+        // ignore storage errors
       }
     }
   }
@@ -107,11 +139,7 @@ class AuthClient {
     }));
     const data = await this.parseJson(res, 'Unable to create business account.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to create business account.');
-    this.currentToken = data.data.token;
-    this.currentUser = data.data.user;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
-    }
+    this.persistSession(data.data.token, data.data.user);
     return { ...data.data.user, business: data.data.business };
   }
 
@@ -126,11 +154,7 @@ class AuthClient {
       throw new Error(data.error?.message || 'Unable to sign in to the business owner portal.');
     }
 
-    this.currentToken = data.data.token;
-    this.currentUser = data.data.user;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
-    }
+    this.persistSession(data.data.token, data.data.user);
     return data.data.user;
   }
 
@@ -148,11 +172,7 @@ class AuthClient {
       }
       throw new Error(data.error?.message || 'Platform authentication failed');
     }
-    this.currentToken = data.data.token;
-    this.currentUser = data.data.user;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
-    }
+    this.persistSession(data.data.token, data.data.user);
     return data.data.user;
   }
 
@@ -186,9 +206,7 @@ class AuthClient {
     }));
     const data = await this.parseJson(res, 'Unable to continue without MFA.');
     if (!res.ok || !data.success) throw new Error(data.error?.message || 'Unable to continue without MFA.');
-    this.currentToken = data.data.token;
-    this.currentUser = data.data.user;
-    if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
+    this.persistSession(data.data.token, data.data.user);
     return data.data.user;
   }
 
@@ -204,9 +222,7 @@ class AuthClient {
       err.code = data.error?.code;
       throw err;
     }
-    this.currentToken = data.data.token;
-    this.currentUser = data.data.user;
-    if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
+    this.persistSession(data.data.token, data.data.user);
     return { user: data.data.user, recoveryCodes: data.data.recoveryCodes };
   }
 
@@ -222,9 +238,7 @@ class AuthClient {
       err.code = data.error?.code;
       throw err;
     }
-    this.currentToken = data.data.token;
-    this.currentUser = data.data.user;
-    if (typeof window !== 'undefined') localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
+    this.persistSession(data.data.token, data.data.user);
     return data.data.user;
   }
 
@@ -369,12 +383,7 @@ class AuthClient {
       throw err;
     }
 
-    this.currentToken = data.data.token;
-    this.currentUser = data.data.user;
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(USER_KEY, JSON.stringify(data.data.user));
-    }
+    this.persistSession(data.data.token, data.data.user);
 
     return data.data.user;
   }
@@ -389,47 +398,49 @@ class AuthClient {
       // Continue clearing local state even if network fails.
     }
 
-    this.currentToken = null;
-    this.currentUser = null;
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(USER_KEY);
-    }
+    this.persistSession(null, null);
   }
 
   async fetchMe(): Promise<AuthUser | null> {
     try {
-      // On a fresh page load the access token is intentionally unavailable to
-      // JavaScript. The HttpOnly refresh cookie silently establishes a new
-      // short-lived access session when needed.
+      // If we already have a stored token, verify it first; if not or if 401, attempt silent refresh.
       if (!this.currentToken) {
         const refresh = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
         if (refresh.ok) {
           const refreshed = await refresh.json();
-          this.currentToken = refreshed.data?.token || null;
-          this.currentUser = refreshed.data?.user || null;
+          if (refreshed.data?.token) {
+            this.persistSession(refreshed.data.token, refreshed.data.user || this.currentUser);
+          }
         }
       }
 
-      const res = await fetch('/api/auth/me', this.getRequestInit({
+      let res = await fetch('/api/auth/me', this.getRequestInit({
         headers: this.getAuthHeaders(),
       }));
+      if (res.status === 401) {
+        const refresh = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+        if (refresh.ok) {
+          const refreshed = await refresh.json();
+          if (refreshed.data?.token) {
+            this.persistSession(refreshed.data.token, refreshed.data.user || this.currentUser);
+            res = await fetch('/api/auth/me', this.getRequestInit({
+              headers: this.getAuthHeaders(),
+            }));
+          }
+        }
+      }
       if (!res.ok) {
         if (res.status === 401) {
-          this.currentToken = null;
-          this.currentUser = null;
-          localStorage.removeItem(USER_KEY);
+          this.persistSession(null, null);
         }
         return null;
       }
       const data = await res.json();
       if (!data.success || !data.data) return null;
-      this.currentUser = data.data;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(USER_KEY, JSON.stringify(data.data));
-      }
+      this.persistSession(this.currentToken, data.data);
       return data.data;
     } catch {
-      return null;
+      return this.currentUser;
     }
   }
 

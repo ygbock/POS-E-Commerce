@@ -90,11 +90,38 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
   openOnboarding = false,
   onNavigateCustomerDiscovery,
 }) => {
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    const key = `abacha.discovery.business.tab:${initialBusinessId || 'default'}`;
-    const saved = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
-    return saved || initialTab;
+  const [activeTab, setActiveTabState] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const urlTab = sp.get('tab');
+      if (urlTab && TABS.some((t) => t.id === urlTab)) {
+        return urlTab;
+      }
+      const key = `abacha.discovery.business.tab:${initialBusinessId || 'default'}`;
+      const saved = window.localStorage.getItem(key);
+      if (saved && TABS.some((t) => t.id === saved)) {
+        return saved;
+      }
+    }
+    return initialTab;
   });
+
+  const setActiveTab = (nextTab: string) => {
+    setActiveTabState(nextTab);
+    if (typeof window !== 'undefined') {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        if (nextTab === 'dashboard') sp.delete('tab');
+        else sp.set('tab', nextTab);
+        const nextUrl = `${window.location.pathname}${sp.toString() ? `?${sp.toString()}` : ''}`;
+        if (window.location.pathname + window.location.search !== nextUrl) {
+          window.history.replaceState({}, '', nextUrl);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  };
   const [businesses, setBusinesses] = useState<DiscoveryBusiness[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<DiscoveryBusiness | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -146,10 +173,15 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
           const nextBusiness = saved || list[0];
           setSelectedBusiness(nextBusiness);
           if (nextBusiness) {
+            const urlTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
             const savedTab = typeof window !== 'undefined'
               ? window.localStorage.getItem(`abacha.discovery.business.tab:${nextBusiness.id}`)
               : null;
-            if (savedTab) setActiveTab(savedTab);
+            if (urlTab && TABS.some((t) => t.id === urlTab)) {
+              setActiveTabState(urlTab);
+            } else if (savedTab && TABS.some((t) => t.id === savedTab)) {
+              setActiveTabState(savedTab);
+            }
           }
         }
       } else {

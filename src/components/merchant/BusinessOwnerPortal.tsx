@@ -150,7 +150,7 @@ export const BusinessOwnerPortal: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!authClient.getToken()) {
+    if (!authClient.getToken() && !authClient.getUser()) {
       window.location.assign('/business/signin');
       return;
     }

@@ -81,7 +81,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
   }, []);
 
   const loadNotifications = async () => {
-    if (!authClient.getToken()) {
+    if (!authClient.getToken() && !authClient.getUser()) {
       setNotifications([]);
       setUnreadNotificationCount(0);
       return;
@@ -176,7 +176,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
     }
   };
 
-  const workspaceHref = (path: string) => authClient.getToken() ? path : '/login?redirect=' + encodeURIComponent(path);
+  const workspaceHref = (path: string) => (authClient.getToken() || authClient.getUser()) ? path : '/login?redirect=' + encodeURIComponent(path);
 
   return (
     <header
@@ -313,7 +313,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
             </div>
           </div>
 
-          {/* Right: Notifications + Join • Sign In */}
+          {/* Right: Notifications + Join • Sign In (or Authenticated Workspace) */}
           <div className="hidden md:flex items-center gap-3 font-bold text-sm text-white">
             <div className="relative">
               <button
@@ -392,19 +392,58 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
                 </>
               )}
             </div>
-            <a
-              href="/business/signup"
-              className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
-            >
-              Join
-            </a>
-            <span className="text-white/40 font-normal select-none">•</span>
-            <a
-              href="/login"
-              className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
-            >
-              Sign In
-            </a>
+            {(() => {
+              const user = authClient.getUser();
+              if (!user) {
+                return (
+                  <>
+                    <a
+                      href="/business/signup"
+                      className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
+                    >
+                      Join
+                    </a>
+                    <span className="text-white/40 font-normal select-none">•</span>
+                    <a
+                      href="/login"
+                      className="hover:text-amber-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
+                    >
+                      Sign In
+                    </a>
+                  </>
+                );
+              }
+              const isPlatformUser = ['system_owner', 'platform_admin', 'platform_support', 'platform_finance'].includes(user.role);
+              const isMerchantUser = user.role === 'business_owner';
+              const isStaffUser = !isPlatformUser && !isMerchantUser && user.role !== 'customer';
+              const dashboardHref = isPlatformUser
+                ? (typeof window !== 'undefined' && window.localStorage.getItem('abacha_platform_active_tab')
+                    ? `/platform/${window.localStorage.getItem('abacha_platform_active_tab')}`
+                    : '/platform')
+                : isMerchantUser
+                  ? '/business'
+                  : isStaffUser
+                    ? `/?workspace=${(typeof window !== 'undefined' && window.localStorage.getItem('abacha_tenant_active_tab')) || 'dashboard'}`
+                    : '/discover/my-requests';
+              const dashboardLabel = isPlatformUser
+                ? 'Platform Console'
+                : isMerchantUser
+                  ? 'Merchant Portal'
+                  : isStaffUser
+                    ? 'Admin Workspace'
+                    : user.name?.split(' ')[0] || 'My Account';
+              return (
+                <div className="flex items-center gap-2">
+                  <a
+                    href={dashboardHref}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-colors"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>{dashboardLabel}</span>
+                  </a>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Mobile menu toggle */}

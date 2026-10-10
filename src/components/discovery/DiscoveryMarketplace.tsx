@@ -23,14 +23,40 @@ import { Store, Compass, LayoutDashboard } from 'lucide-react';
  */
 export const DiscoveryMarketplace: React.FC = () => {
   const { route, navigate } = useDiscoveryRoute();
-  const [viewMode, setViewMode] = useState<'customer' | 'business'>(() => {
-    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/business/discovery')) {
-      return 'business';
+  const [viewMode, setViewModeState] = useState<'customer' | 'business'>(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname.startsWith('/business/discovery')) {
+        return 'business';
+      }
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('mode') === 'business') {
+        return 'business';
+      }
     }
     return 'customer';
   });
 
+  const setViewMode = (mode: 'customer' | 'business') => {
+    setViewModeState(mode);
+    if (typeof window !== 'undefined') {
+      try {
+        if (mode === 'business') {
+          if (!window.location.pathname.startsWith('/business/discovery')) {
+            window.history.pushState({}, '', '/business/discovery');
+          }
+        } else if (window.location.pathname.startsWith('/business/discovery')) {
+          window.history.pushState({}, '', '/discover');
+        }
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   useEffect(() => {
+    if (route.name.startsWith('business-discovery')) {
+      setViewModeState('business');
+    }
     if (route.name !== 'discover-business' && route.name !== 'discover-service' && route.name !== 'not-found') {
       try {
         sessionStorage.setItem('abacha.discovery.last_search_path', window.location.pathname + window.location.search);
@@ -39,7 +65,7 @@ export const DiscoveryMarketplace: React.FC = () => {
   }, [route]);
 
   const requireCustomerAuth = (path: string) => {
-    if (authClient.getToken()) return true;
+    if (authClient.getToken() || authClient.getUser()) return true;
     window.location.assign('/login?redirect=' + encodeURIComponent(path));
     return false;
   };

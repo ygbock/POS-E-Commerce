@@ -43,7 +43,32 @@ interface CategoryRecord {
 }
 
 export const PlatformDiscoveryCategoriesView: React.FC = () => {
-  const [activeGovernanceTab, setActiveGovernanceTab] = useState<'categories' | 'locations'>('categories');
+  const [activeGovernanceTab, setActiveGovernanceTabState] = useState<'categories' | 'locations'>(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const sub = sp.get('subtab');
+      if (sub === 'locations' || sub === 'categories') return sub;
+      const saved = window.localStorage.getItem('abacha_governance_subtab');
+      if (saved === 'locations' || saved === 'categories') return saved;
+    }
+    return 'categories';
+  });
+
+  const setActiveGovernanceTab = useCallback((tab: 'categories' | 'locations') => {
+    setActiveGovernanceTabState(tab);
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('abacha_governance_subtab', tab);
+        const sp = new URLSearchParams(window.location.search);
+        if (tab === 'categories') sp.delete('subtab');
+        else sp.set('subtab', tab);
+        const nextUrl = `${window.location.pathname}${sp.toString() ? `?${sp.toString()}` : ''}`;
+        window.history.replaceState({}, '', nextUrl);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

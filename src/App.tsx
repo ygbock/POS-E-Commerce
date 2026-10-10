@@ -51,13 +51,125 @@ const PublicDiscoveryShell: React.FC = () => <DiscoveryMarketplace />;
 const PublicStorefrontShell: React.FC = () => (
   <CommerceProvider>
     <StorefrontProvider>
-      <StorefrontRouteShell onOpenAdmin={() => window.location.assign('/')} onOpenPos={() => window.location.assign('/')} />
+      <StorefrontRouteShell
+        onOpenAdmin={() => window.location.assign('/?workspace=dashboard')}
+        onOpenPos={() => window.location.assign('/?workspace=pos')}
+      />
     </StorefrontProvider>
   </CommerceProvider>
 );
 
 const isPublicDiscoveryPath = (pathname: string) =>
   pathname === '/' || pathname === '/discover' || pathname.startsWith('/discover/');
+
+const PLATFORM_TABS = [
+  'platform-dashboard',
+  'tenants',
+  'subscriptions',
+  'support',
+  'security',
+  'discovery-moderation',
+  'discovery-categories',
+  'discovery-locations',
+] as const;
+
+const TENANT_WORKSPACE_TABS = new Set([
+  'dashboard',
+  'catalog',
+  'products',
+  'inventory',
+  'stock',
+  'movements',
+  'transfers',
+  'stocktaking',
+  'orders',
+  'pos',
+  'users',
+  'locations',
+  'crm',
+  'suppliers',
+  'purchasing',
+  'fintech',
+  'finance',
+  'pricing',
+  'warehouse',
+  'reports',
+  'audit',
+  'settings',
+  'support',
+  'discovery',
+  'discovery-admin',
+  'storefront',
+]);
+
+const PLATFORM_PATH_TO_TAB: Record<string, string> = {
+  '': 'platform-dashboard',
+  dashboard: 'platform-dashboard',
+  'platform-dashboard': 'platform-dashboard',
+  tenants: 'tenants',
+  subscriptions: 'subscriptions',
+  support: 'support',
+  security: 'security',
+  'discovery-moderation': 'discovery-moderation',
+  moderation: 'discovery-moderation',
+  'discovery-categories': 'discovery-categories',
+  categories: 'discovery-categories',
+  'discovery-locations': 'discovery-locations',
+  locations: 'discovery-locations',
+};
+
+const getPlatformTabFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const sp = new URLSearchParams(window.location.search);
+  const queryTab = sp.get('tab') || sp.get('workspace');
+  if (queryTab && (PLATFORM_TABS as readonly string[]).includes(queryTab)) {
+    return queryTab;
+  }
+  const normalized = window.location.pathname.replace(/\/$/, '');
+  if (normalized.startsWith('/platform/')) {
+    const slug = normalized.slice('/platform/'.length).split('/')[0];
+    if (slug && PLATFORM_PATH_TO_TAB[slug]) {
+      return PLATFORM_PATH_TO_TAB[slug];
+    }
+  }
+  if (normalized === '/admin/discovery') return 'discovery-moderation';
+  return null;
+};
+
+const getTenantWorkspaceFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const sp = new URLSearchParams(window.location.search);
+  const queryWorkspace = sp.get('workspace') || sp.get('tab');
+  if (queryWorkspace && TENANT_WORKSPACE_TABS.has(queryWorkspace)) {
+    return queryWorkspace;
+  }
+  const normalized = window.location.pathname.replace(/\/$/, '');
+  if (normalized.startsWith('/admin/')) {
+    const slug = normalized.slice('/admin/'.length).split('/')[0];
+    if (slug === 'discovery') return 'discovery-admin';
+    if (slug && TENANT_WORKSPACE_TABS.has(slug)) return slug;
+  }
+  const directMap: Record<string, string> = {
+    '/admin': 'dashboard',
+    '/dashboard': 'dashboard',
+    '/pos': 'pos',
+    '/inventory': 'inventory',
+    '/stock': 'stock',
+    '/catalog': 'catalog',
+    '/products': 'products',
+    '/orders': 'orders',
+    '/purchasing': 'purchasing',
+    '/crm': 'crm',
+    '/users': 'users',
+    '/locations': 'locations',
+    '/suppliers': 'suppliers',
+    '/finance': 'finance',
+    '/reports': 'reports',
+    '/audit': 'audit',
+    '/settings': 'settings',
+  };
+  return directMap[normalized] || null;
+};
 
 const isPublicStorefrontPath = (pathname: string) => {
   const normalized = pathname.replace(/\/$/, '') || '/';
@@ -81,38 +193,127 @@ const MainLayout: React.FC = () => {
   const { currentRole } = useCommerce();
   const isPlatform = isPlatformRole(currentRole);
 
-  // Default initial active tab: platform control plane for platform operators, storefront for customer/tenant
-  const requestedWorkspace = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('workspace')
-    : null;
   const requestedBusinessId = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('businessId')
     : null;
-  const workspaceTabs = new Set(['dashboard', 'catalog', 'inventory', 'orders', 'pos', 'users', 'locations', 'crm', 'suppliers', 'purchasing']);
-  const [activeTab, setActiveTab] = useState<string>(() =>
-    isPlatform ? 'platform-dashboard' : (requestedWorkspace && workspaceTabs.has(requestedWorkspace) ? requestedWorkspace : 'storefront')
-  );
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+
+  const resolveInitialTab = React.useCallback((): string => {
+    if (isPlatform) {
+      const fromUrl = getPlatformTabFromUrl();
+      if (fromUrl) return fromUrl;
+      if (typeof window !== 'undefined') {
+        const saved = window.localStorage.getItem('abacha_platform_active_tab');
+        if (saved && (PLATFORM_TABS as readonly string[]).includes(saved)) {
+          return saved;
+        }
+      }
+      return 'platform-dashboard';
+    }
+
+    const fromUrl = getTenantWorkspaceFromUrl();
+    if (fromUrl) return fromUrl;
+    if (typeof window !== 'undefined') {
+      const isStorePath = isPublicStorefrontPath(window.location.pathname);
+      if (isStorePath) return 'storefront';
+      const saved = window.localStorage.getItem('abacha_tenant_active_tab');
+      if (saved && TENANT_WORKSPACE_TABS.has(saved)) {
+        if (currentRole === 'E-commerce Customer') return 'storefront';
+        return saved;
+      }
+    }
+    return currentRole === 'E-commerce Customer' ? 'storefront' : 'dashboard';
+  }, [isPlatform, currentRole]);
+
+  const [activeTab, setActiveTabState] = useState<string>(resolveInitialTab);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('abacha_sidebar_collapsed') === 'true';
+  });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
 
+  const setActiveTab = React.useCallback((nextTab: string) => {
+    setActiveTabState(nextTab);
+    if (typeof window === 'undefined') return;
+    try {
+      if ((PLATFORM_TABS as readonly string[]).includes(nextTab)) {
+        window.localStorage.setItem('abacha_platform_active_tab', nextTab);
+        const targetPath = nextTab === 'platform-dashboard' ? '/platform' : `/platform/${nextTab}`;
+        const sp = new URLSearchParams(window.location.search);
+        sp.delete('tab');
+        sp.delete('workspace');
+        const nextUrl = `${targetPath}${sp.toString() ? `?${sp.toString()}` : ''}`;
+        if (window.location.pathname + window.location.search !== nextUrl) {
+          window.history.pushState({}, '', nextUrl);
+        }
+      } else if (TENANT_WORKSPACE_TABS.has(nextTab)) {
+        window.localStorage.setItem('abacha_tenant_active_tab', nextTab);
+        if (nextTab === 'storefront') {
+          if (!isPublicStorefrontPath(window.location.pathname)) {
+            window.history.pushState({}, '', '/store');
+          }
+        } else {
+          const sp = new URLSearchParams(window.location.search);
+          sp.set('workspace', nextTab);
+          const basePath = window.location.pathname.startsWith('/platform') || isPublicStorefrontPath(window.location.pathname)
+            ? '/'
+            : window.location.pathname;
+          const nextUrl = `${basePath === '/' ? '/' : basePath}?${sp.toString()}`;
+          if (window.location.pathname + window.location.search !== nextUrl) {
+            window.history.pushState({}, '', nextUrl);
+          }
+        }
+      }
+    } catch {
+      // ignore storage/history errors
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('abacha_sidebar_collapsed', String(isSidebarCollapsed));
+    } catch {
+      // ignore
+    }
+  }, [isSidebarCollapsed]);
+
+  // Sync activeTab when browser back/forward navigation occurs
+  React.useEffect(() => {
+    const onPopState = () => {
+      if (isPlatform) {
+        const tabFromUrl = getPlatformTabFromUrl();
+        if (tabFromUrl) setActiveTabState(tabFromUrl);
+      } else {
+        const wsFromUrl = getTenantWorkspaceFromUrl();
+        if (wsFromUrl) setActiveTabState(wsFromUrl);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [isPlatform]);
+
   // Enforce strict boundary between platform control plane and tenant operations
   React.useEffect(() => {
-    const platformTabs = ['platform-dashboard', 'tenants', 'subscriptions', 'support', 'security', 'discovery-moderation', 'discovery-categories', 'discovery-locations'];
+    const platformTabs = [...PLATFORM_TABS] as string[];
     if (isPlatform) {
       if (!platformTabs.includes(activeTab)) {
-        setActiveTab('platform-dashboard');
+        const restored = getPlatformTabFromUrl()
+          || (typeof window !== 'undefined' ? window.localStorage.getItem('abacha_platform_active_tab') : null);
+        setActiveTab(restored && platformTabs.includes(restored) ? restored : 'platform-dashboard');
       }
     } else {
       if (platformTabs.includes(activeTab)) {
-        setActiveTab('dashboard');
+        const restored = getTenantWorkspaceFromUrl()
+          || (typeof window !== 'undefined' ? window.localStorage.getItem('abacha_tenant_active_tab') : null);
+        setActiveTab(restored && TENANT_WORKSPACE_TABS.has(restored) ? restored : 'dashboard');
       } else if (currentRole === 'E-commerce Customer' && activeTab !== 'storefront') {
         setActiveTab('storefront');
       } else if (currentRole === 'Cashier' && activeTab === 'dashboard') {
         setActiveTab('pos');
       }
     }
-  }, [currentRole, isPlatform, activeTab]);
+  }, [currentRole, isPlatform, activeTab, setActiveTab]);
 
   // When activeTab is 'storefront' (and user is not a platform operator), render customer storefront
   if (activeTab === 'storefront' && !isPlatform) {
@@ -226,14 +427,13 @@ export default function App() {
 
   const isLoginPath = pathname === '/login';
   const isPlatformSigninPath = pathname === '/platform/signin';
-  const isPlatformPath = pathname === '/platform' || pathname.startsWith('/platform/');
+  const isPlatformPath = pathname === '/platform' || pathname.startsWith('/platform/') || pathname === '/admin/discovery' || pathname.startsWith('/admin/discovery/');
   const isMerchantPath = pathname === '/business' || pathname.startsWith('/business/');
   const isMerchantSignupPath = pathname === '/business/signup';
   const isMerchantSigninPath = pathname === '/business/signin';
   const isVerifyEmailPath = pathname === '/verify-email';
   const isResetPasswordPath = pathname === '/reset-password';
-  const requestedWorkspace = new URLSearchParams(window.location.search).get('workspace');
-  const hasAuthenticatedWorkspaceRequest = ['dashboard', 'catalog', 'inventory', 'orders', 'pos', 'users', 'locations', 'crm', 'suppliers', 'purchasing'].includes(requestedWorkspace || '');
+  const hasAuthenticatedWorkspaceRequest = Boolean(getTenantWorkspaceFromUrl() || getPlatformTabFromUrl());
 
   if (isVerifyEmailPath) {
     return <EmailVerificationPage />;

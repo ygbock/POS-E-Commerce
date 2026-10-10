@@ -208,9 +208,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated, mode = 'c
         return;
       }
 
+      const defaultLanding =
+        user.role === 'customer'
+          ? '/discover'
+          : user.role === 'cashier'
+            ? '/?workspace=pos'
+            : '/?workspace=dashboard';
+
       const safeRedirect = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
         ? redirectParam
-        : '/discover';
+        : defaultLanding;
       window.location.assign(safeRedirect);
       onAuthenticated(user);
     } catch (err) {
