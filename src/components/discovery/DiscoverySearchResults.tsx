@@ -89,8 +89,11 @@ function readUrlParams(): {
   };
   const parsedPage = parseFinite(pageVal);
   const parsedRadius = parseFinite(radiusVal);
-  const parsedLat = parseFinite(latVal);
-  const parsedLng = parseFinite(lngVal);
+  const rawLat = parseFinite(latVal);
+  const rawLng = parseFinite(lngVal);
+  const parsedLat = rawLat != null && rawLat >= -90 && rawLat <= 90 ? rawLat : null;
+  const parsedLng = rawLng != null && rawLng >= -180 && rawLng <= 180 ? rawLng : null;
+  const hasCoordinatePair = parsedLat != null && parsedLng != null;
   const rawSort = sp.get('sort') || 'relevance';
   const validSorts: DiscoverySortOption[] = ['relevance', 'rating', 'review_count', 'name_asc', 'newest', 'distance'];
   const sort: DiscoverySortOption = validSorts.includes(rawSort as DiscoverySortOption)
@@ -107,8 +110,8 @@ function readUrlParams(): {
     city: sp.get('city') || undefined,
     district: sp.get('district') || undefined,
     region: sp.get('region') || undefined,
-    lat: parsedLat,
-    lng: parsedLng,
+    lat: hasCoordinatePair ? parsedLat : undefined,
+    lng: hasCoordinatePair ? parsedLng : undefined,
     radiusKm: parsedRadius != null ? Math.max(1, Math.min(500, parsedRadius)) : 25,
     openNow: sp.get('openNow') === 'true',
     categoryId: sp.get('categoryId') || undefined,
