@@ -717,6 +717,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                               {/* City Rows */}
                               {isDistExpanded &&
                                 displayCities.map((city) => (
+<React.Fragment key={city.id}>
                                   <tr
                                     key={city.id}
                                     className="hover:bg-slate-50/40 dark:hover:bg-slate-800/10 border-b border-slate-100 dark:border-slate-800/50 text-xs text-slate-600 dark:text-slate-300 bg-slate-50/20 dark:bg-slate-900/10"
@@ -757,7 +758,16 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                                       <div className="flex items-center justify-end gap-1.5">
                                         <button
                                           type="button"
-                                          onClick={() => handleOpenEdit(city)}
+                                          onClick={() => handleOpenCreate('COMMUNITY', city.id)}
+                                          className="px-2 py-1 text-[10px] font-bold text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100 rounded-lg cursor-pointer flex items-center gap-1"
+                                          title="Add community, neighborhood or village to this city"
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                          <span>Add Community</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEdit(city)
                                           className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
                                           title="Edit City"
                                         >
@@ -776,6 +786,31 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                                       </div>
                                     </td>
                                   </tr>
+                                  {city.communities.map((community: DiscoveryGeoLocation) => (
+                                    <tr key={community.id} className="border-b border-slate-100 dark:border-slate-800/50 bg-violet-50/30 dark:bg-violet-950/10 text-xs text-slate-600 dark:text-slate-300">
+                                      <td className="py-2 pl-32 pr-5 flex items-center gap-2">
+                                        <ArrowRight className="w-3 h-3 text-violet-300 shrink-0" />
+                                        <MapPin className="w-3 h-3 text-violet-500 shrink-0" />
+                                        <span className="font-medium">{community.name}</span>
+                                      </td>
+                                      <td className="py-2 px-4"><span className="inline-flex px-2 py-0.5 rounded-md text-[9px] font-bold uppercase bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200/40">Community / Village</span></td>
+                                      <td className="py-2 px-4 font-mono text-[10px] text-slate-400">{community.slug}</td>
+                                      <td className="py-2 px-4 text-center text-xs font-mono text-slate-400">{community.display_order}</td>
+                                      <td className="py-2 px-4 text-center">
+                                        <button type="button" onClick={() => handleToggleActive(community)} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${community.is_active ? 'text-emerald-600 border-emerald-200/40 bg-emerald-50' : 'text-slate-400 border-slate-200 bg-slate-100'}`}>
+                                          {community.is_active ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                                          <span>{community.is_active ? 'Active' : 'Disabled'}</span>
+                                        </button>
+                                      </td>
+                                      <td className="py-2 px-5 text-right">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          <button type="button" onClick={() => handleOpenEdit(community)} className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-white rounded-md cursor-pointer" title="Edit community"><Edit2 className="w-3 h-3" /></button>
+                                          {!community.is_system && <button type="button" onClick={() => handleDelete(community)} className="p-1 text-rose-500 hover:text-rose-700 rounded-md cursor-pointer" title="Delete community"><Trash2 className="w-3 h-3" /></button>}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </React.Fragment>
                                 ))}
                             </React.Fragment>
                           );
