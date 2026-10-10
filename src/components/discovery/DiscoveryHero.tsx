@@ -35,10 +35,12 @@ interface DiscoveryHeroProps {
   selectedCity?: string;
   selectedDistrict?: string;
   selectedRegion?: string;
+  selectedLocality?: string;
   onCityChange: (loc: {
     city?: string;
     district?: string;
     region?: string;
+    locality?: string;
     lat?: number | null;
     lng?: number | null;
   }) => void;
@@ -112,6 +114,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   selectedCity,
   selectedDistrict,
   selectedRegion,
+  selectedLocality,
   onCityChange,
   latitude,
   longitude,
@@ -232,6 +235,24 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   }, [selectedDistrict, selectedRegion, activeGeoLocations]);
 
   // Top-level categories for quick hero pills (includes newly created categories!)
+  const availableCommunities = useMemo(() => {
+    const activeCities = activeGeoLocations.filter((location) => location.location_type === 'CITY' && location.is_active);
+    let allowedCityIds = activeCities.map((city) => city.id);
+    if (selectedCity) {
+      allowedCityIds = activeCities.filter((city) => city.name.toLocaleLowerCase() === selectedCity.toLocaleLowerCase()).map((city) => city.id);
+    } else if (selectedDistrict) {
+      const districtIds = new Set(activeGeoLocations.filter((location) => location.location_type === 'DISTRICT' && location.is_active && location.name.toLocaleLowerCase() === selectedDistrict.toLocaleLowerCase()).map((location) => location.id));
+      allowedCityIds = activeCities.filter((city) => city.parent_id && districtIds.has(city.parent_id)).map((city) => city.id);
+    } else if (selectedRegion) {
+      const regionIds = new Set(activeGeoLocations.filter((location) => location.location_type === 'REGION' && location.is_active && location.name.toLocaleLowerCase() === selectedRegion.toLocaleLowerCase()).map((location) => location.id));
+      const districtIds = new Set(activeGeoLocations.filter((location) => location.location_type === 'DISTRICT' && location.is_active && location.parent_id && regionIds.has(location.parent_id)).map((location) => location.id));
+      allowedCityIds = activeCities.filter((city) => city.parent_id && districtIds.has(city.parent_id)).map((city) => city.id);
+    }
+    const cityIds = new Set(allowedCityIds);
+    return activeGeoLocations.filter((location) => location.location_type === 'COMMUNITY' && location.is_active && location.parent_id && cityIds.has(location.parent_id)).sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name));
+  }, [activeGeoLocations, selectedCity, selectedDistrict, selectedRegion]);
+
+  // Top-level categories for quick hero pills (includes newly created categories!)
   const quickCategories = useMemo(() => {
     const parents = activeCategories.filter((c) => !c.parent_id && c.is_active !== false);
     if (parents.length > 0) {
@@ -264,10 +285,20 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   const handleCitySelect = (city: string) => {
     setGpsActive(false);
     if (!city) {
-      onCityChange({ city: undefined, district: selectedDistrict, region: selectedRegion, lat: null, lng: null });
+      onCityChange({ city: undefined, district: selectedDistrict, region: selectedRegion, locality: undefined, lat: null, lng: null });
     } else {
       onCityChange({ city, district: selectedDistrict, region: selectedRegion, lat: null, lng: null });
     }
+    setCityDropdownOpen(false);
+  };
+
+  const handleCommunitySelect = (communityName: string) => {
+    setGpsActive(false);
+    const community = availableCommunities.find((location) => location.name === communityName);
+    const city = community?.parent_id ? activeGeoLocations.find((location) => location.id === community.parent_id) : undefined;
+    const district = city?.parent_id ? activeGeoLocations.find((location) => location.id === city.parent_id) : undefined;
+    const region = district?.parent_id ? activeGeoLocations.find((location) => location.id === district.parent_id) : undefined;
+    onCityChange({ city: city?.name || selectedCity, district: district?.name || selectedDistrict, region: region?.name || selectedRegion, locality: communityName, lat: null, lng: null });
     setCityDropdownOpen(false);
   };
 
@@ -384,7 +415,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   <div className="flex items-center gap-1.5 sm:gap-2 truncate">
                     <MapPin className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${gpsActive ? 'text-emerald-500 animate-pulse' : 'text-indigo-600 dark:text-indigo-400'}`} />
                     <span className={`truncate ${selectedCity || gpsActive ? 'text-slate-900 dark:text-white font-black' : 'text-slate-500 dark:text-slate-400'}`}>
-                      {gpsActive ? 'Near My Location' : selectedCity ? selectedCity : 'Select City'}
+                      {gpsActive ? 'Near My Location' : selectedLocality || selectedCity || 'Select City'}
                     </span>
                     {gpsActive && (
                       <span className="inline-flex items-center gap-0.5 px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black bg-emerald-500 text-white animate-pulse shrink-0">
@@ -455,6 +486,21 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                           })
                         )}
                       </div>
+
+                      {availableCommunities.length > 0 && (
+                        <>
+                          <div className="h-px bg-slate-100 dark:bg-slate-800/80 my-2" />
+                          <div className="px-3 pb-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Communities & villages</div>
+                          <div className="overflow-y-auto max-h-36 space-y-0.5">
+                            {availableCommunities.map((community) => (
+                              <button key={community.id} type="button" onClick={() => handleCommunitySelect(community.name)} className={`w-full px-3 py-2 rounded-xl text-left text-xs font-bold flex items-center justify-between min-h-[38px] ${selectedLocality === community.name ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                <span className="truncate">{community.name}</span>
+                                {selectedLocality === community.name && <Check className="w-3.5 h-3.5 shrink-0" />}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
 
                       {/* Clear Button Option */}
                       {(selectedCity || gpsActive) && (
