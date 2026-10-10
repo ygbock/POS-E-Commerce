@@ -60,6 +60,7 @@ interface DiscoveryUrlParams {
   city?: string;
   district?: string;
   region?: string;
+  locality?: string;
   lat?: number;
   lng?: number;
   radiusKm: number;
@@ -109,6 +110,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       city: sp.get('city') || undefined,
       district: sp.get('district') || undefined,
       region: sp.get('region') || undefined,
+      locality: sp.get('locality') || undefined,
       lat: hasCoordinatePair ? parsedLat : undefined,
       lng: hasCoordinatePair ? parsedLng : undefined,
       radiusKm: parsedRadius != null ? Math.max(1, Math.min(500, parsedRadius)) : 25,
@@ -125,6 +127,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const [selectedCity, setSelectedCity] = useState<string | undefined>(initialParams.city);
   const [selectedDistrict, setSelectedDistrict] = useState<string | undefined>(initialParams.district);
   const [selectedRegion, setSelectedRegion] = useState<string | undefined>(initialParams.region);
+  const [selectedLocality, setSelectedLocality] = useState<string | undefined>(initialParams.locality);
   const [latitude, setLatitude] = useState<number | null>(initialParams.lat ?? null);
   const [longitude, setLongitude] = useState<number | null>(initialParams.lng ?? null);
   const [radiusKm, setRadiusKm] = useState<number>(initialParams.radiusKm || 25);
@@ -166,6 +169,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       setSelectedCity(p.city);
       setSelectedDistrict(p.district);
       setSelectedRegion(p.region);
+      setSelectedLocality(p.locality);
       setLatitude(p.lat ?? null);
       setLongitude(p.lng ?? null);
       setRadiusKm(p.radiusKm || 25);
@@ -255,6 +259,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         city: selectedCity,
         district: selectedDistrict,
         region: selectedRegion,
+        locality: selectedLocality,
         lat: latitude ?? undefined,
         lng: longitude ?? undefined,
         radiusKm,
@@ -312,7 +317,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       setProductsState({ status: errState, data: [], error: msg, errorCode: code, errorStatus: status });
       setServicesState({ status: errState, data: [], error: msg, errorCode: code, errorStatus: status });
     }
-  }, [query, activeType, selectedCity, selectedDistrict, selectedRegion, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]);
+  }, [query, activeType, selectedCity, selectedDistrict, selectedRegion, selectedLocality, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]);
 
   useEffect(() => {
     void fetchDiscoveryContent();
@@ -329,6 +334,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       if (selectedCity) sp.set('city', selectedCity);
       if (selectedDistrict) sp.set('district', selectedDistrict);
       if (selectedRegion) sp.set('region', selectedRegion);
+      if (selectedLocality) sp.set('locality', selectedLocality);
       if (filters.categoryId) sp.set('categoryId', filters.categoryId);
       if (latitude != null) sp.set('lat', String(latitude));
       if (longitude != null) sp.set('lng', String(longitude));
@@ -342,7 +348,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
     },
-    [activeType, query, selectedCity, selectedDistrict, selectedRegion, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]
+    [activeType, query, selectedCity, selectedDistrict, selectedRegion, selectedLocality, latitude, longitude, radiusKm, filters.openNow, filters.categoryId, sort]
   );
 
   const handleSearchSubmit = (q: string) => {
@@ -353,6 +359,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     city?: string;
     district?: string;
     region?: string;
+    locality?: string;
     lat?: number | null;
     lng?: number | null;
     radiusKm?: number;
@@ -360,6 +367,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     setSelectedCity(loc.city);
     setSelectedDistrict(loc.district);
     setSelectedRegion(loc.region);
+    setSelectedLocality(loc.locality);
     setLatitude(loc.lat ?? null);
     setLongitude(loc.lng ?? null);
     setRadiusKm(loc.radiusKm ?? 25);
@@ -367,6 +375,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       city: loc.city,
       district: loc.district,
       region: loc.region,
+      locality: loc.locality,
       lat: loc.lat ?? undefined,
       lng: loc.lng ?? undefined,
       radiusKm: loc.radiusKm ?? 25,
@@ -385,6 +394,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     setSelectedCity(undefined);
     setSelectedDistrict(undefined);
     setSelectedRegion(undefined);
+    setSelectedLocality(undefined);
     setLatitude(null);
     setLongitude(null);
     setRadiusKm(25);
@@ -396,6 +406,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       city: undefined,
       district: undefined,
       region: undefined,
+      locality: undefined,
       lat: undefined,
       lng: undefined,
       radiusKm: undefined,
@@ -405,7 +416,9 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     });
   }, [syncToUrl]);
 
-  const locationContextLabel = selectedCity
+  const locationContextLabel = selectedLocality
+    ? `in ${selectedLocality}`
+    : selectedCity
     ? `in ${selectedCity}`
     : selectedDistrict
     ? `in ${selectedDistrict}`
@@ -453,6 +466,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 syncToUrl({ type });
               }}
               selectedCity={selectedCity}
+              selectedLocality={selectedLocality}
               selectedDistrict={selectedDistrict}
               selectedRegion={selectedRegion}
               onCityChange={(loc) => {
@@ -602,6 +616,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             </div>
             <DiscoveryMapPanel
               businesses={businessesState.data}
+              services={servicesState.data}
               onSelectBusiness={(business) =>
                 window.location.assign(
                   '/discover/business/' + encodeURIComponent(business.slug || business.id)
