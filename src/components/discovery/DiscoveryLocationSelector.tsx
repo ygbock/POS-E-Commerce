@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { MapPin, Navigation, ChevronDown, Check, AlertCircle, Shield, Search, X } from 'lucide-react';
 import { discoveryApi } from '../../services/discoveryApi';
 import type { DiscoveryGeoLocation } from '../../types/discovery';
@@ -54,7 +54,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
     [geoLocations],
   );
 
-  const getLocationPath = (location: DiscoveryGeoLocation): DiscoveryGeoLocation[] => {
+  const getLocationPath = useCallback((location: DiscoveryGeoLocation): DiscoveryGeoLocation[] => {
     const path: DiscoveryGeoLocation[] = [];
     let current: DiscoveryGeoLocation | undefined = location;
     const seen = new Set<string>();
@@ -64,10 +64,10 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
       current = current.parent_id ? locationsById.get(current.parent_id) : undefined;
     }
     return path;
-  };
+  }, [locationsById]);
 
-  const locationTrail = (location: DiscoveryGeoLocation) =>
-    getLocationPath(location).map((item) => item.name).join(' › ');
+  const locationTrail = useCallback((location: DiscoveryGeoLocation) =>
+    getLocationPath(location).map((item) => item.name).join(' › '), [getLocationPath]);
 
   const visibleLocations = useMemo(() => {
     const query = locationQuery.trim().toLocaleLowerCase();
@@ -82,7 +82,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
         return order[a.location_type] - order[b.location_type] || a.display_order - b.display_order || a.name.localeCompare(b.name);
       })
       .slice(0, query ? 60 : 36);
-  }, [geoLocations, locationQuery, locationsById]);
+  }, [geoLocations, locationQuery, getLocationPath]);
 
   const hasCoords = latitude != null && longitude != null;
   const displayText = hasCoords
