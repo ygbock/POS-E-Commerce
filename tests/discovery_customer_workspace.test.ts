@@ -27,7 +27,7 @@ for(const [file,msg] of [[saved,'saved businesses'],[requests,'service requests'
  assert.match(file,/authClient\.getToken\(\)/);
  assert.match(file,new RegExp('Sign in is required'));
 }
-assert.match(header,/workspaceHref = \(path: string\) => authClient\.getToken\(\) \? path : '\/login\?redirect='/);
+assert.match(header,/const workspaceHref = \(path: string\) => \(authClient\.getToken\(\) \|\| authClient\.getUser\(\)\) \? path : '\/login\?redirect=' \+ encodeURIComponent\(path\)/);
 assert.match(mobile,/token \? '\/discover\/saved' : '\/login\?redirect=/);
 assert.match(mobile,/token \? '\/discover\/my-requests' : '\/login\?redirect=/);
 
