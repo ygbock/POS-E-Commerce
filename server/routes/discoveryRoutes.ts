@@ -1116,6 +1116,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         `;
         const r=await db.query(businessSql,businessParams);
         businessResults=r.rows;
+        businessCount = Number(r.rows[0]?.total_count || 0);
         if (!r.rows.length && !fuzzyEnabled && offset > 0) {
           const countParams = businessParams.slice();
           countParams[countParams.length - 2] = 1;
@@ -1123,7 +1124,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           const countResult = await db.query(businessSql, countParams);
           businessCount = Number(countResult.rows[0]?.total_count || 0);
         }
-        businessCount = Number(r.rows[0]?.total_count || 0);
         if (fuzzyEnabled) {
           const ranked = businessResults.map((row:any, index:number) => ({
             row,
@@ -1210,6 +1210,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         `;
         const r=await db.query(productSql,productParams);
         productResults=r.rows;
+        productCount = Number(r.rows[0]?.total_count || 0);
         if (!r.rows.length && !fuzzyEnabled && offset > 0) {
           const countParams = productParams.slice();
           countParams[countParams.length - 2] = 1;
@@ -1217,7 +1218,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           const countResult = await db.query(productSql, countParams);
           productCount = Number(countResult.rows[0]?.total_count || 0);
         }
-        productCount = Number(r.rows[0]?.total_count || 0);
         if (fuzzyEnabled) {
           const ranked = productResults.map((row:any, index:number) => ({
             row,
@@ -1291,6 +1291,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         `;
         const r=await db.query(serviceSql,serviceParams);
         serviceResults=r.rows;
+        serviceCount = Number(r.rows[0]?.total_count || 0);
         if (!r.rows.length && !fuzzyEnabled && offset > 0) {
           const countParams = serviceParams.slice();
           countParams[countParams.length - 2] = 1;
@@ -1298,7 +1299,6 @@ export function createDiscoveryRouter(db: DatabaseClient) {
           const countResult = await db.query(serviceSql, countParams);
           serviceCount = Number(countResult.rows[0]?.total_count || 0);
         }
-        serviceCount = Number(r.rows[0]?.total_count || 0);
         if (fuzzyEnabled) {
           const ranked = serviceResults.map((row:any, index:number) => ({
             row,
