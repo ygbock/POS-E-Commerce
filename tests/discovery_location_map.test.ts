@@ -41,7 +41,8 @@ assert.match(home, /setSelectedLocality\(loc\.locality\)/);
 assert.match(home, /services=\{servicesState\.data\}/);
 assert.match(hero, /availableCommunities/);
 assert.match(hero, /handleCommunitySelect/);
-assert.match(hero, /selectedLocality=\{selectedLocality\}/);
+assert.match(home, /selectedLocality=\{selectedLocality\}/);
+assert.match(hero, /selectedLocality \|\| selectedCity/);
 assert.match(routes, /lower\(coalesce\(sl\.address_line_1,''\)\)/);
 assert.match(routes, /l\.name AS location_name,l\.city,l\.district,l\.region,l\.latitude,l\.longitude/);
 
