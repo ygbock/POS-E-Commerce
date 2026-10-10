@@ -14,6 +14,7 @@ export type DiscoveryCustomerRoute =
       city?: string;
       district?: string;
       region?: string;
+      locality?: string;
       lat?: number;
       lng?: number;
       radiusKm?: number;
@@ -172,6 +173,7 @@ export function buildDiscoveryPath(route: DiscoveryRoute): string {
       if (route.city?.trim()) sp.set('city', route.city.trim());
       if (route.district?.trim()) sp.set('district', route.district.trim());
       if (route.region?.trim()) sp.set('region', route.region.trim());
+      if (route.locality?.trim()) sp.set('locality', route.locality.trim());
       if (route.lat != null) sp.set('lat', String(route.lat));
       if (route.lng != null) sp.set('lng', String(route.lng));
       if (route.radiusKm != null && route.radiusKm !== 25) sp.set('radiusKm', String(route.radiusKm));
