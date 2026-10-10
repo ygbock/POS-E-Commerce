@@ -76,6 +76,13 @@ async function main() {
     [business.id],
   );
 
+  const hiddenBusinessList = await getJson('/api/discovery/businesses?city=Freetown&limit=20');
+  assert.equal(hiddenBusinessList.status, 200, `public business list failed: ${JSON.stringify(hiddenBusinessList.body)}`);
+  const hiddenListedBusiness = hiddenBusinessList.body.data.find((item: any) => item.id === business.id);
+  assert.ok(hiddenListedBusiness, 'published business should appear in the public business list');
+  assert.equal(hiddenListedBusiness.phone, null, 'public business list must mask disabled phone contact');
+  assert.equal(hiddenListedBusiness.whatsapp, null, 'public business list must mask disabled WhatsApp contact');
+
   const hiddenPublicProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
   assert.equal(hiddenPublicProfile.status, 200, `public profile endpoint failed: ${JSON.stringify(hiddenPublicProfile.body)}`);
   assert.equal(hiddenPublicProfile.body.data.business.phone, null, 'public profile route must mask disabled phone contact');
@@ -253,11 +260,21 @@ async function main() {
   assert.ok(routes.includes('CASE WHEN COALESCE(bds.allow_public_store_link, TRUE) THEN o.slug ELSE NULL END AS tenant_slug'), 'search results must mask disabled storefront links');
   assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_prices, TRUE) THEN v.retail_price ELSE NULL END AS retail_price'), 'product search must not return prices when hidden');
   assert.ok(routes.includes('CASE WHEN COALESCE(ds.show_stock_status, FALSE) THEN COALESCE(SUM(ib.available),0) ELSE NULL END AS available_stock'), 'product search must not return stock counts when hidden');
+  const attributionStart = routes.indexOf("router.post('/search/events'");
+  const attributionEnd = routes.indexOf("router.post('/businesses/:id/reviews/:reviewId/response'", attributionStart);
+  const attributionRoute = routes.slice(attributionStart, attributionEnd);
+  assert.ok(attributionRoute.includes('COALESCE(ds.show_products,TRUE)=TRUE'), 'product attribution must reject events for products hidden by the owning business');
   const suggestionsStart = routes.indexOf("router.get('/search/suggestions'");
   const suggestionsEnd = routes.indexOf("router.get('/businesses/:id/search-aliases'", suggestionsStart);
   const suggestionsRoute = routes.slice(suggestionsStart, suggestionsEnd);
   assert.equal((suggestionsRoute.match(/COALESCE\(\(SELECT ds\.show_products FROM discovery_business_settings ds WHERE ds\.business_id=b\.id\), TRUE\)=TRUE/g) || []).length, 2, 'both product-name and product-alias suggestions must respect the business show_products setting');
   assert.ok(routes.includes("b.listing_status='PUBLISHED'") && routes.includes('b.is_discoverable=TRUE'), 'public search must exclude unpublished or undiscoverable listings');
+
+  const favoritesStart = routes.indexOf("router.get('/favorites'");
+  const favoritesEnd = routes.indexOf("router.get('/businesses/:id/favorite'", favoritesStart);
+  const favoritesRoute = routes.slice(favoritesStart, favoritesEnd);
+  assert.ok(favoritesRoute.includes('settings?.allow_phone_contact === false ? null : business.phone'), 'customer favorites must mask disabled phone contact');
+  assert.ok(favoritesRoute.includes('settings?.allow_whatsapp_contact === false ? null : business.whatsapp'), 'customer favorites must mask disabled WhatsApp contact');
 
   // Categories and listing details.
   assert.ok(routes.includes("router.get('/categories'"), 'public category endpoint must exist');
