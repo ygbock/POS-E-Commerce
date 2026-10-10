@@ -620,6 +620,7 @@ export interface DiscoverySearchFilters {
   city?: string;
   district?: string;
   region?: string;
+  locality?: string;
   lat?: number;
   lng?: number;
   radiusKm?: number;
