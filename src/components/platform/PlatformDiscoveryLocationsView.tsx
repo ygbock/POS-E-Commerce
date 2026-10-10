@@ -347,14 +347,14 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                 Geographic Search Selector Control
               </span>
               <span className="text-xs text-indigo-400 font-mono">
-                Hierarchy: Region → District → City
+                Hierarchy: Region → District → City/Town → Community
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              Main Search Locations (Regions, Districts & Cities)
+              Main Search Locations (Regions, Districts, Towns & Communities)
             </h2>
             <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-              Create and manage the Regions/Provinces, Districts, and Cities/Towns displayed in the Discovery main search bar and location filter selectors.
+              Create and manage Regions/Provinces, Districts, Cities/Towns, and their communities, neighborhoods, and villages for the Discovery main search selector.
             </p>
           </div>
 
