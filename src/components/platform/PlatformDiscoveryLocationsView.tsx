@@ -7,7 +7,7 @@ import {
   X,
   Search,
   Globe2,
-  Map,
+  Map as MapIcon,
   Building2,
   ChevronRight,
   ChevronDown,
@@ -646,7 +646,7 @@ export const PlatformDiscoveryLocationsView: React.FC = () => {
                                     )}
                                   </button>
                                   <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                                    <Map className="w-3.5 h-3.5" />
+                                    <MapIcon className="w-3.5 h-3.5" />
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-slate-800 dark:text-slate-200">
