@@ -286,7 +286,7 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
       </div>
 
       <div className="relative h-[460px] sm:h-[560px] lg:h-[680px] w-full bg-slate-100 dark:bg-slate-800">
-        <div ref={mapElementRef} className="absolute inset-0 z-0" aria-label="Interactive map showing available businesses and services" />
+        <div ref={mapElementRef} role="region" aria-label="Interactive map of Discovery locations" className="absolute inset-0 z-0" />
         {mapLoading && !mapLoadError && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 dark:bg-slate-800/80 pointer-events-none">
             <p className="rounded-xl bg-white dark:bg-slate-900 px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 shadow">Loading interactive map…</p>
