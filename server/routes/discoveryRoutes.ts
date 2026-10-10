@@ -95,7 +95,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
            FROM discovery_geo_locations
           WHERE is_active = TRUE
           ORDER BY
-            CASE location_type WHEN 'REGION' THEN 1 WHEN 'DISTRICT' THEN 2 ELSE 3 END ASC,
+            CASE location_type WHEN 'REGION' THEN 1 WHEN 'DISTRICT' THEN 2 WHEN 'CITY' THEN 3 ELSE 4 END ASC,
             display_order ASC,
             name ASC,
             id ASC`,
@@ -256,6 +256,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         city: typeof req.query.city === 'string' ? req.query.city : undefined,
         district: typeof req.query.district === 'string' ? req.query.district : undefined,
         region: typeof req.query.region === 'string' ? req.query.region : undefined,
+        locality: typeof req.query.locality === 'string' ? req.query.locality : undefined,
         businessType: typeof req.query.businessType === 'string' ? req.query.businessType : undefined,
         categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
         limit,
