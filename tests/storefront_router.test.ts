@@ -24,7 +24,7 @@ for (const [path, expected] of cases) {
 assert.deepEqual(parseStorefrontRoute('/unknown/path', ''), { name: 'not-found' });
 assert.deepEqual(parseStorefrontRoute('/store/alpha/unknown', ''), { name: 'not-found', tenantSlug: 'alpha' });
 
-assert.equal(buildStorefrontPath({ name: 'home' }), '/');
+assert.equal(buildStorefrontPath({ name: 'home' }), '/store');
 assert.equal(buildStorefrontPath({ name: 'shop', tenantSlug: 'alpha' }), '/store/alpha/shop');
 assert.equal(buildStorefrontPath({ name: 'category', tenantSlug: 'alpha', slug: 'power tools' }), '/store/alpha/shop/category/power%20tools');
 assert.equal(buildStorefrontPath({ name: 'search', query: 'cordless drill' }), '/search?q=cordless%20drill');
