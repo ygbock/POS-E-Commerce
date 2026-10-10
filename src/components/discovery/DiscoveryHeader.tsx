@@ -32,6 +32,9 @@ interface DiscoveryHeaderProps {
   longitude?: number | null;
   onLocationChange: (loc: {
     city?: string;
+    district?: string;
+    region?: string;
+    locality?: string;
     lat?: number | null;
     lng?: number | null;
     radiusKm?: number;
