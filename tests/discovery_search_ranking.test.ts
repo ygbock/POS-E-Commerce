@@ -78,6 +78,9 @@ async function main() {
 
   await db.query("INSERT INTO discovery_search_aliases (id,entity_type,entity_id,alias,normalized_alias) VALUES ('disc_rank_alias_rest','BUSINESS',$1,'Chop House','chop house')",[restaurant.id]);
 
+  // A second branch is close to Bo coordinates but has a different city from the primary Freetown branch.
+  await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_rank_loc_exact_bo',$1,'Bo Branch','Bo','Southern Province',7.9640,-11.7380,FALSE,TRUE)",[exact.id]);
+
   const hidden = await service.create({
     name: 'Mobile Hidden Listing',
     shortDescription: 'Should never appear publicly',
@@ -122,6 +125,19 @@ async function main() {
       exact.name,
       'suggestions should rank the corrected spelling ahead of the literal typo',
     );
+
+    const invalidLatitude = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&lat=91&lng=-13.2');
+    assert.strictEqual(invalidLatitude.status, 422, 'search must reject out-of-range latitude');
+    const incompleteCoordinates = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&lat=8.4840');
+    assert.strictEqual(incompleteCoordinates.status, 422, 'search must reject incomplete coordinate pairs');
+
+    const matchingBranch = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&city=Bo&lat=7.9640&lng=-11.7380&radiusKm=1');
+    assert.strictEqual(matchingBranch.status, 200);
+    assert.ok(matchingBranch.body.data.businesses.some((row:any) => row.id === exact.id && row.city === 'Bo'), 'search results should display the branch that satisfies both city and radius filters');
+
+    const mismatchedBranch = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&city=Freetown&lat=7.9640&lng=-11.7380&radiusKm=1');
+    assert.strictEqual(mismatchedBranch.status, 200);
+    assert.ok(!mismatchedBranch.body.data.businesses.some((row:any) => row.id === exact.id), 'city and radius filters must not be satisfied by different branches');
 
     const fuzzyResponse = await requestJson(baseUrl, '/api/discovery/search?q=moble&type=businesses&limit=10');
     assert.strictEqual(fuzzyResponse.status, 200);
