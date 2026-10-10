@@ -263,7 +263,7 @@ async function main() {
   const attributionStart = routes.indexOf("router.post('/search/events'");
   const attributionEnd = routes.indexOf("router.post('/businesses/:id/reviews/:reviewId/response'", attributionStart);
   const attributionRoute = routes.slice(attributionStart, attributionEnd);
-  assert.ok(attributionRoute.includes('COALESCE(ds.show_products,TRUE)=TRUE'), 'product attribution must reject events for products hidden by the owning business');
+  assert.ok(attributionRoute.includes('COALESCE((SELECT ds.show_products FROM discovery_business_settings ds WHERE ds.business_id=b.id), TRUE)=TRUE'), 'product attribution must reject events for products hidden by the owning business');
   const suggestionsStart = routes.indexOf("router.get('/search/suggestions'");
   const suggestionsEnd = routes.indexOf("router.get('/businesses/:id/search-aliases'", suggestionsStart);
   const suggestionsRoute = routes.slice(suggestionsStart, suggestionsEnd);
