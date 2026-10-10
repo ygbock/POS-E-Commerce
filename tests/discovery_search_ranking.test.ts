@@ -151,6 +151,11 @@ async function main() {
     assert.strictEqual(exactResponse.status, 200);
     assert.strictEqual(exactResponse.body.data.businesses[0].id, exact.id, 'exact spelling should outrank typo-compatible result');
 
+    const outOfRangePage = await requestJson(baseUrl, '/api/discovery/search?q=mobile&type=businesses&sort=rating&limit=1&offset=100');
+    assert.strictEqual(outOfRangePage.status, 200);
+    assert.strictEqual(outOfRangePage.body.data.businesses.length, 0, 'an out-of-range page should return no business rows');
+    assert.ok(outOfRangePage.body.counts.businesses > 0, 'an out-of-range page must preserve the total matching count');
+
     const queryHash = createHash('sha256').update('moble').digest('hex');
     const event = await waitForSearchEvent(db, queryHash);
     assert.ok(event, 'search analytics event should be recorded');
