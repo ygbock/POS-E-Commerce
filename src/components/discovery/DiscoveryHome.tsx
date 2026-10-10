@@ -232,14 +232,14 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     setBusinessesState((prev) => ({ ...prev, status: 'loading' }));
     setProductsState((prev) => ({ ...prev, status: 'loading' }));
     setServicesState((prev) => ({ ...prev, status: 'loading' }));
 
     try {
-      const controller = abortControllerRef.current;
       const response = await discoveryApi.search({
         q: query || undefined,
         type: activeType,
@@ -274,7 +274,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         data: svcs,
       });
     } catch (err: unknown) {
-      if (abortControllerRef.current?.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return;
+      if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return;
 
       let status = 500;
       let code = 'DISCOVERY_ERROR';
