@@ -214,25 +214,31 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   // ---------------------------------------------------------------------------
   const fetchCategories = useCallback(async () => {
     setCategoriesState((prev) => ({ ...prev, status: 'loading' }));
-    try {
-      const [cats, locs] = await Promise.all([
-        discoveryApi.getCategories(),
-        discoveryApi.getGeoLocations().catch(() => [] as DiscoveryGeoLocation[]),
-      ]);
+    const [categoriesResult, locationsResult] = await Promise.allSettled([
+      discoveryApi.getCategories(),
+      discoveryApi.getGeoLocations(),
+    ]);
+
+    if (categoriesResult.status === 'fulfilled') {
+      const categories = categoriesResult.value || [];
       setCategoriesState({
-        status: cats && cats.length > 0 ? 'loaded' : 'empty',
-        data: cats || [],
+        status: categories.length > 0 ? 'loaded' : 'empty',
+        data: categories,
       });
-      if (locs && locs.length > 0) {
-        setGeoLocations(locs);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load categories';
+    } else {
+      const error = categoriesResult.reason;
       setCategoriesState({
         status: 'error',
         data: [],
-        error: msg,
+        error: error instanceof Error ? error.message : 'Failed to load categories',
       });
+    }
+
+    // Location taxonomy must load independently; category API failures must not hide locations.
+    if (locationsResult.status === 'fulfilled') {
+      setGeoLocations(Array.isArray(locationsResult.value) ? locationsResult.value : []);
+    } else {
+      setGeoLocations([]);
     }
   }, []);
 
