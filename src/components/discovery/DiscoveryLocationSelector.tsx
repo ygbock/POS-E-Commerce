@@ -113,7 +113,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
-        onLocationChange({ lat: position.coords.latitude, lng: position.coords.longitude, radiusKm: selectedRadiusKm });
+        onLocationChange({ city: undefined, district: undefined, region: undefined, locality: undefined, lat: position.coords.latitude, lng: position.coords.longitude, radiusKm: selectedRadiusKm });
         setIsOpen(false);
       },
       (error) => {
@@ -122,7 +122,7 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
           ? 'Location permission was denied. You can search for any town, village, or community below.'
           : 'Unable to detect current location. Please choose a location below.');
       },
-      { timeout: 10000, enableHighAccuracy: true },
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 },
     );
   };
 
