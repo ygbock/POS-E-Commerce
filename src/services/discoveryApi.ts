@@ -864,33 +864,33 @@ export const discoveryApi = {
   },
 
   async getModerationVerification(): Promise<DiscoveryVerificationApplication[]> {
-    return request<DiscoveryVerificationApplication[]>('/api/discovery/moderation/verification');
+    return request<DiscoveryVerificationApplication[]>('/api/platform/discovery/moderation/verification');
   },
 
   async decideVerification(id: string, status: 'APPROVED' | 'REJECTED', reason?: string): Promise<DiscoveryVerificationApplication> {
-    return request<DiscoveryVerificationApplication>(`/api/discovery/moderation/verification/${encodeURIComponent(id)}/decision`, {
+    return request<DiscoveryVerificationApplication>(`/api/platform/discovery/moderation/verification/${encodeURIComponent(id)}/decision`, {
       method: 'POST',
       body: JSON.stringify({ status, reason }),
     });
   },
 
   async getModerationReviews(status = 'PENDING'): Promise<DiscoveryReview[]> {
-    return request<DiscoveryReview[]>(`/api/discovery/moderation/reviews?status=${encodeURIComponent(status)}`);
+    return request<DiscoveryReview[]>(`/api/platform/discovery/moderation/reviews?status=${encodeURIComponent(status)}`);
   },
 
   async decideReview(id: string, status: 'PUBLISHED' | 'REJECTED' | 'HIDDEN', reason?: string): Promise<DiscoveryReview> {
-    return request<DiscoveryReview>(`/api/discovery/moderation/reviews/${encodeURIComponent(id)}/decision`, {
+    return request<DiscoveryReview>(`/api/platform/discovery/moderation/reviews/${encodeURIComponent(id)}/decision`, {
       method: 'POST',
       body: JSON.stringify({ status, reason }),
     });
   },
 
   async getModerationClaims(): Promise<DiscoveryBusinessClaim[]> {
-    return request<DiscoveryBusinessClaim[]>('/api/discovery/moderation/claims');
+    return request<DiscoveryBusinessClaim[]>('/api/platform/discovery/moderation/claims');
   },
 
   async decideClaim(id: string, status: 'APPROVED' | 'REJECTED', reason?: string): Promise<DiscoveryBusinessClaim> {
-    return request<DiscoveryBusinessClaim>(`/api/discovery/moderation/claims/${encodeURIComponent(id)}/decision`, {
+    return request<DiscoveryBusinessClaim>(`/api/platform/discovery/moderation/claims/${encodeURIComponent(id)}/decision`, {
       method: 'POST',
       body: JSON.stringify({ status, reason }),
     });
@@ -898,11 +898,11 @@ export const discoveryApi = {
 
   async getModerationReports(status = ''): Promise<DiscoveryReport[]> {
     const qs = status ? `?status=${encodeURIComponent(status)}` : '';
-    return request<DiscoveryReport[]>(`/api/discovery/moderation/reports${qs}`);
+    return request<DiscoveryReport[]>(`/api/platform/discovery/moderation/reports${qs}`);
   },
 
   async decideReport(id: string, status: 'RESOLVED' | 'DISMISSED' | 'UNDER_REVIEW', note?: string): Promise<DiscoveryReport> {
-    return request<DiscoveryReport>(`/api/discovery/moderation/reports/${encodeURIComponent(id)}/decision`, {
+    return request<DiscoveryReport>(`/api/platform/discovery/moderation/reports/${encodeURIComponent(id)}/decision`, {
       method: 'POST',
       body: JSON.stringify({ status, note }),
     });
