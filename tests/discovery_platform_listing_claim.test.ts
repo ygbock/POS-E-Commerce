@@ -45,7 +45,8 @@ async function main() {
       ('claim-platform-admin','claim_platform_org','platform@claim.test','Platform Admin','hash','salt','platform_admin','platform',TRUE),
       ('claim-owner','claim_owner_org','owner@claim.test','Business Owner','hash','salt','business_owner','business_owner',TRUE),
       ('claim-customer','claim_owner_org','customer@claim.test','Customer','hash','salt','customer','customer',TRUE),
-      ('claim-other-owner','claim_owner_org','other-owner@claim.test','Other Business Owner','hash','salt','business_owner','business_owner',TRUE)
+      ('claim-other-owner','claim_owner_org','other-owner@claim.test','Other Business Owner','hash','salt','business_owner','business_owner',TRUE),
+      ('claim-platform-reviewer','claim_platform_org','reviewer@claim.test','Platform Reviewer','hash','salt','platform_admin','platform',TRUE)
   `);
 
   const { app } = await createApp({ db, skipVite: true });
@@ -121,7 +122,7 @@ async function main() {
 
     const approve = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
-      token: platformToken,
+      token: reviewerToken,
       body: { status: 'APPROVED', reason: 'Platform-created listing approved.' },
     });
     assert.equal(approve.status, 200);
@@ -129,7 +130,7 @@ async function main() {
 
     const publish = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
-      token: platformToken,
+      token: reviewerToken,
       body: { status: 'PUBLISHED', reason: 'Platform-created listing published.' },
     });
     assert.equal(publish.status, 200);
