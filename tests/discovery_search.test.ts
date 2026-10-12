@@ -11,12 +11,13 @@ async function main() {
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_search_org','Search Test Org','DISC_SEARCH',TRUE)");
   await db.query(
     `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
-     VALUES ('disc-search-owner','disc_search_org','disc-search-owner@test.local','Discovery Search Owner','hash','salt','admin',TRUE)`,
+     VALUES ('disc-search-owner','disc_search_org','disc-search-owner@test.local','Discovery Search Owner','hash','salt','admin',TRUE), ('disc-search-reviewer','disc_search_org','disc-search-reviewer@test.local','Discovery Search Reviewer','hash','salt','admin',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const actor = { userId: 'disc-search-owner', role: 'admin', organizationId: 'disc_search_org' };
+  const reviewer = { userId: 'disc-search-reviewer', role: 'admin', organizationId: 'disc_search_org' };
 
   const business = await service.create({
     name: 'Freetown Mobile Hub',
@@ -35,9 +36,9 @@ async function main() {
     [business.id],
   );
   await service.submit(business.id, actor);
-  await service.review(business.id, actor);
-  await service.approve(business.id, actor);
-  await service.publish(business.id, actor);
+  await service.review(business.id, reviewer);
+  await service.approve(business.id, reviewer);
+  await service.publish(business.id, reviewer);
 
   const fts = await db.query(
     "SELECT id FROM discovery_businesses WHERE to_tsvector('simple',coalesce(name,'') || ' ' || coalesce(short_description,'')) @@ plainto_tsquery('simple',$1)",
