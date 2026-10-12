@@ -11,6 +11,7 @@ import { DiscoveryBusinessService } from '../server/services/discoveryBusinessSe
 import { createDiscoveryRouter } from '../server/routes/discoveryRoutes';
 import { createDiscoveryBusinessRouter } from '../server/routes/discoveryBusinessRoutes';
 import { createMerchantRouter } from '../server/routes/merchantRoutes';
+import { createPlatformRouter } from '../server/routes/platformRoutes';
 import { createStorefrontRouter } from '../server/routes/storefrontRoutes';
 import { getPermissionsForRole } from '../server/auth/roles';
 
@@ -127,6 +128,7 @@ async function main() {
   // expose the merchant router at that boundary in this isolated harness as well so
   // /api/customers/:id/profile exercises the same tenant-scoped implementation.
   app.use('/api', createMerchantRouter(db, auth));
+  app.use('/api/platform', createPlatformRouter(db));
   app.use('/api/discovery', createDiscoveryBusinessRouter(db));
   app.use('/api/discovery', createDiscoveryRouter(db));
   app.use('/api/storefront', createStorefrontRouter(db));
