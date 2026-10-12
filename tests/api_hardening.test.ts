@@ -706,6 +706,11 @@ async function runApiHardeningTests() {
       assert.strictEqual(classified409.status, 409);
       assert.strictEqual(classified409.code, 'CONFLICT');
 
+      const ownershipConflictErr = new Error('BUSINESS_ALREADY_CLAIMED: This Discovery listing already has an active owner.');
+      const classifiedOwnershipConflict = classifyApiError(ownershipConflictErr);
+      assert.strictEqual(classifiedOwnershipConflict.status, 409);
+      assert.strictEqual(classifiedOwnershipConflict.code, 'BUSINESS_ALREADY_CLAIMED');
+
       // 7d: Stack trace is never exposed in response
       const serverErr = new Error('Unexpected panic in calculation');
       serverErr.stack = 'Error: at /app/server/secret/logic.ts:42:15';
