@@ -192,6 +192,47 @@ async function main() {
     });
     assert.equal(duplicateClaim.status, 409);
 
+    // Two independently submitted claims for the same unowned listing must not
+    // be approved concurrently into two active OWNER memberships.
+    const contestedListing = await request(baseUrl, '/api/platform/discovery/moderation/listings', {
+      method: 'POST',
+      token: platformToken,
+      body: { name: 'Concurrent Ownership Claim Listing', shortDescription: 'Concurrency regression fixture.' },
+    });
+    assert.equal(contestedListing.status, 201);
+    const contestedId = contestedListing.body.data.id;
+    for (const [status, token] of [['UNDER_REVIEW', reviewerToken], ['APPROVED', reviewerToken], ['PUBLISHED', reviewerToken]] as const) {
+      const decision = await request(baseUrl, `/api/platform/discovery/moderation/listings/${contestedId}/decision`, {
+        method: 'POST', token, body: { status, reason: 'Prepare concurrent claim test.' },
+      });
+      assert.equal(decision.status, 200, `contested listing should transition to ${status}`);
+    }
+    const [claimA, claimB] = await Promise.all([
+      request(baseUrl, `/api/discovery/businesses/${contestedId}/claims`, {
+        method: 'POST', token: ownerToken, body: { evidence: { registration: 'concurrent-owner-a' } },
+      }),
+      request(baseUrl, `/api/discovery/businesses/${contestedId}/claims`, {
+        method: 'POST', token: otherOwnerToken, body: { evidence: { registration: 'concurrent-owner-b' } },
+      }),
+    ]);
+    assert.equal(claimA.status, 201);
+    assert.equal(claimB.status, 201);
+    const claimDecisions = await Promise.all([
+      request(baseUrl, `/api/platform/discovery/moderation/claims/${claimA.body.data.id}/decision`, {
+        method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Concurrent ownership claim test.' },
+      }),
+      request(baseUrl, `/api/platform/discovery/moderation/claims/${claimB.body.data.id}/decision`, {
+        method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Concurrent ownership claim test.' },
+      }),
+    ]);
+    assert.deepEqual(claimDecisions.map((result) => result.status).sort((a, b) => a - b), [200, 409]);
+    const contestedOwners = await db.query(
+      `SELECT user_id FROM discovery_business_memberships
+        WHERE business_id=$1 AND role='OWNER' AND is_active=TRUE`,
+      [contestedId],
+    );
+    assert.equal(contestedOwners.rows.length, 1, 'concurrent claim approvals must create exactly one active owner');
+
     console.log('Platform-created listing and business-owner claim workflow passed.');
   } finally {
     server.close();
