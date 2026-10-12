@@ -116,6 +116,25 @@ async function main() {
     assert.ok(queue.body.data.some((row: any) => row.id === business.id));
     assert.equal(queue.body.meta.page, 1);
 
+    // Every lifecycle state exposed by the moderation UI must be accepted by the queue API.
+    for (const status of ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'REJECTED', 'APPROVED', 'PUBLISHED', 'PAUSED', 'SUSPENDED', 'ARCHIVED']) {
+      const statusQueue = await request(baseUrl, `/api/platform/discovery/moderation/listings?status=${status}`, { token: platformAdminToken });
+      assert.equal(statusQueue.status, 200, `listing queue should accept status ${status}`);
+    }
+    const invalidStatus = await request(baseUrl, '/api/platform/discovery/moderation/listings?status=NOT_A_STATUS', { token: platformAdminToken });
+    assert.equal(invalidStatus.status, 422);
+
+    const createdDraft = await request(baseUrl, '/api/platform/discovery/moderation/listings', {
+      method: 'POST',
+      token: platformAdminToken,
+      body: { name: 'Platform-created Draft Listing' },
+    });
+    assert.equal(createdDraft.status, 201);
+    assert.equal(createdDraft.body.data.listing_status, 'DRAFT');
+    const draftQueue = await request(baseUrl, '/api/platform/discovery/moderation/listings?status=DRAFT', { token: platformAdminToken });
+    assert.equal(draftQueue.status, 200);
+    assert.ok(draftQueue.body.data.some((row: any) => row.id === createdDraft.body.data.id));
+
     const detail = await request(baseUrl, `/api/platform/discovery/moderation/listings/${business.id}`, { token: platformAdminToken });
     assert.equal(detail.status, 200);
     assert.equal(detail.body.data.business.id, business.id);

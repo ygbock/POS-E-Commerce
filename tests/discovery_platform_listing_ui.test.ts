@@ -12,5 +12,10 @@ assert.match(ui, /setCreateListingOpen\(true\)/);
 assert.match(ui, /business-owner claim is approved/);
 assert.match(ui, /claimant_user_id/);
 assert.match(ui, /DRAFT/);
+assert.match(ui, /item\.listing_status \|\| item\.status/);
+assert.match(ui, /selectedListing\.listing_status \|\| selectedListing\.status/);
+assert.match(ui, /value="PAUSED">Paused/);
+assert.match(ui, /value="SUSPENDED">Suspended/);
+assert.match(ui, /value="ARCHIVED">Archived/);
 
 console.log('Discovery platform listing UI contract: PASS');
