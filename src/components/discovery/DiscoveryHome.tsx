@@ -370,21 +370,36 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     lng?: number | null;
     radiusKm?: number;
   }) => {
-    setSelectedCity(loc.city);
-    setSelectedDistrict(loc.district);
-    setSelectedRegion(loc.region);
-    setSelectedLocality(loc.locality);
-    setLatitude(loc.lat ?? null);
-    setLongitude(loc.lng ?? null);
-    setRadiusKm(loc.radiusKm ?? 25);
+    const hasValidGpsPair =
+      loc.lat != null &&
+      loc.lng != null &&
+      Number.isFinite(loc.lat) &&
+      Number.isFinite(loc.lng) &&
+      loc.lat >= -90 &&
+      loc.lat <= 90 &&
+      loc.lng >= -180 &&
+      loc.lng <= 180;
+    // GPS is authoritative when present. Never combine it with a stale city,
+    // district, region, or community filter from a previous manual selection.
+    const next = hasValidGpsPair
+      ? { ...loc, city: undefined, district: undefined, region: undefined, locality: undefined }
+      : { ...loc, lat: null, lng: null };
+
+    setSelectedCity(next.city);
+    setSelectedDistrict(next.district);
+    setSelectedRegion(next.region);
+    setSelectedLocality(next.locality);
+    setLatitude(next.lat ?? null);
+    setLongitude(next.lng ?? null);
+    setRadiusKm(next.radiusKm ?? 25);
     syncToUrl({
-      city: loc.city,
-      district: loc.district,
-      region: loc.region,
-      locality: loc.locality,
-      lat: loc.lat ?? undefined,
-      lng: loc.lng ?? undefined,
-      radiusKm: loc.radiusKm ?? 25,
+      city: next.city,
+      district: next.district,
+      region: next.region,
+      locality: next.locality,
+      lat: next.lat ?? undefined,
+      lng: next.lng ?? undefined,
+      radiusKm: next.radiusKm ?? 25,
     });
   };
 
@@ -430,7 +445,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     ? `in ${selectedDistrict}`
     : selectedRegion
     ? `in ${selectedRegion}`
-    : latitude
+    : latitude != null && longitude != null
     ? 'near you'
     : 'in your area';
 
