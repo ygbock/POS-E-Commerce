@@ -144,6 +144,11 @@ async function main() {
     [business.id],
   );
 
+  const rejectionEventsBefore = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='UNDER_REVIEW' AND to_status='REJECTED'`,
+    [business.id],
+  );
   const concurrentRejections = await Promise.allSettled([
     service.reject(business.id, moderator, undefined, undefined, [
       { key: 'contact', detail: 'Confirm the primary customer contact.' },
@@ -152,12 +157,16 @@ async function main() {
   ]);
   assert.strictEqual(concurrentRejections.filter((result) => result.status === 'fulfilled').length, 1);
   assert.strictEqual(concurrentRejections.filter((result) => result.status === 'rejected').length, 1);
-  const rejectionEvents = await db.query(
+  const rejectionEventsAfter = await db.query(
     `SELECT COUNT(*)::int AS count FROM discovery_listing_events
       WHERE business_id=$1 AND from_status='UNDER_REVIEW' AND to_status='REJECTED'`,
     [business.id],
   );
-  assert.strictEqual(Number(rejectionEvents.rows[0]?.count || 0), 1);
+  assert.strictEqual(
+    Number(rejectionEventsAfter.rows[0]?.count || 0) - Number(rejectionEventsBefore.rows[0]?.count || 0),
+    1,
+    'only one rejection event should be recorded for the concurrent duplicate attempt',
+  );
 
   const allIssues = await db.query(
     `SELECT issue_key, detail, status, resolved_by_user_id
