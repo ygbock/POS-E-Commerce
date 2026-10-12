@@ -1420,7 +1420,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Pan or tap the map to place the pin at your exact location, snap to your selected city, or use device GPS.
+                    Use device GPS only when you are physically at this business. Otherwise, pan or tap the map to place the pin at the business location. City and district centers are approximate and must be refined before saving.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
