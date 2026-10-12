@@ -15,7 +15,7 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
   router.get('/listings', ...guard, async (req, res, next) => {
     try {
       const status = String(req.query.status || 'SUBMITTED').trim().toUpperCase();
-      const allowed = ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PUBLISHED'];
+      const allowed = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PUBLISHED', 'PAUSED', 'SUSPENDED', 'ARCHIVED'];
       if (!allowed.includes(status)) return res.status(422).json({ success:false, error:{code:'INVALID_STATUS',message:'Invalid listing moderation status.'} });
 
       const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
