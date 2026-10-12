@@ -22,9 +22,15 @@ async function main() {
      VALUES ('disc-attr-owner','disc_attr_org','disc-attr-owner@test.local','Discovery Attribution Owner','hash','salt','admin',TRUE)`,
   );
 
+  await db.query(
+    `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
+     VALUES ('disc-attr-reviewer','disc_attr_org','disc-attr-reviewer@test.local','Discovery Attribution Reviewer','hash','salt','admin',TRUE)`,
+  );
+
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const actor = { userId: 'disc-attr-owner', role: 'admin', organizationId: 'disc_attr_org' };
+  const reviewer = { userId: 'disc-attr-reviewer', role: 'admin', organizationId: 'disc_attr_org' };
 
   const business = await service.create({
     name: 'Attribution Mobile Hub',
@@ -42,7 +48,10 @@ async function main() {
     "INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_attr_service',$1,'Phone Repair','phone-repair','Mobile phone repair','Repair','REQUEST')",
     [business.id],
   );
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](business.id, actor);
+  await service.submit(business.id, actor);
+  await service.review(business.id, reviewer);
+  await service.approve(business.id, reviewer);
+  await service.publish(business.id, reviewer);
 
   const hidden = await service.create({
     name: 'Attribution Hidden',
