@@ -29,7 +29,7 @@ assert.match(home, /const hasValidGpsPair/);
 assert.match(home, /const next = hasValidGpsPair[\s\S]*?city: undefined, district: undefined, region: undefined, locality: undefined/);
 assert.match(home, /latitude != null && longitude != null/);
 // Auto-detect only when browser permission was already granted; never prompt on page load.
-assert.match(home, /navigator\.permissions\?\.query\(\{ name: 'geolocation' \}\)/);
+assert.match(home, /navigator\.permissions\.query\(\{ name: 'geolocation' \}\)/);
 assert.match(home, /permission\.state !== 'granted'/);
 assert.match(home, /locationChoiceMadeRef\.current/);
 
