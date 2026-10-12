@@ -362,11 +362,15 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
         });
         setCityDropdownOpen(false);
       },
-      () => {
+      (positionError) => {
         setIsLocating(false);
-        setGeoErrorMsg('Unable to detect current location. Please choose a city or community below.');
+        setGeoErrorMsg(positionError.code === positionError.PERMISSION_DENIED
+          ? 'Location permission was denied. Allow location access in your browser/device settings, or choose a city or community below.'
+          : positionError.code === positionError.POSITION_UNAVAILABLE
+            ? 'Your device could not determine its location. Check location services or choose a city/community.'
+            : 'Location request timed out. Try again or choose a city/community below.');
       },
-      { timeout: 10000, enableHighAccuracy: true }
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 }
     );
   };
 
