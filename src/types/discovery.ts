@@ -352,6 +352,9 @@ export interface DiscoveryService {
   city?: string | null;
   district?: string | null;
   region?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_name?: string | null;
   created_at?: string;
   updated_at?: string;
   distance_km?: number | string | null;
