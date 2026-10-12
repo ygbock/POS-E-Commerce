@@ -511,6 +511,14 @@ export class DiscoveryBusinessService {
   }
 
   async approve(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    // Creator identity is immutable after creation, so enforce separation of duties
+    // before opening the transaction. This avoids aborting the PGlite transaction for
+    // a deliberate authorization denial while the transition itself remains locked.
+    const existing = await this.repository.findById(id, client);
+    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+    if (existing.created_by_user_id === actor.userId) {
+      throw new Error('SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing.');
+    }
     return this.transition(id, 'APPROVED', actor, reason || 'Listing approved.', client, true);
   }
 
@@ -655,12 +663,6 @@ export class DiscoveryBusinessService {
       if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
       if (moderatorOnly) this.assertModerator(actor, existing);
       else await this.assertCanManageScoped(existing, actor, tx);
-
-      // Enforce separation of duties at the authoritative state transition, not
-      // only in the moderation UI, so direct API/service callers cannot self-approve.
-      if (toStatus === 'APPROVED' && existing.created_by_user_id === actor.userId) {
-        throw new Error('SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing.');
-      }
 
       const currentStatus = locked.rows[0].listing_status;
       if (!TRANSITIONS[currentStatus].includes(toStatus)) {
