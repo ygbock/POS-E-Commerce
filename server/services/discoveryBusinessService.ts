@@ -313,6 +313,19 @@ export class DiscoveryBusinessService {
 
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
+      // Prevent business edits from racing moderation. A moderator must review
+      // a stable snapshot; changes are allowed again after rejection or publication.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      if (!['DRAFT', 'REJECTED', 'PUBLISHED', 'PAUSED'].includes(locked.rows[0].listing_status)) {
+        throw new Error(`LISTING_LOCKED:Listings cannot be edited while in ${locked.rows[0].listing_status} status.`);
+      }
+      if (locked.rows[0].listing_status === 'ARCHIVED') {
+        throw new Error('DISCOVERY_ARCHIVED:Archived listings cannot be edited.');
+      }
       const nextSlug = patch.name && patch.name.trim() !== existing.name ? await this.uniqueSlug(normalizeText(patch.name, 255, 'name', true)!, existing.id, tx) : existing.slug;
       const updated = await this.repository.updateBusiness(id, {
         ...(patch.name !== undefined ? { name: normalizeText(patch.name, 255, 'name', true) } : {}),
