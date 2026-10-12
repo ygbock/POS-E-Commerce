@@ -1476,6 +1476,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                     onChange={(e) => {
                       update('latitude', e.target.value);
                       setCoordsAutoAssigned(false);
+                      setLocationAccuracyM(null);
                     }}
                     placeholder="e.g. 8.484400"
                     inputMode="decimal"
@@ -1491,6 +1492,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                     onChange={(e) => {
                       update('longitude', e.target.value);
                       setCoordsAutoAssigned(false);
+                      setLocationAccuracyM(null);
                     }}
                     placeholder="e.g. -13.234400"
                     inputMode="decimal"
