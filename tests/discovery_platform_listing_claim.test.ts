@@ -46,7 +46,7 @@ async function main() {
       ('claim-owner','claim_owner_org','owner@claim.test','Business Owner','hash','salt','business_owner','business_owner',TRUE),
       ('claim-customer','claim_owner_org','customer@claim.test','Customer','hash','salt','customer','customer',TRUE),
       ('claim-other-owner','claim_owner_org','other-owner@claim.test','Other Business Owner','hash','salt','business_owner','business_owner',TRUE),
-      ('claim-platform-reviewer','claim_platform_org','reviewer@claim.test','Platform Reviewer','hash','salt','platform_admin','platform',TRUE)
+      ('claim-platform-reviewer','claim_platform_org','reviewer@claim.test','System Owner Reviewer','hash','salt','system_owner','platform',TRUE)
   `);
 
   const { app } = await createApp({ db, skipVite: true });
@@ -67,7 +67,7 @@ async function main() {
     userId: 'claim-platform-reviewer',
     email: 'reviewer@claim.test',
     organizationId: 'claim_platform_org',
-    role: 'platform_admin',
+    role: 'system_owner',
     identityType: 'platform',
     permissions: ['platform.view', 'platform.discovery'],
   });
