@@ -645,7 +645,7 @@ export class DiscoveryBusinessService {
     // or by a platform moderator. Keep the two authorization paths explicit so
     // merchant publication remains available without granting merchant users
     // moderation powers.
-    const isModerator = ['super_admin', 'platform_admin', 'system_owner'].includes(actor.role)
+    const isModerator = ['platform_admin', 'system_owner'].includes(actor.role)
       || (actor.role === 'admin' && Boolean(existing.organization_id) && existing.organization_id === actor.organizationId);
 
     if (isModerator) {
@@ -736,7 +736,9 @@ export class DiscoveryBusinessService {
     actor: { userId: string; role: string; organizationId?: string },
     client?: DatabaseClient,
   ): Promise<void> {
-    if (actor.role === 'super_admin') return;
+    // A tenant super_admin is still tenant-scoped; only explicit platform roles
+    // receive platform-wide authority. The same-organization fallback below keeps
+    // tenant administration available without allowing cross-tenant listing access.
 
     // Membership is the authoritative business-scoped boundary for merchant users.
     const membership = await (client || this.db).query<{ role: 'OWNER' | 'MANAGER' | 'STAFF' }>(
@@ -762,19 +764,18 @@ export class DiscoveryBusinessService {
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
     // Business owners must always have an explicit active membership. Never infer Discovery ownership from shared organization membership.
     // Platform/tenant administrators retain the legacy same-organization fallback for administrative workflows.
-    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager'].includes(actor.role)) return;
+    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'super_admin'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 
   assertCanManage(business: DiscoveryBusinessRecord, actor: { userId: string; role: string; organizationId?: string }): void {
-    if (actor.role === 'super_admin') return;
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
-    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'business_owner'].includes(actor.role)) return;
+    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'super_admin', 'business_owner'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 
   private assertModerator(actor: { role: string; organizationId?: string }, business?: DiscoveryBusinessRecord): void {
-    if (['super_admin', 'platform_admin', 'system_owner'].includes(actor.role)) return;
+    if (['platform_admin', 'system_owner'].includes(actor.role)) return;
     if (actor.role !== 'admin') throw new Error('PERMISSION_DENIED:Discovery moderation requires administrator authorization.');
     if (!business?.organization_id || business.organization_id !== actor.organizationId) {
       throw new Error('TENANT_ACCESS_DENIED:Administrators may moderate only businesses belonging to their organization.');
