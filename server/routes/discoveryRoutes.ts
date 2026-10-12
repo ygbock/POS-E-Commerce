@@ -1600,7 +1600,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const x=req.body||{};
     const allowed:Record<string,string>={name:'name',description:'description',serviceType:'service_type',priceFrom:'price_from',priceTo:'price_to',currency:'currency',durationMinutes:'duration_minutes',serviceAreaText:'service_area_text',bookingMode:'booking_mode',isActive:'is_active'};
     const entries=Object.entries(x).filter(([k])=>allowed[k]);
-    if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'});
+    if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'}});
     const vals=entries.map(([,v])=>v);
     const set=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');
     vals.push(req.params.id,req.params.serviceId);
