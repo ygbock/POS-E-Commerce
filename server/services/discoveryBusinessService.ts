@@ -511,14 +511,34 @@ export class DiscoveryBusinessService {
   }
 
   async approve(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    // Creator identity is immutable after creation, so enforce separation of duties
-    // before opening the transaction. This avoids aborting the PGlite transaction for
-    // a deliberate authorization denial while the transition itself remains locked.
+    // Enforce the platform governance boundary before entering the transition
+    // transaction so expected authorization denials do not poison test transactions.
     const existing = await this.repository.findById(id, client);
     if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    if (existing.created_by_user_id === actor.userId) {
+
+    const creatorIsActor = existing.created_by_user_id === actor.userId;
+    const actorRole = String(actor.role || '').trim().toLowerCase();
+    const creator = existing.created_by_user_id
+      ? await (client || this.db).query<{ role: string }>(
+          'SELECT role FROM users WHERE id=$1 LIMIT 1',
+          [existing.created_by_user_id],
+        )
+      : { rows: [] as Array<{ role: string }> };
+    const creatorRole = String(creator.rows[0]?.role || '').trim().toLowerCase();
+
+    // System Owner is the ultimate platform authority and may approve their own
+    // listing after normal readiness/state validation. This exception is exclusive
+    // to system_owner; it is not a general self-approval bypass.
+    if (creatorIsActor && actorRole !== 'system_owner') {
       throw new Error('SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing.');
     }
+
+    // Platform Admin-created listings require System Owner approval. Another
+    // Platform Admin cannot substitute for the independent higher-authority review.
+    if (creatorRole === 'platform_admin' && actorRole !== 'system_owner') {
+      throw new Error('SYSTEM_OWNER_APPROVAL_REQUIRED:Listings created by a Platform Admin require System Owner approval.');
+    }
+
     return this.transition(id, 'APPROVED', actor, reason || 'Listing approved.', client, true);
   }
 
