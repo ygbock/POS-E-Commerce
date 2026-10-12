@@ -54,7 +54,8 @@ interface ModerationItem {
   business_id?: string;
   business_name?: string;
   organization_id?: string | null;
-  status: string;
+  status?: string;
+  listing_status?: string;
   created_at: string;
   [key: string]: unknown;
 }
@@ -512,7 +513,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                       <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                         {String(item.business_name || item.service_name || item.id)}
                       </h3>
-                      {statusBadge(item.status)}
+                      {statusBadge(String(queue === 'listings' ? (item.listing_status || item.status || 'UNKNOWN') : (item.status || 'UNKNOWN')))}
                     </div>
                     <p className="mt-1 text-[11px] font-mono text-slate-400">{item.id}</p>
                     <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -688,10 +689,10 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                   <textarea value={reason[selectedListing.id]||''} onChange={(e)=>setReason(prev=>({...prev,[selectedListing.id]:e.target.value.slice(0,4000)}))} rows={3} placeholder="Overall moderation note (optional when issues are selected)" className="mt-3 w-full rounded-xl border px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"/>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
-                  {selectedListing.status === 'SUBMITTED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('UNDER_REVIEW')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Start review</button>}
-                  {selectedListing.status === 'UNDER_REVIEW' && <><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('APPROVED')} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white">Approve</button><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('REJECTED')} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white">Reject & request changes</button></>}
-                  {selectedListing.status === 'APPROVED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('PUBLISHED')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Publish listing</button>}
-                  {selectedListing.status === 'PUBLISHED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('SUSPENDED')} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white">Suspend listing</button>}
+                  {(selectedListing.listing_status || selectedListing.status) === 'SUBMITTED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('UNDER_REVIEW')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Start review</button>}
+                  {(selectedListing.listing_status || selectedListing.status) === 'UNDER_REVIEW' && <><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('APPROVED')} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white">Approve</button><button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('REJECTED')} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white">Reject & request changes</button></>}
+                  {(selectedListing.listing_status || selectedListing.status) === 'APPROVED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('PUBLISHED')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white">Publish listing</button>}
+                  {(selectedListing.listing_status || selectedListing.status) === 'PUBLISHED' && <button type="button" disabled={busyId===selectedListing.id} onClick={()=>void decideListing('SUSPENDED')} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white">Suspend listing</button>}
                 </div>
               </div>
             )}
