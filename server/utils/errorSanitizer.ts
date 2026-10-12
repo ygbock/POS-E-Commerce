@@ -246,7 +246,7 @@ export function classifyApiError(
   }
 
   // 5. Concurrency / Idempotency Conflict & Unique Violations
-  const lifecycleConflictCode = ['LISTING_LOCKED', 'INVALID_STATE_TRANSITION', 'DISCOVERY_ARCHIVED']
+  const lifecycleConflictCode = ['LISTING_LOCKED', 'INVALID_STATE_TRANSITION', 'DISCOVERY_ARCHIVED', 'BUSINESS_ALREADY_CLAIMED']
     .find((code) => msg.startsWith(`${code}:`));
   if (
     lifecycleConflictCode ||
