@@ -107,12 +107,20 @@ async function main() {
   assert.ok(firstIssues.rows.every((row: any) => row.to_status === 'REJECTED'));
 
   // Merchant correction cycle resolves the current OPEN issue set atomically with resubmission.
-  const resubmitted = await service.resubmit(
-    business.id,
-    merchant,
-    'Corrections completed; please review again.',
-  );
+  const concurrentResubmissions = await Promise.allSettled([
+    service.resubmit(business.id, merchant, 'Corrections completed; please review again.'),
+    service.resubmit(business.id, merchant, 'Concurrent duplicate resubmission attempt.'),
+  ]);
+  assert.strictEqual(concurrentResubmissions.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.strictEqual(concurrentResubmissions.filter((result) => result.status === 'rejected').length, 1);
+  const resubmitted = (await repo.findById(business.id))!;
   assert.strictEqual(resubmitted.listing_status, 'SUBMITTED');
+  const resubmissionEvents = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='REJECTED' AND to_status='SUBMITTED'`,
+    [business.id],
+  );
+  assert.strictEqual(Number(resubmissionEvents.rows[0]?.count || 0), 1);
 
   const resolvedIssues = await db.query(
     "SELECT status, resolved_by_user_id, resolved_at FROM discovery_listing_moderation_issues WHERE business_id=$1 ORDER BY created_at ASC",
@@ -136,13 +144,20 @@ async function main() {
     [business.id],
   );
 
-  await service.reject(
-    business.id,
-    moderator,
-    undefined,
-    undefined,
-    [{ key: 'contact', detail: 'Confirm the primary customer contact.' }],
+  const concurrentRejections = await Promise.allSettled([
+    service.reject(business.id, moderator, undefined, undefined, [
+      { key: 'contact', detail: 'Confirm the primary customer contact.' },
+    ]),
+    service.reject(business.id, moderator, 'Concurrent duplicate rejection attempt.'),
+  ]);
+  assert.strictEqual(concurrentRejections.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.strictEqual(concurrentRejections.filter((result) => result.status === 'rejected').length, 1);
+  const rejectionEvents = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='UNDER_REVIEW' AND to_status='REJECTED'`,
+    [business.id],
   );
+  assert.strictEqual(Number(rejectionEvents.rows[0]?.count || 0), 1);
 
   const allIssues = await db.query(
     `SELECT issue_key, detail, status, resolved_by_user_id
