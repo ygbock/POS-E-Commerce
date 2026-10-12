@@ -7,7 +7,6 @@ const location = fs.readFileSync(path.join(root, 'src/components/discovery/Disco
 const search = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoverySearchResults.tsx'), 'utf8');
 const home = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoveryHome.tsx'), 'utf8');
 const hero = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoveryHero.tsx'), 'utf8');
-const home = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoveryHome.tsx'), 'utf8');
 const onboarding = fs.readFileSync(path.join(root, 'src/components/discovery/business/DiscoveryOnboardingWizard.tsx'), 'utf8');
 const mapEditor = fs.readFileSync(path.join(root, 'src/components/discovery/business/DiscoveryLocationMapEditor.tsx'), 'utf8');
 const locationsPanel = fs.readFileSync(path.join(root, 'src/components/discovery/business/DiscoveryLocationsPanel.tsx'), 'utf8');
