@@ -54,8 +54,22 @@ async function main() {
   await service.submit(business.id, merchant);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'SUBMITTED');
 
-  await service.review(business.id, moderator, 'Moderation intake started.');
+  // Two moderators may act on the same submitted listing at nearly the same time.
+  // Exactly one duplicate review transition should commit; the second must observe
+  // the locked current state and fail rather than recording a stale duplicate event.
+  const concurrentReviews = await Promise.allSettled([
+    service.review(business.id, moderator, 'Moderation intake started.'),
+    service.review(business.id, moderator, 'Concurrent duplicate review attempt.'),
+  ]);
+  assert.strictEqual(concurrentReviews.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.strictEqual(concurrentReviews.filter((result) => result.status === 'rejected').length, 1);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'UNDER_REVIEW');
+  const reviewEvents = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='SUBMITTED' AND to_status='UNDER_REVIEW'`,
+    [business.id],
+  );
+  assert.strictEqual(Number(reviewEvents.rows[0]?.count || 0), 1);
 
   const rejected = await service.reject(
     business.id,
