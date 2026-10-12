@@ -656,6 +656,12 @@ export class DiscoveryBusinessService {
       if (moderatorOnly) this.assertModerator(actor, existing);
       else await this.assertCanManageScoped(existing, actor, tx);
 
+      // Enforce separation of duties at the authoritative state transition, not
+      // only in the moderation UI, so direct API/service callers cannot self-approve.
+      if (toStatus === 'APPROVED' && existing.created_by_user_id === actor.userId) {
+        throw new Error('SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing.');
+      }
+
       const currentStatus = locked.rows[0].listing_status;
       if (!TRANSITIONS[currentStatus].includes(toStatus)) {
         throw new Error(`INVALID_STATE_TRANSITION:${currentStatus} cannot transition to ${toStatus}.`);
