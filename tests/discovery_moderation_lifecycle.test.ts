@@ -18,13 +18,36 @@ async function main() {
     `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
      VALUES
        ('mod-owner','mod_cycle_org','mod-owner@test.local','Moderation Owner','hash','salt','admin',TRUE),
-       ('mod-platform','mod_cycle_org','mod-platform@test.local','Platform Moderator','hash','salt','admin',TRUE)`,
+       ('mod-platform','mod_cycle_org','mod-platform@test.local','Platform Moderator','hash','salt','admin',TRUE),
+       ('mod-platform-creator','mod_cycle_org','mod-platform-creator@test.local','Platform Listing Creator','hash','salt','platform_admin',TRUE),
+       ('mod-platform-reviewer','mod_cycle_org','mod-platform-reviewer@test.local','Independent Platform Reviewer','hash','salt','platform_admin',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const merchant = { userId: 'mod-owner', role: 'business_owner', organizationId: 'mod_cycle_org' };
   const moderator = { userId: 'mod-platform', role: 'admin', organizationId: 'mod_cycle_org' };
+
+  // A listing creator may send their listing into moderation, but a different
+  // platform moderator must make the approval decision.
+  const platformCreator = { userId: 'mod-platform-creator', role: 'platform_admin', organizationId: 'mod_cycle_org' };
+  const independentModerator = { userId: 'mod-platform-reviewer', role: 'platform_admin', organizationId: 'mod_cycle_org' };
+  const creatorListing = await service.create({
+    name: 'Platform Creator Separation of Duties',
+    shortDescription: 'Listing created to test self-approval prevention.',
+    businessMode: 'DISCOVERY_ONLY',
+    organizationId: null,
+    createdByUserId: platformCreator.userId,
+  }, platformCreator);
+  await service.review(creatorListing.id, platformCreator, 'Send listing for independent moderation.');
+  await assert.rejects(
+    () => service.approve(creatorListing.id, platformCreator, 'Attempted self-approval.'),
+    /SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing/,
+  );
+  assert.strictEqual((await repo.findById(creatorListing.id))?.listing_status, 'UNDER_REVIEW');
+  const independentlyApproved = await service.approve(creatorListing.id, independentModerator, 'Independent approval.');
+  assert.strictEqual(independentlyApproved.listing_status, 'APPROVED');
+  assert.strictEqual(independentlyApproved.is_discoverable, false);
 
   const business = await service.create({
     name: 'Moderation Lifecycle Business',
