@@ -49,7 +49,7 @@ assert.match(search, /radiusKm: parsedRadius != null \? Math\.max\(1, Math\.min\
 
 assert.match(home, /locality: sp\.get\('locality'\) \|\| undefined/);
 assert.match(home, /locality: selectedLocality/);
-assert.match(home, /setSelectedLocality\(loc\.locality\)/);
+assert.match(home, /setSelectedLocality\(next\.locality\)/);
 assert.match(home, /services=\{servicesState\.data\}/);
 assert.match(hero, /availableCommunities/);
 assert.match(hero, /handleCommunitySelect/);
