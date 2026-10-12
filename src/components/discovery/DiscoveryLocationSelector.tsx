@@ -155,28 +155,55 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false);
     };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   return (
-    <div ref={dropdownRef} className={`relative inline-block text-left ${className}`}>
+    <div ref={dropdownRef} className={`relative inline-block w-full sm:w-auto text-left ${className}`}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         aria-haspopup="true"
         aria-expanded={isOpen}
-        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-[44px] cursor-pointer"
+        className="w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-[44px] cursor-pointer"
       >
-        <MapPin className={`w-4 h-4 shrink-0 ${hasCoords ? 'text-emerald-500 animate-pulse' : 'text-blue-600 dark:text-blue-400'}`} aria-hidden="true" />
-        <span className="truncate max-w-[140px] sm:max-w-[200px]">{displayText}</span>
-        {hasCoords && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold shrink-0">{selectedRadiusKm}km</span>}
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+        <div className="flex items-center gap-2 min-w-0">
+          <MapPin className={`w-4 h-4 shrink-0 ${hasCoords ? 'text-emerald-500 animate-pulse' : 'text-blue-600 dark:text-blue-400'}`} aria-hidden="true" />
+          <span className="truncate max-w-[180px] sm:max-w-[200px]">{displayText}</span>
+          {hasCoords && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold shrink-0">{selectedRadiusKm}km</span>}
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-40 animate-in fade-in slide-in-from-top-2 duration-150 text-xs">
-          <div className="space-y-3">
+        <>
+          <div className="fixed inset-0 z-30 bg-slate-950/30 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none" onClick={() => setIsOpen(false)} />
+          <div className="fixed sm:absolute inset-x-3 bottom-3 sm:inset-auto sm:top-full sm:right-0 sm:mt-2 w-auto sm:w-[380px] md:w-[420px] max-h-[82vh] sm:max-h-[520px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-3.5 sm:p-4 z-40 animate-in fade-in slide-in-from-bottom-2 sm:slide-in-from-top-2 duration-150 text-xs flex flex-col">
+            <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div>
+                <p className="text-xs font-black text-slate-900 dark:text-white">Filter by Location</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  {selectedLocality || selectedCity || selectedDistrict || selectedRegion || 'All of Sierra Leone'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close location selector"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 flex-1 overflow-y-auto pr-0.5 min-h-0">
             <button
               type="button"
               onClick={handleUseCurrentLocation}
@@ -246,7 +273,8 @@ export const DiscoveryLocationSelector: React.FC<DiscoveryLocationSelectorProps>
               <p className="mt-2 text-[10px] text-slate-400">The list is managed by the platform and expands as verified towns, villages and communities are added.</p>
             </div>
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

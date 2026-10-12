@@ -100,12 +100,16 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
     setCenter(next);
   };
 
+  const hasSavedCoordinates = latitude != null && longitude != null && Number.isFinite(latitude) && Number.isFinite(longitude);
+  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
+
   const handleMapPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (disabled) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDraggingMap(true);
     const world = latLngToWorld(center.latitude, center.longitude, zoom);
     dragRef.current = { x: event.clientX, y: event.clientY, worldX: world.x, worldY: world.y };
+    pointerDownPosRef.current = { x: event.clientX, y: event.clientY };
   };
 
   const handleMapPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -114,9 +118,23 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
     const dy = event.clientY - dragRef.current.y;
     const next = worldToLatLng(dragRef.current.worldX - dx, dragRef.current.worldY - dy, zoom);
     setCenter(next);
+    if (Math.hypot(dx, dy) > 3) {
+      onChange(next.latitude, next.longitude);
+    }
   };
 
-  const finishMapDrag = () => setDraggingMap(false);
+  const finishMapDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingMap && !disabled && pointerDownPosRef.current) {
+      const dist = Math.hypot(event.clientX - pointerDownPosRef.current.x, event.clientY - pointerDownPosRef.current.y);
+      if (dist <= 4) {
+        updateFromViewportPoint(event.clientX, event.clientY);
+      } else {
+        onChange(center.latitude, center.longitude);
+      }
+    }
+    pointerDownPosRef.current = null;
+    setDraggingMap(false);
+  };
 
   const handlePinPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (disabled) return;
@@ -209,7 +227,9 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
         </div>
 
         <div className="absolute left-3 bottom-3 z-30 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 px-3 py-2 shadow-lg pointer-events-none">
-          <p className="text-[10px] font-bold text-slate-700 dark:text-slate-200">Drag the pin to set the exact location</p>
+          <p className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
+            {hasSavedCoordinates ? 'Pin set — drag or tap map to adjust' : 'Tap map or drag pin to confirm exact location'}
+          </p>
           <p className="text-[10px] text-slate-500 dark:text-slate-400">Zoom and pan for precision.</p>
         </div>
 
@@ -217,8 +237,21 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
           © OpenStreetMap contributors
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 text-[10px] text-slate-500">
-        <span>Coordinates: {center.latitude.toFixed(6)}, {center.longitude.toFixed(6)}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <div className="flex items-center gap-2">
+          <span className="font-mono">
+            Coordinates: {center.latitude.toFixed(6)}, {center.longitude.toFixed(6)}
+          </span>
+          {!hasSavedCoordinates && !disabled && (
+            <button
+              type="button"
+              onClick={() => onChange(center.latitude, center.longitude)}
+              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition-colors cursor-pointer"
+            >
+              Confirm Pin Here
+            </button>
+          )}
+        </div>
         <span>Zoom {zoom}</span>
       </div>
     </div>

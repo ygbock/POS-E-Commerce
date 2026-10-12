@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Search,
   MapPin,
@@ -22,6 +22,7 @@ import {
   Coffee,
   GraduationCap,
   Layers,
+  X,
 } from 'lucide-react';
 import type { DiscoverySearchType, DiscoveryCategory, DiscoveryGeoLocation } from '../../types/discovery';
 import { discoveryApi } from '../../services/discoveryApi';
@@ -128,9 +129,30 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   const [isLocating, setIsLocating] = useState(false);
   const [gpsActive, setGpsActive] = useState(latitude != null && longitude != null);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [citySearchQuery, setCitySearchQuery] = useState('');
+  const [geoErrorMsg, setGeoErrorMsg] = useState<string | null>(null);
   const [fetchedGeoLocations, setFetchedGeoLocations] = useState<DiscoveryGeoLocation[]>([]);
   const [hasFetchedGeoLocations, setHasFetchedGeoLocations] = useState(false);
   const [fetchedCategories, setFetchedCategories] = useState<DiscoveryCategory[]>([]);
+  const cityDropdownContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!cityDropdownOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCityDropdownOpen(false);
+    };
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cityDropdownContainerRef.current && !cityDropdownContainerRef.current.contains(event.target as Node)) {
+        setCityDropdownOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [cityDropdownOpen]);
 
   // Refresh platform-managed geography whenever the picker opens, so additions appear without a page reload.
   useEffect(() => {
@@ -291,7 +313,17 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
     if (!city) {
       onCityChange({ city: undefined, district: selectedDistrict, region: selectedRegion, locality: undefined, lat: null, lng: null });
     } else {
-      onCityChange({ city, district: selectedDistrict, region: selectedRegion, lat: null, lng: null });
+      const cityRecord = activeGeoLocations.find((l) => l.location_type === 'CITY' && l.name.toLowerCase() === city.toLowerCase());
+      const districtRecord = cityRecord?.parent_id ? activeGeoLocations.find((l) => l.id === cityRecord.parent_id) : undefined;
+      const regionRecord = districtRecord?.parent_id ? activeGeoLocations.find((l) => l.id === districtRecord.parent_id) : undefined;
+      onCityChange({
+        city,
+        district: districtRecord?.name || selectedDistrict,
+        region: regionRecord?.name || selectedRegion,
+        locality: undefined,
+        lat: null,
+        lng: null,
+      });
     }
     setCityDropdownOpen(false);
   };
@@ -309,11 +341,12 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   // GPS Geolocation Handler inside Hero
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      setGeoErrorMsg('Geolocation is not supported by your browser.');
       return;
     }
 
     setIsLocating(true);
+    setGeoErrorMsg(null);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
@@ -323,21 +356,34 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
           city: undefined,
           district: undefined,
           region: undefined,
+          locality: undefined,
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
         setCityDropdownOpen(false);
       },
-      (error) => {
+      () => {
         setIsLocating(false);
-        alert('Unable to detect current location. Please choose from dropdown selectors.');
+        setGeoErrorMsg('Unable to detect current location. Please choose a city or community below.');
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
+  const filteredCities = useMemo(() => {
+    const q = citySearchQuery.trim().toLowerCase();
+    if (!q) return availableCities;
+    return availableCities.filter((city) => city.toLowerCase().includes(q));
+  }, [availableCities, citySearchQuery]);
+
+  const filteredCommunities = useMemo(() => {
+    const q = citySearchQuery.trim().toLowerCase();
+    if (!q) return availableCommunities;
+    return availableCommunities.filter((c) => c.name.toLowerCase().includes(q));
+  }, [availableCommunities, citySearchQuery]);
+
   return (
-    <section className={`relative overflow-hidden bg-transparent text-white pt-6 pb-8 sm:pt-10 sm:pb-14 md:pt-16 md:pb-20 px-3.5 sm:px-6 lg:px-8 select-none ${className}`}>
+    <section className={`relative bg-transparent text-white pt-6 pb-8 sm:pt-10 sm:pb-14 md:pt-16 md:pb-20 px-3.5 sm:px-6 lg:px-8 select-none ${className}`}>
       <div className="relative max-w-4xl mx-auto text-center space-y-5 sm:space-y-6 md:space-y-8">
         
         {/* Brand/Hero Title styled with responsive balance and fluid scale */}
@@ -354,13 +400,14 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
 
         <div className="max-w-3xl mx-auto">
           {/* Province and District Dropdown fields placed ABOVE the main search bar */}
-          <div className="flex flex-row justify-center gap-2 max-w-md mx-auto mb-3.5">
+          <div className="grid grid-cols-2 sm:flex sm:flex-row justify-center gap-2 max-w-md mx-auto mb-3.5">
             {/* Province Select */}
             <div className="relative">
               <select
                 value={selectedRegion || ''}
                 onChange={(e) => handleRegionSelect(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 dark:bg-slate-900/60 backdrop-blur-md border border-white/10 dark:border-slate-800 text-white dark:text-slate-200 text-[10.5px] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none min-w-[125px] sm:min-w-[145px] pr-8"
+                aria-label="Filter by region"
+                className="w-full px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 dark:bg-slate-900/60 backdrop-blur-md border border-white/15 dark:border-slate-800 text-white dark:text-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer appearance-none sm:min-w-[160px] pr-8 truncate"
               >
                 <option value="" className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 font-bold">All Regions</option>
                 {availableRegions.map((prov) => (
@@ -369,7 +416,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   </option>
                 ))}
               </select>
-              <div className="absolute right-2.5 top-3 pointer-events-none text-slate-300">
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">
                 <ChevronDown className="w-3.5 h-3.5" />
               </div>
             </div>
@@ -380,7 +427,8 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                 disabled={!selectedRegion}
                 value={selectedDistrict || ''}
                 onChange={(e) => handleDistrictSelect(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 dark:bg-slate-900/60 backdrop-blur-md border border-white/10 dark:border-slate-800 text-white dark:text-slate-200 text-[10.5px] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed appearance-none min-w-[125px] sm:min-w-[145px] pr-8"
+                aria-label="Filter by district"
+                className="w-full px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 dark:bg-slate-900/60 backdrop-blur-md border border-white/15 dark:border-slate-800 text-white dark:text-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed appearance-none sm:min-w-[160px] pr-8 truncate"
               >
                 <option value="" className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 font-bold">All Districts</option>
                 {availableDistricts.map((dist) => (
@@ -389,7 +437,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   </option>
                 ))}
               </select>
-              <div className="absolute right-2.5 top-3 pointer-events-none text-slate-300">
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">
                 <ChevronDown className="w-3.5 h-3.5" />
               </div>
             </div>
@@ -401,123 +449,261 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
               e.preventDefault();
               onSearch(query);
             }}
-            className="flex flex-col md:flex-row items-stretch w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-1.5 gap-1.5 md:gap-1 border border-slate-200/90 dark:border-slate-800 relative"
+            className="flex flex-col md:flex-row items-stretch w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-1.5 gap-1.5 md:gap-1 border border-slate-200/90 dark:border-slate-800 relative z-30"
           >
-            {/* Inputs Container - always side-by-side row on mobile and tablet, wraps with search button below on mobile, inline on md */}
-            <div className="flex-1 flex flex-row items-center min-w-0 gap-1 md:gap-0">
+            {/* Inputs Container - responsive on mobile/tablet/desktop */}
+            <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center min-w-0 gap-1 sm:gap-1 md:gap-0 relative">
               
-              {/* 1. City Selector Field - order-1 on mobile/tablet, order-3 on desktop */}
-              <div className="relative flex-1 flex items-center min-w-0 order-1 md:order-3">
+              {/* 1. City Selector Field - order-2 on mobile/tablet, order-3 on desktop */}
+              <div ref={cityDropdownContainerRef} className="relative w-full sm:w-52 md:w-64 lg:w-72 shrink-0 flex items-center min-w-0 order-2 sm:order-2 md:order-3">
                 <button
                   type="button"
-                  onClick={() => setCityDropdownOpen(!cityDropdownOpen)}
-                  className="w-full px-2 sm:px-4 py-3 sm:py-3.5 bg-transparent text-left text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-semibold flex items-center justify-between min-h-[44px] cursor-pointer"
+                  onClick={() => {
+                    setCityDropdownOpen((prev) => !prev);
+                    setGeoErrorMsg(null);
+                  }}
+                  className="w-full px-3 sm:px-3.5 py-2.5 sm:py-3 rounded-xl sm:rounded-xl md:rounded-none bg-slate-50/90 sm:bg-slate-50/50 md:bg-transparent dark:bg-slate-800/60 md:dark:bg-transparent border border-slate-200/70 sm:border-transparent dark:border-slate-700/70 md:dark:border-transparent text-left text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-semibold flex items-center justify-between min-h-[44px] cursor-pointer hover:bg-slate-100/80 sm:hover:bg-slate-50/80 dark:hover:bg-slate-800/70 transition-colors"
                   aria-expanded={cityDropdownOpen}
                   aria-haspopup="listbox"
                   aria-label="Select city"
                 >
-                  <div className="flex items-center gap-1.5 sm:gap-2 truncate">
-                    <MapPin className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${gpsActive ? 'text-emerald-500 animate-pulse' : 'text-indigo-600 dark:text-indigo-400'}`} />
-                    <span className={`truncate ${selectedCity || gpsActive ? 'text-slate-900 dark:text-white font-black' : 'text-slate-500 dark:text-slate-400'}`}>
-                      {gpsActive ? 'Near My Location' : selectedLocality || selectedCity || 'Select City'}
-                    </span>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <MapPin className={`w-4 h-4 shrink-0 ${gpsActive ? 'text-emerald-500 animate-pulse' : 'text-indigo-600 dark:text-indigo-400'}`} />
+                    <div className="min-w-0 flex-1">
+                      <span className={`block truncate ${selectedLocality || selectedCity || gpsActive ? 'text-slate-900 dark:text-white font-black' : 'text-slate-500 dark:text-slate-400'}`}>
+                        {gpsActive ? 'Near My Location' : selectedLocality || selectedCity || selectedDistrict || selectedRegion || 'Select City / Town'}
+                      </span>
+                      {!gpsActive && (selectedLocality || selectedCity || selectedDistrict) && (
+                        <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 truncate leading-tight">
+                          {selectedLocality && selectedCity
+                            ? `${selectedCity}${selectedDistrict ? ` · ${selectedDistrict}` : ''}`
+                            : selectedCity && selectedDistrict
+                            ? `${selectedDistrict}${selectedRegion ? ` · ${selectedRegion}` : ''}`
+                            : selectedRegion || 'Sierra Leone'}
+                        </span>
+                      )}
+                    </div>
                     {gpsActive && (
-                      <span className="inline-flex items-center gap-0.5 px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black bg-emerald-500 text-white animate-pulse shrink-0">
-                        <Navigation className="w-1.5 h-1.5 sm:w-2 sm:h-2 fill-current" />
-                        Active
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500 text-white animate-pulse shrink-0">
+                        <Navigation className="w-2 h-2 fill-current" />
+                        GPS
                       </span>
                     )}
                   </div>
-                  <ChevronDown className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0 ml-0.5 sm:ml-1 transition-transform ${cityDropdownOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 ml-1.5 transition-transform duration-200 ${cityDropdownOpen ? 'rotate-180 text-indigo-600' : ''}`} />
                 </button>
 
                 {cityDropdownOpen && (
                   <>
-                    <div className="fixed inset-0 z-45" onClick={() => setCityDropdownOpen(false)} />
+                    <div
+                      className="fixed inset-0 z-40 bg-slate-950/35 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none"
+                      onClick={() => setCityDropdownOpen(false)}
+                    />
                     <div
                       role="listbox"
-                      className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2.5 text-left max-h-72 overflow-y-auto z-50 animate-in fade-in slide-in-from-top-1 duration-150 flex flex-col gap-1.5"
+                      aria-label="City and community selector"
+                      className="fixed sm:absolute inset-x-3 bottom-3 sm:inset-auto sm:top-full sm:right-0 sm:mt-2 w-auto sm:w-[360px] md:w-[420px] lg:w-[460px] max-w-[calc(100vw-1.5rem)] max-h-[82vh] sm:max-h-[480px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-3.5 sm:p-4 text-left z-50 animate-in fade-in slide-in-from-bottom-2 sm:slide-in-from-top-1 duration-150 flex flex-col gap-2.5"
                     >
+                      {/* Header with Active Breadcrumb & Close Button */}
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                        <div className="min-w-0 pr-2">
+                          <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">Choose City, Town or Community</p>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                            {selectedRegion ? `${selectedRegion}${selectedDistrict ? ` › ${selectedDistrict}` : ''}${selectedCity ? ` › ${selectedCity}` : ''}` : 'All Regions in Sierra Leone'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCityDropdownOpen(false)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+                          aria-label="Close location menu"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
                       {/* GPS Geolocation Trigger button inside city list selector */}
                       <button
                         type="button"
                         onClick={handleUseCurrentLocation}
                         disabled={isLocating}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shrink-0 min-h-[42px] ${
                           gpsActive
                             ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400'
                             : 'bg-indigo-50 hover:bg-indigo-100/85 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 border-indigo-100 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           {isLocating ? (
                             <Loader2 className="w-4 h-4 animate-spin text-indigo-500 shrink-0" />
                           ) : (
                             <Navigation className={`w-4 h-4 shrink-0 ${gpsActive ? 'fill-emerald-500 text-emerald-500 animate-pulse' : 'text-indigo-600 dark:text-indigo-400'}`} />
                           )}
-                          <span>{isLocating ? 'Detecting GPS Location…' : gpsActive ? 'GPS Location Enabled' : 'Use Current GPS Location'}</span>
+                          <span className="truncate">{isLocating ? 'Detecting GPS Location…' : gpsActive ? 'GPS Location Enabled' : 'Use Current GPS Location'}</span>
                         </div>
-                        {gpsActive && <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md uppercase font-black tracking-wider animate-pulse">Active</span>}
+                        {gpsActive && <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md uppercase font-black tracking-wider animate-pulse shrink-0">Active</span>}
                       </button>
 
-                      <div className="h-px bg-slate-100 dark:bg-slate-800/80 my-1 shrink-0" />
+                      {geoErrorMsg && (
+                        <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-[11px] text-amber-800 dark:text-amber-300 font-medium shrink-0">
+                          {geoErrorMsg}
+                        </div>
+                      )}
 
-                      {/* Filtered cities list based on District or Region selected above */}
-                      <div className="overflow-y-auto max-h-44 space-y-0.5">
-                        {availableCities.length === 0 ? (
-                          <div className="p-3 text-center text-xs font-semibold text-slate-400 dark:text-slate-500 italic">
-                            No cities listed for this selection
-                          </div>
-                        ) : (
-                          availableCities.map((cityName) => {
-                            const isSelected = selectedCity === cityName && !gpsActive;
-                            return (
-                              <button
-                                key={cityName}
-                                type="button"
-                                onClick={() => handleCitySelect(cityName)}
-                                className={`w-full px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-between min-h-[38px] cursor-pointer ${
-                                  isSelected ? 'text-[#0054a6] dark:text-indigo-400 bg-blue-50/60 dark:bg-indigo-950/40' : ''
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 truncate">
-                                  <MapPin className="w-3.5 h-3.5 opacity-50 shrink-0" />
-                                  <span className="truncate">{cityName}</span>
-                                </div>
-                                {isSelected && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">✓</span>}
-                              </button>
-                            );
-                          })
+                      {/* Quick filter input inside dropdown */}
+                      <div className="relative shrink-0">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={citySearchQuery}
+                          onChange={(e) => setCitySearchQuery(e.target.value)}
+                          placeholder="Search Freetown, Bo, Kenema, Lumley…"
+                          className="w-full pl-8 pr-8 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                        />
+                        {citySearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setCitySearchQuery('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            aria-label="Clear filter"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
 
-                      {availableCommunities.length > 0 && (
-                        <>
-                          <div className="h-px bg-slate-100 dark:bg-slate-800/80 my-2" />
-                          <div className="px-3 pb-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Communities & villages</div>
-                          <div className="overflow-y-auto max-h-36 space-y-0.5">
-                            {availableCommunities.map((community) => (
-                              <button key={community.id} type="button" onClick={() => handleCommunitySelect(community.name)} className={`w-full px-3 py-2 rounded-xl text-left text-xs font-bold flex items-center justify-between min-h-[38px] ${selectedLocality === community.name ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                                <span className="truncate">{community.name}</span>
-                                {selectedLocality === community.name && <Check className="w-3.5 h-3.5 shrink-0" />}
-                              </button>
-                            ))}
+                      {/* Quick Region Filter Pills inside Dropdown for Mobile & Desktop convenience */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 no-scrollbar">
+                        <button
+                          type="button"
+                          onClick={() => handleRegionSelect('')}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-colors cursor-pointer ${
+                            !selectedRegion
+                              ? 'bg-indigo-600 text-white border-indigo-600'
+                              : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          All Regions
+                        </button>
+                        {availableRegions.map((reg) => {
+                          const isRegActive = selectedRegion === reg;
+                          return (
+                            <button
+                              key={reg}
+                              type="button"
+                              onClick={() => handleRegionSelect(isRegActive ? '' : reg)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-colors cursor-pointer ${
+                                isRegActive
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              {reg}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Scrollable container for both Cities and Communities */}
+                      <div className="overflow-y-auto flex-1 pr-0.5 space-y-3 min-h-[140px] max-h-[44vh] sm:max-h-[250px]">
+                        {/* Cities / Towns Section */}
+                        <div>
+                          <div className="px-2 pb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            <span>Cities & Towns</span>
+                            <span>{filteredCities.length}</span>
                           </div>
-                        </>
-                      )}
+                          {filteredCities.length === 0 ? (
+                            <div className="p-3 text-center text-xs font-semibold text-slate-400 dark:text-slate-500 italic">
+                              No matching cities found
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              {filteredCities.map((cityName) => {
+                                const isSelected = selectedCity === cityName && !selectedLocality && !gpsActive;
+                                const cityRecord = activeGeoLocations.find((l) => l.location_type === 'CITY' && l.name === cityName);
+                                const parentDistrict = cityRecord?.parent_id ? activeGeoLocations.find((l) => l.id === cityRecord.parent_id)?.name : undefined;
+                                return (
+                                  <button
+                                    key={cityName}
+                                    type="button"
+                                    onClick={() => handleCitySelect(cityName)}
+                                    className={`w-full px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between min-h-[42px] cursor-pointer border text-left ${
+                                      isSelected
+                                        ? 'text-[#0054a6] dark:text-indigo-300 bg-blue-50/90 dark:bg-indigo-950/60 border-blue-200 dark:border-indigo-800'
+                                        : 'text-slate-700 dark:text-slate-200 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <MapPin className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-[#0054a6] dark:text-indigo-400' : 'text-slate-400'}`} />
+                                      <div className="min-w-0">
+                                        <span className="block truncate">{cityName}</span>
+                                        {parentDistrict && (
+                                          <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 truncate">
+                                            {parentDistrict}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-indigo-600 dark:text-indigo-400 ml-1" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Communities & Villages Section */}
+                        {filteredCommunities.length > 0 && (
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                            <div className="px-2 pb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
+                              <span>Communities & Neighborhoods</span>
+                              <span>{filteredCommunities.length}</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              {filteredCommunities.map((community) => {
+                                const isSelected = selectedLocality === community.name && !gpsActive;
+                                const parentCity = community.parent_id ? activeGeoLocations.find((l) => l.id === community.parent_id)?.name : undefined;
+                                return (
+                                  <button
+                                    key={community.id}
+                                    type="button"
+                                    onClick={() => handleCommunitySelect(community.name)}
+                                    className={`w-full px-3 py-2 rounded-xl text-left text-xs font-bold flex items-center justify-between min-h-[42px] cursor-pointer border transition-colors ${
+                                      isSelected
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                                        : 'text-slate-700 dark:text-slate-200 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                    }`}
+                                  >
+                                    <div className="min-w-0 pr-1">
+                                      <span className="block truncate">{community.name}</span>
+                                      {parentCity && (
+                                        <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 truncate">
+                                          {parentCity}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-indigo-600 dark:text-indigo-400" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Clear Button Option */}
-                      {(selectedCity || gpsActive) && (
+                      {(selectedCity || selectedLocality || selectedDistrict || selectedRegion || gpsActive) && (
                         <button
                           type="button"
                           onClick={() => {
                             setGpsActive(false);
-                            onCityChange({ city: undefined, district: selectedDistrict, region: selectedRegion, lat: null, lng: null });
+                            setCitySearchQuery('');
+                            onCityChange({ city: undefined, district: undefined, region: undefined, locality: undefined, lat: null, lng: null });
                             setCityDropdownOpen(false);
                           }}
-                          className="text-center w-full py-1 text-[10px] font-black uppercase text-rose-500 hover:underline border-t border-slate-100 dark:border-slate-800/80 pt-2 cursor-pointer mt-1"
+                          className="text-center w-full py-2 text-[11px] font-black uppercase text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl border-t border-slate-100 dark:border-slate-800/80 cursor-pointer shrink-0 transition-colors"
                         >
-                          Clear Location Filters
+                          Clear Location Filter
                         </button>
                       )}
                     </div>
@@ -525,20 +711,17 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                 )}
               </div>
 
-              {/* Vertical Split Line for desktop - order-2, hidden on mobile/tablet */}
-              <div className="hidden md:block w-px bg-slate-200 dark:bg-slate-700 my-2 shrink-0 order-2" />
+              {/* Vertical Split Line for tablet/desktop - hidden on stacked mobile */}
+              <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 my-2 h-7 shrink-0 order-2" />
 
-              {/* Mobile/Tablet vertical border between side-by-side elements - hidden on desktop */}
-              <div className="md:hidden w-px bg-slate-200 dark:bg-slate-800 h-6 shrink-0 order-2" />
-
-              {/* 2. Keyword search text field - order-2 on mobile/tablet, order-1 on desktop */}
-              <div className="flex-1 flex items-center min-w-0 order-2 md:order-1">
+              {/* 2. Keyword search text field - order-1 on all viewports for natural search-first flow */}
+              <div className="flex-1 flex items-center min-w-0 order-1">
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => onQueryChange(e.target.value)}
-                  placeholder="Search local services or products…"
-                  className="w-full px-2 sm:px-4 py-3 sm:py-3.5 bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-0 min-h-[44px]"
+                  placeholder="Search local services, businesses, or products…"
+                  className="w-full px-3 sm:px-4 py-3 sm:py-3.5 bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-0 min-h-[44px]"
                 />
               </div>
             </div>

@@ -639,7 +639,7 @@ export const DiscoverySearchResults: React.FC<DiscoverySearchResultsProps> = ({
               autoFocus={!q}
             />
           </div>
-          <div className="shrink-0 self-start sm:self-auto">
+          <div className="w-full sm:w-auto shrink-0 self-stretch sm:self-auto">
             <DiscoveryLocationSelector
               selectedCity={city}
               selectedDistrict={district}

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { discoveryApi, DiscoveryApiError } from '../../../services/discoveryApi';
 import { DiscoveryLocationMapEditor } from './DiscoveryLocationMapEditor';
+import { resolveDefaultCoordinates } from './DiscoveryOnboardingWizard';
 import type {
   DiscoveryBusiness,
   DiscoveryLocation,
@@ -85,6 +86,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
   }, [business.id]);
 
   const handleOpenAdd = () => {
+    const defaultCoords = resolveDefaultCoordinates('Freetown', 'Western Area Urban', 'Western Area');
     setEditingLocation(null);
     setLocForm({
       name: '',
@@ -96,8 +98,8 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
       region: 'Western Area',
       country: 'Sierra Leone',
       postalCode: '',
-      latitude: '',
-      longitude: '',
+      latitude: defaultCoords.lat.toFixed(6),
+      longitude: defaultCoords.lng.toFixed(6),
       serviceRadiusKm: '15',
       phone: business.phone || '',
       isPrimary: locations.length === 0,
@@ -107,7 +109,12 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (loc: DiscoveryLocation) => {
+  const handleOpenEdit = (loc: DiscoveryLocation, autoFillMissingCoords = false) => {
+    const hasCoords = loc.latitude != null && loc.longitude != null;
+    const fallbackCoords =
+      !hasCoords && autoFillMissingCoords
+        ? resolveDefaultCoordinates(loc.city || undefined, loc.district || undefined, loc.region || undefined)
+        : null;
     setEditingLocation(loc);
     setLocForm({
       name: loc.name || '',
@@ -119,23 +126,34 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
       region: loc.region || '',
       country: loc.country || 'Sierra Leone',
       postalCode: loc.postal_code || '',
-      latitude: loc.latitude != null ? String(loc.latitude) : '',
-      longitude: loc.longitude != null ? String(loc.longitude) : '',
+      latitude: hasCoords ? String(loc.latitude) : fallbackCoords ? fallbackCoords.lat.toFixed(6) : '',
+      longitude: hasCoords ? String(loc.longitude) : fallbackCoords ? fallbackCoords.lng.toFixed(6) : '',
       serviceRadiusKm: loc.service_radius_km != null ? String(loc.service_radius_km) : '15',
       phone: loc.phone || '',
       isPrimary: Boolean(loc.is_primary),
       isActive: Boolean(loc.is_active),
     });
-    setCoordinatesAdjusted(false);
+    setCoordinatesAdjusted(Boolean(fallbackCoords));
     setIsModalOpen(true);
+  };
+
+  const handleSnapToCity = () => {
+    const coords = resolveDefaultCoordinates(locForm.city, locForm.district, locForm.region);
+    setLocForm((prev) => ({
+      ...prev,
+      latitude: coords.lat.toFixed(6),
+      longitude: coords.lng.toFixed(6),
+    }));
+    setCoordinatesAdjusted(true);
   };
 
   const handleGetCurrentLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      setError('Geolocation is not supported by your browser. Use "Snap Pin to City" or drag the map pin.');
       return;
     }
     setGettingCoords(true);
+    setError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocForm((prev) => ({
@@ -147,7 +165,7 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
         setGettingCoords(false);
       },
       (err) => {
-        alert(`Failed to retrieve GPS location: ${err.message}`);
+        setError(`Failed to retrieve GPS location: ${err.message}. You can use "Snap Pin to City" or drag the map pin instead.`);
         setGettingCoords(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -322,50 +340,64 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                     </p>
                   )}
 
-                  {loc.latitude != null && loc.longitude != null && (
-                    <p className="text-[11px] text-slate-400 mt-1 font-mono">
-                      GPS: {Number(loc.latitude).toFixed(4)}, {Number(loc.longitude).toFixed(4)}
-                    </p>
-                  )}
-                  {loc.latitude != null && loc.longitude != null && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                        Location quality: {loc.location_quality_status || 'LOW'}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        Source: {loc.location_source || 'MANUAL'}
-                      </span>
-                      <a
-                        href={`https://www.openstreetmap.org/?mlat=${loc.latitude}&mlon=${loc.longitude}#map=17/${loc.latitude}/${loc.longitude}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[10px] font-bold text-indigo-600 hover:underline"
-                      >
-                        Verify on map
-                      </a>
-                      {loc.location_quality_status !== 'VERIFIED' && (
-                        <button
-                          type="button"
-                          disabled={verifyingLocationId === loc.id}
-                          onClick={async () => {
-                            setVerifyingLocationId(loc.id);
-                            setError(null);
-                            try {
-                              await discoveryApi.verifyLocation(business.id, loc.id);
-                              await fetchLocations();
-                              setSuccess('Location marked as verified.');
-                              setTimeout(() => setSuccess(null), 4000);
-                            } catch (err: unknown) {
-                              setError(err instanceof DiscoveryApiError ? err.message : 'Failed to verify location.');
-                            } finally {
-                              setVerifyingLocationId(null);
-                            }
-                          }}
-                          className="text-[10px] font-bold text-emerald-600 hover:underline disabled:opacity-50"
+                  {loc.latitude != null && loc.longitude != null ? (
+                    <>
+                      <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                        GPS: {Number(loc.latitude).toFixed(4)}, {Number(loc.longitude).toFixed(4)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          Location quality: {loc.location_quality_status || 'LOW'}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Source: {loc.location_source || 'MANUAL'}
+                        </span>
+                        <a
+                          href={`https://www.openstreetmap.org/?mlat=${loc.latitude}&mlon=${loc.longitude}#map=17/${loc.latitude}/${loc.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] font-bold text-indigo-600 hover:underline"
                         >
-                          {verifyingLocationId === loc.id ? 'Verifying…' : 'Mark verified'}
-                        </button>
-                      )}
+                          Verify on map
+                        </a>
+                        {loc.location_quality_status !== 'VERIFIED' && (
+                          <button
+                            type="button"
+                            disabled={verifyingLocationId === loc.id}
+                            onClick={async () => {
+                              setVerifyingLocationId(loc.id);
+                              setError(null);
+                              try {
+                                await discoveryApi.verifyLocation(business.id, loc.id);
+                                await fetchLocations();
+                                setSuccess('Location marked as verified.');
+                                setTimeout(() => setSuccess(null), 4000);
+                              } catch (err: unknown) {
+                                setError(err instanceof DiscoveryApiError ? err.message : 'Failed to verify location.');
+                              } finally {
+                                setVerifyingLocationId(null);
+                              }
+                            }}
+                            className="text-[10px] font-bold text-emerald-600 hover:underline disabled:opacity-50"
+                          >
+                            {verifyingLocationId === loc.id ? 'Verifying…' : 'Mark verified'}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-3 p-3 rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        Map coordinates missing (required for readiness)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(loc, true)}
+                        className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                      >
+                        Set Map Coordinates
+                      </button>
                     </div>
                   )}
                 </div>
@@ -527,20 +559,30 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
 
               {/* Coordinates Section with GPS trigger */}
               <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
                     <Navigation className="w-3.5 h-3.5 text-indigo-600" />
                     GPS Coordinates (Map Discovery)
                   </span>
-                  <button
-                    type="button"
-                    disabled={gettingCoords}
-                    onClick={handleGetCurrentLocation}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 inline-flex items-center gap-1"
-                  >
-                    {gettingCoords ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
-                    Use Current GPS
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSnapToCity}
+                      className="text-[11px] font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:border-indigo-400 inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <MapPin className="w-3 h-3 text-indigo-600" />
+                      Snap Pin to {locForm.city || 'City'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={gettingCoords}
+                      onClick={handleGetCurrentLocation}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      {gettingCoords ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
+                      Use Current GPS
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

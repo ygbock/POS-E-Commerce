@@ -86,11 +86,18 @@ export const DiscoveryListingEditor: React.FC<DiscoveryListingEditorProps> = ({
     let mounted = true;
     const fetchCats = async () => {
       try {
-        const cats = await discoveryApi.getCategories();
+        const [cats, assigned] = await Promise.all([
+          discoveryApi.getCategories(),
+          discoveryApi.getBusinessCategories(business.id).catch(() => [] as DiscoveryCategory[]),
+        ]);
         if (!mounted) return;
-        setAvailableCategories(cats);
-        // Find existing assigned categories if possible
-        if (business.category_slug) {
+        setAvailableCategories(Array.isArray(cats) ? cats : []);
+        const assignedIds = (Array.isArray(assigned) ? assigned : [])
+          .filter((c) => c.is_active !== false)
+          .map((c) => c.id);
+        if (assignedIds.length > 0) {
+          setSelectedCategoryIds(assignedIds);
+        } else if (business.category_slug && Array.isArray(cats)) {
           const matched = cats.find((c) => c.slug === business.category_slug);
           if (matched) setSelectedCategoryIds([matched.id]);
         }
@@ -104,7 +111,7 @@ export const DiscoveryListingEditor: React.FC<DiscoveryListingEditorProps> = ({
     return () => {
       mounted = false;
     };
-  }, [business.category_slug]);
+  }, [business.id, business.category_slug]);
 
   const handleSlugify = () => {
     const generated = formData.name
