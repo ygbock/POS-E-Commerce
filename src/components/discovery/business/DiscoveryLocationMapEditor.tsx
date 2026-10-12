@@ -284,15 +284,7 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
           <span className="font-mono">
             Coordinates: {center.latitude.toFixed(6)}, {center.longitude.toFixed(6)}
           </span>
-          {!hasSavedCoordinates && !disabled && (
-            <button
-              type="button"
-              onClick={() => onChange(center.latitude, center.longitude)}
-              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition-colors cursor-pointer"
-            >
-              Confirm Pin Here
-            </button>
-          )}
+
         </div>
         <span>Zoom {zoom}</span>
       </div>
