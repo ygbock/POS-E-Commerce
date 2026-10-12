@@ -54,7 +54,7 @@ interface ModerationItem {
   business_id?: string;
   business_name?: string;
   organization_id?: string | null;
-  status?: string;
+  status: string;
   listing_status?: string;
   created_at: string;
   [key: string]: unknown;
