@@ -614,15 +614,26 @@ export class DiscoveryBusinessService {
   }
 
   private async transition(id: string, toStatus: DiscoveryListingStatus, actor: { userId: string; role: string; organizationId?: string }, reason: string, client?: DatabaseClient, moderatorOnly = false): Promise<DiscoveryBusinessRecord> {
-    const existing = await this.repository.findById(id, client);
-    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    if (moderatorOnly) this.assertModerator(actor, existing);
-    else await this.assertCanManageScoped(existing, actor, client);
-    if (!TRANSITIONS[existing.listing_status].includes(toStatus)) {
-      throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to ${toStatus}.`);
-    }
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
+      // Serialize lifecycle decisions on the business row. Without this lock,
+      // concurrent approve/reject/publish requests can overwrite each other and
+      // write history events whose from_status does not match the actual state.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      const existing = await this.repository.findById(id, tx);
+      if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+      if (moderatorOnly) this.assertModerator(actor, existing);
+      else await this.assertCanManageScoped(existing, actor, tx);
+
+      const currentStatus = locked.rows[0].listing_status;
+      if (!TRANSITIONS[currentStatus].includes(toStatus)) {
+        throw new Error(`INVALID_STATE_TRANSITION:${currentStatus} cannot transition to ${toStatus}.`);
+      }
+
       const patch: any = { listing_status: toStatus };
       if (toStatus === 'PUBLISHED') {
         patch.is_discoverable = true;
@@ -639,12 +650,12 @@ export class DiscoveryBusinessService {
       }
       const updated = await this.repository.updateBusiness(id, patch, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
-      await this.repository.addListingEvent({ businessId: id, fromStatus: existing.listing_status, toStatus, reason, actorUserId: actor.userId }, tx);
+      await this.repository.addListingEvent({ businessId: id, fromStatus: currentStatus, toStatus, reason, actorUserId: actor.userId }, tx);
       if (actor.organizationId || updated.organization_id) {
         await this.auditRepository.recordEvent({
           organization_id: actor.organizationId || updated.organization_id!, actor_id: actor.userId, actor_name: actor.userId, actor_role: actor.role,
           action: `DISCOVERY_LISTING_${toStatus}`, entity_type: 'DISCOVERY_BUSINESS', entity_id: id,
-          before_state: { listing_status: existing.listing_status, is_discoverable: existing.is_discoverable },
+          before_state: { listing_status: currentStatus, is_discoverable: existing.is_discoverable },
           after_state: { listing_status: updated.listing_status, is_discoverable: updated.is_discoverable },
           metadata: { reason }, severity: ['SUSPENDED','ARCHIVED'].includes(toStatus) ? 'High' : 'Medium', result: 'SUCCESS',
         }, tx);
