@@ -180,6 +180,14 @@ export function classifyApiError(
     };
   }
 
+  if (msg.startsWith('SELF_APPROVAL_FORBIDDEN:')) {
+    return {
+      status: 403,
+      code: 'SELF_APPROVAL_FORBIDDEN',
+      message: 'Listing creators cannot approve their own Discovery listing.',
+    };
+  }
+
   if (msg.includes('FORBIDDEN') || status === 403) {
     return {
       status: 403,
@@ -238,7 +246,7 @@ export function classifyApiError(
   }
 
   // 5. Concurrency / Idempotency Conflict & Unique Violations
-  const lifecycleConflictCode = ['LISTING_LOCKED', 'INVALID_STATE_TRANSITION', 'DISCOVERY_ARCHIVED', 'SELF_APPROVAL_FORBIDDEN']
+  const lifecycleConflictCode = ['LISTING_LOCKED', 'INVALID_STATE_TRANSITION', 'DISCOVERY_ARCHIVED']
     .find((code) => msg.startsWith(`${code}:`));
   if (
     lifecycleConflictCode ||
