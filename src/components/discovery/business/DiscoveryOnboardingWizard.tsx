@@ -1448,11 +1448,16 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
               <DiscoveryLocationMapEditor
                 latitude={form.latitude.trim() ? Number(form.latitude) : null}
                 longitude={form.longitude.trim() ? Number(form.longitude) : null}
-                onChange={(latitude, longitude) => {
+                onChange={(latitude, longitude, source = 'MANUAL', accuracyM = null) => {
                   update('latitude', latitude.toFixed(6));
                   update('longitude', longitude.toFixed(6));
                   setCoordsAutoAssigned(false);
-                  setLocationAccuracyM(null);
+                  setLocationAccuracyM(source === 'GPS' ? accuracyM : null);
+                  if (source === 'GPS') {
+                    setSavedMessage(accuracyM != null
+                      ? `Device GPS location found (estimated accuracy ±${accuracyM} m).`
+                      : 'Device GPS location found.');
+                  }
                 }}
                 fallbackLatitude={(form.city || form.district || form.region) ? resolveDefaultCoordinates(form.city, form.district, form.region).lat : undefined}
                 fallbackLongitude={(form.city || form.district || form.region) ? resolveDefaultCoordinates(form.city, form.district, form.region).lng : undefined}
