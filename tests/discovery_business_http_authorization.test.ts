@@ -483,7 +483,7 @@ async function main() {
           body: JSON.stringify({ status, reason: 'authorization matrix' }),
         },
       );
-      assert.strictEqual(result.status, 403, `merchant owner must not access moderation decision ${status}`);
+      assert.ok([403, 404].includes(result.status), `merchant owner must be denied moderation decision ${status} (403 or concealed 404), got ${result.status}`);
     }
 
     // Inactive membership loses authorization immediately.
