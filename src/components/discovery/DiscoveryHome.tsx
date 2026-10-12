@@ -139,6 +139,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const locationChoiceMadeRef = useRef(false);
 
   // Sync state to URL search parameters
   const syncToUrl = useCallback((updates: Record<string, string | number | boolean | undefined | null>) => {
@@ -370,6 +371,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     lng?: number | null;
     radiusKm?: number;
   }) => {
+    locationChoiceMadeRef.current = true;
     const hasValidGpsPair =
       loc.lat != null &&
       loc.lng != null &&
@@ -402,6 +404,49 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       radiusKm: next.radiusKm ?? 25,
     });
   };
+
+  // If the user has already granted location permission, refresh their GPS
+  // position automatically without prompting. Otherwise keep GPS opt-in and use
+  // their selected locality or general Discovery results.
+  useEffect(() => {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.geolocation ||
+      !navigator.permissions?.query ||
+      latitude != null ||
+      longitude != null ||
+      selectedCity ||
+      selectedDistrict ||
+      selectedRegion ||
+      selectedLocality
+    ) return;
+
+    let cancelled = false;
+    void navigator.permissions.query({ name: 'geolocation' }).then((permission) => {
+      if (cancelled || permission.state !== 'granted' || locationChoiceMadeRef.current) return;
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled || locationChoiceMadeRef.current) return;
+          handleLocationChange({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            radiusKm,
+          });
+        },
+        () => {
+          // No prompt or error banner on passive detection. The user can still
+          // explicitly choose "Use Current Location" or a locality.
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      );
+    }).catch(() => {
+      // Permissions API support varies by browser; manual location selection remains available.
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleCategorySelect = (categoryId: string) => {
     const nextCat = filters.categoryId === categoryId ? undefined : categoryId;
