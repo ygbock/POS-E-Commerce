@@ -183,7 +183,7 @@ async function main() {
     assert.equal(myBusinesses.status, 200);
     assert.ok(myBusinesses.body.data.some((row: any) => row.id === businessId));
 
-    await postClaimManagementJourney(db, baseUrl, platformToken, ownerToken, otherOwnerToken, businessId);
+    await postClaimManagementJourney(db, baseUrl, reviewerToken, ownerToken, otherOwnerToken, businessId);
 
     const duplicateClaim = await request(baseUrl, `/api/discovery/businesses/${businessId}/claims`, {
       method: 'POST',
@@ -198,7 +198,7 @@ async function main() {
   }
 }
 
-async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, platformToken: string, ownerToken: string, otherOwnerToken: string, businessId: string) {
+async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, reviewerToken: string, ownerToken: string, otherOwnerToken: string, businessId: string) {
   const categories = await db.query("SELECT id FROM discovery_business_categories WHERE is_active=TRUE LIMIT 1");
   if (!categories.rows[0]) await db.query("INSERT INTO discovery_business_categories (id,name,slug,display_order,is_active) VALUES ('claim_journey_cat','Claim Journey','claim-journey',1,TRUE)");
   const categoryId = categories.rows[0]?.id || 'claim_journey_cat';
@@ -231,11 +231,11 @@ async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, p
   assert.equal(submit.body.data.is_discoverable, false);
   const otherOwner = await request(baseUrl, '/api/discovery/businesses/' + businessId, { method: 'PATCH', token: otherOwnerToken, body: { description: 'Unauthorized owner attempt' } });
   assert.equal(otherOwner.status, 403);
-  const review = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'UNDER_REVIEW', reason: 'Post-claim listing moderation.' } });
+  const review = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: reviewerToken, body: { status: 'UNDER_REVIEW', reason: 'Post-claim listing moderation.' } });
   assert.equal(review.status, 200);
-  const approve = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Post-claim listing approved.' } });
+  const approve = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: reviewerToken, body: { status: 'APPROVED', reason: 'Post-claim listing approved.' } });
   assert.equal(approve.status, 200);
-  const publish = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'PUBLISHED', reason: 'Post-claim listing published.' } });
+  const publish = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: reviewerToken, body: { status: 'PUBLISHED', reason: 'Post-claim listing published.' } });
   assert.equal(publish.status, 200);
   const publicBusiness = await db.query('SELECT slug FROM discovery_businesses WHERE id=$1', [businessId]);
   const publicSlug = publicBusiness.rows[0]?.slug;
