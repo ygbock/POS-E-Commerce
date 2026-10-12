@@ -20,7 +20,8 @@ async function main() {
        ('mod-owner','mod_cycle_org','mod-owner@test.local','Moderation Owner','hash','salt','admin',TRUE),
        ('mod-platform','mod_cycle_org','mod-platform@test.local','Platform Moderator','hash','salt','admin',TRUE),
        ('mod-platform-creator','mod_cycle_org','mod-platform-creator@test.local','Platform Listing Creator','hash','salt','platform_admin',TRUE),
-       ('mod-platform-reviewer','mod_cycle_org','mod-platform-reviewer@test.local','Independent Platform Reviewer','hash','salt','platform_admin',TRUE)`,
+       ('mod-platform-reviewer','mod_cycle_org','mod-platform-reviewer@test.local','Independent Platform Reviewer','hash','salt','platform_admin',TRUE),
+       ('mod-system-owner','mod_cycle_org','mod-system-owner@test.local','System Owner','hash','salt','system_owner',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
@@ -32,6 +33,7 @@ async function main() {
   // platform moderator must make the approval decision.
   const platformCreator = { userId: 'mod-platform-creator', role: 'platform_admin', organizationId: 'mod_cycle_org' };
   const independentModerator = { userId: 'mod-platform-reviewer', role: 'platform_admin', organizationId: 'mod_cycle_org' };
+  const systemOwner = { userId: 'mod-system-owner', role: 'system_owner', organizationId: 'mod_cycle_org' };
   const creatorListing = await service.create({
     name: 'Platform Creator Separation of Duties',
     shortDescription: 'Listing created to test self-approval prevention.',
@@ -45,9 +47,26 @@ async function main() {
     /SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing/,
   );
   assert.strictEqual((await repo.findById(creatorListing.id))?.listing_status, 'UNDER_REVIEW');
-  const independentlyApproved = await service.approve(creatorListing.id, independentModerator, 'Independent approval.');
+  await assert.rejects(
+    () => service.approve(creatorListing.id, independentModerator, 'Platform Admin cannot approve another Platform Admin-created listing.'),
+    /SYSTEM_OWNER_APPROVAL_REQUIRED:Listings created by a Platform Admin require System Owner approval/,
+  );
+  const independentlyApproved = await service.approve(creatorListing.id, systemOwner, 'System Owner approval.');
   assert.strictEqual(independentlyApproved.listing_status, 'APPROVED');
   assert.strictEqual(independentlyApproved.is_discoverable, false);
+
+  // System Owner is the explicit highest-authority exception: they may approve
+  // their own listing, but only after it enters the normal moderation lifecycle.
+  const systemOwnerListing = await service.create({
+    name: 'System Owner Governance Exception',
+    shortDescription: 'Explicit System Owner self-approval policy test.',
+    businessMode: 'DISCOVERY_ONLY',
+    organizationId: null,
+    createdByUserId: systemOwner.userId,
+  }, systemOwner);
+  await service.review(systemOwnerListing.id, systemOwner, 'System Owner submits for moderation.');
+  const ownerApproved = await service.approve(systemOwnerListing.id, systemOwner, 'Privileged System Owner approval.');
+  assert.strictEqual(ownerApproved.listing_status, 'APPROVED');
 
   const business = await service.create({
     name: 'Moderation Lifecycle Business',
