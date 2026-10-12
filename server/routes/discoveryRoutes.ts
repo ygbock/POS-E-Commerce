@@ -63,6 +63,22 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     organizationId: req.auth!.organizationId,
   });
 
+  // Child listing edits must lock the parent row for the full mutation. A status
+  // pre-check alone can race with submission or moderation and mutate a listing
+  // after its review snapshot has been taken.
+  const lockEditableListing = async (tx: DatabaseClient, businessId: string): Promise<void> => {
+    const current = await tx.query<{ listing_status: string }>(
+      'SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE',
+      [businessId],
+    );
+    if (!current.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+    const status = current.rows[0].listing_status;
+    if (status === 'ARCHIVED') throw new Error('DISCOVERY_ARCHIVED:Archived listings cannot be edited.');
+    if (!['DRAFT', 'REJECTED', 'PUBLISHED', 'PAUSED'].includes(status)) {
+      throw new Error(`LISTING_LOCKED:Listings cannot be edited while in ${status} status.`);
+    }
+  };
+
   // Categories are platform-managed reference data. They are readable during
   // merchant onboarding so a new business can select its discovery category.
   router.get('/categories', discoverySearchRateLimiter, async (req, res, next) => {
@@ -669,6 +685,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const x = normalizeLocation(req.body);
       const id = `loc_${randomUUID().replace(/-/g, '')}`;
       const data = await db.withTransaction(async (tx) => {
+        await lockEditableListing(tx, req.params.id);
         if (x.isPrimary) await tx.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1', [req.params.id]);
         const result = await tx.query(`INSERT INTO discovery_business_locations
           (id,business_id,name,location_type,address_line_1,address_line_2,city,district,region,country,postal_code,
@@ -701,6 +718,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         qualityNotes: req.body?.qualityNotes ?? existing.rows[0].quality_notes };
       const x = normalizeLocation(merged);
       const result = await db.withTransaction(async (tx) => {
+        await lockEditableListing(tx, req.params.id);
         if (x.isPrimary) await tx.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1 AND id <> $2', [req.params.id, req.params.locationId]);
         const r = await tx.query(`UPDATE discovery_business_locations SET
           name=$1,location_type=$2,address_line_1=$3,address_line_2=$4,city=$5,district=$6,region=$7,country=$8,postal_code=$9,
@@ -722,10 +740,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses/:id/locations/:locationId/verify', requireAuth(), async (req,res,next)=>{
     try {
       if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Location verification forbidden.'}});
-      const r=await db.query(`UPDATE discovery_business_locations
-        SET location_quality_status='VERIFIED',location_source='VERIFIED',location_verified_at=CURRENT_TIMESTAMP,
-            location_verified_by_user_id=$1,updated_at=CURRENT_TIMESTAMP
-        WHERE business_id=$2 AND id=$3 RETURNING *`,[req.auth!.userId,req.params.id,req.params.locationId]);
+      const r=await db.withTransaction(async(tx)=>{
+        await lockEditableListing(tx, req.params.id);
+        return tx.query(`UPDATE discovery_business_locations
+          SET location_quality_status='VERIFIED',location_source='VERIFIED',location_verified_at=CURRENT_TIMESTAMP,
+              location_verified_by_user_id=$1,updated_at=CURRENT_TIMESTAMP
+          WHERE business_id=$2 AND id=$3 RETURNING *`,[req.auth!.userId,req.params.id,req.params.locationId]);
+      });
       if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
       res.json({success:true,data:r.rows[0]});
     }catch(err){next(err);}
@@ -734,17 +755,20 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.put('/businesses/:id/locations/:locationId/hours', requireAuth(), async (req, res, next) => {
     try {
       if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({ success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Hours management forbidden.'} });
-      const location = await db.query('SELECT id FROM discovery_business_locations WHERE id=$1 AND business_id=$2', [req.params.locationId, req.params.id]);
-      if (!location.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
       const hours = Array.isArray(req.body?.hours) ? req.body.hours : [];
-      for (const h of hours) {
-        const day = Number(h.dayOfWeek);
-        if (day < 1 || day > 7) throw new Error('VALIDATION_ERROR:dayOfWeek must be 1..7.');
-        const closed = Boolean(h.isClosed);
-        if (!closed && (!h.opensAt || !h.closesAt || h.opensAt === h.closesAt)) throw new Error('VALIDATION_ERROR:open hours require different opensAt and closesAt values.');
-        await db.query(`INSERT INTO discovery_business_hours (id,location_id,day_of_week,is_closed,opens_at,closes_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(location_id,day_of_week) DO UPDATE SET is_closed=EXCLUDED.is_closed,opens_at=EXCLUDED.opens_at,closes_at=EXCLUDED.closes_at,updated_at=CURRENT_TIMESTAMP`, [`hrs_${randomUUID().replace(/-/g,'')}`, req.params.locationId, day, closed, closed ? null : h.opensAt, closed ? null : h.closesAt]);
-      }
-      const result = await db.query('SELECT * FROM discovery_business_hours WHERE location_id=$1 ORDER BY day_of_week', [req.params.locationId]);
+      const result = await db.withTransaction(async(tx) => {
+        await lockEditableListing(tx, req.params.id);
+        const location = await tx.query('SELECT id FROM discovery_business_locations WHERE id=$1 AND business_id=$2', [req.params.locationId, req.params.id]);
+        if (!location.rows[0]) throw new Error('NOT_FOUND:Location not found.');
+        for (const h of hours) {
+          const day = Number(h.dayOfWeek);
+          if (day < 1 || day > 7) throw new Error('VALIDATION_ERROR:dayOfWeek must be 1..7.');
+          const closed = Boolean(h.isClosed);
+          if (!closed && (!h.opensAt || !h.closesAt || h.opensAt === h.closesAt)) throw new Error('VALIDATION_ERROR:open hours require different opensAt and closesAt values.');
+          await tx.query(`INSERT INTO discovery_business_hours (id,location_id,day_of_week,is_closed,opens_at,closes_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(location_id,day_of_week) DO UPDATE SET is_closed=EXCLUDED.is_closed,opens_at=EXCLUDED.opens_at,closes_at=EXCLUDED.closes_at,updated_at=CURRENT_TIMESTAMP`, [`hrs_${randomUUID().replace(/-/g,'')}`, req.params.locationId, day, closed, closed ? null : h.opensAt, closed ? null : h.closesAt]);
+        }
+        return tx.query('SELECT * FROM discovery_business_hours WHERE location_id=$1 ORDER BY day_of_week', [req.params.locationId]);
+      });
       res.json({success:true,data:result.rows});
     } catch (err) { next(err); }
   });
@@ -2143,20 +2167,16 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       );
       if(activeCats.rows.length!==ids.length)throw new Error('VALIDATION_ERROR:categoryIds may reference active categories only.');
     }
-    await db.query('BEGIN');
-    try{
-      await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1::varchar',[req.params.id]);
+    await db.withTransaction(async(tx)=>{
+      await lockEditableListing(tx, req.params.id);
+      await tx.query('DELETE FROM discovery_business_category_map WHERE business_id=$1::varchar',[req.params.id]);
       for(let i=0;i<ids.length;i++) {
-        await db.query(
+        await tx.query(
           'INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1::varchar,$2::varchar,$3::boolean)',
           [req.params.id,ids[i],i===0],
         );
       }
-      await db.query('COMMIT');
-    }catch(e){
-      await db.query('ROLLBACK');
-      throw e;
-    }
+    });
     res.json({success:true,data:await repo.listCategories(req.params.id)});
   }catch(err){next(err);}});
 
