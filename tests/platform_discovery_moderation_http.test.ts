@@ -91,6 +91,13 @@ async function main() {
     role: 'platform_admin',
     permissions: ['platform.view', 'platform.discovery'],
   });
+  const merchantToken = signToken({
+    userId: 'disc-http-merchant',
+    email: 'merchant@test.local',
+    organizationId: 'disc_http_merchant',
+    role: 'business_owner',
+    permissions: ['business.listing.manage', 'business.locations.manage', 'business.services.manage', 'business.settings.manage'],
+  });
   const tenantSuperAdminToken = signToken({
     userId: 'disc-http-tenant',
     email: 'tenant@test.local',
@@ -139,6 +146,24 @@ async function main() {
     assert.equal(detail.status, 200);
     assert.equal(detail.body.data.business.id, business.id);
     assert.equal(detail.body.data.business.listing_status, 'SUBMITTED');
+
+    // All listing-content mutation routes must respect the parent lifecycle lock,
+    // not only the main business-profile PATCH endpoint.
+    const editServiceWhileSubmitted = await request(baseUrl, `/api/discovery/businesses/${business.id}/services`, {
+      method: 'POST',
+      token: merchantToken,
+      body: { name: 'Attempted service edit during moderation.' },
+    });
+    assert.equal(editServiceWhileSubmitted.body?.error?.code, 'LISTING_LOCKED');
+    assert.notEqual(editServiceWhileSubmitted.status, 201);
+
+    const editLocationWhileSubmitted = await request(baseUrl, `/api/discovery/businesses/${business.id}/locations`, {
+      method: 'POST',
+      token: merchantToken,
+      body: { name: 'Attempted branch edit during moderation.', city: 'Bo', region: 'Southern Province' },
+    });
+    assert.equal(editLocationWhileSubmitted.body?.error?.code, 'LISTING_LOCKED');
+    assert.notEqual(editLocationWhileSubmitted.status, 201);
 
     const review = await request(baseUrl, `/api/platform/discovery/moderation/listings/${business.id}/decision`, {
       method: 'POST',
