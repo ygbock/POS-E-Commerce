@@ -7,12 +7,16 @@ const read = (file: string) => fs.readFileSync(path.resolve(process.cwd(), file)
 async function main() {
   const portal = read('src/components/merchant/BusinessOwnerPortal.tsx');
   const routes = read('server/routes/merchantRoutes.ts');
+  const businessWorkspace = read('src/components/discovery/business/DiscoveryBusinessContainer.tsx');
 
   assert.match(portal, /\/api\/merchant\/businesses\/\$\{encodeURIComponent\(businessId\)\}\/overview/);
   assert.match(portal, /Operational readiness/);
   assert.match(portal, /Quick operations/);
   assert.match(portal, /workspace=\$\{workspace\}/);
   assert.match(portal, /businessId=\$\{encodeURIComponent\(business\.id\)\}/);
+  assert.match(businessWorkspace, /aria-label="Return to merchant portal"/);
+  assert.match(businessWorkspace, /window\.location\.assign\('\/business'\)/);
+  assert.match(businessWorkspace, /<span>Merchant Portal<\/span>/);
   for (const workspace of ['catalog', 'inventory', 'orders', 'pos']) {
     assert.match(portal, new RegExp('workspace: [\x27]' + workspace + '[\x27]'));
   }
