@@ -469,13 +469,19 @@ async function main() {
     const crossTeam = await requestJson(baseUrl, `/api/merchant/businesses/${ownerB.business.id}/team`, actors.managerA);
     assert.strictEqual(crossTeam.status, 404, 'cross-business team access must not disclose membership');
 
-    // Moderation endpoints must never be reachable by merchant-scoped roles.
-    for (const action of ['approve', 'publish', 'suspend'] as const) {
-      const result = await requestJson(baseUrl, `/api/discovery/businesses/${ownerA.business.id}/${action}`, actors.ownerA, {
-        method: 'POST',
-        body: JSON.stringify({ reason: 'authorization matrix' }),
-      });
-      assert.strictEqual(result.status, 403, `merchant owner must not access moderation action ${action}`);
+    // Platform moderation decisions must never be reachable by merchant-scoped roles.
+    // Exercise the real moderation endpoint; legacy /businesses/:id/:action URLs are not routes.
+    for (const status of ['UNDER_REVIEW', 'APPROVED', 'PUBLISHED'] as const) {
+      const result = await requestJson(
+        baseUrl,
+        `/api/platform/discovery/moderation/listings/${ownerA.business.id}/decision`,
+        actors.ownerA,
+        {
+          method: 'POST',
+          body: JSON.stringify({ status, reason: 'authorization matrix' }),
+        },
+      );
+      assert.strictEqual(result.status, 403, `merchant owner must not access moderation decision ${status}`);
     }
 
     // Inactive membership loses authorization immediately.
