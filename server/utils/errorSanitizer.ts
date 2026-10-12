@@ -238,7 +238,10 @@ export function classifyApiError(
   }
 
   // 5. Concurrency / Idempotency Conflict & Unique Violations
+  const lifecycleConflictCode = ['LISTING_LOCKED', 'INVALID_STATE_TRANSITION', 'DISCOVERY_ARCHIVED', 'SELF_APPROVAL_FORBIDDEN']
+    .find((code) => msg.startsWith(`${code}:`));
   if (
+    lifecycleConflictCode ||
     errCode === '23505' ||
     errCode === 'CONFLICT' ||
     errCode === 'IDEMPOTENCY_CONFLICT' ||
@@ -251,7 +254,7 @@ export function classifyApiError(
   ) {
     return {
       status: 409,
-      code: errCode === '23505' ? 'CONFLICT' : (err?.code || 'IDEMPOTENCY_CONFLICT'),
+      code: lifecycleConflictCode || (errCode === '23505' ? 'CONFLICT' : (err?.code || 'IDEMPOTENCY_CONFLICT')),
       message: sanitizeApiErrorMessage(msg),
     };
   }
