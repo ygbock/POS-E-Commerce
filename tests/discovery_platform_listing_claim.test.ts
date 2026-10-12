@@ -161,6 +161,20 @@ async function main() {
     assert.equal(pending.status, 200);
     assert.ok(pending.body.data.some((row: any) => row.id === claimId));
 
+    // Legacy tenant moderation endpoints must not mutate ownership claims.
+    const legacyPending = await request(baseUrl, '/api/discovery/moderation/claims', { token: platformToken });
+    assert.equal(legacyPending.status, 410);
+    const legacyDecision = await request(baseUrl, `/api/discovery/moderation/claims/${claimId}/decision`, {
+      method: 'POST',
+      token: platformToken,
+      body: { status: 'APPROVED', reason: 'Legacy route must be retired.' },
+    });
+    assert.equal(legacyDecision.status, 410);
+    const stillPending = await db.query('SELECT status FROM discovery_business_claims WHERE id=$1', [claimId]);
+    assert.equal(stillPending.rows[0]?.status, 'PENDING');
+    const noPrematureOwner = await db.query('SELECT 1 FROM discovery_business_memberships WHERE business_id=$1 AND is_active=TRUE', [businessId]);
+    assert.equal(noPrematureOwner.rows.length, 0);
+
     const decision = await request(baseUrl, `/api/platform/discovery/moderation/claims/${claimId}/decision`, {
       method: 'POST',
       token: platformToken,
