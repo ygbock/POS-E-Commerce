@@ -14,12 +14,14 @@ assert.doesNotThrow(() =>
   assertModerator({ userId: 'admin-a', role: 'admin', organizationId: 'org-a' }, businessA),
 );
 
-// Super admin is platform-wide and may moderate any business.
-assert.doesNotThrow(() =>
-  assertModerator({ userId: 'root', role: 'super_admin' }, businessA),
+// Tenant super_admin is not a platform authority and cannot moderate listings.
+assert.throws(
+  () => assertModerator({ userId: 'tenant-root', role: 'super_admin', organizationId: 'org-a' }, businessA),
+  /PERMISSION_DENIED:Discovery moderation requires administrator authorization/,
 );
-assert.doesNotThrow(() =>
-  assertModerator({ userId: 'root', role: 'super_admin' }, businessWithoutOrg),
+assert.throws(
+  () => assertModerator({ userId: 'tenant-root', role: 'super_admin' }, businessWithoutOrg),
+  /PERMISSION_DENIED:Discovery moderation requires administrator authorization/,
 );
 
 // A tenant admin cannot cross organization boundaries.
