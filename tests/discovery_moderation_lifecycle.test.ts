@@ -53,6 +53,10 @@ async function main() {
 
   await service.submit(business.id, merchant);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'SUBMITTED');
+  await assert.rejects(
+    () => service.update(business.id, { description: 'Changed after submission.' }, merchant),
+    /LISTING_LOCKED:Listings cannot be edited while in SUBMITTED status/,
+  );
 
   // Two moderators may act on the same submitted listing at nearly the same time.
   // Exactly one duplicate review transition should commit; the second must observe
@@ -64,6 +68,10 @@ async function main() {
   assert.strictEqual(concurrentReviews.filter((result) => result.status === 'fulfilled').length, 1);
   assert.strictEqual(concurrentReviews.filter((result) => result.status === 'rejected').length, 1);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'UNDER_REVIEW');
+  await assert.rejects(
+    () => service.update(business.id, { description: 'Changed during moderation.' }, merchant),
+    /LISTING_LOCKED:Listings cannot be edited while in UNDER_REVIEW status/,
+  );
   const reviewEvents = await db.query(
     `SELECT COUNT(*)::int AS count FROM discovery_listing_events
       WHERE business_id=$1 AND from_status='SUBMITTED' AND to_status='UNDER_REVIEW'`,
@@ -169,6 +177,10 @@ async function main() {
   const approved = await service.approve(business.id, moderator, 'Listing approved for publication.');
   assert.strictEqual(approved.listing_status, 'APPROVED');
   assert.strictEqual(approved.is_discoverable, false);
+  await assert.rejects(
+    () => service.update(business.id, { description: 'Changed after approval.' }, merchant),
+    /LISTING_LOCKED:Listings cannot be edited while in APPROVED status/,
+  );
 
   const prePublicationListings = await service.listPublished({ limit: 200 });
   assert.ok(
