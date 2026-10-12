@@ -443,20 +443,26 @@ export class DiscoveryBusinessService {
   }
 
   async resubmit(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    const existing = await this.repository.findById(id, client);
-    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    await this.assertCanManageScoped(existing, actor, client);
-    if (existing.listing_status !== 'REJECTED') {
-      throw new Error('INVALID_STATE_TRANSITION:Only a rejected listing can be resubmitted.');
-    }
-    const readiness = await this.getListingReadiness(id, client);
-    if (!readiness.ready) {
-      const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
-      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
-    }
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
-      const updated = await this.repository.updateBusiness(id, { listing_status: 'SUBMITTED' }, tx);
+      // Serialize resubmission against moderation decisions and other resubmissions.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      const existing = await this.repository.findById(id, tx);
+      if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+      await this.assertCanManageScoped(existing, actor, tx);
+      if (locked.rows[0].listing_status !== 'REJECTED') {
+        throw new Error('INVALID_STATE_TRANSITION:Only a rejected listing can be resubmitted.');
+      }
+      const readiness = await this.getListingReadiness(id, tx);
+      if (!readiness.ready) {
+        const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
+        throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
+      }
+      const updated = await this.repository.updateBusiness(id, { listing_status: 'SUBMITTED', is_discoverable: false }, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
       await this.repository.addListingEvent({ businessId: id, fromStatus: 'REJECTED', toStatus: 'SUBMITTED', reason: reason || 'Listing corrected and resubmitted for moderation.', actorUserId: actor.userId }, tx);
       await tx.query(
@@ -527,20 +533,28 @@ export class DiscoveryBusinessService {
       throw new Error('VALIDATION_ERROR:At least one moderation issue or rejection reason is required.');
     }
 
-    const existing = await this.repository.findById(id, client);
-    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    this.assertModerator(actor, existing);
-    if (!TRANSITIONS[existing.listing_status].includes('REJECTED')) {
-      throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to REJECTED.`);
-    }
-
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
+      // Rejection has additional issue/audit writes, so apply the same row lock
+      // and state recheck as every other moderation transition.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      const existing = await this.repository.findById(id, tx);
+      if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+      this.assertModerator(actor, existing);
+      const currentStatus = locked.rows[0].listing_status;
+      if (!TRANSITIONS[currentStatus].includes('REJECTED')) {
+        throw new Error(`INVALID_STATE_TRANSITION:${currentStatus} cannot transition to REJECTED.`);
+      }
+
       const updated = await this.repository.updateBusiness(id, { listing_status: 'REJECTED', is_discoverable: false }, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
       const event = await this.repository.addListingEvent({
         businessId: id,
-        fromStatus: existing.listing_status,
+        fromStatus: currentStatus,
         toStatus: 'REJECTED',
         reason: reason || 'Listing requires changes before resubmission.',
         actorUserId: actor.userId,
@@ -571,7 +585,7 @@ export class DiscoveryBusinessService {
           action: 'DISCOVERY_LISTING_REJECTED',
           entity_type: 'DISCOVERY_BUSINESS',
           entity_id: id,
-          before_state: { listing_status: existing.listing_status, is_discoverable: existing.is_discoverable },
+          before_state: { listing_status: currentStatus, is_discoverable: existing.is_discoverable },
           after_state: { listing_status: updated.listing_status, is_discoverable: updated.is_discoverable },
           metadata: { reason: reason || null, moderation_issue_count: normalizedIssues.length },
           severity: 'Medium',
