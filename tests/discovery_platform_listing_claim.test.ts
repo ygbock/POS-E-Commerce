@@ -62,6 +62,14 @@ async function main() {
     identityType: 'platform',
     permissions: ['platform.view', 'platform.discovery'],
   });
+  const reviewerToken = signToken({
+    userId: 'claim-platform-reviewer',
+    email: 'reviewer@claim.test',
+    organizationId: 'claim_platform_org',
+    role: 'platform_admin',
+    identityType: 'platform',
+    permissions: ['platform.view', 'platform.discovery'],
+  });
   const ownerToken = signToken({
     userId: 'claim-owner',
     email: 'owner@claim.test',
@@ -105,7 +113,7 @@ async function main() {
 
     const review = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
-      token: platformToken,
+      token: reviewerToken,
       body: { status: 'UNDER_REVIEW', reason: 'Platform-created listing submitted for moderation.' },
     });
     assert.equal(review.status, 200);
