@@ -44,6 +44,8 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
   const [gettingCoords, setGettingCoords] = useState<boolean>(false);
   const [verifyingLocationId, setVerifyingLocationId] = useState<string | null>(null);
   const [coordinatesAdjusted, setCoordinatesAdjusted] = useState<boolean>(false);
+  const [coordinatesConfirmed, setCoordinatesConfirmed] = useState<boolean>(false);
+  const [coordinateAccuracyM, setCoordinateAccuracyM] = useState<number | null>(null);
 
   // Form State
   const [locForm, setLocForm] = useState({
@@ -86,7 +88,6 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
   }, [business.id]);
 
   const handleOpenAdd = () => {
-    const defaultCoords = resolveDefaultCoordinates('Freetown', 'Western Area Urban', 'Western Area');
     setEditingLocation(null);
     setLocForm({
       name: '',
@@ -98,23 +99,22 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
       region: 'Western Area',
       country: 'Sierra Leone',
       postalCode: '',
-      latitude: defaultCoords.lat.toFixed(6),
-      longitude: defaultCoords.lng.toFixed(6),
+      latitude: '',
+      longitude: '',
       serviceRadiusKm: '15',
       phone: business.phone || '',
       isPrimary: locations.length === 0,
       isActive: true,
     });
     setCoordinatesAdjusted(false);
+    setCoordinatesConfirmed(false);
+    setCoordinateAccuracyM(null);
+    setSuccess(null);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (loc: DiscoveryLocation, autoFillMissingCoords = false) => {
     const hasCoords = loc.latitude != null && loc.longitude != null;
-    const fallbackCoords =
-      !hasCoords && autoFillMissingCoords
-        ? resolveDefaultCoordinates(loc.city || undefined, loc.district || undefined, loc.region || undefined)
-        : null;
     setEditingLocation(loc);
     setLocForm({
       name: loc.name || '',
@@ -126,14 +126,19 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
       region: loc.region || '',
       country: loc.country || 'Sierra Leone',
       postalCode: loc.postal_code || '',
-      latitude: hasCoords ? String(loc.latitude) : fallbackCoords ? fallbackCoords.lat.toFixed(6) : '',
-      longitude: hasCoords ? String(loc.longitude) : fallbackCoords ? fallbackCoords.lng.toFixed(6) : '',
+      latitude: hasCoords ? String(loc.latitude) : '',
+      longitude: hasCoords ? String(loc.longitude) : '',
       serviceRadiusKm: loc.service_radius_km != null ? String(loc.service_radius_km) : '15',
       phone: loc.phone || '',
       isPrimary: Boolean(loc.is_primary),
       isActive: Boolean(loc.is_active),
     });
-    setCoordinatesAdjusted(Boolean(fallbackCoords));
+    setCoordinatesAdjusted(false);
+    setCoordinatesConfirmed(hasCoords);
+    setCoordinateAccuracyM(loc.coordinate_accuracy_m != null ? Number(loc.coordinate_accuracy_m) : null);
+    setSuccess(!hasCoords && autoFillMissingCoords
+      ? 'This location has no saved coordinates. Use device GPS or set the pin on the map to make it mappable.'
+      : null);
     setIsModalOpen(true);
   };
 
@@ -145,6 +150,8 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
       longitude: coords.lng.toFixed(6),
     }));
     setCoordinatesAdjusted(true);
+    setCoordinatesConfirmed(false);
+    setCoordinateAccuracyM(null);
   };
 
   const handleGetCurrentLocation = () => {
@@ -162,6 +169,8 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
           longitude: pos.coords.longitude.toFixed(6),
         }));
         setCoordinatesAdjusted(false);
+        setCoordinatesConfirmed(true);
+        setCoordinateAccuracyM(Number.isFinite(pos.coords.accuracy) && pos.coords.accuracy >= 0 ? Math.round(pos.coords.accuracy) : null);
         setGettingCoords(false);
       },
       (err) => {
@@ -184,11 +193,20 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
         throw new Error('Service-area locations require a positive service radius.');
       }
 
-      const latNum = locForm.latitude ? Number(locForm.latitude) : null;
-      const lngNum = locForm.longitude ? Number(locForm.longitude) : null;
+      const latNum = locForm.latitude.trim() ? Number(locForm.latitude) : null;
+      const lngNum = locForm.longitude.trim() ? Number(locForm.longitude) : null;
 
       if ((latNum == null) !== (lngNum == null)) {
         throw new Error('Latitude and Longitude must both be provided together for map discovery.');
+      }
+      if (latNum != null && lngNum != null && !coordinatesConfirmed) {
+        throw new Error('These coordinates are only an approximate area center. Use GPS or tap/drag the pin to confirm the actual business location.');
+      }
+      if (latNum != null && (!Number.isFinite(latNum) || latNum < -90 || latNum > 90)) {
+        throw new Error('Latitude must be between -90 and 90.');
+      }
+      if (lngNum != null && (!Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180)) {
+        throw new Error('Longitude must be between -180 and 180.');
       }
 
       const payload = {
@@ -204,8 +222,8 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
         latitude: latNum ?? undefined,
         longitude: lngNum ?? undefined,
         serviceRadiusKm: locForm.serviceRadiusKm ? Number(locForm.serviceRadiusKm) : undefined,
-        locationSource: coordinatesAdjusted ? 'MANUAL' : (editingLocation?.location_source || (latNum != null ? 'GPS' : 'MANUAL')),
-        coordinateAccuracyM: editingLocation?.coordinate_accuracy_m ?? undefined,
+        locationSource: coordinateAccuracyM != null ? 'GPS' : coordinatesAdjusted ? 'MANUAL' : (editingLocation?.location_source || 'MANUAL'),
+        coordinateAccuracyM: coordinateAccuracyM ?? undefined,
         phone: locForm.phone.trim() || undefined,
         isPrimary: locForm.isPrimary,
         isActive: locForm.isActive,
@@ -593,7 +611,12 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                     <input
                       type="text"
                       value={locForm.latitude}
-                      onChange={(e) => setLocForm({ ...locForm, latitude: e.target.value })}
+                      onChange={(e) => {
+                        setLocForm({ ...locForm, latitude: e.target.value });
+                        setCoordinatesAdjusted(true);
+                        setCoordinatesConfirmed(false);
+                        setCoordinateAccuracyM(null);
+                      }}
                       placeholder="8.4840"
                       className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono"
                     />
@@ -605,7 +628,12 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                     <input
                       type="text"
                       value={locForm.longitude}
-                      onChange={(e) => setLocForm({ ...locForm, longitude: e.target.value })}
+                      onChange={(e) => {
+                        setLocForm({ ...locForm, longitude: e.target.value });
+                        setCoordinatesAdjusted(true);
+                        setCoordinatesConfirmed(false);
+                        setCoordinateAccuracyM(null);
+                      }}
                       placeholder="-13.2299"
                       className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono"
                     />
@@ -615,14 +643,19 @@ export const DiscoveryLocationsPanel: React.FC<DiscoveryLocationsPanelProps> = (
                 <DiscoveryLocationMapEditor
                   latitude={locForm.latitude ? Number(locForm.latitude) : null}
                   longitude={locForm.longitude ? Number(locForm.longitude) : null}
-                  onChange={(latitude, longitude) => {
+                  onChange={(latitude, longitude, source = 'MANUAL', accuracyM = null) => {
                     setLocForm((prev) => ({
                       ...prev,
                       latitude: latitude.toFixed(6),
                       longitude: longitude.toFixed(6),
                     }));
-                    setCoordinatesAdjusted(true);
+                    setCoordinatesAdjusted(source !== 'GPS');
+                    setCoordinatesConfirmed(true);
+                    setCoordinateAccuracyM(source === 'GPS' ? accuracyM : null);
                   }}
+                  fallbackLatitude={resolveDefaultCoordinates(locForm.city, locForm.district, locForm.region).lat}
+                  fallbackLongitude={resolveDefaultCoordinates(locForm.city, locForm.district, locForm.region).lng}
+                  coordinatesConfirmed={coordinatesConfirmed}
                   disabled={saving}
                 />
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">

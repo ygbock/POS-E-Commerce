@@ -7,6 +7,9 @@ const location = fs.readFileSync(path.join(root, 'src/components/discovery/Disco
 const search = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoverySearchResults.tsx'), 'utf8');
 const home = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoveryHome.tsx'), 'utf8');
 const hero = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoveryHero.tsx'), 'utf8');
+const onboarding = fs.readFileSync(path.join(root, 'src/components/discovery/business/DiscoveryOnboardingWizard.tsx'), 'utf8');
+const mapEditor = fs.readFileSync(path.join(root, 'src/components/discovery/business/DiscoveryLocationMapEditor.tsx'), 'utf8');
+const locationsPanel = fs.readFileSync(path.join(root, 'src/components/discovery/business/DiscoveryLocationsPanel.tsx'), 'utf8');
 const routes = fs.readFileSync(path.join(root, 'server/routes/discoveryRoutes.ts'), 'utf8');
 const map = fs.readFileSync(path.join(root, 'src/components/discovery/DiscoveryMapPanel.tsx'), 'utf8');
 
@@ -20,6 +23,15 @@ assert.match(location, /Clear location filter/);
 assert.match(location, /loadGeoLocations/);
 assert.match(location, /Retry loading locations/);
 assert.match(location, /location_type === 'COMMUNITY'/);
+// GPS selection must replace, not combine with, a previously selected locality.
+assert.match(location, /city: undefined, district: undefined, region: undefined, locality: undefined, lat: position\.coords\.latitude/);
+assert.match(home, /const hasValidGpsPair/);
+assert.match(home, /const next = hasValidGpsPair[\s\S]*?city: undefined, district: undefined, region: undefined, locality: undefined/);
+assert.match(home, /latitude != null && longitude != null/);
+// Auto-detect only when browser permission was already granted; never prompt on page load.
+assert.match(home, /navigator\.permissions\.query\(\{ name: 'geolocation' \}\)/);
+assert.match(home, /permission\.state !== 'granted'/);
+assert.match(home, /locationChoiceMadeRef\.current/);
 
 assert.match(search, /district: loc\.district/);
 assert.match(search, /region: loc\.region/);
@@ -37,7 +49,7 @@ assert.match(search, /radiusKm: parsedRadius != null \? Math\.max\(1, Math\.min\
 
 assert.match(home, /locality: sp\.get\('locality'\) \|\| undefined/);
 assert.match(home, /locality: selectedLocality/);
-assert.match(home, /setSelectedLocality\(loc\.locality\)/);
+assert.match(home, /setSelectedLocality\(next\.locality\)/);
 assert.match(home, /services=\{servicesState\.data\}/);
 assert.match(hero, /availableCommunities/);
 assert.match(hero, /handleCommunitySelect/);
@@ -57,4 +69,22 @@ assert.match(map, /point\.services\.forEach/);
 assert.match(map, /Interactive map unavailable/);
 assert.match(map, /openstreetmap\.org/);
 
-console.log('Discovery PAGE-005 location/map contract tests passed.');
+// Onboarding must never treat a city-center fallback as a confirmed business pin.
+assert.match(onboarding, /if \(coordsAutoAssigned\)/);
+assert.match(onboarding, /approximate city or district center/i);
+assert.match(onboarding, /Accurate map coordinates are required/);
+assert.doesNotMatch(onboarding, /const resolvedCoords =/);
+assert.match(onboarding, /locationSource: locationAccuracyM != null \? 'GPS' : 'MANUAL'/);
+assert.match(onboarding, /coordinatesConfirmed=\{!coordsAutoAssigned\}/);
+
+// The location editor starts at a useful locality center without saving it as exact,
+// and provides visible GPS failure/accuracy feedback.
+assert.match(mapEditor, /fallbackLatitude\?: number/);
+assert.match(mapEditor, /coordinatesConfirmed\?: boolean/);
+assert.match(mapEditor, /Location request timed out/);
+assert.match(mapEditor, /Device location found/);
+assert.match(locationsPanel, /coordinatesConfirmed/);
+assert.match(locationsPanel, /These coordinates are only an approximate area center/);
+assert.match(locationsPanel, /latitude: ''/);
+
+console.log('Discovery PAGE-005 location/map and GPS onboarding contract tests passed.');

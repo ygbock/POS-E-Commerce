@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { LocateFixed, MapPin, Minus, Plus } from 'lucide-react';
+import { LocateFixed, MapPin, Minus, Plus, Loader2 } from 'lucide-react';
 
 interface DiscoveryLocationMapEditorProps {
   latitude: number | null;
   longitude: number | null;
-  onChange: (latitude: number, longitude: number) => void;
+  onChange: (latitude: number, longitude: number, source?: 'GPS' | 'MANUAL', accuracyM?: number | null) => void;
   height?: number;
   disabled?: boolean;
+  fallbackLatitude?: number;
+  fallbackLongitude?: number;
+  coordinatesConfirmed?: boolean;
 }
 
 const TILE_SIZE = 256;
@@ -40,18 +43,28 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
   onChange,
   height = 300,
   disabled = false,
+  fallbackLatitude,
+  fallbackLongitude,
+  coordinatesConfirmed,
 }) => {
   const initial = useMemo(
     () => ({
-      latitude: Number.isFinite(latitude) ? Number(latitude) : DEFAULT_CENTER.latitude,
-      longitude: Number.isFinite(longitude) ? Number(longitude) : DEFAULT_CENTER.longitude,
+      latitude: Number.isFinite(latitude)
+        ? Number(latitude)
+        : Number.isFinite(fallbackLatitude) ? Number(fallbackLatitude) : DEFAULT_CENTER.latitude,
+      longitude: Number.isFinite(longitude)
+        ? Number(longitude)
+        : Number.isFinite(fallbackLongitude) ? Number(fallbackLongitude) : DEFAULT_CENTER.longitude,
     }),
-    [latitude, longitude],
+    [latitude, longitude, fallbackLatitude, fallbackLongitude],
   );
   const [center, setCenter] = useState(initial);
   const [zoom, setZoom] = useState(15);
   const [draggingMap, setDraggingMap] = useState(false);
   const [draggingPin, setDraggingPin] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const dragRef = useRef({ x: 0, y: 0, worldX: 0, worldY: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -96,15 +109,16 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
     const worldX = centerWorld.x + (clientX - (rect.left + rect.width / 2));
     const worldY = centerWorld.y + (clientY - (rect.top + rect.height / 2));
     const next = worldToLatLng(worldX, worldY, zoom);
-    onChange(next.latitude, next.longitude);
+    onChange(next.latitude, next.longitude, 'MANUAL');
     setCenter(next);
   };
 
   const hasSavedCoordinates = latitude != null && longitude != null && Number.isFinite(latitude) && Number.isFinite(longitude);
+  const isCoordinatesConfirmed = coordinatesConfirmed ?? hasSavedCoordinates;
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
   const handleMapPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (disabled) return;
+    if (disabled || (event.target as HTMLElement).closest('button')) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDraggingMap(true);
     const world = latLngToWorld(center.latitude, center.longitude, zoom);
@@ -160,15 +174,36 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
   };
 
   const useCurrentLocation = () => {
-    if (disabled || !navigator.geolocation) return;
+    if (disabled || locating) return;
+    if (!navigator.geolocation) {
+      setLocationError('Device location is not supported by this browser.');
+      setLocationMessage(null);
+      return;
+    }
+
+    setLocating(true);
+    setLocationError(null);
+    setLocationMessage(null);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const next = { latitude: position.coords.latitude, longitude: position.coords.longitude };
         setCenter(next);
-        onChange(next.latitude, next.longitude);
+        const accuracy = Number.isFinite(position.coords.accuracy) && position.coords.accuracy >= 0
+          ? Math.round(position.coords.accuracy)
+          : null;
+        onChange(next.latitude, next.longitude, 'GPS', accuracy);
+        setLocationMessage(accuracy != null ? `Device location found (estimated accuracy ±${accuracy} m).` : 'Device location found.');
+        setLocating(false);
       },
-      () => undefined,
-      { enableHighAccuracy: true, timeout: 10000 },
+      (error) => {
+        setLocationError(error.code === error.PERMISSION_DENIED
+          ? 'Location permission was denied. Allow location access in your browser/device settings, or place the pin manually.'
+          : error.code === error.POSITION_UNAVAILABLE
+            ? 'Your device could not determine its location. Check device location services or place the pin manually.'
+            : 'Location request timed out. Try again or place the pin manually.');
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   };
 
@@ -191,7 +226,7 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
         {tiles.map((tile) => (
           <img
             key={tile.key}
-            src={`https://tile.openstreetmap.org/${tile.x ? zoom : zoom}/${tile.x}/${tile.y}.png`}
+            src={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`}
             alt=""
             draggable={false}
             className="absolute max-w-none pointer-events-none"
@@ -221,14 +256,16 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
           <button type="button" disabled={disabled} onClick={() => zoomAt(zoom - 1)} className="p-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40" title="Zoom out">
             <Minus className="w-4 h-4" />
           </button>
-          <button type="button" disabled={disabled} onClick={useCurrentLocation} className="p-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40" title="Use current GPS location">
-            <LocateFixed className="w-4 h-4" />
+          <button type="button" aria-label="Use device GPS location" disabled={disabled || locating} onClick={useCurrentLocation} className="p-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40" title="Use current GPS location">
+            {locating ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
           </button>
         </div>
 
         <div className="absolute left-3 bottom-3 z-30 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 px-3 py-2 shadow-lg pointer-events-none">
           <p className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
-            {hasSavedCoordinates ? 'Pin set — drag or tap map to adjust' : 'Tap map or drag pin to confirm exact location'}
+            {hasSavedCoordinates
+              ? isCoordinatesConfirmed ? 'Location pin confirmed — drag or tap to adjust' : 'Approximate area center — tap or drag to set the actual business location'
+              : 'Tap map or drag pin to set the actual business location'}
           </p>
           <p className="text-[10px] text-slate-500 dark:text-slate-400">Zoom and pan for precision.</p>
         </div>
@@ -237,20 +274,17 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
           © OpenStreetMap contributors
         </div>
       </div>
+      {(locationError || locationMessage) && (
+        <p role={locationError ? 'alert' : 'status'} className={`text-xs ${locationError ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-300'}`}>
+          {locationError || locationMessage}
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
         <div className="flex items-center gap-2">
           <span className="font-mono">
             Coordinates: {center.latitude.toFixed(6)}, {center.longitude.toFixed(6)}
           </span>
-          {!hasSavedCoordinates && !disabled && (
-            <button
-              type="button"
-              onClick={() => onChange(center.latitude, center.longitude)}
-              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition-colors cursor-pointer"
-            >
-              Confirm Pin Here
-            </button>
-          )}
+
         </div>
         <span>Zoom {zoom}</span>
       </div>

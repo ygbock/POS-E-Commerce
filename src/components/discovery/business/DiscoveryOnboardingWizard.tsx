@@ -273,13 +273,12 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       region,
       district: '',
       city: '',
-      ...(fallbackCoords && (!current.latitude.trim() || coordsAutoAssigned)
-        ? {
-            latitude: fallbackCoords.lat.toFixed(6),
-            longitude: fallbackCoords.lng.toFixed(6),
-          }
-        : {}),
+      latitude: fallbackCoords ? fallbackCoords.lat.toFixed(6) : '',
+      longitude: fallbackCoords ? fallbackCoords.lng.toFixed(6) : '',
     }));
+    // Region/city centers are only map starting points, never confirmed business coordinates.
+    setCoordsAutoAssigned(Boolean(fallbackCoords));
+    setLocationAccuracyM(null);
     setIsCustomCityActive(false);
     setError(null);
     setSavedMessage(null);
@@ -295,13 +294,11 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       ...current,
       district,
       city: defaultCity,
-      ...(fallbackCoords && (!current.latitude.trim() || coordsAutoAssigned)
-        ? {
-            latitude: fallbackCoords.lat.toFixed(6),
-            longitude: fallbackCoords.lng.toFixed(6),
-          }
-        : {}),
+      latitude: fallbackCoords ? fallbackCoords.lat.toFixed(6) : '',
+      longitude: fallbackCoords ? fallbackCoords.lng.toFixed(6) : '',
     }));
+    setCoordsAutoAssigned(Boolean(fallbackCoords));
+    setLocationAccuracyM(null);
     setIsCustomCityActive(false);
     setError(null);
     setSavedMessage(null);
@@ -314,13 +311,11 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
     setForm((current) => ({
       ...current,
       city,
-      ...(fallbackCoords && (!current.latitude.trim() || coordsAutoAssigned)
-        ? {
-            latitude: fallbackCoords.lat.toFixed(6),
-            longitude: fallbackCoords.lng.toFixed(6),
-          }
-        : {}),
+      latitude: fallbackCoords ? fallbackCoords.lat.toFixed(6) : '',
+      longitude: fallbackCoords ? fallbackCoords.lng.toFixed(6) : '',
     }));
+    setCoordsAutoAssigned(Boolean(fallbackCoords));
+    setLocationAccuracyM(null);
     setError(null);
     setSavedMessage(null);
   };
@@ -333,8 +328,9 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       longitude: coords.lng.toFixed(6),
     }));
     setCoordsAutoAssigned(true);
+    setLocationAccuracyM(null);
     setError(null);
-    setSavedMessage(`Map pin centered on ${form.city || form.district || form.region || 'Freetown'}. Drag or tap the map to fine-tune.`);
+    setSavedMessage(`Approximate ${form.city || form.district || form.region || 'Freetown'} center selected. Tap or drag the pin to the actual business location, or use device GPS before saving.`);
   };
 
   const getDraftStepKey = (id: string) => `${DRAFT_STEP_KEY_PREFIX}${id}`;
@@ -544,8 +540,11 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
       if (!form.city.trim()) return 'City/Town selection or custom name is required.';
       const lat = form.latitude.trim();
       const lng = form.longitude.trim();
+      if (coordsAutoAssigned) {
+        return 'The map is centered on an approximate city or district center, not your exact business location. Use device GPS or tap/drag the pin to the actual location before continuing.';
+      }
       if (!lat || !lng) {
-        return 'Map coordinates (latitude and longitude) are required for listing readiness. Use GPS, tap the map, or click "Snap Pin to City".';
+        return 'Accurate map coordinates are required. Use device GPS or tap/drag the pin to the actual business location.';
       }
       if (!Number.isFinite(Number(lat)) || Number(lat) < -90 || Number(lat) > 90) return 'Latitude must be between -90 and 90.';
       if (!Number.isFinite(Number(lng)) || Number(lng) < -180 || Number(lng) > 180) return 'Longitude must be between -180 and 180.';
@@ -617,20 +616,15 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
 
     setSaving(true);
     try {
-      // Ensure coordinates are always populated if a city/region was chosen
-      const resolvedCoords =
-        !form.latitude.trim() || !form.longitude.trim()
-          ? resolveDefaultCoordinates(form.city, form.district, form.region)
-          : null;
-      const latValue = form.latitude.trim() ? Number(form.latitude) : resolvedCoords?.lat;
-      const lngValue = form.longitude.trim() ? Number(form.longitude) : resolvedCoords?.lng;
-
-      if (resolvedCoords && (!form.latitude.trim() || !form.longitude.trim())) {
-        setForm((current) => ({
-          ...current,
-          latitude: resolvedCoords.lat.toFixed(6),
-          longitude: resolvedCoords.lng.toFixed(6),
-        }));
+      if (coordsAutoAssigned) {
+        setError('Confirm the actual business location using device GPS or the map pin before saving coordinates.');
+        return false;
+      }
+      const latValue = form.latitude.trim() ? Number(form.latitude) : null;
+      const lngValue = form.longitude.trim() ? Number(form.longitude) : null;
+      if (latValue == null || lngValue == null || !Number.isFinite(latValue) || !Number.isFinite(lngValue)) {
+        setError('Valid latitude and longitude are required. Use device GPS or place the pin on the map.');
+        return false;
       }
 
       const payload = {
@@ -649,6 +643,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
             ? 15
             : undefined,
         coordinateAccuracyM: locationAccuracyM ?? undefined,
+        locationSource: locationAccuracyM != null ? 'GPS' : 'MANUAL',
         isPrimary: true,
         isActive: true,
       };
@@ -1425,7 +1420,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Pan or tap the map to place the pin at your exact location, snap to your selected city, or use device GPS.
+                    Use device GPS only when you are physically at this business. Otherwise, pan or tap the map to place the pin at the business location. City and district centers are approximate and must be refined before saving.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -1453,12 +1448,21 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
               <DiscoveryLocationMapEditor
                 latitude={form.latitude.trim() ? Number(form.latitude) : null}
                 longitude={form.longitude.trim() ? Number(form.longitude) : null}
-                onChange={(latitude, longitude) => {
+                onChange={(latitude, longitude, source = 'MANUAL', accuracyM = null) => {
                   update('latitude', latitude.toFixed(6));
                   update('longitude', longitude.toFixed(6));
                   setCoordsAutoAssigned(false);
+                  setLocationAccuracyM(source === 'GPS' ? accuracyM : null);
+                  if (source === 'GPS') {
+                    setSavedMessage(accuracyM != null
+                      ? `Device GPS location found (estimated accuracy ±${accuracyM} m).`
+                      : 'Device GPS location found.');
+                  }
                 }}
-                height={280}
+                fallbackLatitude={(form.city || form.district || form.region) ? resolveDefaultCoordinates(form.city, form.district, form.region).lat : undefined}
+                fallbackLongitude={(form.city || form.district || form.region) ? resolveDefaultCoordinates(form.city, form.district, form.region).lng : undefined}
+                coordinatesConfirmed={!coordsAutoAssigned}
+                height={340}
                 disabled={saving || submitting}
               />
 
@@ -1472,6 +1476,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                     onChange={(e) => {
                       update('latitude', e.target.value);
                       setCoordsAutoAssigned(false);
+                      setLocationAccuracyM(null);
                     }}
                     placeholder="e.g. 8.484400"
                     inputMode="decimal"
@@ -1487,6 +1492,7 @@ export const DiscoveryOnboardingWizard: React.FC<DiscoveryOnboardingWizardProps>
                     onChange={(e) => {
                       update('longitude', e.target.value);
                       setCoordsAutoAssigned(false);
+                      setLocationAccuracyM(null);
                     }}
                     placeholder="e.g. -13.234400"
                     inputMode="decimal"
