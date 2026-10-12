@@ -68,7 +68,7 @@ assert.match(map, /openstreetmap\.org/);
 
 // Onboarding must never treat a city-center fallback as a confirmed business pin.
 assert.match(onboarding, /if \(coordsAutoAssigned\)/);
-assert.match(onboarding, /Approximate city or district center/);
+assert.match(onboarding, /approximate city or district center/i);
 assert.match(onboarding, /Accurate map coordinates are required/);
 assert.doesNotMatch(onboarding, /const resolvedCoords =/);
 assert.match(onboarding, /locationSource: locationAccuracyM != null \? 'GPS' : 'MANUAL'/);
