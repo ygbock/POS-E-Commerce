@@ -660,6 +660,11 @@ export class DiscoveryBusinessService {
       if (!TRANSITIONS[currentStatus].includes(toStatus)) {
         throw new Error(`INVALID_STATE_TRANSITION:${currentStatus} cannot transition to ${toStatus}.`);
       }
+      // Readiness must be checked under the same row lock as the status change.
+      // A preflight-only check in submit() can race with a concurrent draft edit.
+      if (toStatus === 'SUBMITTED') {
+        await this.assertListingReadyForSubmission(existing, tx);
+      }
 
       const patch: any = { listing_status: toStatus };
       if (toStatus === 'PUBLISHED') {
