@@ -4,7 +4,7 @@ import { LocateFixed, MapPin, Minus, Plus, Loader2 } from 'lucide-react';
 interface DiscoveryLocationMapEditorProps {
   latitude: number | null;
   longitude: number | null;
-  onChange: (latitude: number, longitude: number) => void;
+  onChange: (latitude: number, longitude: number, source?: 'GPS' | 'MANUAL', accuracyM?: number | null) => void;
   height?: number;
   disabled?: boolean;
   fallbackLatitude?: number;
@@ -109,7 +109,7 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
     const worldX = centerWorld.x + (clientX - (rect.left + rect.width / 2));
     const worldY = centerWorld.y + (clientY - (rect.top + rect.height / 2));
     const next = worldToLatLng(worldX, worldY, zoom);
-    onChange(next.latitude, next.longitude);
+    onChange(next.latitude, next.longitude, 'MANUAL');
     setCenter(next);
   };
 
@@ -188,10 +188,10 @@ export const DiscoveryLocationMapEditor: React.FC<DiscoveryLocationMapEditorProp
       (position) => {
         const next = { latitude: position.coords.latitude, longitude: position.coords.longitude };
         setCenter(next);
-        onChange(next.latitude, next.longitude);
         const accuracy = Number.isFinite(position.coords.accuracy) && position.coords.accuracy >= 0
           ? Math.round(position.coords.accuracy)
           : null;
+        onChange(next.latitude, next.longitude, 'GPS', accuracy);
         setLocationMessage(accuracy != null ? `Device location found (estimated accuracy ±${accuracy} m).` : 'Device location found.');
         setLocating(false);
       },
