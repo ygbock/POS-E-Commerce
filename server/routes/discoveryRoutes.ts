@@ -2446,8 +2446,15 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:result});
   }catch(err){next(err);}});
 
-  router.get('/moderation/claims', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const isSuper=req.auth!.role==='super_admin';const r=await db.query(`SELECT c.*,b.name AS business_name FROM discovery_business_claims c JOIN discovery_businesses b ON b.id=c.business_id WHERE c.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY c.created_at ASC LIMIT 100`,[isSuper,req.auth!.organizationId||'']);res.json({success:true,data:r.rows});}catch(err){next(err);}});
-  router.post('/moderation/claims/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');const r=await db.query(`UPDATE discovery_business_claims c SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP FROM discovery_businesses b WHERE c.id=$4 AND c.business_id=b.id AND ($5=TRUE OR b.organization_id=$6) RETURNING c.*`,[status,req.auth!.userId,req.body?.reason||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Claim not found.'}});await trustEvent(r.rows[0].business_id,'CLAIM',r.rows[0].id,'CLAIM_DECIDED',req.auth!.userId,'PENDING',status,req.body?.reason||null,{});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  // Ownership claims are moderated only through the platform Discovery workspace.
+  // Retire the legacy tenant route so it cannot approve claims without creating the
+  // owner membership, enforcing System Owner approval rules, and recording full audit metadata.
+  router.get('/moderation/claims', requireAuth(), async (_req,res) => {
+    res.status(410).json({success:false,error:{code:'LEGACY_MODERATION_ROUTE_RETIRED',message:'Use the platform Discovery moderation workspace to review ownership claims.'}});
+  });
+  router.post('/moderation/claims/:id/decision', requireAuth(), async (_req,res) => {
+    res.status(410).json({success:false,error:{code:'LEGACY_MODERATION_ROUTE_RETIRED',message:'Use the platform Discovery moderation workspace to decide ownership claims.'}});
+  });
 
   router.get('/moderation/reviews', requireAuth(), async(req,res,next)=>{try{
     if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
