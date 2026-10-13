@@ -49,7 +49,7 @@ export const PERMISSIONS = {
   POS_VIEW:'pos.view', POS_SELL:'pos.sell', POS_SESSION_OPEN:'pos.session_open', POS_SESSION_CLOSE:'pos.session_close', POS_DISCOUNT:'pos.discount',
   POS_PRICE_OVERRIDE:'pos.price_override', POS_VOID:'pos.void', POS_RETURN:'pos.return', POS_REFUND:'pos.refund', POS_REPORT:'pos.report',
   ADMIN_DIAGNOSTICS:'admin.diagnostics',
-  PLATFORM_VIEW:'platform.view', PLATFORM_TENANTS:'platform.tenants', PLATFORM_SUPPORT:'platform.support', PLATFORM_BILLING:'platform.billing', PLATFORM_DISCOVERY:'platform.discovery', SUPPORT_VIEW:'support.view', SUPPORT_CREATE:'support.create', SUPPORT_REPLY:'support.reply',
+  PLATFORM_VIEW:'platform.view', PLATFORM_TENANTS:'platform.tenants', PLATFORM_SUPPORT:'platform.support', PLATFORM_BILLING:'platform.billing', PLATFORM_DISCOVERY:'platform.discovery', PLATFORM_SETTINGS:'platform.settings', SUPPORT_VIEW:'support.view', SUPPORT_CREATE:'support.create', SUPPORT_REPLY:'support.reply',
 } as const;
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
@@ -149,8 +149,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   // authorize directly from req.auth.userId/identity type; granting tenant CRM/order permissions here
   // would expose generic back-office endpoints to global customers.
   customer: [],
-  system_owner: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_TENANTS,PERMISSIONS.PLATFORM_SUPPORT,PERMISSIONS.PLATFORM_BILLING,PERMISSIONS.PLATFORM_DISCOVERY],
-  platform_admin: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_TENANTS,PERMISSIONS.PLATFORM_SUPPORT,PERMISSIONS.PLATFORM_DISCOVERY],
+  system_owner: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_TENANTS,PERMISSIONS.PLATFORM_SUPPORT,PERMISSIONS.PLATFORM_BILLING,PERMISSIONS.PLATFORM_DISCOVERY,PERMISSIONS.PLATFORM_SETTINGS],
+  platform_admin: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_TENANTS,PERMISSIONS.PLATFORM_SUPPORT,PERMISSIONS.PLATFORM_DISCOVERY,PERMISSIONS.PLATFORM_SETTINGS],
   platform_support: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_SUPPORT],
   platform_finance: [PERMISSIONS.PLATFORM_VIEW,PERMISSIONS.PLATFORM_BILLING],
   business_owner: [

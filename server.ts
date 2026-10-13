@@ -10,7 +10,9 @@ import { Product, ProductVariant, CatalogAttribute, Category, Brand } from './sr
 import { getDatabaseClient, DatabaseClient } from './server/db/client.ts';
 import { runMigrations, getAppliedMigrations } from './server/db/migrator.ts';
 import { AuthService } from './server/services/authService.ts';
-import { EmailVerificationService, UnconfiguredEmailVerificationDelivery } from './server/services/emailVerificationService.ts';
+import { EmailVerificationService } from './server/services/emailVerificationService.ts';
+import { ResendEmailDelivery } from './server/services/resendEmailDelivery.ts';
+import { getStoredResendConfig } from './server/services/platformEmailSettings.ts';
 import { UserRepository } from './server/repositories/userRepository.ts';
 import { OrderRepository, OrderRecord, OrderItemRecord, PaymentRecord } from './server/repositories/orderRepository.ts';
 import { CustomerRepository } from './server/repositories/customerRepository.ts';
@@ -80,6 +82,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Centralized Environment & Runtime Contract Validation (UPG-001)
   const runtimeConfig = validateEnvironment();
+  // Credential lookup is database-backed and performed at send time, so platform settings
+  // changes apply without a process restart. The key itself is never returned to the UI.
+  let db: DatabaseClient;
+  const emailDelivery = new ResendEmailDelivery({ getConfig: async () => getStoredResendConfig(db) });
   // Express will only honor forwarded client IPs through this explicitly
   // configured proxy boundary. This keeps rate-limit identity server-authoritative.
   app.set('trust proxy', runtimeConfig.trustProxyHops);
@@ -93,13 +99,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     error: null as string | null,
   };
 
-  let db: DatabaseClient;
   let authService: AuthService;
   let emailVerificationService: EmailVerificationService;
 
   if (options.db) {
     db = options.db;
-    authService = options.authService || new AuthService(db);
+    authService = options.authService || new AuthService(db, undefined, emailDelivery);
     try {
       await db.query('SELECT 1 as val');
       dbStatus.connected = true;
@@ -118,7 +123,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     try {
       db = getDatabaseClient();
-      authService = options.authService || new AuthService(db);
+      authService = options.authService || new AuthService(db, undefined, emailDelivery);
       const ping = await db.query('SELECT 1 as val');
       if (ping.rows.length > 0) {
         dbStatus.connected = true;
@@ -141,7 +146,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     } catch (dbErr: any) {
       dbStatus.error = dbErr.message || 'Database initialization error';
       db = getDatabaseClient();
-      authService = options.authService || new AuthService();
+      authService = options.authService || new AuthService(undefined, undefined, emailDelivery);
       if (isProd) {
         console.error('[AbaCha DB Fatal] Production PostgreSQL startup failed:', dbStatus.error);
         throw new Error(`[AbaCha DB Fatal] Production PostgreSQL startup failed: ${dbStatus.error}`);
@@ -152,7 +157,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   }
 
   emailVerificationService = new EmailVerificationService(db, {
-    delivery: new UnconfiguredEmailVerificationDelivery(),
+    delivery: emailDelivery,
   });
 
   // Repositories
@@ -844,7 +849,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
     } catch (err: any) {
       const code = String(err?.message || '').split(':')[0];
-      if (code === 'EMAIL_DELIVERY_NOT_CONFIGURED') {
+      if (
+        code === 'EMAIL_DELIVERY_NOT_CONFIGURED' ||
+        code === 'RESEND_API_KEY_NOT_CONFIGURED' ||
+        code === 'RESEND_FROM_EMAIL_NOT_CONFIGURED'
+      ) {
         return res.status(503).json({
           success: false,
           error: {
