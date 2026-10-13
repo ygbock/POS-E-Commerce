@@ -229,6 +229,16 @@ async function main() {
     [unpublishedBusiness.id],
   );
 
+  await db.query(
+    `INSERT INTO discovery_services (id,business_id,name,slug,booking_mode,is_active)
+     VALUES ('pdv_unpublished_service',$1,'Private Service','pdv-unpublished-service','REQUEST',TRUE)`,
+    [unpublishedBusiness.id],
+  );
+  await db.query(
+    `INSERT INTO discovery_business_hours (id,location_id,day_of_week,opens_at,closes_at,is_closed)
+     VALUES ('pdv_unpublished_hours','pdv_unpublished_loc',1,'09:00','17:00',FALSE)`,
+  );
+
   const unpublishedProfileBySlug = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.slug)}`);
   assert.equal(unpublishedProfileBySlug.status, 404, 'unpublished listing must not resolve through its public slug');
   const unpublishedLocations = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/locations`);
