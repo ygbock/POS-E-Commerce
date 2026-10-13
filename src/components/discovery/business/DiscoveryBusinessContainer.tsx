@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  ArrowLeft,
   Building2,
   MapPin,
   Clock,
@@ -367,6 +368,17 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
+          {typeof window !== 'undefined' && window.location.pathname !== '/business' && (
+            <button
+              type="button"
+              onClick={() => window.location.assign('/business')}
+              aria-label="Back to Merchant Portal"
+              className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors min-h-[38px]"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Merchant Portal</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
