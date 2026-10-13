@@ -209,13 +209,6 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Valid
       throw new Error('[AbaCha Config Fatal] PASSWORD_RESET_URL/APP_BASE_URL must be a valid HTTPS URL in staging/production.');
     }
 
-    if (env.EMAIL_VERIFICATION_DELIVERY_CONFIGURED !== 'true') {
-      throw new Error('[AbaCha Config Fatal] EMAIL_VERIFICATION_DELIVERY_CONFIGURED=true is required in staging/production.');
-    }
-    if (env.PASSWORD_RESET_DELIVERY_CONFIGURED !== 'true') {
-      throw new Error('[AbaCha Config Fatal] PASSWORD_RESET_DELIVERY_CONFIGURED=true is required in staging/production.');
-    }
-
     if (isProduction && env.ALLOW_SEEDING_IN_PRODUCTION === 'true') {
       throw new Error('[AbaCha Config Fatal] Production seeding is permanently disabled. Remove ALLOW_SEEDING_IN_PRODUCTION.');
     }
