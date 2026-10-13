@@ -8,8 +8,8 @@ const ui = fs.readFileSync(path.join(root, 'src/components/platform/PlatformDash
 assert.match(ui, /fetch\('\/api\/platform\/overview'/, 'Dashboard must load authoritative tenant and user metrics');
 assert.match(ui, /fetch\('\/api\/platform\/billing'/, 'Billing metrics must come from the platform billing API');
 assert.match(ui, /const canViewBilling =/, 'Billing API access must be role-aware');
-assert.match(ui, /setActiveTab\('tenants'\)/, 'Tenant metrics must navigate to tenant management');
-assert.match(ui, /setActiveTab\('subscriptions'\)/, 'Billing metrics must navigate to subscriptions');
+assert.match(ui, /go\('tenants'\)/, 'Tenant metrics must navigate to tenant management');
+assert.match(ui, /go\('subscriptions'\)/, 'Billing metrics must navigate to subscriptions');
 assert.match(ui, /type="button"/, 'Dashboard actions must use semantic buttons');
 assert.match(ui, /focus-visible:ring-2/, 'Dashboard actions must provide visible keyboard focus');
 assert.match(ui, /aria-label=/, 'Stat cards must expose accessible names');
