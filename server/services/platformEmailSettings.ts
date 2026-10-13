@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { DatabaseClient } from '../db/client';
 import { decryptTotpSecret, encryptTotpSecret } from '../auth/platformMfa';
 
@@ -84,6 +83,3 @@ export async function clearPlatformEmailSettings(db: DatabaseClient): Promise<vo
   await db.query("DELETE FROM platform_email_settings WHERE id='resend'");
 }
 
-export function encryptEmailSecretForTest(value: string): string {
-  return crypto.createHash('sha256').update(value).digest('hex');
-}
