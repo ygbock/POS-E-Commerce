@@ -126,6 +126,9 @@ const getPlatformTabFromUrl = (): string | null => {
     return queryTab;
   }
   const normalized = window.location.pathname.replace(/\/$/, '');
+  // Treat the canonical platform root as an explicit workspace route so refresh
+  // restoration and the public Discovery fallback cannot misclassify it.
+  if (normalized === '/platform') return 'platform-dashboard';
   if (normalized.startsWith('/platform/')) {
     const slug = normalized.slice('/platform/'.length).split('/')[0];
     if (slug && PLATFORM_PATH_TO_TAB[slug]) {
