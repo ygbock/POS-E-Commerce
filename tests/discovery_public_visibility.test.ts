@@ -257,6 +257,26 @@ async function main() {
   assert.equal(unpublishedSearch.status, 200);
   assert.ok(!unpublishedSearch.body.data.businesses.some((item: any) => item.id === unpublishedBusiness.id), 'unpublished listing must not appear in public search results');
 
+  // Organization suspension must immediately remove an otherwise published listing from every public surface.
+  await db.query("UPDATE organizations SET is_active=FALSE WHERE id='pdv_org'");
+  const suspendedProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
+  assert.equal(suspendedProfile.status, 404, 'inactive organization must hide the public business profile');
+  const suspendedList = await getJson('/api/discovery/businesses?limit=100');
+  assert.equal(suspendedList.status, 200);
+  assert.ok(!suspendedList.body.data.some((item: any) => item.id === business.id), 'inactive organization listing must be excluded from public lists');
+  const suspendedSearch = await getJson('/api/discovery/search?type=businesses&limit=100');
+  assert.equal(suspendedSearch.status, 200);
+  assert.ok(!suspendedSearch.body.data.businesses.some((item: any) => item.id === business.id), 'inactive organization listing must be excluded from public search');
+  for (const endpoint of ['locations', 'hours', 'services']) {
+    const result = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/${endpoint}`);
+    assert.notEqual(result.status, 200, `inactive organization listing must not expose public ${endpoint}`);
+  }
+  const suspendedReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/reviews`);
+  assert.equal(suspendedReviews.status, 404, 'inactive organization listing reviews must not be public');
+  await db.query("UPDATE organizations SET is_active=TRUE WHERE id='pdv_org'");
+  const restoredProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
+  assert.equal(restoredProfile.status, 200, 'reactivating the organization should restore its still-published listing');
+
   // 2. Multi-location filtering must return the matching active branch, not only the primary.
   const matchingBranch = await db.query(
     `SELECT b.id,l.city
