@@ -351,6 +351,20 @@ async function main() {
     assert.strictEqual(paused.listing_status, 'PAUSED');
     assert.strictEqual(paused.is_discoverable, false);
     assert.ok(!(await service.listPublished({ limit: 200 })).some((listing) => listing.id === business.id));
+    const pausedWorkspace = await service.getListingManagementWorkspace(business.id, merchant);
+    assert.strictEqual(pausedWorkspace.business.listing_status, 'PAUSED', 'owner workspace must retain paused listings');
+
+    const unrelatedMerchant = { userId: 'mod-unrelated-owner', role: 'business_owner', organizationId: 'mod_cycle_org' };
+    await assert.rejects(
+      () => service.pause(business.id, unrelatedMerchant, 'Attempt to pause another owner listing.'),
+      /PERMISSION_DENIED|TENANT_ACCESS_DENIED/,
+      'another business owner must not pause this listing',
+    );
+    await assert.rejects(
+      () => service.archive(business.id, unrelatedMerchant, 'Attempt to archive another owner listing.'),
+      /PERMISSION_DENIED|TENANT_ACCESS_DENIED/,
+      'another business owner must not archive this listing',
+    );
 
     const republished = await service.publish(business.id, merchant, 'Owner resumed the paused listing.');
     assert.strictEqual(republished.listing_status, 'PUBLISHED');
@@ -361,6 +375,24 @@ async function main() {
     assert.strictEqual(archived.listing_status, 'ARCHIVED');
     assert.strictEqual(archived.is_discoverable, false);
     assert.ok(!(await service.listPublished({ limit: 200 })).some((listing) => listing.id === business.id));
+    const archivedWorkspace = await service.getListingManagementWorkspace(business.id, merchant);
+    assert.strictEqual(archivedWorkspace.business.listing_status, 'ARCHIVED', 'owner workspace must retain archived listing history');
+
+    await assert.rejects(
+      () => service.publish(business.id, merchant, 'Attempt to resume an archived listing.'),
+      /PERMISSION_DENIED|INVALID_STATE_TRANSITION/,
+      'archived listings must never be republished by the owner',
+    );
+    await assert.rejects(
+      () => service.pause(business.id, merchant, 'Attempt to pause an archived listing.'),
+      /INVALID_STATE_TRANSITION/,
+      'archived listings must reject pause transitions',
+    );
+    await assert.rejects(
+      () => service.archive(business.id, merchant, 'Attempt to archive an archived listing again.'),
+      /INVALID_STATE_TRANSITION/,
+      'archived listings must reject further lifecycle transitions',
+    );
 
     const lifecycleHistory = await db.query(
       'SELECT from_status,to_status,reason,actor_user_id FROM discovery_listing_events WHERE business_id=$1 ORDER BY created_at ASC',
