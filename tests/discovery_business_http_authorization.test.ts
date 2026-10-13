@@ -69,6 +69,8 @@ async function main() {
   await createMember('http-staff-a', 'http-staff-a@example.test', 'HTTP Staff A', ownerA.user.organizationId);
   await createMember('http-platform-moderator', 'http-platform-moderator@example.test', 'HTTP Platform Moderator', ownerA.user.organizationId);
   await db.query("UPDATE users SET role='platform_admin' WHERE id=$1", ['http-platform-moderator']);
+  await createMember('http-tenant-super-admin', 'http-tenant-super-admin@example.test', 'HTTP Tenant Super Admin', ownerB.user.organizationId);
+  await db.query("UPDATE users SET role='super_admin' WHERE id=$1", ['http-tenant-super-admin']);
 
   const { hash: customerHash, salt: customerSalt } = hashPassword('CustomerPassword123!');
   await userRepo.createUser({
@@ -104,6 +106,7 @@ async function main() {
     managerA: { userId: 'http-manager-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
     staffA: { userId: 'http-staff-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
     platformModerator: { userId: 'http-platform-moderator', organizationId: ownerA.user.organizationId, role: 'platform_admin' },
+    tenantSuperAdmin: { userId: 'http-tenant-super-admin', organizationId: ownerB.user.organizationId, role: 'super_admin' },
     customerA: { userId: 'http-customer-a', organizationId: ownerA.user.organizationId, role: 'customer' },
   };
 
@@ -199,6 +202,17 @@ async function main() {
     );
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.role, 'OWNER');
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.is_active, true);
+
+    // A tenant super_admin must not use Discovery trust endpoints or the
+    // verification moderation queue as a platform-wide authorization bypass.
+    for (const path of [
+      `/api/discovery/businesses/${createdDiscovery.body.data.id}/verification`,
+      `/api/discovery/businesses/${createdDiscovery.body.data.id}/trust`,
+      '/api/discovery/moderation/verification',
+    ]) {
+      const denied = await requestJson(baseUrl, path, actors.tenantSuperAdmin);
+      assert.strictEqual(denied.status, 403, `tenant super_admin must be denied cross-tenant/platform access to ${path}`);
+    }
 
     // Platform moderation must be able to place a listing under review without
     // passing the merchant-ownership guard; the service enforces moderator role.
