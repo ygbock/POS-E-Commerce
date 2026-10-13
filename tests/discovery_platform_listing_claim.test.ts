@@ -45,6 +45,7 @@ async function main() {
       ('claim-platform-admin','claim_platform_org','platform@claim.test','Platform Admin','hash','salt','platform_admin','platform',TRUE),
       ('claim-owner','claim_owner_org','owner@claim.test','Business Owner','hash','salt','business_owner','business_owner',TRUE),
       ('claim-customer','claim_owner_org','customer@claim.test','Customer','hash','salt','customer','customer',TRUE),
+      ('claim-tenant-super-admin','claim_owner_org','tenant-super-admin@claim.test','Tenant Super Admin','hash','salt','super_admin','staff',TRUE),
       ('claim-other-owner','claim_owner_org','other-owner@claim.test','Other Business Owner','hash','salt','business_owner','business_owner',TRUE),
       ('claim-platform-reviewer','claim_platform_org','reviewer@claim.test','System Owner Reviewer','hash','salt','system_owner','platform',TRUE)
   `);
@@ -81,6 +82,14 @@ async function main() {
   });
   const otherOwnerToken = signToken({
     userId: 'claim-other-owner', email: 'other-owner@claim.test', organizationId: 'claim_owner_org', role: 'business_owner', identityType: 'business_owner', permissions: ['business.view', 'business.listing.manage', 'business.listing.submit'],
+  });
+  const tenantSuperAdminToken = signToken({
+    userId: 'claim-tenant-super-admin',
+    email: 'tenant-super-admin@claim.test',
+    organizationId: 'claim_owner_org',
+    role: 'super_admin',
+    identityType: 'staff',
+    permissions: ['business.view', 'business.listing.manage'],
   });
   const customerToken = signToken({
     userId: 'claim-customer',
@@ -174,6 +183,19 @@ async function main() {
     assert.equal(stillPending.rows[0]?.status, 'PENDING');
     const noPrematureOwner = await db.query('SELECT 1 FROM discovery_business_memberships WHERE business_id=$1 AND is_active=TRUE', [businessId]);
     assert.equal(noPrematureOwner.rows.length, 0);
+
+    // Legacy review/report moderation must also be retired; tenant super_admin
+    // must never gain platform-wide moderation through the old route surface.
+    for (const path of ['/api/discovery/moderation/reviews', '/api/discovery/moderation/reports']) {
+      const legacyQueue = await request(baseUrl, path, { token: tenantSuperAdminToken });
+      assert.equal(legacyQueue.status, 410, path);
+    }
+    for (const path of ['/api/discovery/moderation/reviews/legacy-review/decision', '/api/discovery/moderation/reports/legacy-report/decision']) {
+      const legacyDecision = await request(baseUrl, path, {
+        method: 'POST', token: tenantSuperAdminToken, body: { status: 'PUBLISHED', reason: 'Legacy route must be retired.' },
+      });
+      assert.equal(legacyDecision.status, 410, path);
+    }
 
     const decision = await request(baseUrl, `/api/platform/discovery/moderation/claims/${claimId}/decision`, {
       method: 'POST',
