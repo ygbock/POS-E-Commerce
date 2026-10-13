@@ -85,8 +85,44 @@ function loadLeaflet(): Promise<LeafletNamespace> {
   return leafletPromise;
 }
 
-const finiteCoord = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value);
+const finiteCoord = (value: unknown): value is number => {
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string' && value.trim() !== '') {
+    const num = Number(value);
+    return Number.isFinite(num);
+  }
+  return false;
+};
+
+const SIERRA_LEONE_CITY_COORDINATES: Record<string, [number, number]> = {
+  freetown: [8.484, -13.229],
+  bo: [7.962, -11.737],
+  kenema: [7.876, -11.189],
+  makeni: [8.883, -12.043],
+  koidu: [8.643, -10.971],
+  'koidu-sefebadu': [8.643, -10.971],
+  'port loko': [9.066, -12.787],
+  waterloo: [8.338, -13.071],
+  lunsar: [8.683, -12.533],
+  magburaka: [8.718, -11.948],
+  kabala: [9.589, -11.552],
+  moyamba: [8.158, -12.431],
+  pujehun: [7.358, -11.721],
+  kambia: [9.125, -12.918],
+  kailahun: [8.278, -10.573],
+  bonthe: [7.526, -12.505],
+};
+
+function resolveListingCoords(listing: { latitude?: number | string | null; longitude?: number | string | null; city?: string | null }): [number, number] | null {
+  if (finiteCoord(listing.latitude) && finiteCoord(listing.longitude)) {
+    return [Number(listing.latitude), Number(listing.longitude)];
+  }
+  if (listing.city) {
+    const key = listing.city.trim().toLowerCase();
+    if (SIERRA_LEONE_CITY_COORDINATES[key]) return SIERRA_LEONE_CITY_COORDINATES[key];
+  }
+  return null;
+}
 
 const getCoordinateKey = (latitude: number, longitude: number) =>
   `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
@@ -173,8 +209,9 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
     };
 
     businesses.forEach((business) => {
-      if (!finiteCoord(business.latitude) || !finiteCoord(business.longitude)) return;
-      const point = getPoint(business.latitude, business.longitude);
+      const coords = resolveListingCoords(business);
+      if (!coords) return;
+      const point = getPoint(coords[0], coords[1]);
       point.businesses.push(business);
       point.quality = point.quality || null;
       point.distanceKm = business.distance_km != null && Number.isFinite(Number(business.distance_km))
@@ -183,8 +220,9 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
     });
 
     services.forEach((service) => {
-      if (!finiteCoord(service.latitude) || !finiteCoord(service.longitude)) return;
-      getPoint(service.latitude, service.longitude).services.push(service);
+      const coords = resolveListingCoords(service);
+      if (!coords) return;
+      getPoint(coords[0], coords[1]).services.push(service);
     });
 
     return Array.from(grouped.values()).sort((a, b) =>
@@ -203,8 +241,8 @@ export const DiscoveryMapPanel: React.FC<DiscoveryMapPanelProps> = ({
       : [8.484, -13.229];
 
   const externalMapUrl = `https://www.openstreetmap.org/?mlat=${center[0]}&mlon=${center[1]}#map=13/${center[0]}/${center[1]}`;
-  const unmappedBusinessCount = businesses.filter((business) => !finiteCoord(business.latitude) || !finiteCoord(business.longitude)).length;
-  const unmappedServiceCount = services.filter((service) => !finiteCoord(service.latitude) || !finiteCoord(service.longitude)).length;
+  const unmappedBusinessCount = businesses.filter((business) => !resolveListingCoords(business)).length;
+  const unmappedServiceCount = services.filter((service) => !resolveListingCoords(service)).length;
 
   useEffect(() => {
     let cancelled = false;

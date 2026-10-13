@@ -1372,7 +1372,14 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         }
       }
 
-      const attachSearchAttribution = (rows: any[], entityType: 'BUSINESS' | 'PRODUCT' | 'SERVICE') => rows.map((row, index) => ({ ...row, searchId, resultPosition: offset + index + 1, attributionEntityType: entityType }));
+      const attachSearchAttribution = (rows: any[], entityType: 'BUSINESS' | 'PRODUCT' | 'SERVICE') => rows.map((row, index) => ({
+        ...row,
+        latitude: row.latitude != null && row.latitude !== '' && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null,
+        longitude: row.longitude != null && row.longitude !== '' && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null,
+        searchId,
+        resultPosition: offset + index + 1,
+        attributionEntityType: entityType,
+      }));
       businessResults = attachSearchAttribution(businessResults, 'BUSINESS');
       productResults = attachSearchAttribution(productResults, 'PRODUCT');
       serviceResults = attachSearchAttribution(serviceResults, 'SERVICE');

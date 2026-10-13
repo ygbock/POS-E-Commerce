@@ -23,6 +23,7 @@ import {
   GraduationCap,
   Layers,
   X,
+  AlertCircle,
 } from 'lucide-react';
 import type { DiscoverySearchType, DiscoveryCategory, DiscoveryGeoLocation } from '../../types/discovery';
 import { discoveryApi } from '../../services/discoveryApi';
@@ -377,8 +378,17 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
   const filteredCities = useMemo(() => {
     const q = citySearchQuery.trim().toLowerCase();
     if (!q) return availableCities;
-    return availableCities.filter((city) => city.toLowerCase().includes(q));
-  }, [availableCities, citySearchQuery]);
+    return availableCities.filter((city) => {
+      if (city.toLowerCase().includes(q)) return true;
+      const cityRecord = activeGeoLocations.find((l) => l.location_type === 'CITY' && l.name.toLowerCase() === city.toLowerCase());
+      const parentDistrict = cityRecord?.parent_id ? activeGeoLocations.find((l) => l.id === cityRecord.parent_id) : undefined;
+      const parentRegion = parentDistrict?.parent_id ? activeGeoLocations.find((l) => l.id === parentDistrict.parent_id) : undefined;
+      return (
+        (parentDistrict && parentDistrict.name.toLowerCase().includes(q)) ||
+        (parentRegion && parentRegion.name.toLowerCase().includes(q))
+      );
+    });
+  }, [availableCities, citySearchQuery, activeGeoLocations]);
 
   const filteredCommunities = useMemo(() => {
     const q = citySearchQuery.trim().toLowerCase();
@@ -403,50 +413,6 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
         </div>
 
         <div className="max-w-3xl mx-auto">
-          {/* Province and District Dropdown fields placed ABOVE the main search bar */}
-          <div className="grid grid-cols-2 sm:flex sm:flex-row justify-center gap-2 max-w-md mx-auto mb-3.5">
-            {/* Province Select */}
-            <div className="relative">
-              <select
-                value={selectedRegion || ''}
-                onChange={(e) => handleRegionSelect(e.target.value)}
-                aria-label="Filter by region"
-                className="w-full px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 dark:bg-slate-900/60 backdrop-blur-md border border-white/15 dark:border-slate-800 text-white dark:text-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer appearance-none sm:min-w-[160px] pr-8 truncate"
-              >
-                <option value="" className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 font-bold">All Regions</option>
-                {availableRegions.map((prov) => (
-                  <option key={prov} value={prov} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
-                    {prov}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">
-                <ChevronDown className="w-3.5 h-3.5" />
-              </div>
-            </div>
-
-            {/* District Select */}
-            <div className="relative">
-              <select
-                disabled={!selectedRegion}
-                value={selectedDistrict || ''}
-                onChange={(e) => handleDistrictSelect(e.target.value)}
-                aria-label="Filter by district"
-                className="w-full px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 dark:bg-slate-900/60 backdrop-blur-md border border-white/15 dark:border-slate-800 text-white dark:text-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed appearance-none sm:min-w-[160px] pr-8 truncate"
-              >
-                <option value="" className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 font-bold">All Districts</option>
-                {availableDistricts.map((dist) => (
-                  <option key={dist} value={dist} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
-                    {dist}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">
-                <ChevronDown className="w-3.5 h-3.5" />
-              </div>
-            </div>
-          </div>
-
           {/* Unified Search form container with City Selector Popover */}
           <form
             onSubmit={(e) => {
@@ -458,15 +424,15 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
             {/* Inputs Container - responsive on mobile/tablet/desktop */}
             <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center min-w-0 gap-1 sm:gap-1 md:gap-0 relative">
               
-              {/* 1. City Selector Field - order-2 on mobile/tablet, order-3 on desktop */}
-              <div ref={cityDropdownContainerRef} className="relative w-full sm:w-52 md:w-64 lg:w-72 shrink-0 flex items-center min-w-0 order-2 sm:order-2 md:order-3">
+              {/* 1. City Selector Field - order-2 on mobile, order-3 on tablet & desktop */}
+              <div ref={cityDropdownContainerRef} className="relative w-full sm:w-56 md:w-64 lg:w-72 shrink-0 flex items-center min-w-0 order-2 sm:order-3">
                 <button
                   type="button"
                   onClick={() => {
                     setCityDropdownOpen((prev) => !prev);
                     setGeoErrorMsg(null);
                   }}
-                  className="w-full px-3 sm:px-3.5 py-2.5 sm:py-3 rounded-xl sm:rounded-xl md:rounded-none bg-slate-50/90 sm:bg-slate-50/50 md:bg-transparent dark:bg-slate-800/60 md:dark:bg-transparent border border-slate-200/70 sm:border-transparent dark:border-slate-700/70 md:dark:border-transparent text-left text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-semibold flex items-center justify-between min-h-[44px] cursor-pointer hover:bg-slate-100/80 sm:hover:bg-slate-50/80 dark:hover:bg-slate-800/70 transition-colors"
+                  className="w-full px-3.5 py-2.5 sm:py-3 rounded-xl md:rounded-none bg-slate-50/90 sm:bg-slate-50/70 md:bg-transparent dark:bg-slate-800/80 md:dark:bg-transparent border border-slate-200/80 sm:border-slate-200/60 md:border-transparent dark:border-slate-700/80 md:dark:border-transparent text-left text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-semibold flex items-center justify-between min-h-[44px] cursor-pointer hover:bg-slate-100/90 sm:hover:bg-slate-100/70 md:hover:bg-slate-50/80 dark:hover:bg-slate-700/70 md:dark:hover:bg-slate-800/60 transition-colors shadow-xs sm:shadow-none"
                   aria-expanded={cityDropdownOpen}
                   aria-haspopup="listbox"
                   aria-label="Select city"
@@ -474,16 +440,22 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <MapPin className={`w-4 h-4 shrink-0 ${gpsActive ? 'text-emerald-500 animate-pulse' : 'text-indigo-600 dark:text-indigo-400'}`} />
                     <div className="min-w-0 flex-1">
-                      <span className={`block truncate ${selectedLocality || selectedCity || gpsActive ? 'text-slate-900 dark:text-white font-black' : 'text-slate-500 dark:text-slate-400'}`}>
+                      <span className={`block truncate ${selectedLocality || selectedCity || selectedDistrict || selectedRegion || gpsActive ? 'text-slate-900 dark:text-white font-black' : 'text-slate-500 dark:text-slate-400'}`}>
                         {gpsActive ? 'Near My Location' : selectedLocality || selectedCity || selectedDistrict || selectedRegion || 'Select City / Town'}
                       </span>
-                      {!gpsActive && (selectedLocality || selectedCity || selectedDistrict) && (
+                      {!gpsActive && (selectedLocality || selectedCity || selectedDistrict || selectedRegion) && (
                         <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 truncate leading-tight">
                           {selectedLocality && selectedCity
                             ? `${selectedCity}${selectedDistrict ? ` · ${selectedDistrict}` : ''}`
                             : selectedCity && selectedDistrict
                             ? `${selectedDistrict}${selectedRegion ? ` · ${selectedRegion}` : ''}`
-                            : selectedRegion || 'Sierra Leone'}
+                            : selectedDistrict && selectedRegion
+                            ? `${selectedDistrict} District · ${selectedRegion}`
+                            : selectedDistrict
+                            ? `${selectedDistrict} District`
+                            : selectedRegion
+                            ? `${selectedRegion} Region`
+                            : 'Sierra Leone'}
                         </span>
                       )}
                     </div>
@@ -499,62 +471,82 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
 
                 {cityDropdownOpen && (
                   <>
+                    {/* Backdrop scrim */}
                     <div
-                      className="fixed inset-0 z-40 bg-slate-950/35 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none"
+                      className="fixed inset-0 z-40 bg-slate-950/60 sm:bg-slate-950/20 backdrop-blur-xs sm:backdrop-blur-none transition-opacity"
                       onClick={() => setCityDropdownOpen(false)}
+                      aria-hidden="true"
                     />
+
+                    {/* Popover / Mobile Bottom Sheet */}
                     <div
                       role="listbox"
                       aria-label="City and community selector"
-                      className="fixed sm:absolute inset-x-3 bottom-3 sm:inset-auto sm:top-full sm:right-0 sm:mt-2 w-auto sm:w-[360px] md:w-[420px] lg:w-[460px] max-w-[calc(100vw-1.5rem)] max-h-[82vh] sm:max-h-[480px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-3.5 sm:p-4 text-left z-50 animate-in fade-in slide-in-from-bottom-2 sm:slide-in-from-top-1 duration-150 flex flex-col gap-2.5"
+                      className="fixed sm:absolute inset-x-0 bottom-0 sm:inset-auto sm:top-[calc(100%+8px)] sm:right-0 z-50 w-full sm:w-[440px] md:w-[480px] max-w-[100vw] sm:max-w-[calc(100vw-2rem)] max-h-[86vh] sm:max-h-[520px] rounded-t-3xl sm:rounded-2xl bg-white dark:bg-slate-900 border-t sm:border border-slate-200/90 dark:border-slate-800 shadow-2xl p-4 sm:p-4.5 text-left animate-in slide-in-from-bottom-3 sm:slide-in-from-top-2 sm:fade-in duration-200 flex flex-col gap-2.5 overflow-hidden"
                     >
-                      {/* Header with Active Breadcrumb & Close Button */}
-                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                      {/* Mobile Drag Indicator Handle */}
+                      <div className="sm:hidden w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto -mt-1 mb-0.5 shrink-0" aria-hidden="true" />
+
+                      {/* Header with Active Hierarchy & Close Button */}
+                      <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800/80 shrink-0">
                         <div className="min-w-0 pr-2">
-                          <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">Choose City, Town or Community</p>
-                          <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                              <MapPin className="w-3.5 h-3.5" />
+                            </span>
+                            <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">Choose City, Town or Region</p>
+                          </div>
+                          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 truncate pl-7">
                             {selectedRegion ? `${selectedRegion}${selectedDistrict ? ` › ${selectedDistrict}` : ''}${selectedCity ? ` › ${selectedCity}` : ''}` : 'All Regions in Sierra Leone'}
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => setCityDropdownOpen(false)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+                          className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 transition-colors"
                           aria-label="Close location menu"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
 
-                      {/* GPS Geolocation Trigger button inside city list selector */}
+                      {/* GPS Geolocation Trigger button */}
                       <button
                         type="button"
                         onClick={handleUseCurrentLocation}
                         disabled={isLocating}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shrink-0 min-h-[42px] ${
+                        className={`w-full flex items-center justify-between p-2.5 sm:p-3 rounded-xl text-xs font-bold transition-all cursor-pointer border shrink-0 min-h-[44px] ${
                           gpsActive
-                            ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400'
-                            : 'bg-indigo-50 hover:bg-indigo-100/85 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 border-indigo-100 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 shadow-xs'
+                            : 'bg-indigo-50/80 hover:bg-indigo-100/90 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 border-indigo-200/80 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300'
                         }`}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           {isLocating ? (
                             <Loader2 className="w-4 h-4 animate-spin text-indigo-500 shrink-0" />
                           ) : (
-                            <Navigation className={`w-4 h-4 shrink-0 ${gpsActive ? 'fill-emerald-500 text-emerald-500 animate-pulse' : 'text-indigo-600 dark:text-indigo-400'}`} />
+                            <Navigation className={`w-4 h-4 shrink-0 ${gpsActive ? 'fill-emerald-600 text-emerald-600 animate-pulse' : 'text-indigo-600 dark:text-indigo-400'}`} />
                           )}
-                          <span className="truncate">{isLocating ? 'Detecting GPS Location…' : gpsActive ? 'GPS Location Enabled' : 'Use Current GPS Location'}</span>
+                          <div className="min-w-0 text-left">
+                            <span className="block truncate font-bold">{isLocating ? 'Detecting GPS Location…' : gpsActive ? 'GPS Location Enabled' : 'Use Current GPS Location'}</span>
+                            <span className="block text-[10px] opacity-75 font-normal truncate">Find businesses and services closest to you</span>
+                          </div>
                         </div>
-                        {gpsActive && <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md uppercase font-black tracking-wider animate-pulse shrink-0">Active</span>}
+                        {gpsActive && (
+                          <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase font-black tracking-wider animate-pulse shrink-0">
+                            Active
+                          </span>
+                        )}
                       </button>
 
                       {geoErrorMsg && (
-                        <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-[11px] text-amber-800 dark:text-amber-300 font-medium shrink-0">
-                          {geoErrorMsg}
+                        <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-[11px] text-amber-800 dark:text-amber-300 font-medium shrink-0 flex items-center gap-2">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                          <span>{geoErrorMsg}</span>
                         </div>
                       )}
 
-                      {/* Quick filter input inside dropdown */}
+                      {/* Quick filter search input inside dropdown */}
                       <div className="relative shrink-0">
                         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
@@ -562,63 +554,122 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                           value={citySearchQuery}
                           onChange={(e) => setCitySearchQuery(e.target.value)}
                           placeholder="Search Freetown, Bo, Kenema, Lumley…"
-                          className="w-full pl-8 pr-8 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                          className="w-full pl-8 pr-16 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                         />
-                        {citySearchQuery && (
-                          <button
-                            type="button"
-                            onClick={() => setCitySearchQuery('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                            aria-label="Clear filter"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                          {citySearchQuery ? (
+                            <button
+                              type="button"
+                              onClick={() => setCitySearchQuery('')}
+                              className="text-slate-400 hover:text-slate-600 p-0.5"
+                              aria-label="Clear filter"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-700/60">
+                              {filteredCities.length}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Quick Region Filter Pills inside Dropdown for Mobile & Desktop convenience */}
-                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 no-scrollbar">
-                        <button
-                          type="button"
-                          onClick={() => handleRegionSelect('')}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-colors cursor-pointer ${
-                            !selectedRegion
-                              ? 'bg-indigo-600 text-white border-indigo-600'
-                              : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          All Regions
-                        </button>
-                        {availableRegions.map((reg) => {
-                          const isRegActive = selectedRegion === reg;
-                          return (
+                      {/* Region Filter Chips */}
+                      <div className="space-y-1 shrink-0">
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 no-scrollbar">
+                          <button
+                            type="button"
+                            onClick={() => handleRegionSelect('')}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-all cursor-pointer ${
+                              !selectedRegion
+                                ? 'bg-[#0054a6] text-white border-[#0054a6] shadow-xs'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            All Regions
+                          </button>
+                          {availableRegions.map((reg) => {
+                            const isRegActive = selectedRegion === reg;
+                            return (
+                              <button
+                                key={reg}
+                                type="button"
+                                onClick={() => handleRegionSelect(isRegActive ? '' : reg)}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-all cursor-pointer ${
+                                  isRegActive
+                                    ? 'bg-[#0054a6] text-white border-[#0054a6] shadow-xs'
+                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                }`}
+                              >
+                                {reg}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* District Filter Chips when a Region is Selected */}
+                        {selectedRegion && availableDistricts.length > 0 && (
+                          <div className="flex items-center gap-1.5 overflow-x-auto pt-0.5 pb-1 shrink-0 no-scrollbar">
+                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">Districts:</span>
                             <button
-                              key={reg}
                               type="button"
-                              onClick={() => handleRegionSelect(isRegActive ? '' : reg)}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-colors cursor-pointer ${
-                                isRegActive
-                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                              onClick={() => handleDistrictSelect('')}
+                              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-all cursor-pointer ${
+                                !selectedDistrict
+                                  ? 'bg-[#0054a6] text-white border-[#0054a6]'
                                   : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
                               }`}
                             >
-                              {reg}
+                              All {selectedRegion}
                             </button>
-                          );
-                        })}
+                            {availableDistricts.map((dist) => {
+                              const isDistActive = selectedDistrict === dist;
+                              return (
+                                <button
+                                  key={dist}
+                                  type="button"
+                                  onClick={() => handleDistrictSelect(isDistActive ? '' : dist)}
+                                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap border transition-all cursor-pointer ${
+                                    isDistActive
+                                      ? 'bg-[#0054a6] text-white border-[#0054a6]'
+                                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {dist}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Scrollable container for both Cities and Communities */}
-                      <div className="overflow-y-auto flex-1 pr-0.5 space-y-3 min-h-[140px] max-h-[44vh] sm:max-h-[250px]">
+                      {/* Regional or District Scope Banner when selected without a specific City */}
+                      {(selectedRegion || selectedDistrict) && !selectedCity && !selectedLocality && (
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-blue-50/90 dark:bg-indigo-950/40 border border-blue-200/80 dark:border-indigo-900/50 text-[11px] font-semibold text-[#0054a6] dark:text-indigo-200 shrink-0">
+                          <div className="truncate pr-2">
+                            Filtering by: <span className="font-bold">{selectedDistrict ? `${selectedDistrict} District` : `${selectedRegion} Region`}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCityDropdownOpen(false)}
+                            className="px-2.5 py-1 rounded-lg bg-[#0054a6] hover:bg-[#004080] text-white text-[10px] font-bold shrink-0 transition-colors cursor-pointer"
+                          >
+                            Apply Filter
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Scrollable list of Cities & Communities */}
+                      <div className="overflow-y-auto flex-1 pr-0.5 space-y-3 min-h-[140px] max-h-[46vh] sm:max-h-[250px] no-scrollbar">
                         {/* Cities / Towns Section */}
                         <div>
-                          <div className="px-2 pb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
+                          <div className="px-1 pb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
                             <span>Cities & Towns</span>
                             <span>{filteredCities.length}</span>
                           </div>
                           {filteredCities.length === 0 ? (
-                            <div className="p-3 text-center text-xs font-semibold text-slate-400 dark:text-slate-500 italic">
-                              No matching cities found
+                            <div className="p-4 text-center text-xs font-medium text-slate-400 dark:text-slate-500 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                              No cities found matching "{citySearchQuery}".
                             </div>
                           ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -631,10 +682,10 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                                     key={cityName}
                                     type="button"
                                     onClick={() => handleCitySelect(cityName)}
-                                    className={`w-full px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between min-h-[42px] cursor-pointer border text-left ${
+                                    className={`w-full px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between min-h-[44px] cursor-pointer border text-left active:scale-[0.99] ${
                                       isSelected
-                                        ? 'text-[#0054a6] dark:text-indigo-300 bg-blue-50/90 dark:bg-indigo-950/60 border-blue-200 dark:border-indigo-800'
-                                        : 'text-slate-700 dark:text-slate-200 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                        ? 'text-[#0054a6] dark:text-indigo-300 bg-blue-50/90 dark:bg-indigo-950/60 border-blue-200 dark:border-indigo-800 shadow-xs'
+                                        : 'text-slate-700 dark:text-slate-200 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:border-slate-200'
                                     }`}
                                   >
                                     <div className="flex items-center gap-2 min-w-0">
@@ -648,7 +699,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                                         )}
                                       </div>
                                     </div>
-                                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-indigo-600 dark:text-indigo-400 ml-1" />}
+                                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-[#0054a6] dark:text-indigo-400 ml-1" />}
                                   </button>
                                 );
                               })}
@@ -659,7 +710,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                         {/* Communities & Villages Section */}
                         {filteredCommunities.length > 0 && (
                           <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                            <div className="px-2 pb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            <div className="px-1 pb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
                               <span>Communities & Neighborhoods</span>
                               <span>{filteredCommunities.length}</span>
                             </div>
@@ -672,10 +723,10 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                                     key={community.id}
                                     type="button"
                                     onClick={() => handleCommunitySelect(community.name)}
-                                    className={`w-full px-3 py-2 rounded-xl text-left text-xs font-bold flex items-center justify-between min-h-[42px] cursor-pointer border transition-colors ${
+                                    className={`w-full px-3 py-2 rounded-xl text-left text-xs font-bold flex items-center justify-between min-h-[44px] cursor-pointer border transition-all active:scale-[0.99] ${
                                       isSelected
-                                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
-                                        : 'text-slate-700 dark:text-slate-200 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                        ? 'bg-blue-50/90 dark:bg-indigo-950/60 text-[#0054a6] dark:text-indigo-300 border-blue-200 dark:border-indigo-800'
+                                        : 'text-slate-700 dark:text-slate-200 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/80'
                                     }`}
                                   >
                                     <div className="min-w-0 pr-1">
@@ -686,7 +737,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                                         </span>
                                       )}
                                     </div>
-                                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-indigo-600 dark:text-indigo-400" />}
+                                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-[#0054a6] dark:text-indigo-400" />}
                                   </button>
                                 );
                               })}
@@ -695,21 +746,32 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                         )}
                       </div>
 
-                      {/* Clear Button Option */}
-                      {(selectedCity || selectedLocality || selectedDistrict || selectedRegion || gpsActive) && (
+                      {/* Sticky Footer with Clear and Done Controls */}
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2 shrink-0">
+                        {(selectedCity || selectedLocality || selectedDistrict || selectedRegion || gpsActive) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGpsActive(false);
+                              setCitySearchQuery('');
+                              onCityChange({ city: undefined, district: undefined, region: undefined, locality: undefined, lat: null, lng: null });
+                              setCityDropdownOpen(false);
+                            }}
+                            className="py-1.5 px-3 text-[11px] font-black uppercase text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Clear Filter
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 pl-1">All Sierra Leone</span>
+                        )}
                         <button
                           type="button"
-                          onClick={() => {
-                            setGpsActive(false);
-                            setCitySearchQuery('');
-                            onCityChange({ city: undefined, district: undefined, region: undefined, locality: undefined, lat: null, lng: null });
-                            setCityDropdownOpen(false);
-                          }}
-                          className="text-center w-full py-2 text-[11px] font-black uppercase text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl border-t border-slate-100 dark:border-slate-800/80 cursor-pointer shrink-0 transition-colors"
+                          onClick={() => setCityDropdownOpen(false)}
+                          className="px-4 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-xs font-bold transition-colors cursor-pointer"
                         >
-                          Clear Location Filter
+                          Done
                         </button>
-                      )}
+                      </div>
                     </div>
                   </>
                 )}

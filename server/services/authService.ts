@@ -1447,5 +1447,18 @@ export class AuthService {
        VALUES ('loc_inv_2', 'disc_inv_2', 'Makeni Central Mall', 'STORE', '15 Rogbaneh Road', 'Makeni', 'Bombali', 'Northern Province', 8.883, -12.043, TRUE, TRUE, 'HIGH', 'MANUAL')
        ON CONFLICT (id) DO NOTHING`
     );
+
+    // Initial Active Services for Seeded Businesses (so services appear in discovery search & on interactive map)
+    await this.db.query(
+      `INSERT INTO discovery_services
+       (id, business_id, name, slug, description, service_type, price_from, price_to, currency, duration_minutes, service_area_text, booking_mode, is_active)
+       VALUES
+       ('svc_list_1', 'disc_list_1', 'Commercial & Facility Maintenance', 'commercial-facility-maintenance', 'Comprehensive facility upkeep, commercial janitorial, and routine preventative servicing.', 'Maintenance & Cleaning', 250, 1500, 'SLE', 120, 'Greater Freetown & Western Area', 'REQUEST', TRUE),
+       ('svc_list_2', 'disc_list_1', 'Electrical & Generator Servicing', 'electrical-generator-servicing', 'Certified industrial generator repair, load testing, and electrical troubleshooting.', 'Electrical & Power', 350, 2500, 'SLE', 90, 'Western Area Urban & Rural', 'REQUEST', TRUE),
+       ('svc_list_3', 'disc_list_2', 'Artisanal Woodwork & Custom Furniture', 'artisanal-woodwork-furniture', 'Handcrafted Sierra Leonean hardwood tables, doors, and custom decorative woodcraft.', 'Carpentry & Artisan', 400, 3000, 'SLE', 240, 'Kono & Eastern Province', 'QUOTE', TRUE),
+       ('svc_inv_1', 'disc_inv_1', 'Electronics & Appliance Repair', 'electronics-appliance-repair', 'Diagnostic testing and component-level repairs for smartphones, power inverters, and audio systems.', 'Device & Tech Repair', 100, 800, 'SLE', 60, 'Bo City & Southern Districts', 'REQUEST', TRUE),
+       ('svc_inv_2', 'disc_inv_2', 'Bulk Retail Delivery & Provisioning', 'bulk-retail-delivery', 'Scheduled wholesale delivery and bulk store provisioning for local businesses and food venues.', 'Logistics & Provisioning', 150, 1200, 'SLE', 180, 'Makeni & Northern Province', 'REQUEST', TRUE)
+       ON CONFLICT (id) DO NOTHING`
+    );
   }
 }
