@@ -277,6 +277,34 @@ async function main() {
   const restoredProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
   assert.equal(restoredProfile.status, 200, 'reactivating the organization should restore its still-published listing');
 
+  // Public visibility must depend on the listing lifecycle state, not merely the discoverability flag.
+  for (const hiddenStatus of ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PAUSED']) {
+    await db.query(
+      'UPDATE discovery_businesses SET listing_status=$2,is_discoverable=TRUE WHERE id=$1',
+      [business.id, hiddenStatus],
+    );
+    const statusProfile = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
+    assert.equal(statusProfile.status, 404, `${hiddenStatus} listing must not resolve through the public profile endpoint`);
+    const statusList = await getJson('/api/discovery/businesses?limit=100');
+    assert.equal(statusList.status, 200);
+    assert.ok(!statusList.body.data.some((item: any) => item.id === business.id), `${hiddenStatus} listing must not appear in public listing results`);
+    const statusSearch = await getJson('/api/discovery/search?type=businesses&limit=100');
+    assert.equal(statusSearch.status, 200);
+    assert.ok(!statusSearch.body.data.businesses.some((item: any) => item.id === business.id), `${hiddenStatus} listing must not appear in public search`);
+    for (const endpoint of ['locations', 'hours', 'services']) {
+      const result = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/${endpoint}`);
+      assert.notEqual(result.status, 200, `${hiddenStatus} listing must not expose public ${endpoint}`);
+    }
+    const statusReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.id)}/reviews`);
+    assert.equal(statusReviews.status, 404, `${hiddenStatus} listing reviews must not be public`);
+  }
+  await db.query(
+    "UPDATE discovery_businesses SET listing_status='PUBLISHED',is_discoverable=TRUE WHERE id=$1",
+    [business.id],
+  );
+  const restoredAfterStatusChecks = await getJson(`/api/discovery/businesses/${encodeURIComponent(business.slug)}`);
+  assert.equal(restoredAfterStatusChecks.status, 200, 'restoring PUBLISHED status should restore public profile access');
+
   // 2. Multi-location filtering must return the matching active branch, not only the primary.
   const matchingBranch = await db.query(
     `SELECT b.id,l.city
