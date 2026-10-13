@@ -4,6 +4,7 @@ import type { PasswordResetDelivery } from './passwordResetDelivery';
 export interface ResendEmailDeliveryOptions {
   apiKey?: string;
   from?: string;
+  getConfig?: () => Promise<{ apiKey?: string; fromEmail?: string }>;
   fetchImpl?: typeof fetch;
 }
 
@@ -18,10 +19,12 @@ export class ResendEmailDelivery implements EmailVerificationDelivery, PasswordR
   private readonly apiKey?: string;
   private readonly from?: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly getConfig?: () => Promise<{ apiKey?: string; fromEmail?: string }>;
 
   constructor(options: ResendEmailDeliveryOptions = {}) {
-    this.apiKey = (options.apiKey ?? process.env.RESEND_API_KEY)?.trim() || undefined;
-    this.from = (options.from ?? process.env.RESEND_FROM_EMAIL)?.trim() || undefined;
+    this.apiKey = options.apiKey?.trim() || undefined;
+    this.from = options.from?.trim() || undefined;
+    this.getConfig = options.getConfig;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -97,11 +100,14 @@ export class ResendEmailDelivery implements EmailVerificationDelivery, PasswordR
   }
 
   private async send(message: { to: string; subject: string; text: string; html: string }): Promise<void> {
-    if (!this.apiKey) {
-      throw new Error('RESEND_API_KEY_NOT_CONFIGURED: Add RESEND_API_KEY in the deployment environment to enable email delivery.');
+    const storedConfig = this.getConfig ? await this.getConfig() : undefined;
+    const apiKey = (storedConfig?.apiKey ?? this.apiKey)?.trim();
+    const from = (storedConfig?.fromEmail ?? this.from)?.trim();
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY_NOT_CONFIGURED: Configure the Resend API key in Platform Admin → Settings → Email Delivery.');
     }
-    if (!this.from) {
-      throw new Error('RESEND_FROM_EMAIL_NOT_CONFIGURED: Add a verified sender address in RESEND_FROM_EMAIL.');
+    if (!from) {
+      throw new Error('RESEND_FROM_EMAIL_NOT_CONFIGURED: Configure a verified sender address in Platform Admin → Settings → Email Delivery.');
     }
 
     let response: Response;
@@ -109,11 +115,11 @@ export class ResendEmailDelivery implements EmailVerificationDelivery, PasswordR
       response = await this.fetchImpl('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: this.from,
+          from,
           to: [message.to],
           subject: message.subject,
           text: message.text,
