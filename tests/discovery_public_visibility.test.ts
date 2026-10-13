@@ -229,12 +229,27 @@ async function main() {
     [unpublishedBusiness.id],
   );
 
+  await db.query(
+    `INSERT INTO discovery_services (id,business_id,name,slug,booking_mode,is_active)
+     VALUES ('pdv_unpublished_service',$1,'Private Service','pdv-unpublished-service','REQUEST',TRUE)`,
+    [unpublishedBusiness.id],
+  );
+  await db.query(
+    `INSERT INTO discovery_business_hours (id,location_id,day_of_week,opens_at,closes_at,is_closed)
+     VALUES ('pdv_unpublished_hours','pdv_unpublished_loc',1,'09:00','17:00',FALSE)`,
+  );
+
   const unpublishedProfileBySlug = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.slug)}`);
   assert.equal(unpublishedProfileBySlug.status, 404, 'unpublished listing must not resolve through its public slug');
   const unpublishedLocations = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/locations`);
   assert.notEqual(unpublishedLocations.status, 200, 'unpublished branch locations must not be publicly accessible');
   const unpublishedReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/reviews`);
   assert.equal(unpublishedReviews.status, 404, 'unpublished listing reviews must not be publicly accessible');
+
+  const unpublishedHours = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/hours`);
+  assert.notEqual(unpublishedHours.status, 200, 'unpublished business hours must not be publicly accessible');
+  const unpublishedServices = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/services`);
+  assert.notEqual(unpublishedServices.status, 200, 'unpublished business services must not be publicly accessible');
   const unpublishedList = await getJson('/api/discovery/businesses?limit=100');
   assert.equal(unpublishedList.status, 200);
   assert.ok(!unpublishedList.body.data.some((item: any) => item.id === unpublishedBusiness.id), 'unpublished listing must not appear in public listing results');
