@@ -93,7 +93,7 @@
     "test:auth-platform-boundary": "tsx tests/auth_platform_boundary.test.ts",
     "test:auth-role-matrix": "tsx tests/auth_role_login_matrix.test.ts",
     "test:auth-secure-session": "tsx tests/auth_secure_session.test.ts",
-    "test:email-verification": "tsx tests/email_verification_token.test.ts && tsx tests/email_verification_service.test.ts && tsx tests/email_verification_api.test.ts && tsx tests/email_verification_realm_enforcement.test.ts",
+    "test:email-verification": "tsx tests/email_verification_token.test.ts && tsx tests/email_verification_service.test.ts && tsx tests/email_verification_api.test.ts && tsx tests/email_verification_realm_enforcement.test.ts && tsx tests/resend_email_delivery.test.ts",
     "test:password-recovery": "tsx tests/password_recovery_hardening.test.ts",
     "test:platform-mfa": "tsx tests/platform_mfa_foundation.test.ts",
     "test:customer-identity-security": "tsx tests/customer_identity_security.test.ts",
