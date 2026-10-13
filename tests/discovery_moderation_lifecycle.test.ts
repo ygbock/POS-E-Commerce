@@ -47,6 +47,10 @@ async function main() {
     /SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing/,
   );
   assert.strictEqual((await repo.findById(creatorListing.id))?.listing_status, 'UNDER_REVIEW');
+
+  // Creator role is captured at listing creation. A later role demotion must
+  // not erase the higher-authority approval requirement for that listing.
+  await db.query("UPDATE users SET role='business_owner' WHERE id=$1", [platformCreator.userId]);
   await assert.rejects(
     () => service.approve(creatorListing.id, independentModerator, 'Platform Admin cannot approve another Platform Admin-created listing.'),
     /SYSTEM_OWNER_APPROVAL_REQUIRED:Listings created by a Platform Admin require System Owner approval/,
