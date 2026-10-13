@@ -252,12 +252,9 @@ async function main() {
         validateEnvironment({ ...complete, EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'false', PASSWORD_RESET_DELIVERY_CONFIGURED: 'false' }).isProduction,
         true
       );
-      assert.throws(
-        () => validateEnvironment({ ...complete, RESEND_API_KEY: 're_test_key', RESEND_FROM_EMAIL: '' }),
-        /RESEND_FROM_EMAIL is required when RESEND_API_KEY is configured/
-      );
+      // Provider API credentials are stored in platform settings, not runtime environment variables.
       assert.strictEqual(
-        validateEnvironment({ ...complete, RESEND_API_KEY: 're_test_key', RESEND_FROM_EMAIL: 'AbaCha <no-reply@example.com>' }).isProduction,
+        validateEnvironment({ ...complete, RESEND_API_KEY: 'ignored_env_key', RESEND_FROM_EMAIL: 'ignored@example.com' }).isProduction,
         true
       );
       assert.throws(
