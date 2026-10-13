@@ -386,6 +386,7 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
             setIsOnboardingOpen(true);
           }}
             className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+          >
             <Plus className="w-3.5 h-3.5 text-indigo-600" />
             <span>Add Business</span>
           </button>
