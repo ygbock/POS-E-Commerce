@@ -29,6 +29,11 @@ async function main() {
   assert.match(commerce, /const existingUser = authClient\.getUser\(\)/);
   assert.match(commerce, /Never replace.*platform\/merchant session/s);
 
+  const app = read('src/App.tsx');
+  assert.match(app, /if \(normalized === '\/platform'\) return 'platform-dashboard'/);
+  assert.match(app, /const hasAuthenticatedWorkspaceRequest = Boolean\(getTenantWorkspaceFromUrl\(\) \|\| getPlatformTabFromUrl\(\)\)/);
+  assert.match(app, /const isPlatformPath = pathname === '\/platform'/);
+
   const login = read('src/components/auth/LoginPage.tsx');
   assert.match(login, /user\.role === 'business_owner'/);
   assert.match(login, /fetch\('\/api\/merchant\/me'/);
