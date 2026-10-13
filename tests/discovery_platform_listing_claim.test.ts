@@ -219,6 +219,19 @@ async function main() {
     assert.equal(myBusinesses.status, 200);
     assert.ok(myBusinesses.body.data.some((row: any) => row.id === businessId));
 
+    // Ownership approval must also populate the actual Merchant Portal portfolio,
+    // not only the legacy Discovery-owned-business endpoint.
+    const merchantPortfolio = await request(baseUrl, '/api/merchant/me', { token: ownerToken });
+    assert.equal(merchantPortfolio.status, 200);
+    assert.ok(
+      merchantPortfolio.body.data.businesses.some((row: any) => row.id === businessId && row.membership_role === 'OWNER'),
+      'approved claim must appear in the Merchant Portal portfolio as an OWNER membership',
+    );
+    const merchantWorkspace = await request(baseUrl, `/api/merchant/businesses/${businessId}`, { token: ownerToken });
+    assert.equal(merchantWorkspace.status, 200);
+    assert.equal(merchantWorkspace.body.data.id, businessId);
+    assert.equal(merchantWorkspace.body.data.membership_role, 'OWNER');
+
     await postClaimManagementJourney(db, baseUrl, reviewerToken, ownerToken, otherOwnerToken, businessId);
 
     const duplicateClaim = await request(baseUrl, `/api/discovery/businesses/${businessId}/claims`, {
