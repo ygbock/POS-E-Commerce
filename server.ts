@@ -849,7 +849,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
     } catch (err: any) {
       const code = String(err?.message || '').split(':')[0];
-      if (code === 'EMAIL_DELIVERY_NOT_CONFIGURED') {
+      if (
+        code === 'EMAIL_DELIVERY_NOT_CONFIGURED' ||
+        code === 'RESEND_API_KEY_NOT_CONFIGURED' ||
+        code === 'RESEND_FROM_EMAIL_NOT_CONFIGURED'
+      ) {
         return res.status(503).json({
           success: false,
           error: {
