@@ -247,13 +247,18 @@ async function main() {
       const config = validateEnvironment(complete);
       assert.strictEqual(config.isProduction, true);
 
-      assert.throws(
-        () => validateEnvironment({ ...complete, EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'false' }),
-        /EMAIL_VERIFICATION_DELIVERY_CONFIGURED=true/
+      // Email provider setup is intentionally deferrable; legacy flags no longer block startup.
+      assert.strictEqual(
+        validateEnvironment({ ...complete, EMAIL_VERIFICATION_DELIVERY_CONFIGURED: 'false', PASSWORD_RESET_DELIVERY_CONFIGURED: 'false' }).isProduction,
+        true
       );
       assert.throws(
-        () => validateEnvironment({ ...complete, PASSWORD_RESET_DELIVERY_CONFIGURED: 'false' }),
-        /PASSWORD_RESET_DELIVERY_CONFIGURED=true/
+        () => validateEnvironment({ ...complete, RESEND_API_KEY: 're_test_key', RESEND_FROM_EMAIL: '' }),
+        /RESEND_FROM_EMAIL is required when RESEND_API_KEY is configured/
+      );
+      assert.strictEqual(
+        validateEnvironment({ ...complete, RESEND_API_KEY: 're_test_key', RESEND_FROM_EMAIL: 'AbaCha <no-reply@example.com>' }).isProduction,
+        true
       );
       assert.throws(
         () => validateEnvironment({ ...complete, ALLOW_SEEDING_IN_PRODUCTION: 'true' }),
