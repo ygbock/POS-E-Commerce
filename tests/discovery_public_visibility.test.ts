@@ -210,6 +210,38 @@ async function main() {
   assert.equal(Number(visibleSettingsProfile.reviewsSummary.rating), 5);
   assert.equal(Number(visibleSettingsProfile.reviewsSummary.count), 1);
 
+  // Unpublished listings must remain inaccessible through every direct public endpoint.
+  const unpublishedBusiness = await service.create({
+    name: 'Unpublished Direct Endpoint Isolation Fixture',
+    shortDescription: 'Must never leak through public direct endpoints.',
+    businessMode: 'DISCOVERY_ONLY',
+  });
+  await db.query(
+    `INSERT INTO discovery_business_locations
+      (id,business_id,name,city,region,country,is_primary,is_active)
+     VALUES ('pdv_unpublished_loc',$1,'Unpublished Branch','Freetown','Western Area','Sierra Leone',TRUE,TRUE)`,
+    [unpublishedBusiness.id],
+  );
+  await db.query(
+    `INSERT INTO discovery_reviews
+      (id,business_id,reviewer_name,rating,title,body,verified_purchase,status)
+     VALUES ('pdv_unpublished_review',$1,'Private Reviewer',5,'Private review','Must not be public.',FALSE,'PUBLISHED')`,
+    [unpublishedBusiness.id],
+  );
+
+  const unpublishedProfileBySlug = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.slug)}`);
+  assert.equal(unpublishedProfileBySlug.status, 404, 'unpublished listing must not resolve through its public slug');
+  const unpublishedLocations = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/locations`);
+  assert.notEqual(unpublishedLocations.status, 200, 'unpublished branch locations must not be publicly accessible');
+  const unpublishedReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/reviews`);
+  assert.equal(unpublishedReviews.status, 404, 'unpublished listing reviews must not be publicly accessible');
+  const unpublishedList = await getJson('/api/discovery/businesses?limit=100');
+  assert.equal(unpublishedList.status, 200);
+  assert.ok(!unpublishedList.body.data.some((item: any) => item.id === unpublishedBusiness.id), 'unpublished listing must not appear in public listing results');
+  const unpublishedSearch = await getJson('/api/discovery/search?type=businesses&limit=100');
+  assert.equal(unpublishedSearch.status, 200);
+  assert.ok(!unpublishedSearch.body.data.businesses.some((item: any) => item.id === unpublishedBusiness.id), 'unpublished listing must not appear in public search results');
+
   // 2. Multi-location filtering must return the matching active branch, not only the primary.
   const matchingBranch = await db.query(
     `SELECT b.id,l.city
