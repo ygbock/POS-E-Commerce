@@ -330,7 +330,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       }
       const role = req.auth!.role; const values: unknown[] = []; let where = '';
       if (role === 'super_admin') {
-        where = 'TRUE';
+        // Tenant super_admin may see listings in its own organization and
+        // Discovery-only listings it personally created, never the whole platform.
+        values.push(req.auth!.organizationId || '', req.auth!.userId);
+        where = "(organization_id=$1 OR (organization_id IS NULL AND business_mode='DISCOVERY_ONLY' AND created_by_user_id=$2))";
       } else if (role === 'business_owner') {
         // Claimed platform-created listings may have been created by a platform
         // administrator, so ownership is authoritative through the active OWNER
