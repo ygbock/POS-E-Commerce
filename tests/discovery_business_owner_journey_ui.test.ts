@@ -19,6 +19,9 @@ assert.match(listing, /Submit updated listing for review/);
 assert.match(listing, /Submit Updated Listing/);
 assert.match(listing, /temporarily hidden while the review is active/);
 
+assert.match(listing, /disabled=\{actionBusy \|\| \(!canSubmit && !canResubmit && !canPublish\)\}/);
+assert.match(listing, /onClick=\{\(\) => void \(canPublish \? publish\(\) : submit\(canResubmit\)\)\}/);
+
 assert.match(hours, /discoveryApi\.getBusinessHours\(business\.id\)/);
 assert.match(hours, /initialLocationId/);
 assert.match(hours, /row\.location_id === preferredLocationId/);
