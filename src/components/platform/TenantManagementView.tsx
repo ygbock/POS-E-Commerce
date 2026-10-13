@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Building2, Plus, RefreshCw, ShieldCheck, PauseCircle, PlayCircle } from 'lucide-react';
+import { Building2, Plus, RefreshCw, Search, ShieldCheck, PauseCircle, PlayCircle, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -9,6 +9,8 @@ import { authClient } from '../../services/authClient';
 
 type PlanTier = 'starter' | 'professional' | 'enterprise';
 type TenantStatus = 'active' | 'suspended' | 'archived';
+type TenantStatusFilter = TenantStatus | 'all';
+const PAGE_SIZE = 50;
 interface Tenant { id: string; name: string; slug: string; code: string; status: TenantStatus; planTier: PlanTier; subscriptionStatus?: string | null; createdAt: string; }
 interface CreateForm { name: string; slug: string; code: string; planTier: PlanTier; adminName: string; adminEmail: string; adminPassword: string; }
 const initialForm: CreateForm = { name: '', slug: '', code: '', planTier: 'starter', adminName: '', adminEmail: '', adminPassword: '' };
@@ -22,6 +24,12 @@ async function platformRequest(path: string, options: RequestInit = {}) {
 
 export const TenantManagementView: React.FC = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusDraft, setStatusDraft] = useState<TenantStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<TenantStatusFilter>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -32,12 +40,28 @@ export const TenantManagementView: React.FC = () => {
   const loadTenants = useCallback(async () => {
     setIsLoading(true); setError(null);
     try {
-      const payload = await platformRequest('/api/platform/tenants?status=all&limit=200');
+      const params = new URLSearchParams({ status: statusFilter, limit: String(PAGE_SIZE), offset: String(offset) });
+      if (searchQuery) params.set('search', searchQuery);
+      const payload = await platformRequest(`/api/platform/tenants?${params.toString()}`);
       setTenants(Array.isArray(payload.data) ? payload.data : []);
+      setTotal(Number.isFinite(payload.pagination?.total) ? payload.pagination.total : Number(payload.total) || 0);
     } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Unable to load tenants.'); }
     finally { setIsLoading(false); }
-  }, []);
+  }, [offset, searchQuery, statusFilter]);
   useEffect(() => { void loadTenants(); }, [loadTenants]);
+
+  const applyFilters = () => {
+    setOffset(0);
+    setSearchQuery(searchDraft.trim());
+    setStatusFilter(statusDraft);
+  };
+  const clearFilters = () => {
+    setOffset(0);
+    setSearchDraft('');
+    setSearchQuery('');
+    setStatusDraft('all');
+    setStatusFilter('all');
+  };
 
   const createTenant = async () => {
     if (!form.name.trim() || !form.slug.trim() || !form.adminName.trim() || !form.adminEmail.trim() || !form.adminPassword) {
@@ -46,7 +70,9 @@ export const TenantManagementView: React.FC = () => {
     setIsSubmitting(true); setError(null);
     try {
       await platformRequest('/api/platform/tenants', { method: 'POST', body: JSON.stringify(form) });
-      setForm(initialForm); setIsCreateOpen(false); await loadTenants();
+      setForm(initialForm); setIsCreateOpen(false);
+      if (offset === 0) await loadTenants();
+      else setOffset(0);
     } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Unable to create tenant.'); }
     finally { setIsSubmitting(false); }
   };
@@ -71,6 +97,8 @@ export const TenantManagementView: React.FC = () => {
     suspended: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-400',
     archived: 'border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
   };
+  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <section className="ui-page space-y-6" aria-labelledby="tenant-management-title">
@@ -86,9 +114,21 @@ export const TenantManagementView: React.FC = () => {
         </div>
       </header>
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">{error}</div>}
+      <div className="ui-surface space-y-4 p-4">
+        <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto_auto]">
+          <Input label="Search tenants" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Name, slug, or tenant code" onKeyDown={(event) => { if (event.key === 'Enter') applyFilters(); }} />
+          <Select label="Lifecycle status" value={statusDraft} onChange={(event) => setStatusDraft(event.target.value as TenantStatusFilter)} options={[{ value: 'all', label: 'All statuses' }, { value: 'active', label: 'Active' }, { value: 'suspended', label: 'Suspended' }, { value: 'archived', label: 'Archived' }]} />
+          <Button onClick={applyFilters} leftIcon={<Search className="h-4 w-4" />}>Apply filters</Button>
+          <Button variant="ghost" onClick={clearFilters} leftIcon={<X className="h-4 w-4" />}>Clear</Button>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400" aria-live="polite">{isLoading ? 'Loading tenants…' : `Showing ${total === 0 ? 0 : offset + 1}–${Math.min(offset + tenants.length, total)} of ${total} tenant organizations`}</p>
+      </div>
       <div className="ui-surface overflow-hidden">
         <Table<Tenant> caption="Tenant organizations" data={tenants} isLoading={isLoading}
-          emptyStateMessage="No tenant organizations have been provisioned." getRowKey={(tenant) => tenant.id}
+          emptyStateMessage="No tenant organizations match these filters."
+          getRowKey={(tenant) => tenant.id}
+          currentPage={currentPage} totalPages={totalPages}
+          onPageChange={(page) => setOffset((page - 1) * PAGE_SIZE)}
           columns={[
             { header: 'Tenant', accessor: (tenant) => <div className="flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400"><Building2 className="h-4 w-4" aria-hidden="true" /></span><div className="min-w-0"><div className="font-semibold text-slate-900 dark:text-slate-100">{tenant.name}</div><div className="font-mono text-[11px] text-slate-500">{tenant.slug}</div></div></div> },
             { header: 'Code', accessor: (tenant) => <span className="font-mono text-xs">{tenant.code}</span> },
@@ -99,20 +139,20 @@ export const TenantManagementView: React.FC = () => {
           ]} />
       </div>
       <Modal isOpen={isCreateOpen} onClose={() => !isSubmitting && setIsCreateOpen(false)} title="Create tenant organization" size="lg" closeOnEscape={!isSubmitting} closeOnBackdropClick={!isSubmitting}
-        footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button isLoading={isSubmitting} disabled={!form.name.trim() || !form.slug.trim() || !form.adminName.trim() || !form.adminEmail.trim() || !form.adminPassword} onClick={createTenant}>Create Tenant</Button></>}>
+        footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button isLoading={isSubmitting} disabled={!form.name.trim() || !form.slug.trim() || !form.adminName.trim() || !form.adminEmail.trim() || form.adminPassword.length < 12 || !/[a-z]/.test(form.adminPassword) || !/[A-Z]/.test(form.adminPassword) || !/[0-9]/.test(form.adminPassword)} onClick={createTenant}>Create Tenant</Button></>}>
         <div className="space-y-6">
           <div><h3 className="ui-section-title">Organization</h3><p className="ui-section-description">The slug becomes the stable tenant URL identifier.</p></div>
           <div className="ui-form-grid ui-form-grid--wide">
             <Input label="Organization name" value={form.name} onChange={(event) => setField('name', event.target.value)} required />
             <Input label="Tenant slug" value={form.slug} onChange={(event) => setField('slug', event.target.value.toLowerCase())} placeholder="acme-retail" required />
             <Input label="Tenant code" value={form.code} onChange={(event) => setField('code', event.target.value.toUpperCase())} placeholder="ACME_RETAIL" />
-            <Select label="Plan tier" value={form.planTier} onChange={(event) => setField('planTier', event.target.value as PlanTier)} options={[{ value: 'starter', label: 'Starter' }, { value: 'professional', label: 'Professional' }, { value: 'enterprise', label: 'Enterprise' }]} />
+            <Select label="Initial plan tier" value={form.planTier} onChange={(event) => setField('planTier', event.target.value as PlanTier)} options={[{ value: 'starter', label: 'Starter' }, { value: 'professional', label: 'Professional' }, { value: 'enterprise', label: 'Enterprise' }]} />
           </div>
           <div className="border-t border-slate-200 pt-5 dark:border-slate-800"><h3 className="ui-section-title">Initial administrator</h3><p className="ui-section-description">The password is hashed server-side and never returned by the API.</p></div>
           <div className="ui-form-grid ui-form-grid--wide">
             <Input label="Full name" value={form.adminName} onChange={(event) => setField('adminName', event.target.value)} required />
             <Input label="Email" type="email" value={form.adminEmail} onChange={(event) => setField('adminEmail', event.target.value)} required />
-            <Input label="Temporary password" type="password" value={form.adminPassword} onChange={(event) => setField('adminPassword', event.target.value)} helperText="Minimum 12 characters with upper, lower, and numeric characters." required />
+            <Input label="Temporary password" type="password" value={form.adminPassword} onChange={(event) => setField('adminPassword', event.target.value)} helperText="12–128 characters; include uppercase, lowercase, and a number." required />
           </div>
         </div>
       </Modal>
