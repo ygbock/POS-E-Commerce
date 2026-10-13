@@ -18,6 +18,7 @@ import { LedgerAndFinance } from './components/fintech/LedgerAndFinance';
 import { CustomerManagementView } from './components/crm/CustomerManagementView';
 import { AuditLogsView } from './components/admin/AuditLogsView';
 import { PlatformDashboard } from './components/platform/PlatformDashboard.tsx';
+import { PlatformEmailSettings } from './components/platform/PlatformEmailSettings.tsx';
 import { SystemOwnerDashboard } from './components/platform/SystemOwnerDashboard';
 import { SupportWorkspace } from './components/platform/SupportWorkspace';
 import { PlatformDiscoveryModerationView } from './components/platform/PlatformDiscoveryModerationView';
@@ -71,6 +72,7 @@ const PLATFORM_TABS = [
   'discovery-moderation',
   'discovery-categories',
   'discovery-locations',
+  'platform-settings',
 ] as const;
 
 const TENANT_WORKSPACE_TABS = new Set([
@@ -116,6 +118,8 @@ const PLATFORM_PATH_TO_TAB: Record<string, string> = {
   categories: 'discovery-categories',
   'discovery-locations': 'discovery-locations',
   locations: 'discovery-locations',
+  settings: 'platform-settings',
+  'platform-settings': 'platform-settings',
 };
 
 const getPlatformTabFromUrl = (): string | null => {
@@ -366,6 +370,7 @@ const MainLayout: React.FC = () => {
             {activeTab === 'discovery-moderation' && <PlatformDiscoveryModerationView />}
             {activeTab === 'discovery-categories' && <PlatformDiscoveryCategoriesView />}
             {activeTab === 'discovery-locations' && <PlatformDiscoveryLocationsView />}
+            {activeTab === 'platform-settings' && <PlatformEmailSettings />}
             {activeTab === 'dashboard' && <ExecutiveDashboard setActiveTab={setActiveTab} />}
             {(activeTab === 'discovery' || activeTab === 'discovery-admin') && <DiscoveryMarketplace />}
             {activeTab === 'users' && <UserManagementView />}
