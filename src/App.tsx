@@ -24,6 +24,7 @@ import { SupportWorkspace } from './components/platform/SupportWorkspace';
 import { PlatformDiscoveryModerationView } from './components/platform/PlatformDiscoveryModerationView';
 import { TenantManagementView } from './components/platform/TenantManagementView';
 import { SubscriptionsManagementView } from './components/platform/SubscriptionsManagementView';
+import { PlatformUsersView } from './components/platform/PlatformUsersView';
 import { PlatformDiscoveryCategoriesView } from './components/platform/PlatformDiscoveryCategoriesView';
 import { PlatformDiscoveryLocationsView } from './components/platform/PlatformDiscoveryLocationsView';
 import { UserManagementView } from './components/admin/UserManagementView';
@@ -65,6 +66,7 @@ const isPublicDiscoveryPath = (pathname: string) =>
 
 const PLATFORM_TABS = [
   'platform-dashboard',
+  'platform-users',
   'tenants',
   'subscriptions',
   'support',
@@ -109,6 +111,8 @@ const PLATFORM_PATH_TO_TAB: Record<string, string> = {
   dashboard: 'platform-dashboard',
   'platform-dashboard': 'platform-dashboard',
   tenants: 'tenants',
+  users: 'platform-users',
+  'platform-users': 'platform-users',
   subscriptions: 'subscriptions',
   support: 'support',
   security: 'security',
@@ -364,6 +368,7 @@ const MainLayout: React.FC = () => {
           <div className="max-w-7xl mx-auto space-y-6">
             {activeTab === 'platform-dashboard' && <PlatformDashboard setActiveTab={setActiveTab} />}
             {activeTab === 'tenants' && <TenantManagementView />}
+            {activeTab === 'platform-users' && <PlatformUsersView />}
             {activeTab === 'subscriptions' && <SubscriptionsManagementView />}
             {activeTab === 'support' && (isPlatform ? <SupportWorkspace platform /> : <SupportWorkspace />)}
             {activeTab === 'security' && <AuditLogsView />}
