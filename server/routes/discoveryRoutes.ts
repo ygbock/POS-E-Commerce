@@ -1941,7 +1941,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       );
       isProvider=ownedMatch.rows.length>0 && await owned(req,String(req.body.businessId),'business.leads.manage');
     }
-    if(!isCustomer&&!isProvider&&req.auth!.role!=='super_admin')throw new Error('PERMISSION_DENIED:Only the customer, matched provider, or platform administrator may close the request.');
+    if(!isCustomer&&!isProvider&&!['platform_admin','system_owner'].includes(req.auth!.role))throw new Error('PERMISSION_DENIED:Only the customer, matched provider, or platform administrator may close the request.');
     const data=await transitionRequest(req.params.id,'CLOSED',req.auth!.userId,req.body?.reason||'Request closed.');
     res.json({success:true,data});
   }catch(err){next(err);} });
