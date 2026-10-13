@@ -325,6 +325,26 @@ async function main() {
     assert.strictEqual(publicProfileBody?.success, true);
     assert.strictEqual(publicProfileBody?.data?.business?.id, business.id);
 
+    // Editing a live listing must immediately hide the changed profile until the
+    // updated content passes the existing moderation lifecycle again.
+    const edited = await service.update(business.id, {
+      description: 'Updated description pending moderation review.',
+    }, merchant);
+    assert.strictEqual(edited.listing_status, 'PUBLISHED');
+    assert.strictEqual(edited.is_discoverable, false);
+    assert.ok(!(await service.listPublished({ limit: 200 })).some((listing) => listing.id === business.id));
+
+    const resubmitted = await service.submit(business.id, merchant, 'Request review of updated live listing.');
+    assert.strictEqual(resubmitted.listing_status, 'SUBMITTED');
+    assert.strictEqual(resubmitted.is_discoverable, false);
+    await service.review(business.id, moderator, 'Review updated listing.');
+    const reapproved = await service.approve(business.id, moderator, 'Updated listing passed moderation.');
+    assert.strictEqual(reapproved.listing_status, 'APPROVED');
+    const republishedAfterReview = await service.publish(business.id, merchant, 'Publish reviewed changes.');
+    assert.strictEqual(republishedAfterReview.listing_status, 'PUBLISHED');
+    assert.strictEqual(republishedAfterReview.is_discoverable, true);
+    assert.ok((await service.listPublished({ limit: 200 })).some((listing) => listing.id === business.id));
+
     // Owner lifecycle controls: pause hides the listing, republish restores it,
     // and archive permanently removes it from public Discovery.
     const paused = await service.pause(business.id, merchant, 'Owner temporarily paused the listing.');

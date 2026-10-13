@@ -77,6 +77,11 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     if (!['DRAFT', 'REJECTED', 'PUBLISHED', 'PAUSED'].includes(status)) {
       throw new Error(`LISTING_LOCKED:Listings cannot be edited while in ${status} status.`);
     }
+    // Child data is read live by public profiles too; hide the listing as soon as
+    // an edit begins so partial changes cannot bypass platform review.
+    if (status === 'PUBLISHED') {
+      await tx.query('UPDATE discovery_businesses SET is_discoverable=FALSE, updated_at=NOW() WHERE id=$1', [businessId]);
+    }
   };
 
   // Categories are platform-managed reference data. They are readable during
