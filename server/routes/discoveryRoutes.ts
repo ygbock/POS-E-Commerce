@@ -2321,7 +2321,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
     const canManage=await owned(req,req.params.id,'business.verification.manage');
-    if(!canManage && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification access forbidden.'}});
+    if(!canManage)return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification access forbidden.'}});
     const applications=await db.query(`SELECT * FROM discovery_verification_applications WHERE business_id=$1 ORDER BY created_at DESC LIMIT 20`,[req.params.id]);
     res.json({success:true,data:{businessId:req.params.id,verificationStatus:b.verification_status,applications:applications.rows}});
   }catch(err){next(err);}});
@@ -2329,7 +2329,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/businesses/:id/trust', requireAuth(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    if(!(await owned(req, req.params.id, 'business.verification.manage')) && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.verification.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
 
     const [applications, claims, reviewSummary, reports, events] = await Promise.all([
       db.query(
@@ -2423,19 +2423,19 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
 
   router.get('/moderation/verification', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const isSuper=req.auth!.role==='super_admin';
-    const r=await db.query(`SELECT v.*,b.name AS business_name,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY v.created_at ASC LIMIT 100`,[isSuper,req.auth!.organizationId||'']);
+    if(!['platform_admin','system_owner','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Platform or tenant administrator authorization required.'}});
+    const isPlatformModerator=['platform_admin','system_owner'].includes(req.auth!.role);
+    const r=await db.query(`SELECT v.*,b.name AS business_name,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY v.created_at ASC LIMIT 100`,[isPlatformModerator,req.auth!.organizationId||'']);
     res.json({success:true,data:r.rows});
   }catch(err){next(err);}});
 
   router.post('/moderation/verification/:id/decision', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
+    if(!['platform_admin','system_owner','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Platform or tenant administrator authorization required.'}});
     const status=String(req.body?.status||'');
     if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');
     const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
     const result=await db.withTransaction(async(tx)=>{
-      const current=await tx.query(`SELECT v.*,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.id=$1 AND v.status='PENDING' AND ($2=TRUE OR b.organization_id=$3) FOR UPDATE`,[req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);
+      const current=await tx.query(`SELECT v.*,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.id=$1 AND v.status='PENDING' AND ($2=TRUE OR b.organization_id=$3) FOR UPDATE`,[req.params.id,['platform_admin','system_owner'].includes(req.auth!.role),req.auth!.organizationId||'']);
       if(!current.rows[0])throw new Error('NOT_FOUND:Verification application not found.');
       const row=current.rows[0];
       const v=await tx.query(`UPDATE discovery_verification_applications SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,[status,req.auth!.userId,reason,req.params.id]);
