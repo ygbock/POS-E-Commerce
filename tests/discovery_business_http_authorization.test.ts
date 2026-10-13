@@ -67,6 +67,8 @@ async function main() {
 
   await createMember('http-manager-a', 'http-manager-a@example.test', 'HTTP Manager A', ownerA.user.organizationId);
   await createMember('http-staff-a', 'http-staff-a@example.test', 'HTTP Staff A', ownerA.user.organizationId);
+  await createMember('http-platform-moderator', 'http-platform-moderator@example.test', 'HTTP Platform Moderator', ownerA.user.organizationId);
+  await db.query("UPDATE users SET role='platform_admin' WHERE id=$1", ['http-platform-moderator']);
 
   const { hash: customerHash, salt: customerSalt } = hashPassword('CustomerPassword123!');
   await userRepo.createUser({
@@ -101,6 +103,7 @@ async function main() {
     ownerB: { userId: ownerB.user.id, organizationId: ownerB.user.organizationId, role: 'business_owner' },
     managerA: { userId: 'http-manager-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
     staffA: { userId: 'http-staff-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
+    platformModerator: { userId: 'http-platform-moderator', organizationId: ownerA.user.organizationId, role: 'platform_admin' },
     customerA: { userId: 'http-customer-a', organizationId: ownerA.user.organizationId, role: 'customer' },
   };
 
@@ -196,6 +199,15 @@ async function main() {
     );
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.role, 'OWNER');
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.is_active, true);
+
+    // Platform moderation must be able to place a listing under review without
+    // passing the merchant-ownership guard; the service enforces moderator role.
+    const moderatorReview = await requestJson(baseUrl, `/api/discovery/businesses/${createdDiscovery.body.data.id}/review`, actors.platformModerator, {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'Begin independent listing review.' }),
+    });
+    assert.strictEqual(moderatorReview.status, 200);
+    assert.strictEqual(moderatorReview.body?.data?.listing_status, 'UNDER_REVIEW');
 
     await db.query(
       `INSERT INTO discovery_business_locations
