@@ -190,6 +190,28 @@ async function main() {
     });
     assert.strictEqual(crossTenantCreate.status, 403, 'tenant super_admin must not create a listing for another organization');
 
+    const tenantStoreListing = await requestJson(baseUrl, '/api/discovery/businesses', actors.ownerB, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Tenant B Store Listing',
+        businessMode: 'DISCOVERY_AND_STORE',
+      }),
+    });
+    assert.strictEqual(tenantStoreListing.status, 201);
+    const crossTenantReassignment = await requestJson(
+      baseUrl,
+      `/api/discovery/businesses/${tenantStoreListing.body.data.id}`,
+      actors.tenantSuperAdmin,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          businessMode: 'DISCOVERY_AND_STORE',
+          organizationId: ownerA.user.organizationId,
+        }),
+      },
+    );
+    assert.strictEqual(crossTenantReassignment.status, 403, 'tenant super_admin must not reassign a listing to another organization');
+
     // OWNER: direct API access to owner-scoped workspaces and management operations.
     const ownerMe = await requestJson(baseUrl, '/api/merchant/me', actors.ownerA);
     assert.strictEqual(ownerMe.status, 200);
