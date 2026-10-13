@@ -306,7 +306,11 @@ export class DiscoveryBusinessService {
     if (nextMode === 'DISCOVERY_AND_STORE' && existing.business_mode !== 'DISCOVERY_AND_STORE') {
       throw new Error('STORE_CONVERSION_REQUIRED:Use the store conversion workflow to enable commerce capabilities.');
     }
-    if (patch.organizationId !== undefined && nextOrganizationId !== existing.organization_id && actor.role !== 'super_admin') {
+    if (
+      patch.organizationId !== undefined &&
+      nextOrganizationId !== existing.organization_id &&
+      !['platform_admin', 'system_owner'].includes(actor.role)
+    ) {
       if (!nextOrganizationId || actor.organizationId !== nextOrganizationId) {
         throw new Error('TENANT_ACCESS_DENIED:You cannot attach a discovery business to another organization.');
       }
