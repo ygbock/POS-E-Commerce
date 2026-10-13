@@ -214,6 +214,13 @@ async function main() {
       assert.strictEqual(denied.status, 403, `tenant super_admin must be denied cross-tenant/platform access to ${path}`);
     }
 
+    const tenantMine = await requestJson(baseUrl, '/api/discovery/businesses/mine', actors.tenantSuperAdmin);
+    assert.strictEqual(tenantMine.status, 200);
+    assert.ok(
+      !(tenantMine.body?.data || []).some((business: any) => business.id === createdDiscovery.body.data.id),
+      'tenant super_admin business list must not expose a discovery-only listing created by another user in another tenant',
+    );
+
     // Platform moderation must be able to place a listing under review without
     // passing the merchant-ownership guard; the service enforces moderator role.
     const moderatorReview = await requestJson(baseUrl, `/api/discovery/businesses/${createdDiscovery.body.data.id}/review`, actors.platformModerator, {
