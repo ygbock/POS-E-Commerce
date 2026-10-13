@@ -152,6 +152,7 @@ export class DiscoveryBusinessService {
         verification_status: verification,
         is_discoverable: false,
         created_by_user_id: input.createdByUserId || actor?.userId || null,
+        created_by_role: actor?.role || null,
       }, tx);
       await this.repository.getSettings(record.id, tx);
       // Platform-created listings intentionally remain unowned until a verified
@@ -518,13 +519,16 @@ export class DiscoveryBusinessService {
 
     const creatorIsActor = existing.created_by_user_id === actor.userId;
     const actorRole = String(actor.role || '').trim().toLowerCase();
-    const creator = existing.created_by_user_id
+    // Prefer immutable creation-time provenance. Older rows are backfilled by
+    // migration 069; the live-role fallback is retained only for records that
+    // predate a known creator or cannot be backfilled.
+    const creator = existing.created_by_role == null && existing.created_by_user_id
       ? await (client || this.db).query<{ role: string }>(
           'SELECT role FROM users WHERE id=$1 LIMIT 1',
           [existing.created_by_user_id],
         )
       : { rows: [] as Array<{ role: string }> };
-    const creatorRole = String(creator.rows[0]?.role || '').trim().toLowerCase();
+    const creatorRole = String(existing.created_by_role || creator.rows[0]?.role || '').trim().toLowerCase();
 
     // System Owner is the ultimate platform authority and may approve their own
     // listing after normal readiness/state validation. This exception is exclusive
