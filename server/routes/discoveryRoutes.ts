@@ -193,11 +193,27 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(status).json({ success: false, error: { code: code || 'DISCOVERY_ERROR', message: raw.includes(':') ? raw.slice(raw.indexOf(':') + 1).trim() : raw } });
   };
 
+  // Tenant super_admin is scoped to its own organization and listings it created
+  // in Discovery-only mode. It is never a platform-wide authorization bypass.
+  const tenantSuperAdminCanManage = async (req: Request, businessId: string): Promise<boolean> => {
+    if (req.auth?.role !== 'super_admin') return false;
+    const result = await db.query<{ organization_id: string | null; created_by_user_id: string | null; business_mode: string }>(
+      'SELECT organization_id,created_by_user_id,business_mode FROM discovery_businesses WHERE id=$1 LIMIT 1',
+      [businessId],
+    );
+    const business = result.rows[0];
+    if (!business) return false;
+    return Boolean(
+      (business.organization_id && business.organization_id === req.auth.organizationId) ||
+      (!business.organization_id && business.business_mode === 'DISCOVERY_ONLY' && business.created_by_user_id === req.auth.userId),
+    );
+  };
+
   // Resource ownership is intentionally delegated to the domain service so route-level
   // authorization cannot drift from the tenant-boundary rules used by lifecycle/update APIs.
   const owned = async (req: Request, businessId: string, permission: DiscoveryBusinessPermission = 'business.listing.manage') => {
     if (!req.auth) return false;
-    if (req.auth.role === 'super_admin') return true;
+    if (req.auth.role === 'super_admin' && await tenantSuperAdminCanManage(req, businessId)) return true;
     try {
       await assertBusinessPermission(db, businessId, req.auth.userId, permission);
       return true;
@@ -222,7 +238,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   const requireBusinessPermission = async (req: Request, businessId: string, permission: DiscoveryBusinessPermission) => {
     if (!req.auth) throw new Error('UNAUTHORIZED:Authentication required.');
-    if (req.auth.role === 'super_admin') return;
+    if (req.auth.role === 'super_admin') {
+      if (await tenantSuperAdminCanManage(req, businessId)) return;
+      throw new Error('PERMISSION_DENIED:Tenant super_admin access is limited to its organization and its own Discovery-only listings.');
+    }
     await assertBusinessPermission(db, businessId, req.auth.userId, permission);
   };
 
