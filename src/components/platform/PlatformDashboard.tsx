@@ -77,12 +77,14 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
   const { currentRole } = useCommerce();
   const normalizedRole = String(currentRole || '').toLowerCase().replace(/[\s-]+/g, '_');
   const canViewBilling = normalizedRole === 'system_owner' || normalizedRole === 'system owner' || normalizedRole === 'platform_finance' || normalizedRole === 'platform finance';
-  const canViewSecurity = normalizedRole === 'system_owner' || normalizedRole === 'system owner' || normalizedRole === 'platform_admin' || normalizedRole === 'platform admin';
-  const canViewDiscovery = canViewSecurity;
+  const canViewSecurity = normalizedRole === 'system_owner' || normalizedRole === 'platform_admin';
+  const canViewSupport = normalizedRole !== 'platform_finance';
+  const canViewDiscovery = normalizedRole === 'system_owner' || normalizedRole === 'platform_admin';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [billingUnavailable, setBillingUnavailable] = useState(false);
+  const [hasData, setHasData] = useState(false);
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
 
   const loadMetrics = useCallback(async (isRefresh = false) => {
@@ -122,6 +124,7 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
         trialingSubscriptions: billing && Number.isFinite(Number(billing.trialingCount)) ? Number(billing.trialingCount) : null,
         updatedAt: billing?.lastUpdated || new Date().toISOString(),
       });
+      setHasData(true);
       setBillingUnavailable(billingFailed);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load platform metrics.');
@@ -170,7 +173,7 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={`${label}: ${value}. ${description}`}
+      aria-label={`${label}: ${loading ? 'Loading' : error && !hasData ? 'Unavailable' : value}. ${description}`}
       className="w-full text-left bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-wait disabled:opacity-60"
     >
       <div className="flex items-center justify-between gap-3">
@@ -178,7 +181,7 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
         <span className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">{icon}</span>
       </div>
       <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{loading ? '…' : value}</span>
+        <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{loading ? '…' : error && !hasData ? '—' : value}</span>
         <ArrowUpRight aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{description}</p>
@@ -313,11 +316,11 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
                 <p className="text-xs text-slate-500 mt-1">Review subscription counts and authoritative billing metrics.</p>
               </button>
             )}
-            <button type="button" onClick={() => go('support')} className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/10 transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+            {canViewSupport && <button type="button" onClick={() => go('support')} className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/10 transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
               <div className="flex items-center justify-between mb-2"><span className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center"><Users className="w-4 h-4" /></span><ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" /></div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Support & Operations</h3>
               <p className="text-xs text-slate-500 mt-1">Open the tenant support workspace.</p>
-            </button>
+            </button>}
             {canViewSecurity && (
               <button type="button" onClick={() => go('security')} className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/10 transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
                 <div className="flex items-center justify-between mb-2"><span className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center"><ShieldAlert className="w-4 h-4" /></span><ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" /></div>
