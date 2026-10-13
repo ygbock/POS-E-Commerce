@@ -11,9 +11,9 @@ export interface ResendEmailDeliveryOptions {
 /**
  * Resend-backed delivery for account verification and password reset.
  *
- * The API key is optional at application startup so a deployment can be
- * prepared before Resend is configured. Actual delivery fails closed until
- * RESEND_API_KEY and RESEND_FROM_EMAIL are set in the runtime environment.
+ * Credentials are resolved from the encrypted platform settings store on each send.
+ * This allows System Owner / Platform Admin to configure or rotate the key without
+ * restarting the server. Delivery fails closed until the platform settings are saved.
  */
 export class ResendEmailDelivery implements EmailVerificationDelivery, PasswordResetDelivery {
   private readonly apiKey?: string;
