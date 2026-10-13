@@ -488,7 +488,9 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
                 <div className="space-y-1">
                   <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{statusCopy[business.listing_status]}</span>
                   <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                    {statusDescriptions[business.listing_status] || 'Your listing moves through review phases before it becomes available to general customers.'}
+                    {business.listing_status === 'PUBLISHED' && business.is_discoverable === false
+                      ? 'Your listing is hidden from public Discovery because changes need review. Submit the updated listing for moderation to restore visibility after approval.'
+                      : statusDescriptions[business.listing_status] || 'Your listing moves through review phases before it becomes available to general customers.'}
                   </p>
                 </div>
               </div>
