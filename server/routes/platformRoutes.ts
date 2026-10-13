@@ -11,6 +11,7 @@ import {
   TenantListStatusFilter,
 } from '../services/tenantProvisioningService.ts';
 import { createPlatformDiscoveryModerationRouter } from './platformDiscoveryModerationRoutes.ts';
+import { getPlatformEmailSettingsStatus, savePlatformEmailSettings, clearPlatformEmailSettings } from '../services/platformEmailSettings.ts';
 
 
 function badRequest(res: Response, code: string, message: string) {
@@ -34,6 +35,48 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
     }
     return new TenantProvisioningService(db);
   }
+
+  // Platform-wide email provider credentials are encrypted at rest and only manageable
+  // by System Owner / Platform Admin roles with the dedicated permission.
+  router.get('/settings/email', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_SETTINGS), async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await getPlatformEmailSettingsStatus(db);
+      return res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put('/settings/email', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_SETTINGS), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey : undefined;
+      const fromEmail = typeof req.body?.fromEmail === 'string' ? req.body.fromEmail : '';
+      const data = await savePlatformEmailSettings(db, {
+        apiKey,
+        fromEmail,
+        actorId: req.auth?.userId || '',
+      });
+      return res.json({ success: true, data, message: 'Email delivery settings saved. The API key is stored encrypted and is never returned by this API.' });
+    } catch (err: any) {
+      if (['INVALID_RESEND_FROM_EMAIL', 'INVALID_RESEND_API_KEY', 'RESEND_API_KEY_REQUIRED'].includes(err?.message)) {
+        return badRequest(res, err.message, ({
+          INVALID_RESEND_FROM_EMAIL: 'Enter a valid sender email address (use an address verified in Resend).',
+          INVALID_RESEND_API_KEY: 'The Resend API key format is invalid.',
+          RESEND_API_KEY_REQUIRED: 'Enter a Resend API key to configure email delivery for the first time.',
+        } as Record<string, string>)[err.message]);
+      }
+      next(err);
+    }
+  });
+
+  router.delete('/settings/email', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_SETTINGS), async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      await clearPlatformEmailSettings(db);
+      return res.json({ success: true, data: { provider: 'resend', configured: false, fromEmail: null, updatedAt: null } });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   router.get('/overview', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_VIEW), async (_req: Request, res: Response, next: NextFunction) => {
     try {
