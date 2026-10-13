@@ -620,7 +620,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   ] as const) {
     router.post(`/businesses/:id${path}`, requireAuth(), async (req, res, next) => {
       try {
-        if (!['approve', 'suspend'].includes(action) && !(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business lifecycle operation forbidden.' } });
+        if (!['review', 'approve', 'suspend'].includes(action) && !(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business lifecycle operation forbidden.' } });
         const data = await (businessService as any)[action](req.params.id, actor(req), req.body?.reason);
         res.json({ success: true, data });
       } catch (err) { next(err); }
