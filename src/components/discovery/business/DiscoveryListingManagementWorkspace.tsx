@@ -787,7 +787,7 @@ export const DiscoveryListingManagementWorkspace: React.FC<Props> = ({
             </div>
             <button
               type="button"
-              disabled={actionBusy || (!canSubmit && !canResubmit)}
+              disabled={actionBusy || (!canSubmit && !canResubmit && !canPublish)}
               onClick={() => void (canPublish ? publish() : submit(canResubmit))}
               className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center justify-center gap-2 transition shadow-lg hover:shadow-indigo-500/20 active:translate-y-px disabled:opacity-50"
             >
