@@ -19,13 +19,13 @@ export function createDiscoveryBusinessRouter(db: DatabaseClient) {
     const businessMode=req.body?.businessMode==='DISCOVERY_AND_STORE'?'DISCOVERY_AND_STORE':'DISCOVERY_ONLY';
     const requestedOrganizationId=req.body?.organizationId===undefined?null:String(req.body.organizationId||'').trim()||null;
     if(businessMode==='DISCOVERY_ONLY'){
-      if(requestedOrganizationId && req.auth!.role!=='super_admin'){
+      if(requestedOrganizationId){
         return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'Discovery-only businesses cannot be attached to an organization.'}});
       }
     }else{
       const organizationId=req.auth!.organizationId;
       if(!organizationId)return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'An active organization is required for Discovery + Store businesses.'}});
-      if(requestedOrganizationId && requestedOrganizationId!==organizationId && req.auth!.role!=='super_admin'){
+      if(requestedOrganizationId && requestedOrganizationId!==organizationId && !['platform_admin','system_owner'].includes(req.auth!.role)){
         return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Cross-tenant discovery business creation forbidden.'}});
       }
     }
