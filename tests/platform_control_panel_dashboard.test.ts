@@ -27,15 +27,19 @@ assert.match(ui, /hasData/, 'Initial API failure must not display fabricated zer
 assert.doesNotMatch(ui, /totalTenants:\s*12|activeSubscriptions:\s*11|mrr:\s*4890|99\.99%|All micro-services fully operational/, 'Dashboard must not display fabricated metrics');
 assert.doesNotMatch(ui, /<div\s+[^>]*onClick=/, 'Clickable dashboard actions must not be non-semantic div elements');
 
-// Tenant Management UI must use canonical lifecycle endpoints, not the deliberately
-// rejected PATCH fields used by the original UI.
+// Tenant Management UI must use canonical lifecycle endpoints and the list API's
+// filtering/pagination contract; lifecycle and billing mutations remain separated.
 const tenantUi = fs.readFileSync(path.join(root, 'src/components/platform/TenantManagementView.tsx'), 'utf8');
-assert.match(tenantUi, /\/api\/platform\/tenants\?status=all&limit=200/, 'Tenant list must include suspended and archived records');
+assert.match(tenantUi, /new URLSearchParams\(\{ status: statusFilter, limit: String\(PAGE_SIZE\), offset: String\(offset\) \}\)/, 'Tenant list must request bounded pages and the selected lifecycle filter');
+assert.match(tenantUi, /params\.set\('search', searchQuery\)/, 'Tenant list must pass search terms to the API');
+assert.match(tenantUi, /currentPage=\{currentPage\} totalPages=\{totalPages\}/, 'Tenant list must expose pagination controls');
+assert.match(tenantUi, /Showing .*tenant organizations/, 'Tenant list must report result counts');
 assert.match(tenantUi, /tenant\.planTier/, 'Tenant plan display must use the API DTO field planTier');
 assert.match(tenantUi, /tenant\.subscriptionStatus/, 'Tenant list must display subscription state returned by the service');
 assert.match(tenantUi, /\/\$\{action\}/, 'Lifecycle buttons must call the canonical suspend/reactivate routes');
 assert.match(tenantUi, /'suspend' : 'reactivate'/, 'Active tenants suspend and suspended tenants reactivate');
 assert.match(tenantUi, /tenant\.status === 'archived'/, 'Archived tenants must be treated as read-only');
+assert.match(tenantUi, /form\.adminPassword\.length < 12/, 'Create button must enforce the minimum administrator password length');
 assert.doesNotMatch(tenantUi, /method: 'PATCH',[\s\S]{0,100}isActive/, 'Lifecycle UI must not call the forbidden PATCH isActive mutation');
 assert.doesNotMatch(tenantUi, /method: 'PATCH',[\s\S]{0,100}planTier/, 'Tenant UI must not use PATCH for billing plan changes');
 
