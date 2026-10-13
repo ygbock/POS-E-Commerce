@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createIsolatedTestClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
+import { getPermissionsForRole, hasPermission, PERMISSIONS } from '../server/auth/roles';
 import {
   clearPlatformEmailSettings,
   getPlatformEmailSettingsStatus,
@@ -10,6 +11,11 @@ import {
 
 async function main() {
   process.env.MFA_ENCRYPTION_KEY = '11'.repeat(32);
+  assert.equal(hasPermission(getPermissionsForRole('system_owner'), PERMISSIONS.PLATFORM_SETTINGS), true);
+  assert.equal(hasPermission(getPermissionsForRole('platform_admin'), PERMISSIONS.PLATFORM_SETTINGS), true);
+  assert.equal(hasPermission(getPermissionsForRole('platform_support'), PERMISSIONS.PLATFORM_SETTINGS), false);
+  assert.equal(hasPermission(getPermissionsForRole('platform_finance'), PERMISSIONS.PLATFORM_SETTINGS), false);
+  assert.equal(hasPermission(getPermissionsForRole('admin'), PERMISSIONS.PLATFORM_SETTINGS), false);
   const db = createIsolatedTestClient();
   await runMigrations(db);
 
