@@ -245,6 +245,11 @@ async function main() {
   assert.notEqual(unpublishedLocations.status, 200, 'unpublished branch locations must not be publicly accessible');
   const unpublishedReviews = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/reviews`);
   assert.equal(unpublishedReviews.status, 404, 'unpublished listing reviews must not be publicly accessible');
+
+  const unpublishedHours = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/hours`);
+  assert.notEqual(unpublishedHours.status, 200, 'unpublished business hours must not be publicly accessible');
+  const unpublishedServices = await getJson(`/api/discovery/businesses/${encodeURIComponent(unpublishedBusiness.id)}/services`);
+  assert.notEqual(unpublishedServices.status, 200, 'unpublished business services must not be publicly accessible');
   const unpublishedList = await getJson('/api/discovery/businesses?limit=100');
   assert.equal(unpublishedList.status, 200);
   assert.ok(!unpublishedList.body.data.some((item: any) => item.id === unpublishedBusiness.id), 'unpublished listing must not appear in public listing results');
