@@ -333,6 +333,8 @@ export class DiscoveryBusinessService {
       }
       const nextSlug = patch.name && patch.name.trim() !== existing.name ? await this.uniqueSlug(normalizeText(patch.name, 255, 'name', true)!, existing.id, tx) : existing.slug;
       const updated = await this.repository.updateBusiness(id, {
+        // Published content is served from this record, so require re-review before exposing edits.
+        ...(locked.rows[0].listing_status === 'PUBLISHED' ? { is_discoverable: false } : {}),
         ...(patch.name !== undefined ? { name: normalizeText(patch.name, 255, 'name', true) } : {}),
         ...(patch.legalName !== undefined ? { legal_name: normalizeText(patch.legalName, 255, 'legalName') } : {}),
         ...(patch.businessType !== undefined ? { business_type: normalizeText(patch.businessType, 64, 'businessType') } : {}),
