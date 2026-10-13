@@ -83,8 +83,13 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
       const tenants = await db.query<any>(
         'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier, created_at FROM organizations ORDER BY created_at DESC'
       );
+      // Match the Active Tenant Users workspace: count only active users attached
+      // to an active tenant organization, excluding platform identities and orphaned rows.
       const activeUsers = await db.query<any>(
-        'SELECT COUNT(*)::int AS count FROM users WHERE is_active = true'
+        `SELECT COUNT(DISTINCT u.id)::int AS count
+           FROM users u
+           INNER JOIN organizations o ON o.id = u.organization_id
+          WHERE u.is_active = true AND o.is_active = true`
       );
       res.json({
         success: true,
@@ -101,6 +106,22 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
           activeUsers: activeUsers.rows[0]?.count ?? 0,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+    router.get('/users', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_VIEW), async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const users = await db.query<any>(
+        `SELECT u.id, u.name, u.email, u.role, u.is_active, u.organization_id,
+                o.name AS organization_name, u.created_at
+           FROM users u
+           INNER JOIN organizations o ON o.id = u.organization_id
+          WHERE u.is_active = true AND o.is_active = true
+          ORDER BY u.created_at DESC`
+      );
+      return res.json({ success: true, data: users.rows });
     } catch (err) {
       next(err);
     }
