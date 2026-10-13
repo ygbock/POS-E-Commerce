@@ -254,7 +254,7 @@ async function main() {
       );
       // Provider API credentials are stored in platform settings, not runtime environment variables.
       assert.strictEqual(
-        validateEnvironment({ ...complete, RESEND_API_KEY: 'ignored_env_key', RESEND_FROM_EMAIL: 'ignored@example.com' }).isProduction,
+        validateEnvironment({ ...complete, RESEND_API_KEY: 'ignored_env_key' }).isProduction,
         true
       );
       assert.throws(
