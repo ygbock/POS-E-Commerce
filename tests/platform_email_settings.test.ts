@@ -20,6 +20,12 @@ async function main() {
   await runMigrations(db);
 
   const key = ['re', 'test', 'key', '1234567890'].join('_');
+  await assert.rejects(
+    savePlatformEmailSettings(db, { apiKey: '', fromEmail: 'no-reply@example.test', actorId: null as any }),
+    /RESEND_API_KEY_REQUIRED/,
+    'Initial setup must require a key',
+  );
+
   const saved = await savePlatformEmailSettings(db, {
     apiKey: key,
     fromEmail: 'AbaCha <no-reply@example.test>',
@@ -51,11 +57,6 @@ async function main() {
     fromEmail: 'no-reply@example.test',
   });
 
-  await assert.rejects(
-    savePlatformEmailSettings(db, { apiKey: '', fromEmail: 'no-reply@example.test', actorId: null as any }),
-    /RESEND_API_KEY_REQUIRED/,
-    'Initial setup must require a key',
-  );
   await assert.rejects(
     savePlatformEmailSettings(db, { apiKey: 'not-a-resend-key', fromEmail: 'no-reply@example.test', actorId: null as any }),
     /INVALID_RESEND_API_KEY/,
