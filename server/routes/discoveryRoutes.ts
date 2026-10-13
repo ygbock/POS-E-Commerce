@@ -63,6 +63,22 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     organizationId: req.auth!.organizationId,
   });
 
+  // Child listing edits must lock the parent row for the full mutation. A status
+  // pre-check alone can race with submission or moderation and mutate a listing
+  // after its review snapshot has been taken.
+  const lockEditableListing = async (tx: DatabaseClient, businessId: string): Promise<void> => {
+    const current = await tx.query<{ listing_status: string }>(
+      'SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE',
+      [businessId],
+    );
+    if (!current.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+    const status = current.rows[0].listing_status;
+    if (status === 'ARCHIVED') throw new Error('DISCOVERY_ARCHIVED:Archived listings cannot be edited.');
+    if (!['DRAFT', 'REJECTED', 'PUBLISHED', 'PAUSED'].includes(status)) {
+      throw new Error(`LISTING_LOCKED:Listings cannot be edited while in ${status} status.`);
+    }
+  };
+
   // Categories are platform-managed reference data. They are readable during
   // merchant onboarding so a new business can select its discovery category.
   router.get('/categories', discoverySearchRateLimiter, async (req, res, next) => {
@@ -177,11 +193,27 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.status(status).json({ success: false, error: { code: code || 'DISCOVERY_ERROR', message: raw.includes(':') ? raw.slice(raw.indexOf(':') + 1).trim() : raw } });
   };
 
+  // Tenant super_admin is scoped to its own organization and listings it created
+  // in Discovery-only mode. It is never a platform-wide authorization bypass.
+  const tenantSuperAdminCanManage = async (req: Request, businessId: string): Promise<boolean> => {
+    if (req.auth?.role !== 'super_admin') return false;
+    const result = await db.query<{ organization_id: string | null; created_by_user_id: string | null; business_mode: string }>(
+      'SELECT organization_id,created_by_user_id,business_mode FROM discovery_businesses WHERE id=$1 LIMIT 1',
+      [businessId],
+    );
+    const business = result.rows[0];
+    if (!business) return false;
+    return Boolean(
+      (business.organization_id && business.organization_id === req.auth.organizationId) ||
+      (!business.organization_id && business.business_mode === 'DISCOVERY_ONLY' && business.created_by_user_id === req.auth.userId),
+    );
+  };
+
   // Resource ownership is intentionally delegated to the domain service so route-level
   // authorization cannot drift from the tenant-boundary rules used by lifecycle/update APIs.
   const owned = async (req: Request, businessId: string, permission: DiscoveryBusinessPermission = 'business.listing.manage') => {
     if (!req.auth) return false;
-    if (req.auth.role === 'super_admin') return true;
+    if (req.auth.role === 'super_admin' && await tenantSuperAdminCanManage(req, businessId)) return true;
     try {
       await assertBusinessPermission(db, businessId, req.auth.userId, permission);
       return true;
@@ -206,7 +238,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
 
   const requireBusinessPermission = async (req: Request, businessId: string, permission: DiscoveryBusinessPermission) => {
     if (!req.auth) throw new Error('UNAUTHORIZED:Authentication required.');
-    if (req.auth.role === 'super_admin') return;
+    if (req.auth.role === 'super_admin') {
+      if (await tenantSuperAdminCanManage(req, businessId)) return;
+      throw new Error('PERMISSION_DENIED:Tenant super_admin access is limited to its organization and its own Discovery-only listings.');
+    }
     await assertBusinessPermission(db, businessId, req.auth.userId, permission);
   };
 
@@ -295,7 +330,10 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       }
       const role = req.auth!.role; const values: unknown[] = []; let where = '';
       if (role === 'super_admin') {
-        where = 'TRUE';
+        // Tenant super_admin may see listings in its own organization and
+        // Discovery-only listings it personally created, never the whole platform.
+        values.push(req.auth!.organizationId || '', req.auth!.userId);
+        where = "(organization_id=$1 OR (organization_id IS NULL AND business_mode='DISCOVERY_ONLY' AND created_by_user_id=$2))";
       } else if (role === 'business_owner') {
         // Claimed platform-created listings may have been created by a platform
         // administrator, so ownership is authoritative through the active OWNER
@@ -551,7 +589,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses', requireAuth(), requireBusinessOwnerIdentity(), async (req, res, next) => {
     try {
       const organizationId = req.body?.organizationId === undefined ? req.auth!.organizationId : String(req.body.organizationId || '');
-      if (req.auth!.role !== 'super_admin' && organizationId !== req.auth!.organizationId) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant discovery business creation forbidden.' } });
+      if (!['platform_admin', 'system_owner'].includes(req.auth!.role) && organizationId !== req.auth!.organizationId) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant discovery business creation forbidden.' } });
       const data = await businessService.create({ ...req.body, organizationId: organizationId || null, createdByUserId: req.auth!.userId }, actor(req));
       res.status(201).json({ success: true, data });
     } catch (err) { next(err); }
@@ -604,7 +642,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   ] as const) {
     router.post(`/businesses/:id${path}`, requireAuth(), async (req, res, next) => {
       try {
-        if (!['approve', 'suspend'].includes(action) && !(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business lifecycle operation forbidden.' } });
+        if (!['review', 'approve', 'suspend'].includes(action) && !(await owned(req, req.params.id))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business lifecycle operation forbidden.' } });
         const data = await (businessService as any)[action](req.params.id, actor(req), req.body?.reason);
         res.json({ success: true, data });
       } catch (err) { next(err); }
@@ -669,6 +707,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const x = normalizeLocation(req.body);
       const id = `loc_${randomUUID().replace(/-/g, '')}`;
       const data = await db.withTransaction(async (tx) => {
+        await lockEditableListing(tx, req.params.id);
         if (x.isPrimary) await tx.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1', [req.params.id]);
         const result = await tx.query(`INSERT INTO discovery_business_locations
           (id,business_id,name,location_type,address_line_1,address_line_2,city,district,region,country,postal_code,
@@ -701,6 +740,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         qualityNotes: req.body?.qualityNotes ?? existing.rows[0].quality_notes };
       const x = normalizeLocation(merged);
       const result = await db.withTransaction(async (tx) => {
+        await lockEditableListing(tx, req.params.id);
         if (x.isPrimary) await tx.query('UPDATE discovery_business_locations SET is_primary = FALSE WHERE business_id = $1 AND id <> $2', [req.params.id, req.params.locationId]);
         const r = await tx.query(`UPDATE discovery_business_locations SET
           name=$1,location_type=$2,address_line_1=$3,address_line_2=$4,city=$5,district=$6,region=$7,country=$8,postal_code=$9,
@@ -722,10 +762,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses/:id/locations/:locationId/verify', requireAuth(), async (req,res,next)=>{
     try {
       if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Location verification forbidden.'}});
-      const r=await db.query(`UPDATE discovery_business_locations
-        SET location_quality_status='VERIFIED',location_source='VERIFIED',location_verified_at=CURRENT_TIMESTAMP,
-            location_verified_by_user_id=$1,updated_at=CURRENT_TIMESTAMP
-        WHERE business_id=$2 AND id=$3 RETURNING *`,[req.auth!.userId,req.params.id,req.params.locationId]);
+      const r=await db.withTransaction(async(tx)=>{
+        await lockEditableListing(tx, req.params.id);
+        return tx.query(`UPDATE discovery_business_locations
+          SET location_quality_status='VERIFIED',location_source='VERIFIED',location_verified_at=CURRENT_TIMESTAMP,
+              location_verified_by_user_id=$1,updated_at=CURRENT_TIMESTAMP
+          WHERE business_id=$2 AND id=$3 RETURNING *`,[req.auth!.userId,req.params.id,req.params.locationId]);
+      });
       if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
       res.json({success:true,data:r.rows[0]});
     }catch(err){next(err);}
@@ -734,17 +777,20 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.put('/businesses/:id/locations/:locationId/hours', requireAuth(), async (req, res, next) => {
     try {
       if (!(await owned(req, req.params.id, 'business.locations.manage'))) return res.status(403).json({ success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Hours management forbidden.'} });
-      const location = await db.query('SELECT id FROM discovery_business_locations WHERE id=$1 AND business_id=$2', [req.params.locationId, req.params.id]);
-      if (!location.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Location not found.'}});
       const hours = Array.isArray(req.body?.hours) ? req.body.hours : [];
-      for (const h of hours) {
-        const day = Number(h.dayOfWeek);
-        if (day < 1 || day > 7) throw new Error('VALIDATION_ERROR:dayOfWeek must be 1..7.');
-        const closed = Boolean(h.isClosed);
-        if (!closed && (!h.opensAt || !h.closesAt || h.opensAt === h.closesAt)) throw new Error('VALIDATION_ERROR:open hours require different opensAt and closesAt values.');
-        await db.query(`INSERT INTO discovery_business_hours (id,location_id,day_of_week,is_closed,opens_at,closes_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(location_id,day_of_week) DO UPDATE SET is_closed=EXCLUDED.is_closed,opens_at=EXCLUDED.opens_at,closes_at=EXCLUDED.closes_at,updated_at=CURRENT_TIMESTAMP`, [`hrs_${randomUUID().replace(/-/g,'')}`, req.params.locationId, day, closed, closed ? null : h.opensAt, closed ? null : h.closesAt]);
-      }
-      const result = await db.query('SELECT * FROM discovery_business_hours WHERE location_id=$1 ORDER BY day_of_week', [req.params.locationId]);
+      const result = await db.withTransaction(async(tx) => {
+        await lockEditableListing(tx, req.params.id);
+        const location = await tx.query('SELECT id FROM discovery_business_locations WHERE id=$1 AND business_id=$2', [req.params.locationId, req.params.id]);
+        if (!location.rows[0]) throw new Error('NOT_FOUND:Location not found.');
+        for (const h of hours) {
+          const day = Number(h.dayOfWeek);
+          if (day < 1 || day > 7) throw new Error('VALIDATION_ERROR:dayOfWeek must be 1..7.');
+          const closed = Boolean(h.isClosed);
+          if (!closed && (!h.opensAt || !h.closesAt || h.opensAt === h.closesAt)) throw new Error('VALIDATION_ERROR:open hours require different opensAt and closesAt values.');
+          await tx.query(`INSERT INTO discovery_business_hours (id,location_id,day_of_week,is_closed,opens_at,closes_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(location_id,day_of_week) DO UPDATE SET is_closed=EXCLUDED.is_closed,opens_at=EXCLUDED.opens_at,closes_at=EXCLUDED.closes_at,updated_at=CURRENT_TIMESTAMP`, [`hrs_${randomUUID().replace(/-/g,'')}`, req.params.locationId, day, closed, closed ? null : h.opensAt, closed ? null : h.closesAt]);
+        }
+        return tx.query('SELECT * FROM discovery_business_hours WHERE location_id=$1 ORDER BY day_of_week', [req.params.locationId]);
+      });
       res.json({success:true,data:result.rows});
     } catch (err) { next(err); }
   });
@@ -756,8 +802,15 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const values: any[] = [];
       const set: string[] = [];
       for (const key of keys) if (typeof req.body?.[key] === 'boolean' || typeof req.body?.[key.replace(/_([a-z])/g,(_,c)=>c.toUpperCase())] === 'boolean') { const camel = key.replace(/_([a-z])/g,(_,c)=>c.toUpperCase()); values.push(req.body[key] ?? req.body[camel]); set.push(`${key}=$${values.length}`); }
-      if (set.length) { values.push(req.params.id); await db.query(`UPDATE discovery_business_settings SET ${set.join(',')},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${values.length}`, values); }
-      const result = await repo.getSettings(req.params.id); res.json({success:true,data:result});
+      const result = await db.withTransaction(async(tx) => {
+        await lockEditableListing(tx, req.params.id);
+        if (set.length) {
+          const txValues = [...values, req.params.id];
+          await tx.query(`UPDATE discovery_business_settings SET ${set.join(',')},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${txValues.length}`, txValues);
+        }
+        return repo.getSettings(req.params.id, tx);
+      });
+      res.json({success:true,data:result});
     } catch(err){next(err);}
   });
 
@@ -1552,8 +1605,34 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       fail(res, err);
     }
   });
-  router.post('/businesses/:id/services', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};if(!String(x.name||'').trim())throw new Error('VALIDATION_ERROR:name is required.');if(x.bookingMode&&!SERVICE_BOOKING_MODES.has(x.bookingMode))throw new Error('VALIDATION_ERROR:invalid bookingMode.');const slug=String(x.slug||x.name).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,180)||`service-${randomUUID().slice(0,8)}`;const r=await db.query(`INSERT INTO discovery_services(id,business_id,name,slug,description,service_type,price_from,price_to,currency,duration_minutes,service_area_text,booking_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[`svc_${randomUUID().replace(/-/g,'')}`,req.params.id,String(x.name).trim(),slug,x.description||null,x.serviceType||null,x.priceFrom??null,x.priceTo??null,x.currency||'SLE',x.durationMinutes??null,x.serviceAreaText||null,x.bookingMode||'REQUEST']);res.status(201).json({success:true,data:r.rows[0]});}catch(err){next(err);}});
-  router.patch('/businesses/:id/services/:serviceId', requireAuth(), async(req,res,next)=>{try{if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});const x=req.body||{};const allowed:Record<string,string>={name:'name',description:'description',serviceType:'service_type',priceFrom:'price_from',priceTo:'price_to',currency:'currency',durationMinutes:'duration_minutes',serviceAreaText:'service_area_text',bookingMode:'booking_mode',isActive:'is_active'};const entries=Object.entries(x).filter(([k])=>allowed[k]);if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'}});const vals=entries.map(([,v])=>v);const set=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');vals.push(req.params.id,req.params.serviceId);const r=await db.query(`UPDATE discovery_services SET ${set},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${vals.length-1} AND id=$${vals.length} RETURNING *`,vals);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  router.post('/businesses/:id/services', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});
+    const x=req.body||{};
+    if(!String(x.name||'').trim())throw new Error('VALIDATION_ERROR:name is required.');
+    if(x.bookingMode&&!SERVICE_BOOKING_MODES.has(x.bookingMode))throw new Error('VALIDATION_ERROR:invalid bookingMode.');
+    const slug=String(x.slug||x.name).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,180)||`service-${randomUUID().slice(0,8)}`;
+    const r=await db.withTransaction(async(tx)=>{
+      await lockEditableListing(tx, req.params.id);
+      return tx.query(`INSERT INTO discovery_services(id,business_id,name,slug,description,service_type,price_from,price_to,currency,duration_minutes,service_area_text,booking_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[`svc_${randomUUID().replace(/-/g,'')}`,req.params.id,String(x.name).trim(),slug,x.description||null,x.serviceType||null,x.priceFrom??null,x.priceTo??null,x.currency||'SLE',x.durationMinutes??null,x.serviceAreaText||null,x.bookingMode||'REQUEST']);
+    });
+    res.status(201).json({success:true,data:r.rows[0]});
+  }catch(err){next(err);}});
+  router.patch('/businesses/:id/services/:serviceId', requireAuth(), async(req,res,next)=>{try{
+    if(!(await owned(req,req.params.id,'business.services.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Service management forbidden.'}});
+    const x=req.body||{};
+    const allowed:Record<string,string>={name:'name',description:'description',serviceType:'service_type',priceFrom:'price_from',priceTo:'price_to',currency:'currency',durationMinutes:'duration_minutes',serviceAreaText:'service_area_text',bookingMode:'booking_mode',isActive:'is_active'};
+    const entries=Object.entries(x).filter(([k])=>allowed[k]);
+    if(!entries.length)return res.status(422).json({success:false,error:{code:'VALIDATION_ERROR',message:'No editable service fields supplied.'}});
+    const vals=entries.map(([,v])=>v);
+    const set=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');
+    vals.push(req.params.id,req.params.serviceId);
+    const r=await db.withTransaction(async(tx)=>{
+      await lockEditableListing(tx, req.params.id);
+      return tx.query(`UPDATE discovery_services SET ${set},updated_at=CURRENT_TIMESTAMP WHERE business_id=$${vals.length-1} AND id=$${vals.length} RETURNING *`,vals);
+    });
+    if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});
+    res.json({success:true,data:r.rows[0]});
+  }catch(err){next(err);}});
 
   // ------------------------------------------------------------------
   // DISC-010: service-request lifecycle
@@ -1862,7 +1941,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       );
       isProvider=ownedMatch.rows.length>0 && await owned(req,String(req.body.businessId),'business.leads.manage');
     }
-    if(!isCustomer&&!isProvider&&req.auth!.role!=='super_admin')throw new Error('PERMISSION_DENIED:Only the customer, matched provider, or platform administrator may close the request.');
+    if(!isCustomer&&!isProvider&&!['platform_admin','system_owner'].includes(req.auth!.role))throw new Error('PERMISSION_DENIED:Only the customer, matched provider, or platform administrator may close the request.');
     const data=await transitionRequest(req.params.id,'CLOSED',req.auth!.userId,req.body?.reason||'Request closed.');
     res.json({success:true,data});
   }catch(err){next(err);} });
@@ -2143,20 +2222,16 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       );
       if(activeCats.rows.length!==ids.length)throw new Error('VALIDATION_ERROR:categoryIds may reference active categories only.');
     }
-    await db.query('BEGIN');
-    try{
-      await db.query('DELETE FROM discovery_business_category_map WHERE business_id=$1::varchar',[req.params.id]);
+    await db.withTransaction(async(tx)=>{
+      await lockEditableListing(tx, req.params.id);
+      await tx.query('DELETE FROM discovery_business_category_map WHERE business_id=$1::varchar',[req.params.id]);
       for(let i=0;i<ids.length;i++) {
-        await db.query(
+        await tx.query(
           'INSERT INTO discovery_business_category_map(business_id,category_id,is_primary) VALUES($1::varchar,$2::varchar,$3::boolean)',
           [req.params.id,ids[i],i===0],
         );
       }
-      await db.query('COMMIT');
-    }catch(e){
-      await db.query('ROLLBACK');
-      throw e;
-    }
+    });
     res.json({success:true,data:await repo.listCategories(req.params.id)});
   }catch(err){next(err);}});
 
@@ -2268,7 +2343,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
     const canManage=await owned(req,req.params.id,'business.verification.manage');
-    if(!canManage && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification access forbidden.'}});
+    if(!canManage)return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Verification access forbidden.'}});
     const applications=await db.query(`SELECT * FROM discovery_verification_applications WHERE business_id=$1 ORDER BY created_at DESC LIMIT 20`,[req.params.id]);
     res.json({success:true,data:{businessId:req.params.id,verificationStatus:b.verification_status,applications:applications.rows}});
   }catch(err){next(err);}});
@@ -2276,7 +2351,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.get('/businesses/:id/trust', requireAuth(), async(req,res,next)=>{try{
     const b=await repo.findById(req.params.id);
     if(!b)return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Business not found.'}});
-    if(!(await owned(req, req.params.id, 'business.verification.manage')) && req.auth!.role!=='super_admin')return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
+    if(!(await owned(req, req.params.id, 'business.verification.manage')))return res.status(403).json({success:false,error:{code:'TENANT_ACCESS_DENIED',message:'Trust center access forbidden.'}});
 
     const [applications, claims, reviewSummary, reports, events] = await Promise.all([
       db.query(
@@ -2370,19 +2445,19 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   }catch(err){next(err);}});
 
   router.get('/moderation/verification', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const isSuper=req.auth!.role==='super_admin';
-    const r=await db.query(`SELECT v.*,b.name AS business_name,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY v.created_at ASC LIMIT 100`,[isSuper,req.auth!.organizationId||'']);
+    if(!['platform_admin','system_owner','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Platform or tenant administrator authorization required.'}});
+    const isPlatformModerator=['platform_admin','system_owner'].includes(req.auth!.role);
+    const r=await db.query(`SELECT v.*,b.name AS business_name,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY v.created_at ASC LIMIT 100`,[isPlatformModerator,req.auth!.organizationId||'']);
     res.json({success:true,data:r.rows});
   }catch(err){next(err);}});
 
   router.post('/moderation/verification/:id/decision', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
+    if(!['platform_admin','system_owner','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Platform or tenant administrator authorization required.'}});
     const status=String(req.body?.status||'');
     if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');
     const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
     const result=await db.withTransaction(async(tx)=>{
-      const current=await tx.query(`SELECT v.*,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.id=$1 AND v.status='PENDING' AND ($2=TRUE OR b.organization_id=$3) FOR UPDATE`,[req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);
+      const current=await tx.query(`SELECT v.*,b.organization_id,b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.id=$1 AND v.status='PENDING' AND ($2=TRUE OR b.organization_id=$3) FOR UPDATE`,[req.params.id,['platform_admin','system_owner'].includes(req.auth!.role),req.auth!.organizationId||'']);
       if(!current.rows[0])throw new Error('NOT_FOUND:Verification application not found.');
       const row=current.rows[0];
       const v=await tx.query(`UPDATE discovery_verification_applications SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,[status,req.auth!.userId,reason,req.params.id]);
@@ -2393,36 +2468,32 @@ export function createDiscoveryRouter(db: DatabaseClient) {
     res.json({success:true,data:result});
   }catch(err){next(err);}});
 
-  router.get('/moderation/claims', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const isSuper=req.auth!.role==='super_admin';const r=await db.query(`SELECT c.*,b.name AS business_name FROM discovery_business_claims c JOIN discovery_businesses b ON b.id=c.business_id WHERE c.status='PENDING' AND ($1=TRUE OR b.organization_id=$2) ORDER BY c.created_at ASC LIMIT 100`,[isSuper,req.auth!.organizationId||'']);res.json({success:true,data:r.rows});}catch(err){next(err);}});
-  router.post('/moderation/claims/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['APPROVED','REJECTED'].includes(status))throw new Error('VALIDATION_ERROR:status must be APPROVED or REJECTED.');const r=await db.query(`UPDATE discovery_business_claims c SET status=$1,reviewed_by_user_id=$2,reviewed_at=CURRENT_TIMESTAMP,review_reason=$3,updated_at=CURRENT_TIMESTAMP FROM discovery_businesses b WHERE c.id=$4 AND c.business_id=b.id AND ($5=TRUE OR b.organization_id=$6) RETURNING c.*`,[status,req.auth!.userId,req.body?.reason||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Claim not found.'}});await trustEvent(r.rows[0].business_id,'CLAIM',r.rows[0].id,'CLAIM_DECIDED',req.auth!.userId,'PENDING',status,req.body?.reason||null,{});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  // Ownership claims are moderated only through the platform Discovery workspace.
+  // Retire the legacy tenant route so it cannot approve claims without creating the
+  // owner membership, enforcing System Owner approval rules, and recording full audit metadata.
+  router.get('/moderation/claims', requireAuth(), async (_req,res) => {
+    res.status(410).json({success:false,error:{code:'LEGACY_MODERATION_ROUTE_RETIRED',message:'Use the platform Discovery moderation workspace to review ownership claims.'}});
+  });
+  router.post('/moderation/claims/:id/decision', requireAuth(), async (_req,res) => {
+    res.status(410).json({success:false,error:{code:'LEGACY_MODERATION_ROUTE_RETIRED',message:'Use the platform Discovery moderation workspace to decide ownership claims.'}});
+  });
 
-  router.get('/moderation/reviews', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const status=String(req.query.status||'PENDING');
-    const isSuper=req.auth!.role==='super_admin';
-    const r=await db.query(`SELECT r.*,b.name AS business_name,b.organization_id FROM discovery_reviews r JOIN discovery_businesses b ON b.id=r.business_id WHERE ($1='' OR r.status=$1) AND ($2=TRUE OR b.organization_id=$3) ORDER BY r.created_at ASC LIMIT 200`,[status,isSuper,req.auth!.organizationId||'']);
-    res.json({success:true,data:r.rows});
-  }catch(err){next(err);}});
-
-  router.post('/moderation/reviews/:id/decision', requireAuth(), async(req,res,next)=>{try{
-    if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});
-    const status=String(req.body?.status||'');
-    if(!['PUBLISHED','REJECTED','HIDDEN'].includes(status))throw new Error('VALIDATION_ERROR:status must be PUBLISHED, REJECTED or HIDDEN.');
-    const reason=String(req.body?.reason||'').trim().slice(0,2000)||null;
-    const result=await db.withTransaction(async(tx)=>{
-      const current=await tx.query(`SELECT r.*,b.organization_id FROM discovery_reviews r JOIN discovery_businesses b ON b.id=r.business_id WHERE r.id=$1 AND ($2=TRUE OR b.organization_id=$3) FOR UPDATE`,[req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);
-      if(!current.rows[0])throw new Error('NOT_FOUND:Review not found.');
-      const fromStatus=String(current.rows[0].status);
-      const updated=await tx.query(`UPDATE discovery_reviews SET status=$1,updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,[status,req.params.id]);
-      await tx.query(`INSERT INTO discovery_review_moderation_events(id,review_id,from_status,to_status,actor_user_id,reason) VALUES($1,$2,$3,$4,$5,$6)`,[`rev_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,fromStatus,status,req.auth!.userId,reason]);
-      await tx.query(`INSERT INTO discovery_trust_events(id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,metadata) VALUES($1,$2,'REVIEW',$3,'REVIEW_DECIDED',$4,$5,$6,$7,$8)`,[`trust_${randomUUID().replace(/-/g,'')}`,current.rows[0].business_id,req.params.id,fromStatus,status,req.auth!.userId,reason,{}]);
-      return updated.rows[0];
-    });
-    res.json({success:true,data:result});
-  }catch(err){next(err);}});
-
-  router.get('/moderation/reports', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const isSuper=req.auth!.role==='super_admin';const r=await db.query(`SELECT r.*,b.name AS business_name,s.name AS service_name FROM discovery_reports r LEFT JOIN discovery_businesses b ON b.id=r.business_id LEFT JOIN discovery_services s ON s.id=r.service_id LEFT JOIN discovery_businesses sb ON sb.id=s.business_id WHERE ($1='' OR r.status=$1) AND ($2=TRUE OR COALESCE(b.organization_id,sb.organization_id)=$3) ORDER BY r.created_at ASC LIMIT 200`,[String(req.query.status||''),isSuper,req.auth!.organizationId||'']);res.json({success:true,data:r.rows});}catch(err){next(err);}});
-  router.post('/moderation/reports/:id/decision', requireAuth(), async(req,res,next)=>{try{if(!['super_admin','admin'].includes(req.auth!.role))return res.status(403).json({success:false,error:{code:'PERMISSION_DENIED',message:'Administrator authorization required.'}});const status=req.body?.status;if(!['RESOLVED','DISMISSED','UNDER_REVIEW'].includes(status))throw new Error('VALIDATION_ERROR:invalid report status.');const current=await db.query(`SELECT * FROM discovery_reports WHERE id=$1`,[req.params.id]);if(!current.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Report not found.'}});const fromStatus=String(current.rows[0].status);const r=await db.query(`UPDATE discovery_reports r SET status=$1,resolved_by_user_id=$2,resolved_at=CASE WHEN $1 IN ('RESOLVED','DISMISSED') THEN CURRENT_TIMESTAMP ELSE NULL END,resolution_note=$3 WHERE r.id=$4 AND ($5=TRUE OR EXISTS (SELECT 1 FROM discovery_businesses bx WHERE bx.id=r.business_id AND bx.organization_id=$6) OR EXISTS (SELECT 1 FROM discovery_services sx JOIN discovery_businesses sbx ON sbx.id=sx.business_id WHERE sx.id=r.service_id AND sbx.organization_id=$6)) RETURNING r.*`,[status,req.auth!.userId,req.body?.note||null,req.params.id,req.auth!.role==='super_admin',req.auth!.organizationId||'']);if(!r.rows[0])return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Report not found.'}});await db.query(`INSERT INTO discovery_report_events(id,report_id,from_status,to_status,actor_user_id,note) VALUES($1,$2,$3,$4,$5,$6)`,[`rep_evt_${randomUUID().replace(/-/g,'')}`,req.params.id,fromStatus,status,req.auth!.userId,req.body?.note||null]);await trustEvent(r.rows[0].business_id,'REPORT',r.rows[0].id,'REPORT_DECIDED',req.auth!.userId,fromStatus,status,req.body?.note||null,{});res.json({success:true,data:r.rows[0]});}catch(err){next(err);}});
+  // Retire the legacy tenant moderation surface. All reviews and reports must be
+  // moderated through the platform Discovery workspace, whose guard requires a
+  // platform identity and explicit platform-discovery permission. This also
+  // prevents tenant super_admin from using legacy endpoints as platform authority.
+  router.get('/moderation/reviews', requireAuth(), async (_req, res) => {
+    res.status(410).json({ success:false, error:{ code:'LEGACY_MODERATION_ROUTE_RETIRED', message:'Use the platform Discovery moderation workspace to review reviews.' } });
+  });
+  router.post('/moderation/reviews/:id/decision', requireAuth(), async (_req, res) => {
+    res.status(410).json({ success:false, error:{ code:'LEGACY_MODERATION_ROUTE_RETIRED', message:'Use the platform Discovery moderation workspace to decide reviews.' } });
+  });
+  router.get('/moderation/reports', requireAuth(), async (_req, res) => {
+    res.status(410).json({ success:false, error:{ code:'LEGACY_MODERATION_ROUTE_RETIRED', message:'Use the platform Discovery moderation workspace to review reports.' } });
+  });
+  router.post('/moderation/reports/:id/decision', requireAuth(), async (_req, res) => {
+    res.status(410).json({ success:false, error:{ code:'LEGACY_MODERATION_ROUTE_RETIRED', message:'Use the platform Discovery moderation workspace to decide reports.' } });
+  });
 
   router.use((err:any,_req:Request,res:Response,next:NextFunction)=>res.headersSent?next(err):fail(res,err));
   return router;

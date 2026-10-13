@@ -152,6 +152,7 @@ export class DiscoveryBusinessService {
         verification_status: verification,
         is_discoverable: false,
         created_by_user_id: input.createdByUserId || actor?.userId || null,
+        created_by_role: actor?.role || null,
       }, tx);
       await this.repository.getSettings(record.id, tx);
       // Platform-created listings intentionally remain unowned until a verified
@@ -305,7 +306,11 @@ export class DiscoveryBusinessService {
     if (nextMode === 'DISCOVERY_AND_STORE' && existing.business_mode !== 'DISCOVERY_AND_STORE') {
       throw new Error('STORE_CONVERSION_REQUIRED:Use the store conversion workflow to enable commerce capabilities.');
     }
-    if (patch.organizationId !== undefined && nextOrganizationId !== existing.organization_id && actor.role !== 'super_admin') {
+    if (
+      patch.organizationId !== undefined &&
+      nextOrganizationId !== existing.organization_id &&
+      !['platform_admin', 'system_owner'].includes(actor.role)
+    ) {
       if (!nextOrganizationId || actor.organizationId !== nextOrganizationId) {
         throw new Error('TENANT_ACCESS_DENIED:You cannot attach a discovery business to another organization.');
       }
@@ -313,6 +318,19 @@ export class DiscoveryBusinessService {
 
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
+      // Prevent business edits from racing moderation. A moderator must review
+      // a stable snapshot; changes are allowed again after rejection or publication.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      if (!['DRAFT', 'REJECTED', 'PUBLISHED', 'PAUSED'].includes(locked.rows[0].listing_status)) {
+        throw new Error(`LISTING_LOCKED:Listings cannot be edited while in ${locked.rows[0].listing_status} status.`);
+      }
+      if (locked.rows[0].listing_status === 'ARCHIVED') {
+        throw new Error('DISCOVERY_ARCHIVED:Archived listings cannot be edited.');
+      }
       const nextSlug = patch.name && patch.name.trim() !== existing.name ? await this.uniqueSlug(normalizeText(patch.name, 255, 'name', true)!, existing.id, tx) : existing.slug;
       const updated = await this.repository.updateBusiness(id, {
         ...(patch.name !== undefined ? { name: normalizeText(patch.name, 255, 'name', true) } : {}),
@@ -430,20 +448,26 @@ export class DiscoveryBusinessService {
   }
 
   async resubmit(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
-    const existing = await this.repository.findById(id, client);
-    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    await this.assertCanManageScoped(existing, actor, client);
-    if (existing.listing_status !== 'REJECTED') {
-      throw new Error('INVALID_STATE_TRANSITION:Only a rejected listing can be resubmitted.');
-    }
-    const readiness = await this.getListingReadiness(id, client);
-    if (!readiness.ready) {
-      const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
-      throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
-    }
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
-      const updated = await this.repository.updateBusiness(id, { listing_status: 'SUBMITTED' }, tx);
+      // Serialize resubmission against moderation decisions and other resubmissions.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      const existing = await this.repository.findById(id, tx);
+      if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+      await this.assertCanManageScoped(existing, actor, tx);
+      if (locked.rows[0].listing_status !== 'REJECTED') {
+        throw new Error('INVALID_STATE_TRANSITION:Only a rejected listing can be resubmitted.');
+      }
+      const readiness = await this.getListingReadiness(id, tx);
+      if (!readiness.ready) {
+        const missing = readiness.items.filter((item) => item.required && !item.done).map((item) => item.label);
+        throw new Error(`VALIDATION_ERROR:Complete the listing readiness requirements: ${missing.join(', ')}.`);
+      }
+      const updated = await this.repository.updateBusiness(id, { listing_status: 'SUBMITTED', is_discoverable: false }, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
       await this.repository.addListingEvent({ businessId: id, fromStatus: 'REJECTED', toStatus: 'SUBMITTED', reason: reason || 'Listing corrected and resubmitted for moderation.', actorUserId: actor.userId }, tx);
       await tx.query(
@@ -492,6 +516,37 @@ export class DiscoveryBusinessService {
   }
 
   async approve(id: string, actor: { userId: string; role: string; organizationId?: string }, reason?: string, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    // Enforce the platform governance boundary before entering the transition
+    // transaction so expected authorization denials do not poison test transactions.
+    const existing = await this.repository.findById(id, client);
+    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+
+    const creatorIsActor = existing.created_by_user_id === actor.userId;
+    const actorRole = String(actor.role || '').trim().toLowerCase();
+    // Prefer immutable creation-time provenance. Older rows are backfilled by
+    // migration 069; the live-role fallback is retained only for records that
+    // predate a known creator or cannot be backfilled.
+    const creator = existing.created_by_role == null && existing.created_by_user_id
+      ? await (client || this.db).query<{ role: string }>(
+          'SELECT role FROM users WHERE id=$1 LIMIT 1',
+          [existing.created_by_user_id],
+        )
+      : { rows: [] as Array<{ role: string }> };
+    const creatorRole = String(existing.created_by_role || creator.rows[0]?.role || '').trim().toLowerCase();
+
+    // System Owner is the ultimate platform authority and may approve their own
+    // listing after normal readiness/state validation. This exception is exclusive
+    // to system_owner; it is not a general self-approval bypass.
+    if (creatorIsActor && actorRole !== 'system_owner') {
+      throw new Error('SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing.');
+    }
+
+    // Platform Admin-created listings require System Owner approval. Another
+    // Platform Admin cannot substitute for the independent higher-authority review.
+    if (creatorRole === 'platform_admin' && actorRole !== 'system_owner') {
+      throw new Error('SYSTEM_OWNER_APPROVAL_REQUIRED:Listings created by a Platform Admin require System Owner approval.');
+    }
+
     return this.transition(id, 'APPROVED', actor, reason || 'Listing approved.', client, true);
   }
 
@@ -514,20 +569,28 @@ export class DiscoveryBusinessService {
       throw new Error('VALIDATION_ERROR:At least one moderation issue or rejection reason is required.');
     }
 
-    const existing = await this.repository.findById(id, client);
-    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    this.assertModerator(actor, existing);
-    if (!TRANSITIONS[existing.listing_status].includes('REJECTED')) {
-      throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to REJECTED.`);
-    }
-
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
+      // Rejection has additional issue/audit writes, so apply the same row lock
+      // and state recheck as every other moderation transition.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      const existing = await this.repository.findById(id, tx);
+      if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+      this.assertModerator(actor, existing);
+      const currentStatus = locked.rows[0].listing_status;
+      if (!TRANSITIONS[currentStatus].includes('REJECTED')) {
+        throw new Error(`INVALID_STATE_TRANSITION:${currentStatus} cannot transition to REJECTED.`);
+      }
+
       const updated = await this.repository.updateBusiness(id, { listing_status: 'REJECTED', is_discoverable: false }, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
       const event = await this.repository.addListingEvent({
         businessId: id,
-        fromStatus: existing.listing_status,
+        fromStatus: currentStatus,
         toStatus: 'REJECTED',
         reason: reason || 'Listing requires changes before resubmission.',
         actorUserId: actor.userId,
@@ -558,7 +621,7 @@ export class DiscoveryBusinessService {
           action: 'DISCOVERY_LISTING_REJECTED',
           entity_type: 'DISCOVERY_BUSINESS',
           entity_id: id,
-          before_state: { listing_status: existing.listing_status, is_discoverable: existing.is_discoverable },
+          before_state: { listing_status: currentStatus, is_discoverable: existing.is_discoverable },
           after_state: { listing_status: updated.listing_status, is_discoverable: updated.is_discoverable },
           metadata: { reason: reason || null, moderation_issue_count: normalizedIssues.length },
           severity: 'Medium',
@@ -590,7 +653,7 @@ export class DiscoveryBusinessService {
     // or by a platform moderator. Keep the two authorization paths explicit so
     // merchant publication remains available without granting merchant users
     // moderation powers.
-    const isModerator = ['super_admin', 'platform_admin', 'system_owner'].includes(actor.role)
+    const isModerator = ['platform_admin', 'system_owner'].includes(actor.role)
       || (actor.role === 'admin' && Boolean(existing.organization_id) && existing.organization_id === actor.organizationId);
 
     if (isModerator) {
@@ -614,15 +677,31 @@ export class DiscoveryBusinessService {
   }
 
   private async transition(id: string, toStatus: DiscoveryListingStatus, actor: { userId: string; role: string; organizationId?: string }, reason: string, client?: DatabaseClient, moderatorOnly = false): Promise<DiscoveryBusinessRecord> {
-    const existing = await this.repository.findById(id, client);
-    if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
-    if (moderatorOnly) this.assertModerator(actor, existing);
-    else await this.assertCanManageScoped(existing, actor, client);
-    if (!TRANSITIONS[existing.listing_status].includes(toStatus)) {
-      throw new Error(`INVALID_STATE_TRANSITION:${existing.listing_status} cannot transition to ${toStatus}.`);
-    }
     const db = client || this.db;
     return db.withTransaction(async (tx) => {
+      // Serialize lifecycle decisions on the business row. Without this lock,
+      // concurrent approve/reject/publish requests can overwrite each other and
+      // write history events whose from_status does not match the actual state.
+      const locked = await tx.query<{ listing_status: DiscoveryListingStatus }>(
+        `SELECT listing_status FROM discovery_businesses WHERE id=$1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+      const existing = await this.repository.findById(id, tx);
+      if (!existing) throw new Error('NOT_FOUND:Discovery business not found.');
+      if (moderatorOnly) this.assertModerator(actor, existing);
+      else await this.assertCanManageScoped(existing, actor, tx);
+
+      const currentStatus = locked.rows[0].listing_status;
+      if (!TRANSITIONS[currentStatus].includes(toStatus)) {
+        throw new Error(`INVALID_STATE_TRANSITION:${currentStatus} cannot transition to ${toStatus}.`);
+      }
+      // Readiness must be checked under the same row lock as the status change.
+      // A preflight-only check in submit() can race with a concurrent draft edit.
+      if (toStatus === 'SUBMITTED') {
+        await this.assertListingReadyForSubmission(existing, tx);
+      }
+
       const patch: any = { listing_status: toStatus };
       if (toStatus === 'PUBLISHED') {
         patch.is_discoverable = true;
@@ -639,12 +718,12 @@ export class DiscoveryBusinessService {
       }
       const updated = await this.repository.updateBusiness(id, patch, tx);
       if (!updated) throw new Error('NOT_FOUND:Discovery business not found.');
-      await this.repository.addListingEvent({ businessId: id, fromStatus: existing.listing_status, toStatus, reason, actorUserId: actor.userId }, tx);
+      await this.repository.addListingEvent({ businessId: id, fromStatus: currentStatus, toStatus, reason, actorUserId: actor.userId }, tx);
       if (actor.organizationId || updated.organization_id) {
         await this.auditRepository.recordEvent({
           organization_id: actor.organizationId || updated.organization_id!, actor_id: actor.userId, actor_name: actor.userId, actor_role: actor.role,
           action: `DISCOVERY_LISTING_${toStatus}`, entity_type: 'DISCOVERY_BUSINESS', entity_id: id,
-          before_state: { listing_status: existing.listing_status, is_discoverable: existing.is_discoverable },
+          before_state: { listing_status: currentStatus, is_discoverable: existing.is_discoverable },
           after_state: { listing_status: updated.listing_status, is_discoverable: updated.is_discoverable },
           metadata: { reason }, severity: ['SUSPENDED','ARCHIVED'].includes(toStatus) ? 'High' : 'Medium', result: 'SUCCESS',
         }, tx);
@@ -665,7 +744,9 @@ export class DiscoveryBusinessService {
     actor: { userId: string; role: string; organizationId?: string },
     client?: DatabaseClient,
   ): Promise<void> {
-    if (actor.role === 'super_admin') return;
+    // A tenant super_admin is still tenant-scoped; only explicit platform roles
+    // receive platform-wide authority. The same-organization fallback below keeps
+    // tenant administration available without allowing cross-tenant listing access.
 
     // Membership is the authoritative business-scoped boundary for merchant users.
     const membership = await (client || this.db).query<{ role: 'OWNER' | 'MANAGER' | 'STAFF' }>(
@@ -691,19 +772,18 @@ export class DiscoveryBusinessService {
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
     // Business owners must always have an explicit active membership. Never infer Discovery ownership from shared organization membership.
     // Platform/tenant administrators retain the legacy same-organization fallback for administrative workflows.
-    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager'].includes(actor.role)) return;
+    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'super_admin'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 
   assertCanManage(business: DiscoveryBusinessRecord, actor: { userId: string; role: string; organizationId?: string }): void {
-    if (actor.role === 'super_admin') return;
     if (!business.organization_id && business.created_by_user_id === actor.userId && business.business_mode === 'DISCOVERY_ONLY') return;
-    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'business_owner'].includes(actor.role)) return;
+    if (business.organization_id && actor.organizationId === business.organization_id && ['admin', 'manager', 'super_admin', 'business_owner'].includes(actor.role)) return;
     throw new Error('PERMISSION_DENIED:You are not authorized to manage this discovery business.');
   }
 
   private assertModerator(actor: { role: string; organizationId?: string }, business?: DiscoveryBusinessRecord): void {
-    if (['super_admin', 'platform_admin', 'system_owner'].includes(actor.role)) return;
+    if (['platform_admin', 'system_owner'].includes(actor.role)) return;
     if (actor.role !== 'admin') throw new Error('PERMISSION_DENIED:Discovery moderation requires administrator authorization.');
     if (!business?.organization_id || business.organization_id !== actor.organizationId) {
       throw new Error('TENANT_ACCESS_DENIED:Administrators may moderate only businesses belonging to their organization.');

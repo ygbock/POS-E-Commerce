@@ -11,6 +11,7 @@ import { DiscoveryBusinessService } from '../server/services/discoveryBusinessSe
 import { createDiscoveryRouter } from '../server/routes/discoveryRoutes';
 import { createDiscoveryBusinessRouter } from '../server/routes/discoveryBusinessRoutes';
 import { createMerchantRouter } from '../server/routes/merchantRoutes';
+import { createPlatformRouter } from '../server/routes/platformRoutes';
 import { createStorefrontRouter } from '../server/routes/storefrontRoutes';
 import { getPermissionsForRole } from '../server/auth/roles';
 
@@ -66,6 +67,10 @@ async function main() {
 
   await createMember('http-manager-a', 'http-manager-a@example.test', 'HTTP Manager A', ownerA.user.organizationId);
   await createMember('http-staff-a', 'http-staff-a@example.test', 'HTTP Staff A', ownerA.user.organizationId);
+  await createMember('http-platform-moderator', 'http-platform-moderator@example.test', 'HTTP Platform Moderator', ownerA.user.organizationId);
+  await db.query("UPDATE users SET role='platform_admin' WHERE id=$1", ['http-platform-moderator']);
+  await createMember('http-tenant-super-admin', 'http-tenant-super-admin@example.test', 'HTTP Tenant Super Admin', ownerB.user.organizationId);
+  await db.query("UPDATE users SET role='super_admin' WHERE id=$1", ['http-tenant-super-admin']);
 
   const { hash: customerHash, salt: customerSalt } = hashPassword('CustomerPassword123!');
   await userRepo.createUser({
@@ -100,6 +105,8 @@ async function main() {
     ownerB: { userId: ownerB.user.id, organizationId: ownerB.user.organizationId, role: 'business_owner' },
     managerA: { userId: 'http-manager-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
     staffA: { userId: 'http-staff-a', organizationId: ownerA.user.organizationId, role: 'business_owner' },
+    platformModerator: { userId: 'http-platform-moderator', organizationId: ownerA.user.organizationId, role: 'platform_admin' },
+    tenantSuperAdmin: { userId: 'http-tenant-super-admin', organizationId: ownerB.user.organizationId, role: 'super_admin' },
     customerA: { userId: 'http-customer-a', organizationId: ownerA.user.organizationId, role: 'customer' },
   };
 
@@ -127,6 +134,7 @@ async function main() {
   // expose the merchant router at that boundary in this isolated harness as well so
   // /api/customers/:id/profile exercises the same tenant-scoped implementation.
   app.use('/api', createMerchantRouter(db, auth));
+  app.use('/api/platform', createPlatformRouter(db));
   app.use('/api/discovery', createDiscoveryBusinessRouter(db));
   app.use('/api/discovery', createDiscoveryRouter(db));
   app.use('/api/storefront', createStorefrontRouter(db));
@@ -172,6 +180,38 @@ async function main() {
     assert.strictEqual(customerMine.status, 403);
     assert.strictEqual(customerMine.body?.error?.code, 'BUSINESS_OWNER_ACCESS_REQUIRED');
 
+    const crossTenantCreate = await requestJson(baseUrl, '/api/discovery/businesses', actors.tenantSuperAdmin, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Tenant Super Admin Cross-Tenant Attempt',
+        businessMode: 'DISCOVERY_AND_STORE',
+        organizationId: ownerA.user.organizationId,
+      }),
+    });
+    assert.strictEqual(crossTenantCreate.status, 403, 'tenant super_admin must not create a listing for another organization');
+
+    const tenantStoreListing = await requestJson(baseUrl, '/api/discovery/businesses', actors.ownerB, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Tenant B Store Listing',
+        businessMode: 'DISCOVERY_AND_STORE',
+      }),
+    });
+    assert.strictEqual(tenantStoreListing.status, 201);
+    const crossTenantReassignment = await requestJson(
+      baseUrl,
+      `/api/discovery/businesses/${tenantStoreListing.body.data.id}`,
+      actors.tenantSuperAdmin,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          businessMode: 'DISCOVERY_AND_STORE',
+          organizationId: ownerA.user.organizationId,
+        }),
+      },
+    );
+    assert.strictEqual(crossTenantReassignment.status, 403, 'tenant super_admin must not reassign a listing to another organization');
+
     // OWNER: direct API access to owner-scoped workspaces and management operations.
     const ownerMe = await requestJson(baseUrl, '/api/merchant/me', actors.ownerA);
     assert.strictEqual(ownerMe.status, 200);
@@ -194,6 +234,33 @@ async function main() {
     );
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.role, 'OWNER');
     assert.strictEqual(createdDiscoveryMembership.rows[0]?.is_active, true);
+
+    // A tenant super_admin must not use Discovery trust endpoints or the
+    // verification moderation queue as a platform-wide authorization bypass.
+    for (const path of [
+      `/api/discovery/businesses/${createdDiscovery.body.data.id}/verification`,
+      `/api/discovery/businesses/${createdDiscovery.body.data.id}/trust`,
+      '/api/discovery/moderation/verification',
+    ]) {
+      const denied = await requestJson(baseUrl, path, actors.tenantSuperAdmin);
+      assert.strictEqual(denied.status, 403, `tenant super_admin must be denied cross-tenant/platform access to ${path}`);
+    }
+
+    const tenantMine = await requestJson(baseUrl, '/api/discovery/businesses/mine', actors.tenantSuperAdmin);
+    assert.strictEqual(tenantMine.status, 200);
+    assert.ok(
+      !(tenantMine.body?.data || []).some((business: any) => business.id === createdDiscovery.body.data.id),
+      'tenant super_admin business list must not expose a discovery-only listing created by another user in another tenant',
+    );
+
+    // Platform moderation must be able to place a listing under review without
+    // passing the merchant-ownership guard; the service enforces moderator role.
+    const moderatorReview = await requestJson(baseUrl, `/api/discovery/businesses/${createdDiscovery.body.data.id}/review`, actors.platformModerator, {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'Begin independent listing review.' }),
+    });
+    assert.strictEqual(moderatorReview.status, 200);
+    assert.strictEqual(moderatorReview.body?.data?.listing_status, 'UNDER_REVIEW');
 
     await db.query(
       `INSERT INTO discovery_business_locations
@@ -469,13 +536,19 @@ async function main() {
     const crossTeam = await requestJson(baseUrl, `/api/merchant/businesses/${ownerB.business.id}/team`, actors.managerA);
     assert.strictEqual(crossTeam.status, 404, 'cross-business team access must not disclose membership');
 
-    // Moderation endpoints must never be reachable by merchant-scoped roles.
-    for (const action of ['approve', 'publish', 'suspend'] as const) {
-      const result = await requestJson(baseUrl, `/api/discovery/businesses/${ownerA.business.id}/${action}`, actors.ownerA, {
-        method: 'POST',
-        body: JSON.stringify({ reason: 'authorization matrix' }),
-      });
-      assert.strictEqual(result.status, 403, `merchant owner must not access moderation action ${action}`);
+    // Platform moderation decisions must never be reachable by merchant-scoped roles.
+    // Exercise the real moderation endpoint; legacy /businesses/:id/:action URLs are not routes.
+    for (const status of ['UNDER_REVIEW', 'APPROVED', 'PUBLISHED'] as const) {
+      const result = await requestJson(
+        baseUrl,
+        `/api/platform/discovery/moderation/listings/${ownerA.business.id}/decision`,
+        actors.ownerA,
+        {
+          method: 'POST',
+          body: JSON.stringify({ status, reason: 'authorization matrix' }),
+        },
+      );
+      assert.ok([403, 404].includes(result.status), `merchant owner must be denied moderation decision ${status} (403 or concealed 404), got ${result.status}`);
     }
 
     // Inactive membership loses authorization immediately.

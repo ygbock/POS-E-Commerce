@@ -18,13 +18,59 @@ async function main() {
     `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
      VALUES
        ('mod-owner','mod_cycle_org','mod-owner@test.local','Moderation Owner','hash','salt','admin',TRUE),
-       ('mod-platform','mod_cycle_org','mod-platform@test.local','Platform Moderator','hash','salt','admin',TRUE)`,
+       ('mod-platform','mod_cycle_org','mod-platform@test.local','Platform Moderator','hash','salt','admin',TRUE),
+       ('mod-platform-creator','mod_cycle_org','mod-platform-creator@test.local','Platform Listing Creator','hash','salt','platform_admin',TRUE),
+       ('mod-platform-reviewer','mod_cycle_org','mod-platform-reviewer@test.local','Independent Platform Reviewer','hash','salt','platform_admin',TRUE),
+       ('mod-system-owner','mod_cycle_org','mod-system-owner@test.local','System Owner','hash','salt','system_owner',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const merchant = { userId: 'mod-owner', role: 'business_owner', organizationId: 'mod_cycle_org' };
   const moderator = { userId: 'mod-platform', role: 'admin', organizationId: 'mod_cycle_org' };
+
+  // A listing creator may send their listing into moderation, but a different
+  // platform moderator must make the approval decision.
+  const platformCreator = { userId: 'mod-platform-creator', role: 'platform_admin', organizationId: 'mod_cycle_org' };
+  const independentModerator = { userId: 'mod-platform-reviewer', role: 'platform_admin', organizationId: 'mod_cycle_org' };
+  const systemOwner = { userId: 'mod-system-owner', role: 'system_owner', organizationId: 'mod_cycle_org' };
+  const creatorListing = await service.create({
+    name: 'Platform Creator Separation of Duties',
+    shortDescription: 'Listing created to test self-approval prevention.',
+    businessMode: 'DISCOVERY_ONLY',
+    organizationId: null,
+    createdByUserId: platformCreator.userId,
+  }, platformCreator);
+  await service.review(creatorListing.id, platformCreator, 'Send listing for independent moderation.');
+  await assert.rejects(
+    () => service.approve(creatorListing.id, platformCreator, 'Attempted self-approval.'),
+    /SELF_APPROVAL_FORBIDDEN:Listing creators cannot approve their own Discovery listing/,
+  );
+  assert.strictEqual((await repo.findById(creatorListing.id))?.listing_status, 'UNDER_REVIEW');
+
+  // Creator role is captured at listing creation. A later role demotion must
+  // not erase the higher-authority approval requirement for that listing.
+  await db.query("UPDATE users SET role='business_owner' WHERE id=$1", [platformCreator.userId]);
+  await assert.rejects(
+    () => service.approve(creatorListing.id, independentModerator, 'Platform Admin cannot approve another Platform Admin-created listing.'),
+    /SYSTEM_OWNER_APPROVAL_REQUIRED:Listings created by a Platform Admin require System Owner approval/,
+  );
+  const independentlyApproved = await service.approve(creatorListing.id, systemOwner, 'System Owner approval.');
+  assert.strictEqual(independentlyApproved.listing_status, 'APPROVED');
+  assert.strictEqual(independentlyApproved.is_discoverable, false);
+
+  // System Owner is the explicit highest-authority exception: they may approve
+  // their own listing, but only after it enters the normal moderation lifecycle.
+  const systemOwnerListing = await service.create({
+    name: 'System Owner Governance Exception',
+    shortDescription: 'Explicit System Owner self-approval policy test.',
+    businessMode: 'DISCOVERY_ONLY',
+    organizationId: null,
+    createdByUserId: systemOwner.userId,
+  }, systemOwner);
+  await service.review(systemOwnerListing.id, systemOwner, 'System Owner submits for moderation.');
+  const ownerApproved = await service.approve(systemOwnerListing.id, systemOwner, 'Privileged System Owner approval.');
+  assert.strictEqual(ownerApproved.listing_status, 'APPROVED');
 
   const business = await service.create({
     name: 'Moderation Lifecycle Business',
@@ -53,9 +99,31 @@ async function main() {
 
   await service.submit(business.id, merchant);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'SUBMITTED');
+  await assert.rejects(
+    () => service.update(business.id, { description: 'Changed after submission.' }, merchant),
+    /LISTING_LOCKED:Listings cannot be edited while in SUBMITTED status/,
+  );
 
-  await service.review(business.id, moderator, 'Moderation intake started.');
+  // Two moderators may act on the same submitted listing at nearly the same time.
+  // Exactly one duplicate review transition should commit; the second must observe
+  // the locked current state and fail rather than recording a stale duplicate event.
+  const concurrentReviews = await Promise.allSettled([
+    service.review(business.id, moderator, 'Moderation intake started.'),
+    service.review(business.id, moderator, 'Concurrent duplicate review attempt.'),
+  ]);
+  assert.strictEqual(concurrentReviews.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.strictEqual(concurrentReviews.filter((result) => result.status === 'rejected').length, 1);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'UNDER_REVIEW');
+  await assert.rejects(
+    () => service.update(business.id, { description: 'Changed during moderation.' }, merchant),
+    /LISTING_LOCKED:Listings cannot be edited while in UNDER_REVIEW status/,
+  );
+  const reviewEvents = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='SUBMITTED' AND to_status='UNDER_REVIEW'`,
+    [business.id],
+  );
+  assert.strictEqual(Number(reviewEvents.rows[0]?.count || 0), 1);
 
   const rejected = await service.reject(
     business.id,
@@ -85,12 +153,20 @@ async function main() {
   assert.ok(firstIssues.rows.every((row: any) => row.to_status === 'REJECTED'));
 
   // Merchant correction cycle resolves the current OPEN issue set atomically with resubmission.
-  const resubmitted = await service.resubmit(
-    business.id,
-    merchant,
-    'Corrections completed; please review again.',
-  );
+  const concurrentResubmissions = await Promise.allSettled([
+    service.resubmit(business.id, merchant, 'Corrections completed; please review again.'),
+    service.resubmit(business.id, merchant, 'Concurrent duplicate resubmission attempt.'),
+  ]);
+  assert.strictEqual(concurrentResubmissions.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.strictEqual(concurrentResubmissions.filter((result) => result.status === 'rejected').length, 1);
+  const resubmitted = (await repo.findById(business.id))!;
   assert.strictEqual(resubmitted.listing_status, 'SUBMITTED');
+  const resubmissionEvents = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='REJECTED' AND to_status='SUBMITTED'`,
+    [business.id],
+  );
+  assert.strictEqual(Number(resubmissionEvents.rows[0]?.count || 0), 1);
 
   const resolvedIssues = await db.query(
     "SELECT status, resolved_by_user_id, resolved_at FROM discovery_listing_moderation_issues WHERE business_id=$1 ORDER BY created_at ASC",
@@ -114,12 +190,28 @@ async function main() {
     [business.id],
   );
 
-  await service.reject(
-    business.id,
-    moderator,
-    undefined,
-    undefined,
-    [{ key: 'contact', detail: 'Confirm the primary customer contact.' }],
+  const rejectionEventsBefore = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='UNDER_REVIEW' AND to_status='REJECTED'`,
+    [business.id],
+  );
+  const concurrentRejections = await Promise.allSettled([
+    service.reject(business.id, moderator, undefined, undefined, [
+      { key: 'contact', detail: 'Confirm the primary customer contact.' },
+    ]),
+    service.reject(business.id, moderator, 'Concurrent duplicate rejection attempt.'),
+  ]);
+  assert.strictEqual(concurrentRejections.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.strictEqual(concurrentRejections.filter((result) => result.status === 'rejected').length, 1);
+  const rejectionEventsAfter = await db.query(
+    `SELECT COUNT(*)::int AS count FROM discovery_listing_events
+      WHERE business_id=$1 AND from_status='UNDER_REVIEW' AND to_status='REJECTED'`,
+    [business.id],
+  );
+  assert.strictEqual(
+    Number(rejectionEventsAfter.rows[0]?.count || 0) - Number(rejectionEventsBefore.rows[0]?.count || 0),
+    1,
+    'only one rejection event should be recorded for the concurrent duplicate attempt',
   );
 
   const allIssues = await db.query(
@@ -155,6 +247,10 @@ async function main() {
   const approved = await service.approve(business.id, moderator, 'Listing approved for publication.');
   assert.strictEqual(approved.listing_status, 'APPROVED');
   assert.strictEqual(approved.is_discoverable, false);
+  await assert.rejects(
+    () => service.update(business.id, { description: 'Changed after approval.' }, merchant),
+    /LISTING_LOCKED:Listings cannot be edited while in APPROVED status/,
+  );
 
   const prePublicationListings = await service.listPublished({ limit: 200 });
   assert.ok(

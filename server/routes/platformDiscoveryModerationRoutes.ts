@@ -192,6 +192,16 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
         if(!current.rows[0]) throw new Error('NOT_FOUND:Claim not found.');
         const row=current.rows[0];
 
+        // Serialize claim decisions per business, not just per claim. Locking only
+        // the claim row allows two different pending claims for the same listing to
+        // both observe "no owner" and create competing active OWNER memberships.
+        // The parent business row is stable even when no membership exists yet.
+        const lockedBusiness = await tx.query(
+          'SELECT id FROM discovery_businesses WHERE id=$1 FOR UPDATE',
+          [row.business_id],
+        );
+        if (!lockedBusiness.rows[0]) throw new Error('NOT_FOUND:Discovery business not found.');
+
         if (status === 'APPROVED') {
           const claimant = await tx.query(
             `SELECT id, role, identity_type, is_active

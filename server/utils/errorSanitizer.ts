@@ -180,6 +180,14 @@ export function classifyApiError(
     };
   }
 
+  if (msg.startsWith('SELF_APPROVAL_FORBIDDEN:')) {
+    return {
+      status: 403,
+      code: 'SELF_APPROVAL_FORBIDDEN',
+      message: 'Listing creators cannot approve their own Discovery listing.',
+    };
+  }
+
   if (msg.includes('FORBIDDEN') || status === 403) {
     return {
       status: 403,
@@ -238,7 +246,10 @@ export function classifyApiError(
   }
 
   // 5. Concurrency / Idempotency Conflict & Unique Violations
+  const lifecycleConflictCode = ['LISTING_LOCKED', 'INVALID_STATE_TRANSITION', 'DISCOVERY_ARCHIVED', 'BUSINESS_ALREADY_CLAIMED']
+    .find((code) => msg.startsWith(`${code}:`));
   if (
+    lifecycleConflictCode ||
     errCode === '23505' ||
     errCode === 'CONFLICT' ||
     errCode === 'IDEMPOTENCY_CONFLICT' ||
@@ -251,7 +262,7 @@ export function classifyApiError(
   ) {
     return {
       status: 409,
-      code: errCode === '23505' ? 'CONFLICT' : (err?.code || 'IDEMPOTENCY_CONFLICT'),
+      code: lifecycleConflictCode || (errCode === '23505' ? 'CONFLICT' : (err?.code || 'IDEMPOTENCY_CONFLICT')),
       message: sanitizeApiErrorMessage(msg),
     };
   }

@@ -45,7 +45,9 @@ async function main() {
       ('claim-platform-admin','claim_platform_org','platform@claim.test','Platform Admin','hash','salt','platform_admin','platform',TRUE),
       ('claim-owner','claim_owner_org','owner@claim.test','Business Owner','hash','salt','business_owner','business_owner',TRUE),
       ('claim-customer','claim_owner_org','customer@claim.test','Customer','hash','salt','customer','customer',TRUE),
-      ('claim-other-owner','claim_owner_org','other-owner@claim.test','Other Business Owner','hash','salt','business_owner','business_owner',TRUE)
+      ('claim-tenant-super-admin','claim_owner_org','tenant-super-admin@claim.test','Tenant Super Admin','hash','salt','super_admin','staff',TRUE),
+      ('claim-other-owner','claim_owner_org','other-owner@claim.test','Other Business Owner','hash','salt','business_owner','business_owner',TRUE),
+      ('claim-platform-reviewer','claim_platform_org','reviewer@claim.test','System Owner Reviewer','hash','salt','system_owner','platform',TRUE)
   `);
 
   const { app } = await createApp({ db, skipVite: true });
@@ -62,6 +64,14 @@ async function main() {
     identityType: 'platform',
     permissions: ['platform.view', 'platform.discovery'],
   });
+  const reviewerToken = signToken({
+    userId: 'claim-platform-reviewer',
+    email: 'reviewer@claim.test',
+    organizationId: 'claim_platform_org',
+    role: 'system_owner',
+    identityType: 'platform',
+    permissions: ['platform.view', 'platform.discovery'],
+  });
   const ownerToken = signToken({
     userId: 'claim-owner',
     email: 'owner@claim.test',
@@ -72,6 +82,14 @@ async function main() {
   });
   const otherOwnerToken = signToken({
     userId: 'claim-other-owner', email: 'other-owner@claim.test', organizationId: 'claim_owner_org', role: 'business_owner', identityType: 'business_owner', permissions: ['business.view', 'business.listing.manage', 'business.listing.submit'],
+  });
+  const tenantSuperAdminToken = signToken({
+    userId: 'claim-tenant-super-admin',
+    email: 'tenant-super-admin@claim.test',
+    organizationId: 'claim_owner_org',
+    role: 'super_admin',
+    identityType: 'staff',
+    permissions: ['business.view', 'business.listing.manage'],
   });
   const customerToken = signToken({
     userId: 'claim-customer',
@@ -105,7 +123,7 @@ async function main() {
 
     const review = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
-      token: platformToken,
+      token: reviewerToken,
       body: { status: 'UNDER_REVIEW', reason: 'Platform-created listing submitted for moderation.' },
     });
     assert.equal(review.status, 200);
@@ -113,7 +131,7 @@ async function main() {
 
     const approve = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
-      token: platformToken,
+      token: reviewerToken,
       body: { status: 'APPROVED', reason: 'Platform-created listing approved.' },
     });
     assert.equal(approve.status, 200);
@@ -121,7 +139,7 @@ async function main() {
 
     const publish = await request(baseUrl, `/api/platform/discovery/moderation/listings/${businessId}/decision`, {
       method: 'POST',
-      token: platformToken,
+      token: reviewerToken,
       body: { status: 'PUBLISHED', reason: 'Platform-created listing published.' },
     });
     assert.equal(publish.status, 200);
@@ -152,6 +170,33 @@ async function main() {
     assert.equal(pending.status, 200);
     assert.ok(pending.body.data.some((row: any) => row.id === claimId));
 
+    // Legacy tenant moderation endpoints must not mutate ownership claims.
+    const legacyPending = await request(baseUrl, '/api/discovery/moderation/claims', { token: platformToken });
+    assert.equal(legacyPending.status, 410);
+    const legacyDecision = await request(baseUrl, `/api/discovery/moderation/claims/${claimId}/decision`, {
+      method: 'POST',
+      token: platformToken,
+      body: { status: 'APPROVED', reason: 'Legacy route must be retired.' },
+    });
+    assert.equal(legacyDecision.status, 410);
+    const stillPending = await db.query('SELECT status FROM discovery_business_claims WHERE id=$1', [claimId]);
+    assert.equal(stillPending.rows[0]?.status, 'PENDING');
+    const noPrematureOwner = await db.query('SELECT 1 FROM discovery_business_memberships WHERE business_id=$1 AND is_active=TRUE', [businessId]);
+    assert.equal(noPrematureOwner.rows.length, 0);
+
+    // Legacy review/report moderation must also be retired; tenant super_admin
+    // must never gain platform-wide moderation through the old route surface.
+    for (const path of ['/api/discovery/moderation/reviews', '/api/discovery/moderation/reports']) {
+      const legacyQueue = await request(baseUrl, path, { token: tenantSuperAdminToken });
+      assert.equal(legacyQueue.status, 410, path);
+    }
+    for (const path of ['/api/discovery/moderation/reviews/legacy-review/decision', '/api/discovery/moderation/reports/legacy-report/decision']) {
+      const legacyDecision = await request(baseUrl, path, {
+        method: 'POST', token: tenantSuperAdminToken, body: { status: 'PUBLISHED', reason: 'Legacy route must be retired.' },
+      });
+      assert.equal(legacyDecision.status, 410, path);
+    }
+
     const decision = await request(baseUrl, `/api/platform/discovery/moderation/claims/${claimId}/decision`, {
       method: 'POST',
       token: platformToken,
@@ -174,7 +219,7 @@ async function main() {
     assert.equal(myBusinesses.status, 200);
     assert.ok(myBusinesses.body.data.some((row: any) => row.id === businessId));
 
-    await postClaimManagementJourney(db, baseUrl, platformToken, ownerToken, otherOwnerToken, businessId);
+    await postClaimManagementJourney(db, baseUrl, reviewerToken, ownerToken, otherOwnerToken, businessId);
 
     const duplicateClaim = await request(baseUrl, `/api/discovery/businesses/${businessId}/claims`, {
       method: 'POST',
@@ -183,13 +228,54 @@ async function main() {
     });
     assert.equal(duplicateClaim.status, 409);
 
+    // Two independently submitted claims for the same unowned listing must not
+    // be approved concurrently into two active OWNER memberships.
+    const contestedListing = await request(baseUrl, '/api/platform/discovery/moderation/listings', {
+      method: 'POST',
+      token: platformToken,
+      body: { name: 'Concurrent Ownership Claim Listing', shortDescription: 'Concurrency regression fixture.' },
+    });
+    assert.equal(contestedListing.status, 201);
+    const contestedId = contestedListing.body.data.id;
+    for (const [status, token] of [['UNDER_REVIEW', reviewerToken], ['APPROVED', reviewerToken], ['PUBLISHED', reviewerToken]] as const) {
+      const decision = await request(baseUrl, `/api/platform/discovery/moderation/listings/${contestedId}/decision`, {
+        method: 'POST', token, body: { status, reason: 'Prepare concurrent claim test.' },
+      });
+      assert.equal(decision.status, 200, `contested listing should transition to ${status}`);
+    }
+    const [claimA, claimB] = await Promise.all([
+      request(baseUrl, `/api/discovery/businesses/${contestedId}/claims`, {
+        method: 'POST', token: ownerToken, body: { evidence: { registration: 'concurrent-owner-a' } },
+      }),
+      request(baseUrl, `/api/discovery/businesses/${contestedId}/claims`, {
+        method: 'POST', token: otherOwnerToken, body: { evidence: { registration: 'concurrent-owner-b' } },
+      }),
+    ]);
+    assert.equal(claimA.status, 201);
+    assert.equal(claimB.status, 201);
+    const claimDecisions = await Promise.all([
+      request(baseUrl, `/api/platform/discovery/moderation/claims/${claimA.body.data.id}/decision`, {
+        method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Concurrent ownership claim test.' },
+      }),
+      request(baseUrl, `/api/platform/discovery/moderation/claims/${claimB.body.data.id}/decision`, {
+        method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Concurrent ownership claim test.' },
+      }),
+    ]);
+    assert.deepEqual(claimDecisions.map((result) => result.status).sort((a, b) => a - b), [200, 409]);
+    const contestedOwners = await db.query(
+      `SELECT user_id FROM discovery_business_memberships
+        WHERE business_id=$1 AND role='OWNER' AND is_active=TRUE`,
+      [contestedId],
+    );
+    assert.equal(contestedOwners.rows.length, 1, 'concurrent claim approvals must create exactly one active owner');
+
     console.log('Platform-created listing and business-owner claim workflow passed.');
   } finally {
     server.close();
   }
 }
 
-async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, platformToken: string, ownerToken: string, otherOwnerToken: string, businessId: string) {
+async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, reviewerToken: string, ownerToken: string, otherOwnerToken: string, businessId: string) {
   const categories = await db.query("SELECT id FROM discovery_business_categories WHERE is_active=TRUE LIMIT 1");
   if (!categories.rows[0]) await db.query("INSERT INTO discovery_business_categories (id,name,slug,display_order,is_active) VALUES ('claim_journey_cat','Claim Journey','claim-journey',1,TRUE)");
   const categoryId = categories.rows[0]?.id || 'claim_journey_cat';
@@ -222,11 +308,11 @@ async function postClaimManagementJourney(db: DatabaseClient, baseUrl: string, p
   assert.equal(submit.body.data.is_discoverable, false);
   const otherOwner = await request(baseUrl, '/api/discovery/businesses/' + businessId, { method: 'PATCH', token: otherOwnerToken, body: { description: 'Unauthorized owner attempt' } });
   assert.equal(otherOwner.status, 403);
-  const review = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'UNDER_REVIEW', reason: 'Post-claim listing moderation.' } });
+  const review = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: reviewerToken, body: { status: 'UNDER_REVIEW', reason: 'Post-claim listing moderation.' } });
   assert.equal(review.status, 200);
-  const approve = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'APPROVED', reason: 'Post-claim listing approved.' } });
+  const approve = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: reviewerToken, body: { status: 'APPROVED', reason: 'Post-claim listing approved.' } });
   assert.equal(approve.status, 200);
-  const publish = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: platformToken, body: { status: 'PUBLISHED', reason: 'Post-claim listing published.' } });
+  const publish = await request(baseUrl, '/api/platform/discovery/moderation/listings/' + businessId + '/decision', { method: 'POST', token: reviewerToken, body: { status: 'PUBLISHED', reason: 'Post-claim listing published.' } });
   assert.equal(publish.status, 200);
   const publicBusiness = await db.query('SELECT slug FROM discovery_businesses WHERE id=$1', [businessId]);
   const publicSlug = publicBusiness.rows[0]?.slug;

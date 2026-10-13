@@ -33,12 +33,13 @@ async function main() {
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_rank_org','Ranking Test Org','DISC_RANK',TRUE)");
   await db.query(
     `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
-     VALUES ('disc-rank-owner','disc_rank_org','disc-rank-owner@test.local','Discovery Ranking Owner','hash','salt','admin',TRUE)`,
+     VALUES ('disc-rank-owner','disc_rank_org','disc-rank-owner@test.local','Discovery Ranking Owner','hash','salt','admin',TRUE), ('disc-rank-reviewer','disc_rank_org','disc-rank-reviewer@test.local','Discovery Ranking Reviewer','hash','salt','admin',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const actor = { userId: 'disc-rank-owner', role: 'admin', organizationId: 'disc_rank_org' };
+  const reviewer = { userId: 'disc-rank-reviewer', role: 'admin', organizationId: 'disc_rank_org' };
 
   const exact = await service.create({
     name: 'Mobile Phones Freetown',
@@ -50,7 +51,10 @@ async function main() {
   await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_electronics',TRUE)",[exact.id]);
   await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_rank_loc_exact',$1,'Main Branch','Freetown','Western Area',8.4840,-13.2299,TRUE,TRUE)",[exact.id]);
   await db.query("INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_rank_service_exact',$1,'Phone Sales','phone-sales','Mobile phone sales','Retail','REQUEST')",[exact.id]);
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](exact.id, actor);
+  await service.submit(exact.id, actor);
+  await service.review(exact.id, reviewer);
+  await service.approve(exact.id, reviewer);
+  await service.publish(exact.id, reviewer);
 
   const typo = await service.create({
     name: 'Moble Phone Repairs',
@@ -62,7 +66,10 @@ async function main() {
   await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_electronics',TRUE)",[typo.id]);
   await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_rank_loc_typo',$1,'Main Branch','Freetown','Western Area',8.4841,-13.2300,TRUE,TRUE)",[typo.id]);
   await db.query("INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_rank_service_typo',$1,'Phone Repair','phone-repair','Mobile phone repair services','Repair','REQUEST')",[typo.id]);
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](typo.id, actor);
+  await service.submit(typo.id, actor);
+  await service.review(typo.id, reviewer);
+  await service.approve(typo.id, reviewer);
+  await service.publish(typo.id, reviewer);
 
   const restaurant = await service.create({
     name: 'Freetown Restaurant',
@@ -74,7 +81,10 @@ async function main() {
   await db.query("INSERT INTO discovery_business_category_map (business_id,category_id,is_primary) VALUES ($1,'disc_cat_food',TRUE)",[restaurant.id]);
   await db.query("INSERT INTO discovery_business_locations (id,business_id,name,city,region,latitude,longitude,is_primary,is_active) VALUES ('disc_rank_loc_rest',$1,'Main Branch','Freetown','Western Area',8.4842,-13.2301,TRUE,TRUE)",[restaurant.id]);
   await db.query("INSERT INTO discovery_services (id,business_id,name,slug,description,service_type,booking_mode) VALUES ('disc_rank_service_rest',$1,'Restaurant Takeaway','restaurant-takeaway','Local restaurant takeaway','Food','REQUEST')",[restaurant.id]);
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](restaurant.id, actor);
+  await service.submit(restaurant.id, actor);
+  await service.review(restaurant.id, reviewer);
+  await service.approve(restaurant.id, reviewer);
+  await service.publish(restaurant.id, reviewer);
 
   await db.query("INSERT INTO discovery_search_aliases (id,entity_type,entity_id,alias,normalized_alias) VALUES ('disc_rank_alias_rest','BUSINESS',$1,'Chop House','chop house')",[restaurant.id]);
 

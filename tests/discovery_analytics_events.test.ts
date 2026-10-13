@@ -20,12 +20,14 @@ async function main() {
   await db.query("INSERT INTO organizations (id,name,code,is_active) VALUES ('disc_analytics_org','Analytics Org','DISC_ANALYTICS',TRUE)");
   await db.query(
     `INSERT INTO users (id,organization_id,email,name,password_hash,password_salt,role,is_active)
-     VALUES ('disc-analytics-owner','disc_analytics_org','disc-analytics-owner@test.local','Discovery Analytics Owner','hash','salt','admin',TRUE)`,
+     VALUES ('disc-analytics-owner','disc_analytics_org','disc-analytics-owner@test.local','Discovery Analytics Owner','hash','salt','admin',TRUE),
+            ('disc-analytics-moderator','disc_analytics_org','disc-analytics-moderator@test.local','Discovery Analytics Moderator','hash','salt','admin',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const actor = { userId: 'disc-analytics-owner', role: 'admin', organizationId: 'disc_analytics_org' };
+  const moderator = { userId: 'disc-analytics-moderator', role: 'admin', organizationId: 'disc_analytics_org' };
 
   const business = await service.create({
     name: 'Analytics Verification Hub',
@@ -50,7 +52,10 @@ async function main() {
     "INSERT INTO products (id,organization_id,slug,name,unit_code,status,channels_ecommerce) VALUES ('disc_analytics_product','disc_analytics_org','analytics-phone','Analytics Phone','PCS','active',TRUE)",
   );
 
-  for (const step of ['submit', 'review', 'approve', 'publish'] as const) await (service as any)[step](business.id, actor);
+  await service.submit(business.id, actor);
+  await service.review(business.id, moderator);
+  await service.approve(business.id, moderator);
+  await service.publish(business.id, moderator);
 
   const app = express();
   app.use(express.json());

@@ -11,7 +11,7 @@ export interface DiscoveryBusinessRecord {
   phone: string | null; email: string | null; whatsapp: string | null; website: string | null;
   logo_url: string | null; cover_image_url: string | null; business_mode: DiscoveryBusinessMode;
   listing_status: DiscoveryListingStatus; verification_status: DiscoveryVerificationStatus; is_discoverable: boolean;
-  created_by_user_id: string | null; published_at: string | null; suspended_at: string | null; archived_at: string | null;
+  created_by_user_id: string | null; created_by_role: string | null; published_at: string | null; suspended_at: string | null; archived_at: string | null;
   created_at: string; updated_at: string;
 }
 
@@ -44,12 +44,12 @@ export class DiscoveryBusinessRepository {
     const result = await this.db(client).query<DiscoveryBusinessRecord>(
       `INSERT INTO discovery_businesses (id, public_id, organization_id, name, legal_name, slug, business_type,
        short_description, description, phone, email, whatsapp, website, logo_url, cover_image_url, business_mode,
-       listing_status, verification_status, is_discoverable, created_by_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+       listing_status, verification_status, is_discoverable, created_by_user_id, created_by_role)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
       [data.id, data.public_id, data.organization_id, data.name, data.legal_name, data.slug, data.business_type,
        data.short_description, data.description, data.phone, data.email, data.whatsapp, data.website, data.logo_url,
        data.cover_image_url, data.business_mode, data.listing_status, data.verification_status, data.is_discoverable,
-       data.created_by_user_id],
+       data.created_by_user_id, data.created_by_role],
     );
     return result.rows[0];
   }

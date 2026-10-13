@@ -51,3 +51,38 @@ The authentication foundation now includes:
 3. Add platform MFA lifecycle management: disable/re-enroll, recovery-code regeneration, and controlled lost-authenticator recovery.
 4. Expand authentication security-event coverage and anomaly detection across all four identity realms.
 5. Complete end-to-end browser journeys for customer, business owner, staff, and platform operator authentication.
+
+## Platform Governance — System Owner and Platform Admin
+
+The platform control plane has a two-level authority model. These are distinct platform roles, not tenant roles.
+
+### System Owner — ultimate platform authority
+
+- Holds platform-wide control over governance, security policy, role/permission assignments, platform configuration, and platform operator accounts.
+- May perform routine platform operations and make final decisions on exceptional or high-impact platform actions.
+- Reviews and approves designated Platform Admin actions when the operation crosses a reserved approval boundary.
+- May approve and publish a listing created by the System Owner, provided all listing readiness and publication invariants pass. The creator, approver, and publisher must still be recorded as separate audit facts even when one person performs multiple permitted actions.
+- May override an operational decision only through an explicit, authorized, reasoned, audited action.
+
+### Platform Admin — delegated operational authority
+
+- Runs daily platform operations within permissions granted by the System Owner.
+- Manages routine Discovery listing intake, verification, moderation, publication, business claims, and support workflows within delegated scope.
+- Cannot create or modify System Owner accounts, alter reserved governance/security policies, grant themselves permissions, or perform actions reserved for System Owner approval.
+- For a listing created by the Platform Admin, submits it for System Owner approval rather than approving their own listing.
+- Must record reasons for moderation decisions and escalate exceptional/high-impact operations to the System Owner.
+
+### Approval boundaries
+
+- Business Owner-created listings: Platform Admin or another authorized moderator may review and approve; the creator cannot approve their own listing.
+- Platform Admin-created listings: System Owner approval is required before publication; the creating Platform Admin cannot self-approve.
+- System Owner-created listings: the System Owner may approve and publish their own listing after server-side readiness validation. This is an explicit privileged exception, not a general self-approval bypass.
+- System Owner-only governance changes and other reserved actions must be enforced server-side, not merely hidden in the UI.
+- Every creation, review, approval, publication, rejection, override, and reserved-policy change must be auditable with actor identity, role, timestamp, target, decision, and reason where applicable.
+
+### Implementation contract
+
+- Authorization must be checked at the service/API boundary on every request.
+- The System Owner has broader authority than the Platform Admin; sharing a generic platform permission must not accidentally grant System Owner-only operations to Platform Admin.
+- Tenant super_admin is not a platform authority and cannot inherit these capabilities.
+- Role/permission changes must include negative tests for direct API access, not just dashboard visibility.

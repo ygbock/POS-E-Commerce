@@ -18,12 +18,14 @@ async function main() {
      VALUES
        ('disc-owner','disc_test_org','disc-owner@test.local','Discovery Owner','hash','salt','admin',TRUE),
        ('disc-other-admin','disc_other_org','disc-other-admin@test.local','Other Tenant Admin','hash','salt','admin',TRUE),
-       ('disc-self-service','disc_test_org','disc-self-service@test.local','Self Service Owner','hash','salt','viewer',TRUE)`,
+       ('disc-self-service','disc_test_org','disc-self-service@test.local','Self Service Owner','hash','salt','viewer',TRUE),
+       ('disc-reviewer','disc_test_org','disc-reviewer@test.local','Discovery Reviewer','hash','salt','admin',TRUE)`,
   );
 
   const repo = new DiscoveryBusinessRepository(db);
   const service = new DiscoveryBusinessService(repo, db);
   const owner = { userId: 'disc-owner', role: 'admin', organizationId: 'disc_test_org' };
+  const reviewer = { userId: 'disc-reviewer', role: 'admin', organizationId: 'disc_test_org' };
   const otherTenantAdmin = { userId: 'disc-other-admin', role: 'admin', organizationId: 'disc_other_org' };
 
   const business = await service.create({ name: 'Discovery Test Shop', businessMode: 'DISCOVERY_AND_STORE', organizationId: 'disc_test_org', submitImmediately: false }, owner);
@@ -49,10 +51,10 @@ async function main() {
 
   await service.submit(business.id, owner);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'SUBMITTED');
-  await service.review(business.id, owner);
+  await service.review(business.id, reviewer);
   assert.strictEqual((await repo.findById(business.id))?.listing_status, 'UNDER_REVIEW');
-  await service.approve(business.id, owner);
-  await service.publish(business.id, owner);
+  await service.approve(business.id, reviewer);
+  await service.publish(business.id, reviewer);
 
   const published = await service.getBySlug(business.slug, true);
   assert.ok(published);
