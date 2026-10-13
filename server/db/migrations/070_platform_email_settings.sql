@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS platform_email_settings (
   api_key_iv TEXT,
   api_key_auth_tag TEXT,
   from_email TEXT NOT NULL,
-  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  updated_by VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK (
