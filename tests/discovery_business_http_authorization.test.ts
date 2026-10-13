@@ -180,6 +180,16 @@ async function main() {
     assert.strictEqual(customerMine.status, 403);
     assert.strictEqual(customerMine.body?.error?.code, 'BUSINESS_OWNER_ACCESS_REQUIRED');
 
+    const crossTenantCreate = await requestJson(baseUrl, '/api/discovery/businesses', actors.tenantSuperAdmin, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Tenant Super Admin Cross-Tenant Attempt',
+        businessMode: 'DISCOVERY_AND_STORE',
+        organizationId: ownerA.user.organizationId,
+      }),
+    });
+    assert.strictEqual(crossTenantCreate.status, 403, 'tenant super_admin must not create a listing for another organization');
+
     // OWNER: direct API access to owner-scoped workspaces and management operations.
     const ownerMe = await requestJson(baseUrl, '/api/merchant/me', actors.ownerA);
     assert.strictEqual(ownerMe.status, 200);
