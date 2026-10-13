@@ -589,7 +589,7 @@ export function createDiscoveryRouter(db: DatabaseClient) {
   router.post('/businesses', requireAuth(), requireBusinessOwnerIdentity(), async (req, res, next) => {
     try {
       const organizationId = req.body?.organizationId === undefined ? req.auth!.organizationId : String(req.body.organizationId || '');
-      if (req.auth!.role !== 'super_admin' && organizationId !== req.auth!.organizationId) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant discovery business creation forbidden.' } });
+      if (!['platform_admin', 'system_owner'].includes(req.auth!.role) && organizationId !== req.auth!.organizationId) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Cross-tenant discovery business creation forbidden.' } });
       const data = await businessService.create({ ...req.body, organizationId: organizationId || null, createdByUserId: req.auth!.userId }, actor(req));
       res.status(201).json({ success: true, data });
     } catch (err) { next(err); }
