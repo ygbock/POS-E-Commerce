@@ -269,9 +269,9 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
         <MetricCard
           label="Active Users"
           value={stats.activeUsers == null ? '—' : String(stats.activeUsers)}
-          description="Active user accounts across the platform"
+          description="Active user accounts belonging to active tenant organizations"
           icon={<Users className="w-5 h-5" />}
-          onClick={() => go('tenants')}
+          onClick={() => go('platform-users')}
           disabled={loading}
         />
         {canViewBilling ? (
@@ -308,6 +308,11 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
               <div className="flex items-center justify-between mb-2"><span className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center"><Building2 className="w-4 h-4" /></span><ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" /></div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Tenant Organizations</h3>
               <p className="text-xs text-slate-500 mt-1">View registered tenants and inspect their lifecycle status.</p>
+            </button>
+            <button type="button" onClick={() => go('platform-users')} className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/10 transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+              <div className="flex items-center justify-between mb-2"><span className="w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 flex items-center justify-center"><Users className="w-4 h-4" /></span><ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" /></div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Active Tenant Users</h3>
+              <p className="text-xs text-slate-500 mt-1">View active user accounts attached to active tenant organizations.</p>
             </button>
             {canViewBilling && (
               <button type="button" onClick={() => go('subscriptions')} className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/10 transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
