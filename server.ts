@@ -12,6 +12,7 @@ import { runMigrations, getAppliedMigrations } from './server/db/migrator.ts';
 import { AuthService } from './server/services/authService.ts';
 import { EmailVerificationService } from './server/services/emailVerificationService.ts';
 import { ResendEmailDelivery } from './server/services/resendEmailDelivery.ts';
+import { getStoredResendConfig } from './server/services/platformEmailSettings.ts';
 import { UserRepository } from './server/repositories/userRepository.ts';
 import { OrderRepository, OrderRecord, OrderItemRecord, PaymentRecord } from './server/repositories/orderRepository.ts';
 import { CustomerRepository } from './server/repositories/customerRepository.ts';
@@ -81,8 +82,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Centralized Environment & Runtime Contract Validation (UPG-001)
   const runtimeConfig = validateEnvironment();
-  // A missing Resend key is allowed at startup; delivery fails closed until configured.
-  const emailDelivery = new ResendEmailDelivery();
+  // Credential lookup is database-backed and performed at send time, so platform settings
+  // changes apply without a process restart. The key itself is never returned to the UI.
+  let db: DatabaseClient;
+  const emailDelivery = new ResendEmailDelivery({ getConfig: async () => getStoredResendConfig(db) });
   // Express will only honor forwarded client IPs through this explicitly
   // configured proxy boundary. This keeps rate-limit identity server-authoritative.
   app.set('trust proxy', runtimeConfig.trustProxyHops);
@@ -96,7 +99,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     error: null as string | null,
   };
 
-  let db: DatabaseClient;
   let authService: AuthService;
   let emailVerificationService: EmailVerificationService;
 
