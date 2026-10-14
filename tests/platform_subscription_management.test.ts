@@ -113,7 +113,7 @@ async function main() {
       email: 'admin@platform.internal',
       organizationId: 'org_platform',
       role: 'platform_admin',
-      permissions: ['platform.view', 'platform.tenants', 'platform.support', 'platform.billing']
+      permissions: ['platform.view', 'platform.tenants', 'platform.support'], // legacy token: billing claim predates role policy update
     });
 
     const tenantSuperAdminToken = signToken({
