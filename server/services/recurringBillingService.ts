@@ -75,3 +75,37 @@ export class RecurringBillingService {
     });
   }
 }
+
+export interface RecurringBillingWorkerHandle { stop: () => void; runNow: () => Promise<BillingCycleSummary>; }
+
+export function startRecurringBillingWorker(options: {
+  db?: DatabaseClient; intervalMs?: number; invoiceLeadDays?: number; onError?: (error: unknown) => void;
+} = {}): RecurringBillingWorkerHandle {
+  const service = new RecurringBillingService(options.db);
+  const intervalMs = Math.max(60_000, options.intervalMs ?? 15 * 60_000);
+  let running = true;
+  let timer: NodeJS.Timeout | null = null;
+  const run = async () => {
+    try {
+      const result = await service.processCycle({ invoiceLeadDays: options.invoiceLeadDays });
+      if (Object.values(result).some((count) => count > 0)) console.info('[RecurringBillingWorker] Processed cycle:', result);
+      return result;
+    } catch (error) {
+      if (options.onError) options.onError(error);
+      else console.error('[RecurringBillingWorker] Cycle failed:', error);
+      throw error;
+    }
+  };
+  const schedule = () => {
+    if (!running) return;
+    timer = setTimeout(async () => {
+      if (running) { try { await run(); } catch { /* retry on the next cycle */ } schedule(); }
+    }, intervalMs);
+    timer.unref?.();
+  };
+  schedule();
+  return {
+    stop: () => { running = false; if (timer) clearTimeout(timer); timer = null; },
+    runNow: () => run(),
+  };
+}
