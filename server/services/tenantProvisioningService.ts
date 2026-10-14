@@ -207,7 +207,7 @@ function validateTenantProfile(value: unknown): Record<string, string> {
   const input = value as Record<string, unknown>;
   const profile: Record<string, string> = {};
   for (const [key, raw] of Object.entries(input)) {
-    if (!(key in TENANT_PROFILE_LIMITS)) {
+    if (!Object.prototype.hasOwnProperty.call(TENANT_PROFILE_LIMITS, key)) {
       throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', `Unsupported tenant profile field: ${key}.`);
     }
     if (raw == null || raw === '') continue;
@@ -1170,6 +1170,9 @@ export class TenantProvisioningService {
         throw new TenantProvisioningError('TENANT_NOT_FOUND', 'Tenant not found.', 404);
       }
       const lockedCurrent = locked.rows[0];
+      if (lockedCurrent.lifecycle_status === 'archived') {
+        throw new TenantProvisioningError('TENANT_ARCHIVED', 'Archived tenants are read-only and cannot be edited.', 409);
+      }
 
       let updated: { rows: any[] };
       try {
