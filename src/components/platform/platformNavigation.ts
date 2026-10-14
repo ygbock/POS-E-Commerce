@@ -25,6 +25,7 @@ export function getPlatformNavigation(role: Role | string): PlatformNavItem[] {
       return [
         { id: 'platform-dashboard', label: 'Control Plane Dashboard' },
         { id: 'tenants', label: 'Tenant Organizations' },
+        { id: 'subscriptions', label: 'Plans & Subscriptions' },
         { id: 'security', label: 'Security & Audit Logs' },
         { id: 'discovery-moderation', label: 'Discovery Trust & Moderation' },
         { id: 'discovery-categories', label: 'Category Governance' },
