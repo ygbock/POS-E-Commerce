@@ -44,6 +44,8 @@ import {
 } from '../../services/subscriptionApi';
 
 export const SubscriptionsManagementView: React.FC = () => {
+  const { currentRole } = useCommerce();
+  const canViewBilling = canAccessPlatform(currentRole, 'billing');
   const [activeSubTab, setActiveSubTab] = useState<'subscriptions' | 'plans'>('subscriptions');
 
   // Overview state
@@ -92,6 +94,10 @@ export const SubscriptionsManagementView: React.FC = () => {
 
   // Load All Data
   const loadData = useCallback(async () => {
+    if (!canViewBilling) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -112,11 +118,26 @@ export const SubscriptionsManagementView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter, planFilter, searchQuery]);
+  }, [canViewBilling, statusFilter, planFilter, searchQuery]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  if (!canViewBilling) {
+    return (
+      <section className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100" aria-labelledby="billing-access-title">
+        <div className="flex items-start gap-3">
+          <Shield className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div className="space-y-2">
+            <h1 id="billing-access-title" className="text-lg font-bold">Billing access required</h1>
+            <p className="text-sm">Your current platform role ({currentRole}) does not have permission to manage SaaS subscriptions or plans.</p>
+            <p className="text-sm">Use a System Owner or Platform Finance account, or ask an authorized administrator to review your assigned platform role. This page has not sent any billing requests.</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   const handleOpenChangePlan = (sub: TenantSubscription) => {
     setSelectedSub(sub);
