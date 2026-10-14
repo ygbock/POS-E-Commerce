@@ -57,6 +57,7 @@ export const SubscriptionsManagementView: React.FC = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscriptions, setSubscriptions] = useState<TenantSubscription[]>([]);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
+  const [invoiceTenants, setInvoiceTenants] = useState<TenantSubscription[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('all');
   const [invoiceOrganizationId, setInvoiceOrganizationId] = useState('');
@@ -137,8 +138,12 @@ export const SubscriptionsManagementView: React.FC = () => {
     if (!canViewBilling) return;
     setInvoicesLoading(true);
     try {
-      const rows = await subscriptionApi.getInvoices({ status: invoiceStatusFilter, limit: 50, offset: 0 });
+      const [rows, tenantRows] = await Promise.all([
+        subscriptionApi.getInvoices({ status: invoiceStatusFilter, limit: 50, offset: 0 }),
+        subscriptionApi.getSubscriptions({ limit: 200 }),
+      ]);
       setInvoices(rows);
+      setInvoiceTenants(tenantRows);
     } catch (err: any) {
       setError(err.message || 'Failed to load billing invoices.');
     } finally {
@@ -1142,7 +1147,7 @@ export const SubscriptionsManagementView: React.FC = () => {
               <label className="text-[11px] font-bold text-slate-500">Tenant subscription
                 <Select value={invoiceOrganizationId} onChange={(e) => setInvoiceOrganizationId(e.target.value)} options={[
                   { value: '', label: 'Select tenant…' },
-                  ...subscriptions.map((sub) => ({ value: sub.organization_id, label: sub.organization_name || sub.organization_id })),
+                  ...invoiceTenants.map((sub) => ({ value: sub.organization_id, label: sub.organization_name || sub.organization_id })),
                 ]} />
               </label>
               <div className="flex items-end gap-2">
@@ -1173,7 +1178,7 @@ export const SubscriptionsManagementView: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {invoices.map((invoice) => {
-                      const tenant = subscriptions.find((sub) => sub.organization_id === invoice.organization_id);
+                      const tenant = invoiceTenants.find((sub) => sub.organization_id === invoice.organization_id);
                       const statusStyle = invoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : invoice.status === 'past_due' || invoice.status === 'uncollectible' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : invoice.status === 'void' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
                       return <tr key={invoice.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                         <td className="px-5 py-4"><div className="font-bold text-slate-900 dark:text-white">{invoice.invoice_number}</div><div className="mt-1 text-[10px] text-slate-400">Created {new Date(invoice.created_at).toLocaleDateString()}</div></td>
