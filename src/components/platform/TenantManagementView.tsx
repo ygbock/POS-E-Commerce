@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Building2, Plus, RefreshCw, Search, ShieldCheck, PauseCircle, PlayCircle, X } from 'lucide-react';
+import { Building2, Plus, RefreshCw, Search, ShieldCheck, PauseCircle, PlayCircle, X, Eye, Pencil, Archive, ExternalLink } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -12,8 +12,19 @@ type TenantStatus = 'active' | 'suspended' | 'archived';
 type TenantStatusFilter = TenantStatus | 'all';
 const PAGE_SIZE = 50;
 interface Tenant { id: string; name: string; slug: string; code: string; status: TenantStatus; planTier: PlanTier; subscriptionStatus?: string | null; createdAt: string; }
-interface CreateForm { name: string; slug: string; code: string; planTier: PlanTier; adminName: string; adminEmail: string; adminPassword: string; }
-const initialForm: CreateForm = { name: '', slug: '', code: '', planTier: 'starter', adminName: '', adminEmail: '', adminPassword: '' };
+type TenantProfile = Record<string, string>;
+interface TenantDetail extends Tenant { isActive: boolean; updatedAt: string; profile: TenantProfile; userCount: number; locationCount: number; subscription: { status?: string; planCode?: string } | null; discoveryListing: { id:string; name:string; slug:string; listingStatus:string; verificationStatus:string; isDiscoverable:boolean } | null; }
+interface CreateForm { name: string; slug: string; code: string; planTier: PlanTier; adminName: string; adminEmail: string; adminPassword: string; profile: TenantProfile; }
+const PROFILE_FIELDS = [
+  ['legalName','Legal / registered name'],['businessType','Business type'],['industry','Industry'],['description','Business description'],
+  ['registrationNumber','Registration number'],['taxId','Tax ID'],['businessEmail','Business email'],['phone','Business phone'],
+  ['website','Website'],['country','Country'],['region','Region / state'],['city','City'],['addressLine1','Address line 1'],
+  ['addressLine2','Address line 2'],['postalCode','Postal code'],['primaryContactName','Primary contact name'],
+  ['primaryContactEmail','Primary contact email'],['primaryContactPhone','Primary contact phone'],['currency','Preferred currency'],
+  ['timezone','Timezone'],['locale','Locale'],['businessMode','Business mode'],['onboardingOwner','Onboarding owner'],
+  ['tenantSource','Tenant source'],['externalReference','External reference'],['internalNotes','Internal notes'],
+] as const;
+const initialForm: CreateForm = { name: '', slug: '', code: '', planTier: 'starter', adminName: '', adminEmail: '', adminPassword: '', profile: {} };
 
 async function platformRequest(path: string, options: RequestInit = {}) {
   const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeaders(), ...(options.headers || {}) } });
@@ -34,6 +45,9 @@ export const TenantManagementView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [confirmTenant, setConfirmTenant] = useState<Tenant | null>(null);
+  const [archiveTenant, setArchiveTenant] = useState<Tenant | null>(null);
+  const [detailTenant, setDetailTenant] = useState<TenantDetail | null>(null);
+  const [editingTenant, setEditingTenant] = useState<TenantDetail | null>(null);
   const [form, setForm] = useState<CreateForm>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -64,13 +78,18 @@ export const TenantManagementView: React.FC = () => {
   };
 
   const createTenant = async () => {
-    if (!form.name.trim() || !form.slug.trim() || !form.adminName.trim() || !form.adminEmail.trim() || !form.adminPassword) {
+    if (!form.name.trim() || !form.slug.trim() || (!editingTenant && (!form.adminName.trim() || !form.adminEmail.trim() || !form.adminPassword))) {
       setError('Complete the organization and initial administrator fields before creating a tenant.'); return;
     }
     setIsSubmitting(true); setError(null);
     try {
-      await platformRequest('/api/platform/tenants', { method: 'POST', body: JSON.stringify(form) });
-      setForm(initialForm); setIsCreateOpen(false);
+      const profile = Object.fromEntries(Object.entries(form.profile).filter(([, value]) => value.trim())) as TenantProfile;
+      if (editingTenant) {
+        await platformRequest('/api/platform/tenants/' + encodeURIComponent(editingTenant.id), { method: 'PATCH', body: JSON.stringify({ name: form.name, slug: form.slug, profile }) });
+      } else {
+        await platformRequest('/api/platform/tenants', { method: 'POST', body: JSON.stringify({ name:form.name, slug:form.slug, code:form.code, planTier:form.planTier, adminName:form.adminName, adminEmail:form.adminEmail, adminPassword:form.adminPassword, profile }) });
+      }
+      setForm(initialForm); setIsCreateOpen(false); setEditingTenant(null);
       if (offset === 0) await loadTenants();
       else setOffset(0);
     } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Unable to create tenant.'); }
@@ -92,6 +111,32 @@ export const TenantManagementView: React.FC = () => {
   };
 
   const setField = <K extends keyof CreateForm>(field: K, value: CreateForm[K]) => setForm((current) => ({ ...current, [field]: value }));
+  const openTenantDetails = async (tenant: Tenant) => {
+    setIsSubmitting(true); setError(null);
+    try { const payload = await platformRequest('/api/platform/tenants/' + encodeURIComponent(tenant.id)); setDetailTenant(payload.data as TenantDetail); }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : 'Unable to load tenant details.'); }
+    finally { setIsSubmitting(false); }
+  };
+  const editTenant = async (tenant: Tenant) => {
+    setIsSubmitting(true); setError(null);
+    try {
+      const payload = await platformRequest('/api/platform/tenants/' + encodeURIComponent(tenant.id));
+      const detail = payload.data as TenantDetail;
+      if (detail.lifecycleStatus === 'archived') throw new Error('Archived tenants are read-only.');
+      setEditingTenant(detail);
+      setForm({ ...initialForm, name:detail.name, slug:detail.slug, code:detail.code, planTier:(detail.planTier || 'starter') as PlanTier, profile:detail.profile || {} });
+      setIsCreateOpen(true);
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Unable to load tenant for editing.'); }
+    finally { setIsSubmitting(false); }
+  };
+  const archiveSelectedTenant = async (tenant: Tenant) => {
+    setIsSubmitting(true); setError(null);
+    try {
+      await platformRequest('/api/platform/tenants/' + encodeURIComponent(tenant.id) + '/archive', { method:'POST', body:JSON.stringify({reason:'Archived from Tenant Management by platform operator.'}) });
+      setArchiveTenant(null); await loadTenants();
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Unable to archive tenant.'); }
+    finally { setIsSubmitting(false); }
+  };
   const statusClasses: Record<TenantStatus, string> = {
     active: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400',
     suspended: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-400',
@@ -110,7 +155,7 @@ export const TenantManagementView: React.FC = () => {
         </div>
         <div className="ui-page-actions">
           <Button variant="outline" onClick={loadTenants} isLoading={isLoading} leftIcon={<RefreshCw className="h-4 w-4" />}>Refresh</Button>
-          <Button onClick={() => setIsCreateOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>Create Tenant</Button>
+          <Button onClick={() => { setEditingTenant(null); setForm(initialForm); setIsCreateOpen(true); }} leftIcon={<Plus className="h-4 w-4" />}>Create Tenant</Button>
         </div>
       </header>
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">{error}</div>}
@@ -135,26 +180,46 @@ export const TenantManagementView: React.FC = () => {
             { header: 'Plan', accessor: (tenant) => <span className="capitalize">{tenant.planTier || '—'}</span> },
             { header: 'Subscription', accessor: (tenant) => <span className="capitalize">{(tenant.subscriptionStatus || 'unknown').replace(/_/g, ' ')}</span> },
             { header: 'Status', accessor: (tenant) => <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold capitalize ${statusClasses[tenant.status] || statusClasses.suspended}`}>{tenant.status}</span> },
-            { header: 'Actions', className: 'text-right', accessor: (tenant) => tenant.status === 'archived' ? <span className="text-xs text-slate-500">Read-only</span> : <Button variant={tenant.status === 'active' ? 'danger' : 'outline'} size="sm" onClick={() => setConfirmTenant(tenant)} leftIcon={tenant.status === 'active' ? <PauseCircle className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}>{tenant.status === 'active' ? 'Suspend' : 'Reactivate'}</Button> },
+            { header: 'Actions', className: 'text-right', accessor: (tenant) => <div className="flex flex-wrap justify-end gap-1">
+              <Button variant="ghost" size="sm" onClick={() => void openTenantDetails(tenant)} leftIcon={<Eye className="h-4 w-4" />}>View</Button>
+              {tenant.status !== 'archived' && <><Button variant="ghost" size="sm" onClick={() => void editTenant(tenant)} leftIcon={<Pencil className="h-4 w-4" />}>Edit</Button><Button variant={tenant.status === 'active' ? 'danger' : 'outline'} size="sm" onClick={() => setConfirmTenant(tenant)} leftIcon={tenant.status === 'active' ? <PauseCircle className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}>{tenant.status === 'active' ? 'Suspend' : 'Reactivate'}</Button><Button variant="ghost" size="sm" onClick={() => setArchiveTenant(tenant)} leftIcon={<Archive className="h-4 w-4" />}>Archive</Button></>}
+              {tenant.status === 'archived' && <span className="self-center text-xs text-slate-500">Read-only</span>}
+            </div> },
           ]} />
       </div>
-      <Modal isOpen={isCreateOpen} onClose={() => !isSubmitting && setIsCreateOpen(false)} title="Create tenant organization" size="lg" closeOnEscape={!isSubmitting} closeOnBackdropClick={!isSubmitting}
-        footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button isLoading={isSubmitting} disabled={!form.name.trim() || !form.slug.trim() || !form.adminName.trim() || !form.adminEmail.trim() || form.adminPassword.length < 12 || !/[a-z]/.test(form.adminPassword) || !/[A-Z]/.test(form.adminPassword) || !/[0-9]/.test(form.adminPassword)} onClick={createTenant}>Create Tenant</Button></>}>
-        <div className="space-y-6">
-          <div><h3 className="ui-section-title">Organization</h3><p className="ui-section-description">The slug becomes the stable tenant URL identifier.</p></div>
+      <Modal isOpen={isCreateOpen} onClose={() => !isSubmitting && setIsCreateOpen(false)} title={editingTenant ? 'Edit tenant organization' : 'Create tenant organization'} size="lg" closeOnEscape={!isSubmitting} closeOnBackdropClick={!isSubmitting}
+        footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button isLoading={isSubmitting} disabled={!form.name.trim() || !form.slug.trim() || !form.adminName.trim() || !form.adminEmail.trim() || form.adminPassword.length < 12 || !/[a-z]/.test(form.adminPassword) || !/[A-Z]/.test(form.adminPassword) || !/[0-9]/.test(form.adminPassword)} onClick={createTenant}>{editingTenant ? 'Save Changes' : 'Create Tenant'}</Button></>}>
+        <div className="max-h-[70vh] space-y-6 overflow-y-auto pr-1">
+          <div><h3 className="ui-section-title">Organization</h3><p className="ui-section-description">Tenant creation does not create or publish a Discovery listing.</p></div>
           <div className="ui-form-grid ui-form-grid--wide">
             <Input label="Organization name" value={form.name} onChange={(event) => setField('name', event.target.value)} required />
             <Input label="Tenant slug" value={form.slug} onChange={(event) => setField('slug', event.target.value.toLowerCase())} placeholder="acme-retail" required />
             <Input label="Tenant code" value={form.code} onChange={(event) => setField('code', event.target.value.toUpperCase())} placeholder="ACME_RETAIL" />
             <Select label="Initial plan tier" value={form.planTier} onChange={(event) => setField('planTier', event.target.value as PlanTier)} options={[{ value: 'starter', label: 'Starter' }, { value: 'professional', label: 'Professional' }, { value: 'enterprise', label: 'Enterprise' }]} />
           </div>
-          <div className="border-t border-slate-200 pt-5 dark:border-slate-800"><h3 className="ui-section-title">Initial administrator</h3><p className="ui-section-description">The password is hashed server-side and never returned by the API.</p></div>
+          <div className="border-t border-slate-200 pt-5 dark:border-slate-800"><h3 className="ui-section-title">Business, registration, contact and address details</h3><p className="ui-section-description">Optional profile fields are saved on the organization, independently of billing and Discovery moderation.</p></div>
+          <div className="ui-form-grid ui-form-grid--wide">
+            {PROFILE_FIELDS.map(([key, label]) => <Input key={key} label={label} value={form.profile[key] || ''} onChange={(event) => setForm(current => ({...current, profile:{...current.profile,[key]:event.target.value}}))} type={key.toLowerCase().includes('email') ? 'email' : key === 'website' ? 'url' : 'text'} />)}
+          </div>
+          {!editingTenant && <><div className="border-t border-slate-200 pt-5 dark:border-slate-800"><h3 className="ui-section-title">Initial administrator</h3><p className="ui-section-description">The password is hashed server-side and never returned by the API.</p></div>
           <div className="ui-form-grid ui-form-grid--wide">
             <Input label="Full name" value={form.adminName} onChange={(event) => setField('adminName', event.target.value)} required />
             <Input label="Email" type="email" value={form.adminEmail} onChange={(event) => setField('adminEmail', event.target.value)} required />
             <Input label="Temporary password" type="password" value={form.adminPassword} onChange={(event) => setField('adminPassword', event.target.value)} helperText="12–128 characters; include uppercase, lowercase, and a number." required />
-          </div>
+          </div></>}
         </div>
+      </Modal>
+      <Modal isOpen={Boolean(detailTenant)} onClose={() => setDetailTenant(null)} title="Tenant details" size="lg" footer={<Button variant="outline" onClick={() => setDetailTenant(null)}>Close</Button>}>
+        {detailTenant && <div className="max-h-[70vh] space-y-4 overflow-y-auto">
+          <section><h3 className="ui-section-title">{detailTenant.name}</h3><p className="text-sm text-slate-500">{detailTenant.slug} · {detailTenant.code} · {detailTenant.lifecycleStatus}</p><p className="text-sm">Plan: {detailTenant.planTier} · Subscription: {detailTenant.subscription?.status || 'unknown'}</p><p className="text-sm">Users: {detailTenant.userCount} · Locations: {detailTenant.locationCount}</p></section>
+          <section className="border-t pt-4"><h4 className="font-semibold">Organization profile</h4><dl className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">{PROFILE_FIELDS.map(([key,label]) => <div key={key}><dt className="text-xs text-slate-500">{label}</dt><dd className="break-words text-sm">{detailTenant.profile?.[key] || '—'}</dd></div>)}</dl></section>
+          <section className="border-t pt-4"><h4 className="font-semibold">Discovery listing</h4>{detailTenant.discoveryListing ? <><p className="text-sm">{detailTenant.discoveryListing.name} · {detailTenant.discoveryListing.listingStatus} · {detailTenant.discoveryListing.verificationStatus}</p><p className="text-xs text-slate-500">{detailTenant.discoveryListing.isDiscoverable ? 'Discoverability enabled' : 'Not currently discoverable'}. Listing review and publication remain separate.</p><Button className="mt-2" variant="outline" onClick={() => window.location.assign('/?tab=discovery-moderation')} leftIcon={<ExternalLink className="h-4 w-4" />}>Open Trust &amp; Moderation</Button></> : <p className="text-sm text-slate-500">No linked Discovery listing. A listing can be created separately when required.</p>}</section>
+          <p className="text-xs text-slate-500">Created {new Date(detailTenant.createdAt).toLocaleString()} · Updated {new Date(detailTenant.updatedAt).toLocaleString()}</p>
+        </div>}
+      </Modal>
+      <Modal isOpen={Boolean(archiveTenant)} onClose={() => !isSubmitting && setArchiveTenant(null)} title="Archive tenant?" size="sm" closeOnEscape={!isSubmitting} closeOnBackdropClick={!isSubmitting}
+        footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setArchiveTenant(null)}>Cancel</Button><Button variant="danger" isLoading={isSubmitting} onClick={() => archiveTenant && void archiveSelectedTenant(archiveTenant)}>Archive Tenant</Button></>}>
+        <p>Archive {archiveTenant?.name}? This deactivates the organization and cancels non-terminal subscriptions. Historical records are retained; normal reactivation is not available.</p>
       </Modal>
       <Modal isOpen={Boolean(confirmTenant)} onClose={() => !isSubmitting && setConfirmTenant(null)} title={confirmTenant?.status === 'active' ? 'Suspend tenant?' : 'Reactivate tenant?'} size="sm" closeOnEscape={!isSubmitting} closeOnBackdropClick={!isSubmitting}
         footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setConfirmTenant(null)}>Cancel</Button><Button variant={confirmTenant?.status === 'active' ? 'danger' : 'primary'} isLoading={isSubmitting} onClick={() => confirmTenant && setTenantState(confirmTenant)}>{confirmTenant?.status === 'active' ? 'Suspend Tenant' : 'Reactivate Tenant'}</Button></>}>
