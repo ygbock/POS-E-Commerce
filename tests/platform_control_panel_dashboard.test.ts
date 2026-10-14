@@ -13,6 +13,11 @@ assert.match(platformRoutes, /router\.get\('\/users'/, 'Platform active-user wor
 const app = fs.readFileSync(path.join(root, 'src/App.tsx'), 'utf8');
 assert.match(app, /activeTab === 'platform-users' && <PlatformUsersView \/>/, 'Platform user workspace must be routable from dashboard cards');
 assert.match(ui, /const canViewBilling =/, 'Billing API access must be role-aware');
+assert.match(ui, /import \\{ canAccessPlatform \\} from '\.\/platformAccess'/, 'Dashboard shortcuts must use the canonical platform access policy');
+assert.match(ui, /canAccessPlatform\(accessRole, 'billing'\)/, 'Billing shortcut visibility must follow canonical billing permissions');
+assert.match(ui, /canAccessPlatform\(accessRole, 'support'\)/, 'Support shortcut visibility must be restricted to authorized platform roles');
+assert.match(ui, /canAccessPlatform\(accessRole, 'manage'\)/, 'Security and Discovery shortcuts must follow platform management permissions');
+assert.match(ui, /normalizedRole === 'platform_support' \? 'Platform Support'/, 'Platform Support must be explicitly mapped instead of inheriting access by exclusion');
 assert.match(ui, /go\('tenants'\)/, 'Tenant metrics must navigate to tenant management');
 assert.match(ui, /onClick=\{\(\) => go\('platform-users'\)\}/, 'Active user metrics must navigate to the platform user workspace');
 assert.match(ui, /Active user accounts belonging to active tenant organizations/, 'Active user metric must state its counting scope');

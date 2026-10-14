@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useCommerce } from '../../context/CommerceContext';
 import { authClient } from '../../services/authClient';
+import { canAccessPlatform } from './platformAccess';
 
 interface PlatformDashboardProps {
   setActiveTab: (tab: string) => void;
@@ -75,11 +76,17 @@ async function readApiData<T>(response: Response, fallbackMessage: string): Prom
 
 export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveTab }) => {
   const { currentRole } = useCommerce();
-  const normalizedRole = String(currentRole || '').toLowerCase().replace(/[\s-]+/g, '_');
-  const canViewBilling = normalizedRole === 'system_owner' || normalizedRole === 'system owner' || normalizedRole === 'platform_finance' || normalizedRole === 'platform finance';
-  const canViewSecurity = normalizedRole === 'system_owner' || normalizedRole === 'platform_admin';
-  const canViewSupport = normalizedRole !== 'platform_finance';
-  const canViewDiscovery = normalizedRole === 'system_owner' || normalizedRole === 'platform_admin';
+  const normalizedRole = String(currentRole || '').toLowerCase().replace(/[\\s-]+/g, '_');
+  const accessRole = normalizedRole === 'system_owner' ? 'System Owner'
+    : normalizedRole === 'platform_admin' ? 'Platform Admin'
+      : normalizedRole === 'platform_support' ? 'Platform Support'
+        : normalizedRole === 'platform_finance' ? 'Platform Finance'
+          : null;
+  // Keep dashboard shortcuts aligned with the platform's canonical role policy.
+  const canViewBilling = accessRole ? canAccessPlatform(accessRole, 'billing') : false;
+  const canViewSecurity = accessRole ? canAccessPlatform(accessRole, 'manage') : false;
+  const canViewSupport = accessRole ? canAccessPlatform(accessRole, 'support') : false;
+  const canViewDiscovery = accessRole ? canAccessPlatform(accessRole, 'manage') : false;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
