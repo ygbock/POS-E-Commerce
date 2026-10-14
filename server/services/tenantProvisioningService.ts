@@ -61,6 +61,7 @@ export interface ProvisionTenantParams {
   /** Never stored in plain-text or audit records */
   adminPassword: string;
   metadata?: Record<string, unknown>;
+  profile?: Record<string, unknown>;
 }
 
 export interface ProvisionedTenant {
@@ -111,9 +112,11 @@ export interface TenantDetail {
   lifecycleStatus: TenantLifecycleStatus;
   createdAt: string;
   updatedAt: string;
+  profile: Record<string, string>;
   subscription: any | null;
   userCount: number;
   locationCount: number;
+  discoveryListing: { id: string; name: string; slug: string; listingStatus: string; verificationStatus: string; isDiscoverable: boolean } | null;
 }
 
 export interface TenantListResult {
@@ -184,6 +187,46 @@ function validatePlanTier(value: unknown): PlanTier {
     );
   }
   return value as PlanTier;
+}
+
+const TENANT_PROFILE_LIMITS: Record<string, number> = {
+  legalName: 255, businessType: 100, industry: 100, description: 5000,
+  registrationNumber: 128, taxId: 128, businessEmail: 255, phone: 64,
+  website: 2048, country: 128, region: 128, city: 128, addressLine1: 255,
+  addressLine2: 255, postalCode: 32, primaryContactName: 255,
+  primaryContactEmail: 255, primaryContactPhone: 64, currency: 3,
+  timezone: 100, locale: 32, internalNotes: 5000, onboardingOwner: 255,
+  tenantSource: 128, externalReference: 255, businessMode: 64,
+};
+
+function validateTenantProfile(value: unknown): Record<string, string> {
+  if (value == null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new TenantProvisioningError('INVALID_TENANT_PROFILE', 'Tenant profile must be an object.');
+  }
+  const input = value as Record<string, unknown>;
+  const profile: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(input)) {
+    if (!(key in TENANT_PROFILE_LIMITS)) {
+      throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', `Unsupported tenant profile field: ${key}.`);
+    }
+    if (raw == null || raw === '') continue;
+    if (typeof raw !== 'string') {
+      throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', `Tenant profile field ${key} must be text.`);
+    }
+    const normalized = raw.trim();
+    if (normalized.length > TENANT_PROFILE_LIMITS[key]) {
+      throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', `Tenant profile field ${key} exceeds ${TENANT_PROFILE_LIMITS[key]} characters.`);
+    }
+    if (['businessEmail', 'primaryContactEmail'].includes(key) && normalized && !EMAIL_PATTERN.test(normalized)) {
+      throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', `Tenant profile field ${key} must be a valid email address.`);
+    }
+    if (key === 'website' && normalized && !/^https?:\\/\\//i.test(normalized)) {
+      throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', 'Tenant website must start with http:// or https://.');
+    }
+    if (normalized) profile[key] = normalized;
+  }
+  return profile;
 }
 
 function validateAdminCredentials(
@@ -311,10 +354,10 @@ export class TenantProvisioningService {
       let created: any;
       try {
         const orgResult = await tx.query<any>(
-          `INSERT INTO organizations (id, name, slug, code, plan_tier, is_active, lifecycle_status)
-           VALUES ($1, $2, $3, $4, $5, TRUE, 'active')
+          `INSERT INTO organizations (id, name, slug, code, plan_tier, profile, is_active, lifecycle_status)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, TRUE, 'active')
            RETURNING id, name, slug, code, plan_tier, is_active, created_at`,
-          [tenantId, name, slug, code, planTier],
+          [tenantId, name, slug, code, planTier, JSON.stringify(validateTenantProfile(params.profile))],
         );
         created = orgResult.rows[0];
       } catch (err: any) {
@@ -897,7 +940,7 @@ export class TenantProvisioningService {
     }
 
     const orgRes = await this.db.query<any>(
-      `SELECT id, name, slug, code, plan_tier, is_active, lifecycle_status, created_at, updated_at
+      `SELECT id, name, slug, code, plan_tier, profile, is_active, lifecycle_status, created_at, updated_at
        FROM organizations WHERE id = $1 LIMIT 1`,
       [orgId.trim()],
     );
@@ -908,16 +951,12 @@ export class TenantProvisioningService {
     // returning a partial control-plane view can hide billing inconsistencies.
     const subscription = await this.subscriptionRepo.getSubscriptionDetails(orgId.trim());
 
-    // Resource usage counters
-    const [userCountRes, locationCountRes] = await Promise.all([
-      this.db.query<{ count: string }>(
-        'SELECT COUNT(*)::int AS count FROM users WHERE organization_id = $1',
-        [orgId.trim()],
-      ),
-      this.db.query<{ count: string }>(
-        'SELECT COUNT(*)::int AS count FROM locations WHERE organization_id = $1',
-        [orgId.trim()],
-      ),
+    // Counts and optional Discovery association are independent of tenant provisioning.
+    const [userCountRes, locationCountRes, listingRes] = await Promise.all([
+      this.db.query<{ count: string }>('SELECT COUNT(*)::int AS count FROM users WHERE organization_id = $1', [orgId.trim()]),
+      this.db.query<{ count: string }>('SELECT COUNT(*)::int AS count FROM locations WHERE organization_id = $1', [orgId.trim()]),
+      this.db.query<any>(`SELECT id, name, slug, listing_status, verification_status, is_discoverable
+        FROM discovery_businesses WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 1`, [orgId.trim()]),
     ]);
 
     return {
@@ -930,9 +969,15 @@ export class TenantProvisioningService {
       lifecycleStatus: org.lifecycle_status,
       createdAt: org.created_at,
       updatedAt: org.updated_at,
+      profile: validateTenantProfile(org.profile || {}),
       subscription,
       userCount: Number(userCountRes.rows[0]?.count || 0),
       locationCount: Number(locationCountRes.rows[0]?.count || 0),
+      discoveryListing: listingRes.rows[0] ? {
+        id: listingRes.rows[0].id, name: listingRes.rows[0].name, slug: listingRes.rows[0].slug,
+        listingStatus: listingRes.rows[0].listing_status, verificationStatus: listingRes.rows[0].verification_status,
+        isDiscoverable: Boolean(listingRes.rows[0].is_discoverable),
+      } : null,
     };
   }
 
@@ -1036,6 +1081,7 @@ export class TenantProvisioningService {
       slug?: unknown;
       isActive?: unknown;
       planTier?: unknown;
+      profile?: unknown;
     },
     actor: { id: string; name?: string; role?: string },
   ): Promise<{
@@ -1072,7 +1118,7 @@ export class TenantProvisioningService {
     }
 
     const before = await this.db.query<any>(
-      'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
+      'SELECT id, name, slug, code, profile, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 LIMIT 1',
       [tenantId],
     );
     if (before.rows.length === 0) {
@@ -1087,6 +1133,12 @@ export class TenantProvisioningService {
       const validatedName = validateName(updates.name);
       sqlUpdates.push(`name = $${index++}`);
       params.push(validatedName);
+    }
+
+    if (updates?.profile !== undefined) {
+      const validatedProfile = validateTenantProfile(updates.profile);
+      sqlUpdates.push(`profile = ${index++}::jsonb`);
+      params.push(JSON.stringify(validatedProfile));
     }
 
     if (updates?.slug !== undefined) {
@@ -1111,7 +1163,7 @@ export class TenantProvisioningService {
 
     return this.db.withTransaction(async (tx) => {
       const locked = await tx.query<any>(
-        'SELECT id, name, slug, code, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 FOR UPDATE',
+        'SELECT id, name, slug, code, profile, is_active, lifecycle_status, plan_tier FROM organizations WHERE id = $1 FOR UPDATE',
         [tenantId],
       );
       if (locked.rows.length === 0) {
