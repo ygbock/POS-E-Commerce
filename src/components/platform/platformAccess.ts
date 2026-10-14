@@ -16,7 +16,7 @@ export function canManagePlatformPlans(role: Role | string): boolean {
 }
 
 export function canManagePlatformSubscriptions(role: Role | string): boolean {
-  return role === 'System Owner' || role === 'Platform Finance';
+  return role === 'System Owner' || role === 'Platform Admin' || role === 'Platform Finance';
 }
 
 export function canAccessPlatformSecurity(role: Role | string): boolean {
