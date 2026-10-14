@@ -35,6 +35,7 @@ import { createMerchantStorePolicyRouter } from './server/routes/merchantStorePo
 import { PosService } from './server/services/posService.ts';
 import { OrderService, DomainError } from './server/services/orderService.ts';
 import { startReservationExpiryWorker } from './server/inventory/reservationExpiryWorker.ts';
+import { startRecurringBillingWorker } from './server/services/recurringBillingService.ts';
 import {
   parseExactMoney,
   parseExactQuantity,
@@ -2425,6 +2426,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use('/api/storefront', createStorefrontRouter(db, orderService, subscriptionService));
   if (process.env.NODE_ENV !== 'test') {
     app.locals.reservationExpiryWorker = startReservationExpiryWorker({ db });
+    app.locals.recurringBillingWorker = startRecurringBillingWorker({ db });
   }
 
   // Orders Query (Tenant-scoped)
