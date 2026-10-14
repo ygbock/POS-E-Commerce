@@ -71,3 +71,18 @@ const tenantProfileMigration = fs.readFileSync(path.join(root, 'server/db/migrat
 assert.match(tenantProfileMigration, /ADD COLUMN IF NOT EXISTS profile JSONB/, 'Tenant profile data must be persisted in an organization profile field');
 
 console.log('Platform dashboard and tenant management contracts: PASS');
+
+
+// SaaS billing UI must mirror the backend's platform.billing permission boundary.
+const platformNavigation = fs.readFileSync(path.join(root, 'src/components/platform/platformNavigation.ts'), 'utf8');
+const platformAccess = fs.readFileSync(path.join(root, 'src/components/platform/platformAccess.ts'), 'utf8');
+const subscriptionsUi = fs.readFileSync(path.join(root, 'src/components/platform/SubscriptionsManagementView.tsx'), 'utf8');
+assert.match(platformNavigation, /case 'Platform Admin':[\\s\\S]*?items: \\[([\\s\\S]*?)\\n      \\],/, 'Platform Admin navigation must be defined explicitly');
+const platformAdminNav = platformNavigation.match(/case 'Platform Admin':[\\s\\S]*?items: \\[([\\s\\S]*?)\\n      \\],/)?.[1] || '';
+assert.doesNotMatch(platformAdminNav, /subscriptions|Plans & Subscriptions/, 'Platform Admin must not see billing navigation without platform.billing');
+assert.match(platformNavigation, /case 'Platform Finance':[\\s\\S]*?Plans & Subscriptions/, 'Platform Finance must retain subscription navigation');
+assert.match(platformAccess, /function canManagePlatformPlans\\(role: Role \\| string\\): boolean \\{\\s*return role === 'System Owner' \\|\\| role === 'Platform Finance';/, 'Plan management visibility must match backend billing authorization');
+assert.match(platformAccess, /function canManagePlatformSubscriptions\\(role: Role \\| string\\): boolean \\{\\s*return role === 'System Owner' \\|\\| role === 'Platform Finance';/, 'Subscription management visibility must match backend billing authorization');
+assert.match(subscriptionsUi, /canAccessPlatform\\(currentRole, 'billing'\\)/, 'Subscription view must check canonical billing permission before loading data');
+assert.match(subscriptionsUi, /Billing access required/, 'Unauthorized direct navigation must explain the correct access requirement');
+assert.match(subscriptionsUi, /if \\(!canViewBilling\\) \\{\\s*setIsLoading\\(false\\);\\s*return;/, 'Unauthorized users must not issue billing API requests from this view');
