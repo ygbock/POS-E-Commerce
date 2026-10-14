@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CreditCard,
+  FileText,
   DollarSign,
   TrendingUp,
   AlertTriangle,
@@ -43,17 +44,24 @@ import {
   TenantSubscription,
   BillingOverview,
   SubscriptionAuditRecord,
+  BillingInvoice,
 } from '../../services/subscriptionApi';
 
 export const SubscriptionsManagementView: React.FC = () => {
   const { currentRole } = useCommerce();
   const canViewBilling = canAccessPlatform(currentRole, 'billing');
-  const [activeSubTab, setActiveSubTab] = useState<'subscriptions' | 'plans'>('subscriptions');
+  const [activeSubTab, setActiveSubTab] = useState<'subscriptions' | 'plans' | 'invoices'>('subscriptions');
 
   // Overview state
   const [overview, setOverview] = useState<BillingOverview | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscriptions, setSubscriptions] = useState<TenantSubscription[]>([]);
+  const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
+  const [invoiceTenants, setInvoiceTenants] = useState<TenantSubscription[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('all');
+  const [invoiceOrganizationId, setInvoiceOrganizationId] = useState('');
+  const [invoiceCreating, setInvoiceCreating] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -125,6 +133,45 @@ export const SubscriptionsManagementView: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const loadInvoices = useCallback(async () => {
+    if (!canViewBilling) return;
+    setInvoicesLoading(true);
+    try {
+      const [rows, tenantRows] = await Promise.all([
+        subscriptionApi.getInvoices({ status: invoiceStatusFilter, limit: 50, offset: 0 }),
+        subscriptionApi.getSubscriptions({ limit: 200 }),
+      ]);
+      setInvoices(rows);
+      setInvoiceTenants(tenantRows);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load billing invoices.');
+    } finally {
+      setInvoicesLoading(false);
+    }
+  }, [canViewBilling, invoiceStatusFilter]);
+
+  useEffect(() => {
+    if (activeSubTab === 'invoices') loadInvoices();
+  }, [activeSubTab, loadInvoices]);
+
+  const handleCreateInvoice = async () => {
+    if (!invoiceOrganizationId) {
+      setError('Select a tenant before creating an invoice.');
+      return;
+    }
+    setInvoiceCreating(true);
+    setError(null);
+    try {
+      const invoice = await subscriptionApi.createInvoice(invoiceOrganizationId, 'Created from platform billing workspace');
+      setActionSuccess(`Invoice ${invoice.invoice_number} created successfully.`);
+      await loadInvoices();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create invoice.');
+    } finally {
+      setInvoiceCreating(false);
+    }
+  };
 
   if (!canViewBilling) {
     return (
@@ -585,6 +632,20 @@ export const SubscriptionsManagementView: React.FC = () => {
           <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-bold">
             {subscriptions.length}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('invoices')}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeSubTab === 'invoices'
+              ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>Billing Invoices</span>
+          <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-bold">{invoices.length}</span>
         </button>
 
         <button
@@ -1062,6 +1123,79 @@ export const SubscriptionsManagementView: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* TAB: BILLING INVOICES */}
+      {activeSubTab === 'invoices' && (
+        <section className="space-y-4" aria-labelledby="billing-invoices-title">
+          <div className="flex flex-col gap-3 rounded-3xl border border-slate-200/90 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 id="billing-invoices-title" className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">Billing invoices</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Review invoice status and create an invoice from the tenant's current subscription pricing.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:min-w-[620px]">
+              <label className="text-[11px] font-bold text-slate-500">Invoice status
+                <Select value={invoiceStatusFilter} onChange={(e) => setInvoiceStatusFilter(e.target.value)} options={[
+                  { value: 'all', label: 'All statuses' },
+                  { value: 'open', label: 'Open' },
+                  { value: 'paid', label: 'Paid' },
+                  { value: 'past_due', label: 'Past due' },
+                  { value: 'void', label: 'Void' },
+                  { value: 'uncollectible', label: 'Uncollectible' },
+                ]} />
+              </label>
+              <label className="text-[11px] font-bold text-slate-500">Tenant subscription
+                <Select value={invoiceOrganizationId} onChange={(e) => setInvoiceOrganizationId(e.target.value)} options={[
+                  { value: '', label: 'Select tenant…' },
+                  ...invoiceTenants.map((sub) => ({ value: sub.organization_id, label: sub.organization_name || sub.organization_id })),
+                ]} />
+              </label>
+              <div className="flex items-end gap-2">
+                <Button variant="primary" onClick={handleCreateInvoice} disabled={!invoiceOrganizationId || invoiceCreating} isLoading={invoiceCreating} className="flex-1">
+                  <FileText className="mr-1.5 h-4 w-4" /> Create invoice
+                </Button>
+                <Button variant="outline" onClick={loadInvoices} disabled={invoicesLoading} title="Refresh invoices" className="px-3">
+                  <RefreshCw className={`h-4 w-4 ${invoicesLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            {invoicesLoading ? (
+              <div className="flex flex-col items-center justify-center p-12"><Spinner size="lg" /><p className="mt-3 text-xs text-slate-500">Loading invoices…</p></div>
+            ) : invoices.length === 0 ? (
+              <div className="p-12 text-center">
+                <FileText className="mx-auto h-8 w-8 text-slate-400" />
+                <h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">No invoices found</h3>
+                <p className="mt-1 text-xs text-slate-500">Try another status filter or create an invoice for a tenant subscription.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:bg-slate-950/50">
+                    <tr><th className="px-5 py-4">Invoice</th><th className="px-5 py-4">Tenant</th><th className="px-5 py-4">Billing period</th><th className="px-5 py-4">Due date</th><th className="px-5 py-4">Total</th><th className="px-5 py-4">Status</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {invoices.map((invoice) => {
+                      const tenant = invoiceTenants.find((sub) => sub.organization_id === invoice.organization_id);
+                      const statusStyle = invoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : invoice.status === 'past_due' || invoice.status === 'uncollectible' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : invoice.status === 'void' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
+                      return <tr key={invoice.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                        <td className="px-5 py-4"><div className="font-bold text-slate-900 dark:text-white">{invoice.invoice_number}</div><div className="mt-1 text-[10px] text-slate-400">Created {new Date(invoice.created_at).toLocaleDateString()}</div></td>
+                        <td className="px-5 py-4"><div className="font-semibold text-slate-800 dark:text-slate-200">{tenant?.organization_name || invoice.organization_id}</div><div className="mt-1 font-mono text-[10px] text-slate-400">{invoice.organization_id}</div></td>
+                        <td className="px-5 py-4 text-xs text-slate-600 dark:text-slate-300">{new Date(invoice.period_start).toLocaleDateString()} – {new Date(invoice.period_end).toLocaleDateString()}</td>
+                        <td className="px-5 py-4 text-xs text-slate-600 dark:text-slate-300">{invoice.due_at ? new Date(invoice.due_at).toLocaleDateString() : '—'}</td>
+                        <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">{invoice.currency} {Number(invoice.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${statusStyle}`}>{invoice.status.replace(/_/g, ' ')}</span></td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400">Showing up to 50 most recent invoices. Invoice amounts and status come from the billing API.</p>
+        </section>
       )}
 
       {/* TAB 2: PLANS & LIMITS */}
