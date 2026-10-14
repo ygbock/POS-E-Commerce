@@ -42,14 +42,14 @@ async function main() {
 
     await db.query(`
       INSERT INTO organization_subscriptions
-      (id, organization_id, plan_id, status, current_period_start, current_period_end) VALUES
-      ('sub_starter', 'org_starter', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
-      ('sub_pro', 'org_pro', 'plan_professional', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
-      ('sub_enterprise', 'org_enterprise', 'plan_enterprise', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
-      ('sub_suspended', 'org_suspended', 'plan_starter', 'cancelled', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
-      ('sub_isolation_b', 'org_isolation_b', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
-      ('sub_expired_trial', 'org_expired_trial', 'plan_starter', 'trialing', CURRENT_TIMESTAMP - INTERVAL '20 days', CURRENT_TIMESTAMP + INTERVAL '10 days'),
-      ('sub_expired_active', 'org_expired_active', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '31 days', CURRENT_TIMESTAMP - INTERVAL '1 day')
+      (id, organization_id, plan_id, status, current_period_start, current_period_end, trial_ends_at) VALUES
+      ('sub_starter', 'org_starter', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days', NULL),
+      ('sub_pro', 'org_pro', 'plan_professional', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days', NULL),
+      ('sub_enterprise', 'org_enterprise', 'plan_enterprise', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days', NULL),
+      ('sub_suspended', 'org_suspended', 'plan_starter', 'cancelled', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days', NULL),
+      ('sub_isolation_b', 'org_isolation_b', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days', NULL),
+      ('sub_expired_trial', 'org_expired_trial', 'plan_starter', 'trialing', CURRENT_TIMESTAMP - INTERVAL '20 days', CURRENT_TIMESTAMP + INTERVAL '10 days', CURRENT_TIMESTAMP - INTERVAL '1 day'),
+      ('sub_expired_active', 'org_expired_active', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '31 days', CURRENT_TIMESTAMP - INTERVAL '1 day', NULL)
     `);
 
     // Insert baseline location for Starter
