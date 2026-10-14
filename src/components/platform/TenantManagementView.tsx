@@ -83,7 +83,7 @@ export const TenantManagementView: React.FC = () => {
     }
     setIsSubmitting(true); setError(null);
     try {
-      const profile = Object.fromEntries(Object.entries(form.profile).filter(([, value]) => value.trim())) as TenantProfile;
+      const profile = Object.fromEntries(Object.entries(form.profile).filter(([, value]) => typeof value === 'string' && value.trim())) as TenantProfile;
       if (editingTenant) {
         await platformRequest('/api/platform/tenants/' + encodeURIComponent(editingTenant.id), { method: 'PATCH', body: JSON.stringify({ name: form.name, slug: form.slug, profile }) });
       } else {
