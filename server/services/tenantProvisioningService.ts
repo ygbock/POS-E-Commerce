@@ -221,7 +221,7 @@ function validateTenantProfile(value: unknown): Record<string, string> {
     if (['businessEmail', 'primaryContactEmail'].includes(key) && normalized && !EMAIL_PATTERN.test(normalized)) {
       throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', `Tenant profile field ${key} must be a valid email address.`);
     }
-    if (key === 'website' && normalized && !/^https?:\\/\\//i.test(normalized)) {
+    if (key === 'website' && normalized && !/^https?:\/\//i.test(normalized)) {
       throw new TenantProvisioningError('INVALID_TENANT_PROFILE_FIELD', 'Tenant website must start with http:// or https://.');
     }
     if (normalized) profile[key] = normalized;
