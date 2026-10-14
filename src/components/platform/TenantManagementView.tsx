@@ -13,7 +13,7 @@ type TenantStatusFilter = TenantStatus | 'all';
 const PAGE_SIZE = 50;
 interface Tenant { id: string; name: string; slug: string; code: string; status: TenantStatus; planTier: PlanTier; subscriptionStatus?: string | null; createdAt: string; }
 type TenantProfile = Record<string, string>;
-interface TenantDetail extends Tenant { isActive: boolean; updatedAt: string; profile: TenantProfile; userCount: number; locationCount: number; subscription: { status?: string; planCode?: string } | null; discoveryListing: { id:string; name:string; slug:string; listingStatus:string; verificationStatus:string; isDiscoverable:boolean } | null; }
+interface TenantDetail { id:string; name:string; slug:string; code:string; status:TenantStatus; planTier:PlanTier; createdAt:string; isActive:boolean; lifecycleStatus:TenantStatus; updatedAt:string; profile:TenantProfile; userCount:number; locationCount:number; subscription:{status?:string;planCode?:string}|null; discoveryListing:{id:string;name:string;slug:string;listingStatus:string;verificationStatus:string;isDiscoverable:boolean}|null; }
 interface CreateForm { name: string; slug: string; code: string; planTier: PlanTier; adminName: string; adminEmail: string; adminPassword: string; profile: TenantProfile; }
 const PROFILE_FIELDS = [
   ['legalName','Legal / registered name'],['businessType','Business type'],['industry','Industry'],['description','Business description'],
@@ -188,7 +188,7 @@ export const TenantManagementView: React.FC = () => {
           ]} />
       </div>
       <Modal isOpen={isCreateOpen} onClose={() => !isSubmitting && setIsCreateOpen(false)} title={editingTenant ? 'Edit tenant organization' : 'Create tenant organization'} size="lg" closeOnEscape={!isSubmitting} closeOnBackdropClick={!isSubmitting}
-        footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button isLoading={isSubmitting} disabled={!form.name.trim() || !form.slug.trim() || !form.adminName.trim() || !form.adminEmail.trim() || form.adminPassword.length < 12 || !/[a-z]/.test(form.adminPassword) || !/[A-Z]/.test(form.adminPassword) || !/[0-9]/.test(form.adminPassword)} onClick={createTenant}>{editingTenant ? 'Save Changes' : 'Create Tenant'}</Button></>}>
+        footer={<><Button variant="ghost" disabled={isSubmitting} onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button isLoading={isSubmitting} disabled={!form.name.trim() || !form.slug.trim() || (!editingTenant && (!form.adminName.trim() || !form.adminEmail.trim() || form.adminPassword.length < 12 || !/[a-z]/.test(form.adminPassword) || !/[A-Z]/.test(form.adminPassword) || !/[0-9]/.test(form.adminPassword)))} onClick={createTenant}>{editingTenant ? 'Save Changes' : 'Create Tenant'}</Button></>}>
         <div className="max-h-[70vh] space-y-6 overflow-y-auto pr-1">
           <div><h3 className="ui-section-title">Organization</h3><p className="ui-section-description">Tenant creation does not create or publish a Discovery listing.</p></div>
           <div className="ui-form-grid ui-form-grid--wide">
