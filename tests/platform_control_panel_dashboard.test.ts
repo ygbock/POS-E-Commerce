@@ -79,7 +79,7 @@ const platformAccess = fs.readFileSync(path.join(root, 'src/components/platform/
 const subscriptionsUi = fs.readFileSync(path.join(root, 'src/components/platform/SubscriptionsManagementView.tsx'), 'utf8');
 const platformAdminNav = platformNavigation.match(/case 'Platform Admin':([\s\S]*?)case 'System Owner'/)?.[1] || '';
 assert.ok(platformAdminNav, 'Platform Admin navigation must be defined explicitly');
-assert.doesNotMatch(platformAdminNav, /subscriptions|Plans & Subscriptions/, 'Platform Admin must not see billing navigation without platform.billing');
+assert.match(platformAdminNav, /subscriptions|Plans & Subscriptions/, 'Platform Admin must see subscription navigation when granted platform.billing');
 assert.match(platformNavigation, /case 'Platform Finance':[\s\S]*?Plans & Subscriptions/, 'Platform Finance must retain subscription navigation');
 assert.match(platformAccess, /function canManagePlatformPlans\(role: Role \| string\): boolean \{\s*return role === 'System Owner' \|\| role === 'Platform Finance';/, 'Plan management visibility must match backend billing authorization');
 assert.match(platformAccess, /function canManagePlatformSubscriptions\(role: Role \| string\): boolean \{\s*return role === 'System Owner' \|\| role === 'Platform Finance';/, 'Subscription management visibility must match backend billing authorization');
