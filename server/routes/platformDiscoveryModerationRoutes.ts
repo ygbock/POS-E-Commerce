@@ -12,6 +12,38 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
   const guard = [requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_DISCOVERY)];
   const discoveryService = new DiscoveryBusinessService(undefined, db);
 
+  router.get('/summary', ...guard, async (_req, res, next) => {
+    try {
+      const [listingCounts, verificationCounts, claimCounts, reviewCounts, reportCounts] = await Promise.all([
+        db.query(`SELECT listing_status, COUNT(*)::int AS count FROM discovery_businesses GROUP BY listing_status`),
+        db.query(`SELECT status, COUNT(*)::int AS count FROM discovery_verification_applications GROUP BY status`),
+        db.query(`SELECT status, COUNT(*)::int AS count FROM discovery_business_claims GROUP BY status`),
+        db.query(`SELECT status, COUNT(*)::int AS count FROM discovery_reviews GROUP BY status`),
+        db.query(`SELECT status, COUNT(*)::int AS count FROM discovery_reports GROUP BY status`),
+      ]);
+
+      const formatCounts = (rows: Array<{ status?: string; listing_status?: string; count: number }>) => {
+        const result: Record<string, number> = {};
+        for (const row of rows) {
+          const key = (row.listing_status || row.status || 'unknown').toLowerCase();
+          result[key] = Number(row.count || 0);
+        }
+        return result;
+      };
+
+      res.json({
+        success: true,
+        data: {
+          listings: formatCounts(listingCounts.rows),
+          verification: formatCounts(verificationCounts.rows),
+          claims: formatCounts(claimCounts.rows),
+          reviews: formatCounts(reviewCounts.rows),
+          reports: formatCounts(reportCounts.rows),
+        },
+      });
+    } catch (err) { next(err); }
+  });
+
   router.get('/listings', ...guard, async (req, res, next) => {
     try {
       const status = String(req.query.status || 'SUBMITTED').trim().toUpperCase();
@@ -121,20 +153,27 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
   router.get('/history', ...guard, async (req, res, next) => {
     try {
       const limit = Math.min(200, Math.max(1, Number.parseInt(String(req.query.limit || '100'), 10) || 100));
+      const entityType = String(req.query.entityType || '').trim().toUpperCase();
+      const search = String(req.query.search || '').trim();
+
       const r = await db.query(
         `SELECT id,business_id,entity_type,entity_id,event_type,from_status,to_status,actor_user_id,reason,created_at
            FROM discovery_trust_events
+          WHERE ($1 = '' OR entity_type = $1)
+            AND ($2 = '' OR business_id ILIKE $3 OR actor_user_id ILIKE $3 OR reason ILIKE $3)
           ORDER BY created_at DESC
-          LIMIT $1`,
-        [limit],
+          LIMIT $4`,
+        [entityType, search, `%${search}%`, limit],
       );
       const listing = await db.query(
         `SELECT e.id,e.business_id,'BUSINESS' AS entity_type,e.id AS entity_id,'LISTING_STATUS_CHANGED' AS event_type,
                 e.from_status,e.to_status,e.actor_user_id,e.reason,e.created_at
            FROM discovery_listing_events e
+          WHERE ($1 = '' OR $1 = 'BUSINESS')
+            AND ($2 = '' OR e.business_id ILIKE $3 OR e.actor_user_id ILIKE $3 OR e.reason ILIKE $3)
           ORDER BY e.created_at DESC
-          LIMIT $1`,
-        [limit],
+          LIMIT $4`,
+        [entityType, search, `%${search}%`, limit],
       );
       const rows = [...r.rows, ...listing.rows]
         .sort((a: any,b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -143,9 +182,20 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
     } catch (err) { next(err); }
   });
 
-  router.get('/verification', ...guard, async (_req, res, next) => {
+  router.get('/verification', ...guard, async (req, res, next) => {
     try {
-      const r = await db.query(`SELECT v.*, b.name AS business_name, b.organization_id, b.verification_status FROM discovery_verification_applications v JOIN discovery_businesses b ON b.id=v.business_id WHERE v.status='PENDING' ORDER BY v.created_at ASC LIMIT 200`);
+      const status = String(req.query.status || 'PENDING').trim().toUpperCase();
+      const where = status === 'ALL' ? '' : 'WHERE v.status = $1';
+      const params = status === 'ALL' ? [] : [status];
+      const r = await db.query(
+        `SELECT v.*, b.name AS business_name, b.organization_id, b.verification_status
+           FROM discovery_verification_applications v
+           JOIN discovery_businesses b ON b.id=v.business_id
+           ${where}
+          ORDER BY v.created_at ASC
+          LIMIT 200`,
+        params,
+      );
       res.json({ success: true, data: r.rows });
     } catch (err) { next(err); }
   });
@@ -168,9 +218,20 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
     } catch (err) { next(err); }
   });
 
-  router.get('/claims', ...guard, async (_req, res, next) => {
+  router.get('/claims', ...guard, async (req, res, next) => {
     try {
-      const r = await db.query(`SELECT c.*, b.name AS business_name FROM discovery_business_claims c JOIN discovery_businesses b ON b.id=c.business_id WHERE c.status='PENDING' ORDER BY c.created_at ASC LIMIT 200`);
+      const status = String(req.query.status || 'PENDING').trim().toUpperCase();
+      const where = status === 'ALL' ? '' : 'WHERE c.status = $1';
+      const params = status === 'ALL' ? [] : [status];
+      const r = await db.query(
+        `SELECT c.*, b.name AS business_name
+           FROM discovery_business_claims c
+           JOIN discovery_businesses b ON b.id=c.business_id
+           ${where}
+          ORDER BY c.created_at ASC
+          LIMIT 200`,
+        params,
+      );
       res.json({success:true,data:r.rows});
     } catch (err) { next(err); }
   });
@@ -266,11 +327,23 @@ export function createPlatformDiscoveryModerationRouter(db: DatabaseClient): Rou
 
   router.get('/reviews', ...guard, async (req, res, next) => {
     try {
-      const status=String(req.query.status||'PENDING');
-      if(!['PENDING','PUBLISHED','REJECTED','HIDDEN'].includes(status)) return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Invalid review status.'}});
-      const r=await db.query(`SELECT r.*,b.name AS business_name,b.organization_id FROM discovery_reviews r JOIN discovery_businesses b ON b.id=r.business_id WHERE r.status=$1 ORDER BY r.created_at ASC LIMIT 200`,[status]);
+      const status = String(req.query.status || 'PENDING').trim().toUpperCase();
+      if (status !== 'ALL' && !['PENDING','PUBLISHED','REJECTED','HIDDEN'].includes(status)) {
+        return res.status(422).json({success:false,error:{code:'INVALID_STATUS',message:'Invalid review status.'}});
+      }
+      const where = status === 'ALL' ? '' : 'WHERE r.status = $1';
+      const params = status === 'ALL' ? [] : [status];
+      const r = await db.query(
+        `SELECT r.*,b.name AS business_name,b.organization_id
+           FROM discovery_reviews r
+           JOIN discovery_businesses b ON b.id=r.business_id
+           ${where}
+          ORDER BY r.created_at ASC
+          LIMIT 200`,
+        params,
+      );
       res.json({success:true,data:r.rows});
-    }catch(err){next(err);}
+    } catch (err) { next(err); }
   });
 
   router.post('/reviews/:id/decision', ...guard, async (req, res, next) => {

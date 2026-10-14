@@ -1588,11 +1588,13 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       const r=await db.query(
         `SELECT s.*, b.name AS business_name, b.slug AS business_slug, b.public_id AS business_public_id,
                 b.verification_status, b.listing_status, b.is_discoverable,
-                b.organization_id, l.city, l.district, l.region
+                b.organization_id, l.name AS location_name, l.city, l.district, l.region,
+                l.latitude, l.longitude, l.service_radius_km, l.location_quality_status
            FROM discovery_services s
            JOIN discovery_businesses b ON b.id=s.business_id
            LEFT JOIN LATERAL (
-             SELECT city,district,region FROM discovery_locations
+             SELECT name, city, district, region, latitude, longitude, service_radius_km, location_quality_status
+               FROM discovery_business_locations
               WHERE business_id=b.id AND is_active=TRUE
               ORDER BY is_primary DESC, created_at ASC LIMIT 1
            ) l ON TRUE
@@ -1604,7 +1606,14 @@ export function createDiscoveryRouter(db: DatabaseClient) {
         [req.params.id],
       );
       if(!r.rows[0]) return res.status(404).json({success:false,error:{code:'NOT_FOUND',message:'Service not found.'}});
-      res.json({success:true,data:r.rows[0]});
+      const row = r.rows[0];
+      if (row.latitude != null && row.latitude !== '' && Number.isFinite(Number(row.latitude))) {
+        row.latitude = Number(row.latitude);
+      }
+      if (row.longitude != null && row.longitude !== '' && Number.isFinite(Number(row.longitude))) {
+        row.longitude = Number(row.longitude);
+      }
+      res.json({success:true,data:row});
     } catch(err) { next(err); }
   });
 
