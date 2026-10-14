@@ -390,6 +390,10 @@ export const SubscriptionsManagementView: React.FC = () => {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+              <Shield className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+              Access profile: {currentRole}
+            </span>
             <Button
               variant="outline"
               onClick={loadData}
