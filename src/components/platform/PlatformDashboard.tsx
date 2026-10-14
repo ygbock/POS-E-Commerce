@@ -76,7 +76,7 @@ async function readApiData<T>(response: Response, fallbackMessage: string): Prom
 
 export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveTab }) => {
   const { currentRole } = useCommerce();
-  const normalizedRole = String(currentRole || '').toLowerCase().replace(/[\\s-]+/g, '_');
+  const normalizedRole = String(currentRole || '').toLowerCase().replace(/[\s-]+/g, '_');
   const accessRole = normalizedRole === 'system_owner' ? 'System Owner'
     : normalizedRole === 'platform_admin' ? 'Platform Admin'
       : normalizedRole === 'platform_support' ? 'Platform Support'
