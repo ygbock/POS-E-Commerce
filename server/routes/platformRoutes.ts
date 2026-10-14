@@ -176,6 +176,7 @@ export function createPlatformRouter(db: DatabaseClient, injectedSubscriptionSer
           adminName: req.body?.adminName,
           adminPassword: req.body?.adminPassword,
           metadata: req.body?.metadata,
+          profile: req.body?.profile,
         },
         actor,
         typeof (req.headers['x-idempotency-key'] || req.headers['idempotency-key']) === 'string'
