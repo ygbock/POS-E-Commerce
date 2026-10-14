@@ -80,11 +80,60 @@ export class SubscriptionService {
     };
   }
 
+  /**
+   * Status alone is not sufficient to grant entitlement: stale active/trialing
+   * rows must stop granting access when their authoritative billing window ends.
+   */
+  private isSubscriptionEntitled(subscription: SubscriptionSnapshot, now = Date.now()): boolean {
+    if (!['trialing', 'active'].includes(subscription.status)) return false;
+
+    const periodEnd = new Date(subscription.current_period_end).getTime();
+    if (!Number.isFinite(periodEnd) || periodEnd <= now) return false;
+
+    if (subscription.status === 'trialing' && subscription.trial_ends_at) {
+      const trialEnd = new Date(subscription.trial_ends_at).getTime();
+      if (!Number.isFinite(trialEnd) || trialEnd <= now) return false;
+    }
+
+    return true;
+  }
+
+  private assertSubscriptionEntitled(subscription: SubscriptionSnapshot): void {
+    if (!['trialing', 'active'].includes(subscription.status)) {
+      throw new SubscriptionLimitError(
+        'SUBSCRIPTION_INACTIVE',
+        `SUBSCRIPTION_INACTIVE: Subscription status is '${subscription.status}'`,
+        403
+      );
+    }
+
+    const now = Date.now();
+    const periodEnd = new Date(subscription.current_period_end).getTime();
+    if (!Number.isFinite(periodEnd) || periodEnd <= now) {
+      throw new SubscriptionLimitError(
+        'SUBSCRIPTION_PERIOD_EXPIRED',
+        'SUBSCRIPTION_PERIOD_EXPIRED: The subscription billing period has ended. Renew or restore the subscription to continue.',
+        403
+      );
+    }
+
+    if (subscription.status === 'trialing' && subscription.trial_ends_at) {
+      const trialEnd = new Date(subscription.trial_ends_at).getTime();
+      if (!Number.isFinite(trialEnd) || trialEnd <= now) {
+        throw new SubscriptionLimitError(
+          'TRIAL_EXPIRED',
+          'TRIAL_EXPIRED: The trial period has ended. Choose a paid plan or request a trial extension.',
+          403
+        );
+      }
+    }
+  }
+
   async hasFeature(organizationId: string, feature: string): Promise<boolean> {
     if (!organizationId?.trim()) return false;
     try {
       const subscription = await this.getTenantSubscription(organizationId.trim());
-      if (!subscription || !['trialing', 'active'].includes(subscription.status)) {
+      if (!subscription || !this.isSubscriptionEntitled(subscription)) {
         return false;
       }
       const normalized = normalizeFeatureName(feature);
@@ -102,9 +151,7 @@ export class SubscriptionService {
     if (!subscription) {
       throw new SubscriptionLimitError('SUBSCRIPTION_NOT_FOUND', 'SUBSCRIPTION_NOT_FOUND: Organization subscription not found', 403);
     }
-    if (!['trialing', 'active'].includes(subscription.status)) {
-      throw new SubscriptionLimitError('SUBSCRIPTION_INACTIVE', `SUBSCRIPTION_INACTIVE: Subscription status is '${subscription.status}'`, 403);
-    }
+    this.assertSubscriptionEntitled(subscription);
     const normalized = normalizeFeatureName(feature);
     const enabled = subscription.plan.features[normalized] === true || subscription.plan.features[feature] === true;
     if (!enabled) {
@@ -137,9 +184,7 @@ export class SubscriptionService {
     if (!subscription) {
       throw new SubscriptionLimitError('SUBSCRIPTION_NOT_FOUND', 'SUBSCRIPTION_NOT_FOUND: Organization subscription not found', 403);
     }
-    if (!['trialing', 'active'].includes(subscription.status)) {
-      throw new SubscriptionLimitError('SUBSCRIPTION_INACTIVE', `SUBSCRIPTION_INACTIVE: Subscription status is '${subscription.status}'`, 403);
-    }
+    this.assertSubscriptionEntitled(subscription);
     const limit = subscription.plan.limits[metric];
     if (typeof limit === 'number' && Number.isFinite(limit) && currentCount >= limit) {
       throw new SubscriptionLimitError(
@@ -157,9 +202,7 @@ export class SubscriptionService {
     if (!subscription) {
       throw new SubscriptionLimitError('SUBSCRIPTION_NOT_FOUND', 'SUBSCRIPTION_NOT_FOUND: Organization subscription not found', 403);
     }
-    if (!['trialing', 'active'].includes(subscription.status)) {
-      throw new SubscriptionLimitError('SUBSCRIPTION_INACTIVE', `SUBSCRIPTION_INACTIVE: Subscription status is '${subscription.status}'`, 403);
-    }
+    this.assertSubscriptionEntitled(subscription);
     const limit = subscription.plan.limits.users;
     if (typeof limit === 'number' && Number.isFinite(limit)) {
       const count = await this.repository.countUsers(organizationId, client);
@@ -179,9 +222,7 @@ export class SubscriptionService {
     if (!subscription) {
       throw new SubscriptionLimitError('SUBSCRIPTION_NOT_FOUND', 'SUBSCRIPTION_NOT_FOUND: Organization subscription not found', 403);
     }
-    if (!['trialing', 'active'].includes(subscription.status)) {
-      throw new SubscriptionLimitError('SUBSCRIPTION_INACTIVE', `SUBSCRIPTION_INACTIVE: Subscription status is '${subscription.status}'`, 403);
-    }
+    this.assertSubscriptionEntitled(subscription);
     const count = await this.repository.countLocations(organizationId, client);
     const limit = subscription.plan.limits.locations;
     if (typeof limit === 'number' && Number.isFinite(limit) && count >= limit) {
@@ -213,9 +254,7 @@ export class SubscriptionService {
     if (!subscription) {
       throw new SubscriptionLimitError('SUBSCRIPTION_NOT_FOUND', 'SUBSCRIPTION_NOT_FOUND: Organization subscription not found', 403);
     }
-    if (!['trialing', 'active'].includes(subscription.status)) {
-      throw new SubscriptionLimitError('SUBSCRIPTION_INACTIVE', `SUBSCRIPTION_INACTIVE: Subscription status is '${subscription.status}'`, 403);
-    }
+    this.assertSubscriptionEntitled(subscription);
     const limit = subscription.plan.limits.monthly_orders;
     if (typeof limit === 'number' && Number.isFinite(limit)) {
       const periodStart = new Date(subscription.current_period_start);
