@@ -43,4 +43,18 @@ assert.match(tenantUi, /form\.adminPassword\.length < 12/, 'Create button must e
 assert.doesNotMatch(tenantUi, /method: 'PATCH',[\s\S]{0,100}isActive/, 'Lifecycle UI must not call the forbidden PATCH isActive mutation');
 assert.doesNotMatch(tenantUi, /method: 'PATCH',[\s\S]{0,100}planTier/, 'Tenant UI must not use PATCH for billing plan changes');
 
+assert.match(tenantUi, /PROFILE_FIELDS\\.map/, 'Tenant form must expose expanded profile fields');
+assert.match(tenantUi, /profile \\}/, 'Tenant provisioning must submit profile data separately from credentials');
+assert.match(tenantUi, /openTenantDetails/, 'Tenant table must expose a working detail action');
+assert.match(tenantUi, /editTenant/, 'Tenant table must expose a working edit action');
+assert.match(tenantUi, /archiveSelectedTenant/, 'Tenant table must expose archive rather than destructive delete');
+assert.match(tenantUi, /discoveryListing/, 'Tenant details must distinguish linked Discovery listings from tenant provisioning');
+assert.match(tenantUi, /Open Trust &amp; Moderation/, 'Tenant details must link to the separate Discovery moderation workflow');
+const tenantService = fs.readFileSync(path.join(root, 'server/services/tenantProvisioningService.ts'), 'utf8');
+assert.match(tenantService, /validateTenantProfile/, 'Tenant profile fields must be validated server-side');
+assert.match(tenantService, /lifecycle_status === 'archived'[\\s\\S]{0,100}Archived tenants are read-only/, 'Archived tenant edits must be rejected server-side');
+assert.match(tenantService, /FROM discovery_businesses WHERE organization_id = \\$1/, 'Tenant detail must expose optional linked Discovery listing information');
+const tenantProfileMigration = fs.readFileSync(path.join(root, 'server/db/migrations/071_tenant_profile_details.sql'), 'utf8');
+assert.match(tenantProfileMigration, /ADD COLUMN IF NOT EXISTS profile JSONB/, 'Tenant profile data must be persisted in an organization profile field');
+
 console.log('Platform dashboard and tenant management contracts: PASS');
