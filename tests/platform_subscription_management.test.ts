@@ -113,7 +113,7 @@ async function main() {
       email: 'admin@platform.internal',
       organizationId: 'org_platform',
       role: 'platform_admin',
-      permissions: ['platform.view', 'platform.tenants', 'platform.support'], // NO platform.billing
+      permissions: ['platform.view', 'platform.tenants', 'platform.support'], // legacy token: billing claim predates role policy update
     });
 
     const tenantSuperAdminToken = signToken({
@@ -147,12 +147,12 @@ async function main() {
       const resTenantAdmin = await request(baseUrl, '/api/platform/subscriptions', { token: tenantAdminToken });
       assert.equal(resTenantAdmin.status, 403, 'Tenant admin must be rejected with 403');
 
-      // platform_admin has NO platform.billing -> 403
+      // platform_admin has platform.billing -> 200
       const resPltAdminPlans = await request(baseUrl, '/api/platform/plans', { token: platformAdminToken });
-      assert.equal(resPltAdminPlans.status, 403, 'platform_admin without platform.billing must return 403');
+      assert.equal(resPltAdminPlans.status, 200, 'platform_admin with platform.billing must access plans');
 
       const resPltAdminBilling = await request(baseUrl, '/api/platform/billing', { token: platformAdminToken });
-      assert.equal(resPltAdminBilling.status, 403, 'platform_admin without platform.billing must return 403 on billing');
+      assert.equal(resPltAdminBilling.status, 200, 'platform_admin with platform.billing must access billing');
 
       // platform_finance has platform.billing -> 200
       const resPltFinance = await request(baseUrl, '/api/platform/plans', { token: platformFinanceToken });

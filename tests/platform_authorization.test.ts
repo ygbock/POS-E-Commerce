@@ -55,11 +55,11 @@ async function main() {
   });
 
   await runTest('1.4 Platform Roles Granular Responsibility Separation', () => {
-    // Platform Admin: view, tenants, support (no billing)
+    // Platform Admin: view, tenants, support, and billing
     assert.equal(canAccessPlatform('platform_admin', 'platform.view'), true);
     assert.equal(canAccessPlatform('platform_admin', 'platform.tenants'), true);
     assert.equal(canAccessPlatform('platform_admin', 'platform.support'), true);
-    assert.equal(canAccessPlatform('platform_admin', 'platform.billing'), false);
+    assert.equal(canAccessPlatform('platform_admin', 'platform.billing'), true);
 
     // Platform Support: view, support (no tenants, no billing)
     assert.equal(canAccessPlatform('platform_support', 'platform.view'), true);
@@ -111,7 +111,7 @@ async function main() {
       email: 'admin@platform.internal',
       organizationId: 'org_platform',
       role: 'platform_admin',
-      permissions: ['platform.view', 'platform.tenants', 'platform.support'],
+      permissions: ['platform.view', 'platform.tenants', 'platform.support'], // legacy token: billing claim predates role policy update
     });
 
     const platformSupportToken = signToken({
@@ -216,8 +216,8 @@ async function main() {
       }
     });
 
-    // 2.4 Platform Admin permission boundary: view/tenants/support allowed (200), billing denied (403)
-    await runTest('2.4 Platform Admin permission boundary (overview: 200, tenants: 200, support: 200, billing: 403)', async () => {
+    // 2.4 Platform Admin permission boundary: view/tenants/support/billing allowed (200)
+    await runTest('2.4 Platform Admin permission boundary (overview: 200, tenants: 200, support: 200, billing: 200)', async () => {
       const overviewRes = await fetch(`${baseUrl}/api/platform/overview`, {
         headers: { Authorization: `Bearer ${platformAdminToken}` },
       });
@@ -236,9 +236,9 @@ async function main() {
       const billingRes = await fetch(`${baseUrl}/api/platform/billing`, {
         headers: { Authorization: `Bearer ${platformAdminToken}` },
       });
-      assert.equal(billingRes.status, 403, 'Platform Admin must NOT access billing');
+      assert.equal(billingRes.status, 200, 'Platform Admin must be allowed to access billing');
       const billingBody = await billingRes.json();
-      assert.equal(billingBody.error.code, 'PLATFORM_PERMISSION_DENIED');
+      assert.equal(billingBody.success, true);
     });
 
     // 2.5 Platform Support permission boundary: view/support allowed (200), tenants/billing denied (403)

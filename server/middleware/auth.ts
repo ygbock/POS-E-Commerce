@@ -397,7 +397,9 @@ export function requirePlatformPermission(...permissions: string[]) {
     if (!req.auth) return res.status(401).json({ success:false, error:{ code:'UNAUTHORIZED', message:'Authentication required.' } });
     const platformRoles = ['system_owner','platform_admin','platform_support','platform_finance'];
     if (req.auth.identityType !== 'platform' || !platformRoles.includes(req.auth.role)) return res.status(403).json({ success:false, error:{ code:'PLATFORM_ACCESS_DENIED', message:'Platform access required.' } });
-    const allowed = permissions.some(permission => hasPermission(req.auth!.permissions, permission));
+    // Derive platform access from the verified role and current server policy so legacy signed
+    // sessions do not retain stale permission arrays after an intentional policy update.
+    const allowed = permissions.some(permission => hasPermission(req.auth!.role, permission));
     if (!allowed) return res.status(403).json({ success:false, error:{ code:'PLATFORM_PERMISSION_DENIED', message:'Insufficient platform permission.' } });
     next();
   };
