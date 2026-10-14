@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CreditCard,
   DollarSign,
@@ -19,6 +19,15 @@ import {
   Edit,
   Shield,
   Search,
+  Filter,
+  X,
+  ChevronRight,
+  Sparkles,
+  RotateCcw,
+  Calendar,
+  Check,
+  AlertCircle,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
@@ -122,7 +131,7 @@ export const SubscriptionsManagementView: React.FC = () => {
     setError(null);
     try {
       await subscriptionApi.changePlan(selectedSub.organization_id, targetPlanCode, changePlanReason);
-      setActionSuccess(`Plan changed successfully to ${targetPlanCode.toUpperCase()}`);
+      setActionSuccess(`Plan successfully transitioned to ${targetPlanCode.toUpperCase()}`);
       setChangePlanModalOpen(false);
       await loadData();
     } catch (err: any) {
@@ -170,16 +179,20 @@ export const SubscriptionsManagementView: React.FC = () => {
     try {
       if (lifecycleAction === 'suspend') {
         await subscriptionApi.suspendSubscription(selectedSub.organization_id, lifecycleReason);
-        setActionSuccess('Subscription suspended.');
+        setActionSuccess(`Subscription for ${selectedSub.organization_name || selectedSub.organization_id} suspended.`);
       } else if (lifecycleAction === 'reactivate') {
         await subscriptionApi.reactivateSubscription(selectedSub.organization_id, lifecycleReason);
-        setActionSuccess('Subscription reactivated.');
+        setActionSuccess(`Subscription for ${selectedSub.organization_name || selectedSub.organization_id} reactivated.`);
       } else if (lifecycleAction === 'cancel') {
         await subscriptionApi.cancelSubscription(selectedSub.organization_id, cancelImmediate, lifecycleReason);
-        setActionSuccess(cancelImmediate ? 'Subscription cancelled immediately.' : 'Subscription scheduled for period-end cancellation.');
+        setActionSuccess(
+          cancelImmediate
+            ? 'Subscription cancelled immediately.'
+            : 'Subscription scheduled for cancellation at current period end.'
+        );
       } else if (lifecycleAction === 'restore') {
         await subscriptionApi.restoreSubscription(selectedSub.organization_id, lifecycleReason);
-        setActionSuccess('Subscription restored to active.');
+        setActionSuccess('Subscription restored to active status.');
       }
       setLifecycleModalOpen(false);
       await loadData();
@@ -252,8 +265,8 @@ export const SubscriptionsManagementView: React.FC = () => {
   const getStatusBadge = (sub: TenantSubscription) => {
     if (sub.cancel_at_period_end) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-          Cancelling Period-End
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60">
+          <Clock className="w-3 h-3" /> Cancelling Period-End
         </span>
       );
     }
@@ -265,412 +278,760 @@ export const SubscriptionsManagementView: React.FC = () => {
       case 'paused':
         return <Badge variant="neutral">Paused</Badge>;
       case 'cancelled':
-        return <Badge variant="error">Cancelled</Badge>;
+        return <Badge variant="danger">Cancelled</Badge>;
       case 'expired':
-        return <Badge variant="error">Expired</Badge>;
+        return <Badge variant="danger">Expired</Badge>;
       default:
         return <Badge variant="neutral">{sub.status}</Badge>;
     }
   };
 
-  const getPlanBadge = (code: string) => {
+  const getPlanBadge = (code?: string) => {
     switch (code) {
       case 'enterprise':
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">Enterprise</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60">
+            Enterprise
+          </span>
+        );
       case 'professional':
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">Professional</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/60">
+            Professional
+          </span>
+        );
       default:
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Starter</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+            Starter
+          </span>
+        );
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <CreditCard className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
-            SaaS Subscription & Billing Management
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Super Admin control plane for SaaS tenant subscriptions, quotas, and canonical plan tiers.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="secondary"
-            onClick={loadData}
-            disabled={isLoading}
-            className="flex items-center gap-1.5"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
+  const renderQuotaBar = (current: number, max: number | null | undefined, label: string) => {
+    const isUnlimited = max == null;
+    const ratio = isUnlimited ? 0 : Math.min(100, Math.round((current / max) * 100));
+    const isOver = !isUnlimited && current >= max;
+    const isWarning = !isUnlimited && current / max >= 0.8 && !isOver;
 
-      {/* Notifications */}
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
-            <p className="text-sm font-medium text-red-800 dark:text-red-300">{error}</p>
+    const barColor = isOver
+      ? 'bg-rose-500'
+      : isWarning
+      ? 'bg-amber-500'
+      : 'bg-indigo-600 dark:bg-indigo-400';
+
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-slate-500 dark:text-slate-400">{label}</span>
+          <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
+            {current} / {isUnlimited ? '∞' : max}
+          </span>
+        </div>
+        {!isUnlimited && (
+          <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${barColor} rounded-full transition-all duration-300`}
+              style={{ width: `${Math.min(100, ratio)}%` }}
+            />
           </div>
-          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 text-sm font-semibold">
-            Dismiss
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6" aria-labelledby="saas-subscription-billing-title">
+      {/* Top Banner / Header */}
+      <header className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-white via-slate-50 to-indigo-50/20 p-6 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/20 sm:p-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-0.5 text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                <CreditCard className="w-3.5 h-3.5" />
+                Financial Command Center
+              </span>
+              <span className="text-xs font-semibold text-slate-400">
+                Authoritative Multi-Tenant Billing
+              </span>
+            </div>
+            <h1
+              id="saas-subscription-billing-title"
+              className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl"
+            >
+              SaaS Subscription & Billing Management
+            </h1>
+            <p className="mt-1.5 max-w-3xl text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              Super Admin control plane for SaaS tenant subscriptions, quotas, and canonical plan tiers.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={loadData}
+              disabled={isLoading}
+              isLoading={isLoading}
+              leftIcon={<RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />}
+              className="rounded-2xl"
+            >
+              Refresh Data
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* Notifications / Alerts */}
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-rose-900 dark:text-rose-200">Subscription Management Error</p>
+              <p className="text-xs text-rose-800 dark:text-rose-300 mt-0.5">{error}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-rose-600 hover:text-rose-800 dark:hover:text-rose-200 p-1 rounded-lg"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {actionSuccess && (
-        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 flex items-start justify-between">
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900"
+        >
           <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-            <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">{actionSuccess}</p>
+            <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">{actionSuccess}</p>
           </div>
-          <button onClick={() => setActionSuccess(null)} className="text-emerald-600 hover:text-emerald-800 text-sm font-semibold">
-            Dismiss
+          <button
+            type="button"
+            onClick={() => setActionSuccess(null)}
+            className="text-emerald-600 hover:text-emerald-800 dark:hover:text-emerald-200 p-1 rounded-lg"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* KPI Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+      {/* Authoritative Financial KPI Cards (Fully Responsive Grid) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {/* MRR Card */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">Authoritative MRR</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Authoritative MRR
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+          <div className="mt-3">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               {overview ? `${overview.currency} ${overview.mrr.toLocaleString()}` : '—'}
-            </span>
-            <span className="text-xs text-emerald-600 font-semibold flex items-center">
-              <TrendingUp className="w-3 h-3 mr-0.5" /> normalized
-            </span>
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>In-transaction normalized</span>
+            </div>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Paid active subscriptions only</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 border-t border-slate-100 dark:border-slate-800/80 pt-2">
+            Paid active subscriptions only
+          </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+        {/* Active Subscribers */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">Active Subscribers</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Active Subscribers
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
               <Shield className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
               {overview ? overview.activeCount : '—'}
-            </span>
+            </div>
+            <div className="mt-1 text-[11px] font-bold text-blue-600 dark:text-blue-400">
+              Good standing tenants
+            </div>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Tenants in good standing</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 border-t border-slate-100 dark:border-slate-800/80 pt-2">
+            Unrestricted business plane
+          </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+        {/* Trialing Accounts */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">Trialing Accounts</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Trialing Accounts
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
               <Clock className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
               {overview ? overview.trialingCount : '—'}
-            </span>
+            </div>
+            <div className="mt-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
+              Evaluation window open
+            </div>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Active evaluation window</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 border-t border-slate-100 dark:border-slate-800/80 pt-2">
+            Automatic period-end billing
+          </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+        {/* Suspended (Paused) */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">Suspended (Paused)</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Suspended (Paused)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center">
               <Ban className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
               {overview ? overview.pausedCount : '—'}
-            </span>
+            </div>
+            <div className="mt-1 text-[11px] font-bold text-slate-500">
+              Access temporarily on hold
+            </div>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Administrative review</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 border-t border-slate-100 dark:border-slate-800/80 pt-2">
+            Reactivation requires review
+          </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+        {/* Cancelled / Expired */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col justify-between sm:col-span-2 md:col-span-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">Cancelled / Expired</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Cancelled / Expired
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
               {overview ? overview.cancelledCount : '—'}
-            </span>
+            </div>
+            <div className="mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+              Historical churned records
+            </div>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Historical churned records</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 border-t border-slate-100 dark:border-slate-800/80 pt-2">
+            Retained for audit fidelity
+          </p>
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex items-center gap-4 border-b border-slate-200 dark:border-slate-800">
+      {/* Navigation Tabs (Tactile Segmented Bar) */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 w-full sm:w-fit">
         <button
+          type="button"
           onClick={() => setActiveSubTab('subscriptions')}
-          className={`pb-3 text-sm font-semibold transition-colors relative ${
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
             activeSubTab === 'subscriptions'
-              ? 'text-indigo-600 dark:text-indigo-400'
-              : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+              ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          Tenant Subscriptions ({subscriptions.length})
-          {activeSubTab === 'subscriptions' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400" />
-          )}
+          <CreditCard className="w-3.5 h-3.5" />
+          <span>Tenant Subscriptions</span>
+          <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-bold">
+            {subscriptions.length}
+          </span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('plans')}
-          className={`pb-3 text-sm font-semibold transition-colors relative ${
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
             activeSubTab === 'plans'
-              ? 'text-indigo-600 dark:text-indigo-400'
-              : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+              ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          Plan Tiers & Quotas ({plans.length})
-          {activeSubTab === 'plans' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400" />
-          )}
+          <Layers className="w-3.5 h-3.5" />
+          <span>Plan Tiers & Canonical Quotas</span>
+          <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-bold">
+            {plans.length}
+          </span>
         </button>
       </div>
 
       {/* TAB 1: TENANT SUBSCRIPTIONS */}
       {activeSubTab === 'subscriptions' && (
         <div className="space-y-4">
-          {/* Filters Bar */}
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="flex flex-1 items-center gap-3 w-full">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          {/* Responsive Filter Bar */}
+          <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-3">
+            <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+              {/* Search Bar */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search tenant name or code..."
+                  placeholder="Search tenant name, slug, or organization code..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full pl-9 pr-9 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              <div className="w-40">
-                <Select
-                  value={statusFilter}
-                  onChange={(val) => setStatusFilter(val)}
-                  options={[
-                    { value: 'all', label: 'All Statuses' },
-                    { value: 'active', label: 'Active' },
-                    { value: 'trialing', label: 'Trialing' },
-                    { value: 'paused', label: 'Paused' },
-                    { value: 'cancelled', label: 'Cancelled' },
-                  ]}
-                />
-              </div>
+              {/* Status & Plan Selectors */}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                <div className="w-full sm:w-44">
+                  <Select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    options={[
+                      { value: 'all', label: 'All Statuses' },
+                      { value: 'active', label: 'Active' },
+                      { value: 'trialing', label: 'Trialing' },
+                      { value: 'paused', label: 'Paused' },
+                      { value: 'cancelled', label: 'Cancelled' },
+                    ]}
+                  />
+                </div>
 
-              <div className="w-40">
-                <Select
-                  value={planFilter}
-                  onChange={(val) => setPlanFilter(val)}
-                  options={[
-                    { value: 'all', label: 'All Plans' },
-                    { value: 'starter', label: 'Starter' },
-                    { value: 'professional', label: 'Professional' },
-                    { value: 'enterprise', label: 'Enterprise' },
-                  ]}
-                />
+                <div className="w-full sm:w-44">
+                  <Select
+                    value={planFilter}
+                    onChange={(e) => setPlanFilter(e.target.value)}
+                    options={[
+                      { value: 'all', label: 'All Plans' },
+                      { value: 'starter', label: 'Starter Tier' },
+                      { value: 'professional', label: 'Professional Tier' },
+                      { value: 'enterprise', label: 'Enterprise Tier' },
+                    ]}
+                  />
+                </div>
+
+                {(statusFilter !== 'all' || planFilter !== 'all' || searchQuery) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setStatusFilter('all');
+                      setPlanFilter('all');
+                      setSearchQuery('');
+                    }}
+                    title="Reset all filters"
+                    className="shrink-0"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                    Reset
+                  </Button>
+                )}
               </div>
+            </div>
+
+            {/* Quick Filter Chips for One-Touch Navigation */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-bold text-slate-400 mr-1">Quick Filter:</span>
+              {[
+                { label: 'All Subscriptions', status: 'all', plan: 'all' },
+                { label: 'Active Paid', status: 'active', plan: 'all' },
+                { label: 'In Evaluation (Trial)', status: 'trialing', plan: 'all' },
+                { label: 'Suspended (Paused)', status: 'paused', plan: 'all' },
+                { label: 'Enterprise Tier', status: 'all', plan: 'enterprise' },
+              ].map((pill) => {
+                const isActive = statusFilter === pill.status && planFilter === pill.plan;
+                return (
+                  <button
+                    key={pill.label}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(pill.status);
+                      setPlanFilter(pill.plan);
+                    }}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Subscriptions Table */}
-          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+          {/* Subscriptions Content Area */}
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-sm">
             {isLoading ? (
-              <div className="p-12 flex flex-col items-center justify-center">
+              <div className="p-16 flex flex-col items-center justify-center">
                 <Spinner size="lg" />
-                <p className="mt-3 text-sm text-slate-500">Loading tenant subscriptions...</p>
+                <p className="mt-3 text-xs font-semibold text-slate-500">Loading authoritative subscriptions...</p>
               </div>
             ) : subscriptions.length === 0 ? (
-              <div className="p-12 text-center">
-                <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center mb-3">
+              <div className="p-16 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center mb-3">
                   <CreditCard className="w-6 h-6" />
                 </div>
-                <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">No subscriptions found</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Try adjusting your filters or search terms.</p>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">No subscriptions matched</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+                  Try clearing your search query or selecting a different status filter from the controls above.
+                </p>
+                <div className="mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setStatusFilter('all');
+                      setPlanFilter('all');
+                      setSearchQuery('');
+                    }}
+                  >
+                    Clear Filter Criteria
+                  </Button>
+                </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      <th className="px-6 py-3.5">Tenant</th>
-                      <th className="px-6 py-3.5">Plan Tier</th>
-                      <th className="px-6 py-3.5">Status</th>
-                      <th className="px-6 py-3.5">Billing Period</th>
-                      <th className="px-6 py-3.5">Quotas & Usage</th>
-                      <th className="px-6 py-3.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {subscriptions.map((sub) => {
-                      const limits = sub.plan?.limits || {};
-                      const usage = sub.usage || { users: 0, locations: 0, products: 0, monthly_orders: 0 };
-                      return (
-                        <tr key={sub.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="font-semibold text-slate-900 dark:text-white">
-                              {sub.organization_name || sub.organization_id}
-                            </div>
-                            <div className="text-xs text-slate-400 font-mono mt-0.5">
-                              {sub.organization_code || sub.organization_id}
-                            </div>
-                          </td>
+              <>
+                {/* 1. DESKTOP TABLE VIEW (hidden on mobile, shown on md and above) */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                        <th className="px-6 py-4">Tenant Organization</th>
+                        <th className="px-6 py-4">Plan & Billing</th>
+                        <th className="px-6 py-4">Subscription Status</th>
+                        <th className="px-6 py-4">Billing Period</th>
+                        <th className="px-6 py-4">Quotas & Utilization</th>
+                        <th className="px-6 py-4 text-right">Administrative Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                      {subscriptions.map((sub) => {
+                        const limits = sub.plan?.limits || {};
+                        const usage = sub.usage || { users: 0, locations: 0, products: 0, monthly_orders: 0 };
+                        return (
+                          <tr
+                            key={sub.id}
+                            className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                          >
+                            {/* Tenant Organization */}
+                            <td className="px-6 py-4 align-top">
+                              <div className="font-bold text-slate-900 dark:text-white">
+                                {sub.organization_name || sub.organization_id}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-400 font-mono">
+                                <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">
+                                  {sub.organization_code || 'ORG'}
+                                </span>
+                                <span>{sub.organization_id}</span>
+                              </div>
+                            </td>
 
-                          <td className="px-6 py-4">
-                            {getPlanBadge(sub.plan?.code)}
-                            <div className="text-xs text-slate-400 mt-1">
+                            {/* Plan & Pricing */}
+                            <td className="px-6 py-4 align-top">
+                              <div>{getPlanBadge(sub.plan?.code)}</div>
+                              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1.5">
+                                {sub.plan?.currency} {sub.plan?.amount}
+                                <span className="text-[11px] font-normal text-slate-400 ml-1">
+                                  / {sub.plan?.billing_interval}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Status */}
+                            <td className="px-6 py-4 align-top">
+                              <div>{getStatusBadge(sub)}</div>
+                              {sub.trial_ends_at && sub.status === 'trialing' && (
+                                <div className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Ends: {new Date(sub.trial_ends_at).toLocaleDateString()}</span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Period */}
+                            <td className="px-6 py-4 align-top text-xs text-slate-600 dark:text-slate-400">
+                              <div className="space-y-0.5">
+                                <div>
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">Start:</span>
+                                  {new Date(sub.current_period_start).toLocaleDateString()}
+                                </div>
+                                <div>
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">Next:</span>
+                                  {new Date(sub.current_period_end).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Quota meters */}
+                            <td className="px-6 py-4 align-top min-w-[200px]">
+                              <div className="space-y-2">
+                                {renderQuotaBar(usage.users, limits.users, 'Users')}
+                                {renderQuotaBar(usage.locations, limits.locations, 'Locations')}
+                                {renderQuotaBar(usage.products, limits.products, 'Products')}
+                                {renderQuotaBar(usage.monthly_orders, limits.monthly_orders, 'Monthly Orders')}
+                              </div>
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-6 py-4 align-top text-right">
+                              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => handleOpenChangePlan(sub)}
+                                  title="Change Plan Tier"
+                                  className="h-8 text-xs font-bold"
+                                >
+                                  <ArrowUpRight className="w-3.5 h-3.5 mr-1" />
+                                  Plan
+                                </Button>
+
+                                {['trialing', 'active'].includes(sub.status) && (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => handleOpenExtendTrial(sub)}
+                                    title="Extend Trial Evaluation"
+                                    className="h-8 text-xs font-bold"
+                                  >
+                                    <Clock className="w-3.5 h-3.5 mr-1" />
+                                    Trial
+                                  </Button>
+                                )}
+
+                                {['trialing', 'active'].includes(sub.status) && (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => handleOpenLifecycle(sub, 'suspend')}
+                                    title="Suspend Subscription"
+                                    className="h-8 text-xs font-bold"
+                                  >
+                                    <Ban className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                                    Suspend
+                                  </Button>
+                                )}
+
+                                {sub.status === 'paused' && (
+                                  <Button
+                                    size="sm"
+                                    variant="primary"
+                                    onClick={() => handleOpenLifecycle(sub, 'reactivate')}
+                                    title="Reactivate Subscription"
+                                    className="h-8 text-xs font-bold"
+                                  >
+                                    <Play className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+                                    Reactivate
+                                  </Button>
+                                )}
+
+                                {['active', 'trialing', 'paused'].includes(sub.status) && !sub.cancel_at_period_end && (
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    onClick={() => handleOpenLifecycle(sub, 'cancel')}
+                                    title="Cancel Subscription"
+                                    className="h-8 text-xs font-bold"
+                                  >
+                                    Cancel
+                                  </Button>
+                                )}
+
+                                {['cancelled', 'expired'].includes(sub.status) && (
+                                  <Button
+                                    size="sm"
+                                    variant="primary"
+                                    onClick={() => handleOpenLifecycle(sub, 'restore')}
+                                    title="Restore Subscription"
+                                    className="h-8 text-xs font-bold"
+                                  >
+                                    Restore
+                                  </Button>
+                                )}
+
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleOpenHistory(sub)}
+                                  title="View Audit History"
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <History className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 2. MOBILE CARD VIEW (shown on mobile, hidden on md and above) */}
+                <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                  {subscriptions.map((sub) => {
+                    const limits = sub.plan?.limits || {};
+                    const usage = sub.usage || { users: 0, locations: 0, products: 0, monthly_orders: 0 };
+                    return (
+                      <div key={sub.id} className="p-5 space-y-4">
+                        {/* Header Row */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                              {sub.organization_name || sub.organization_id}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-1 text-xs text-slate-400 font-mono">
+                              <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                {sub.organization_code || 'ORG'}
+                              </span>
+                              <span>{sub.organization_id}</span>
+                            </div>
+                          </div>
+                          <div className="shrink-0">{getStatusBadge(sub)}</div>
+                        </div>
+
+                        {/* Plan & Pricing Strip */}
+                        <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800">
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Plan</div>
+                            <div className="mt-0.5">{getPlanBadge(sub.plan?.code)}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rate</div>
+                            <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">
                               {sub.plan?.currency} {sub.plan?.amount} / {sub.plan?.billing_interval}
                             </div>
-                          </td>
+                          </div>
+                        </div>
 
-                          <td className="px-6 py-4">
-                            {getStatusBadge(sub)}
-                            {sub.trial_ends_at && sub.status === 'trialing' && (
-                              <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                Ends: {new Date(sub.trial_ends_at).toLocaleDateString()}
-                              </div>
-                            )}
-                          </td>
+                        {/* Billing Period Dates */}
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-400">
+                          <div className="rounded-xl border border-slate-100 dark:border-slate-800 p-2.5">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Period Start</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              {new Date(sub.current_period_start).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="rounded-xl border border-slate-100 dark:border-slate-800 p-2.5">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Renewal / Next</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              {new Date(sub.current_period_end).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
 
-                          <td className="px-6 py-4 text-xs text-slate-600 dark:text-slate-400">
-                            <div>Start: {new Date(sub.current_period_start).toLocaleDateString()}</div>
-                            <div>End: {new Date(sub.current_period_end).toLocaleDateString()}</div>
-                          </td>
+                        {/* Quotas & Usage Meters in a 2x2 grid */}
+                        <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-3.5 space-y-2.5">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            Quota & Resource Utilization
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {renderQuotaBar(usage.users, limits.users, 'Users')}
+                            {renderQuotaBar(usage.locations, limits.locations, 'Locations')}
+                            {renderQuotaBar(usage.products, limits.products, 'Products')}
+                            {renderQuotaBar(usage.monthly_orders, limits.monthly_orders, 'Monthly Orders')}
+                          </div>
+                        </div>
 
-                          <td className="px-6 py-4">
-                            <div className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
-                              <div className="flex items-center gap-1.5">
-                                <Users className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Users: <strong>{usage.users}</strong> / {limits.users ?? '∞'}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Locs: <strong>{usage.locations}</strong> / {limits.locations ?? '∞'}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Package className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Prods: <strong>{usage.products}</strong> / {limits.products ?? '∞'}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <ShoppingBag className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Orders/Mo: <strong>{usage.monthly_orders}</strong> / {limits.monthly_orders ?? '∞'}</span>
-                              </div>
-                            </div>
-                          </td>
+                        {/* Mobile Actions Grid */}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleOpenChangePlan(sub)}
+                            className="flex-1 text-xs font-bold"
+                          >
+                            <ArrowUpRight className="w-3.5 h-3.5 mr-1" />
+                            Plan
+                          </Button>
 
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {/* Change Plan Button */}
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => handleOpenChangePlan(sub)}
-                                title="Change Plan"
-                              >
-                                <ArrowUpRight className="w-3.5 h-3.5 mr-1" />
-                                Plan
-                              </Button>
+                          {['trialing', 'active'].includes(sub.status) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleOpenExtendTrial(sub)}
+                              className="flex-1 text-xs font-bold"
+                            >
+                              <Clock className="w-3.5 h-3.5 mr-1" />
+                              Extend
+                            </Button>
+                          )}
 
-                              {/* Extend Trial (if active/trialing) */}
-                              {['trialing', 'active'].includes(sub.status) && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => handleOpenExtendTrial(sub)}
-                                  title="Extend Trial"
-                                >
-                                  <Clock className="w-3.5 h-3.5 mr-1" />
-                                  Trial
-                                </Button>
-                              )}
+                          {['trialing', 'active'].includes(sub.status) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleOpenLifecycle(sub, 'suspend')}
+                              className="flex-1 text-xs font-bold"
+                            >
+                              <Ban className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                              Suspend
+                            </Button>
+                          )}
 
-                              {/* Suspend (if active/trialing) */}
-                              {['trialing', 'active'].includes(sub.status) && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => handleOpenLifecycle(sub, 'suspend')}
-                                  title="Suspend Subscription"
-                                >
-                                  <Ban className="w-3.5 h-3.5 mr-1 text-amber-500" />
-                                  Suspend
-                                </Button>
-                              )}
+                          {sub.status === 'paused' && (
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={() => handleOpenLifecycle(sub, 'reactivate')}
+                              className="flex-1 text-xs font-bold"
+                            >
+                              <Play className="w-3.5 h-3.5 mr-1" />
+                              Reactivate
+                            </Button>
+                          )}
 
-                              {/* Reactivate (if paused) */}
-                              {sub.status === 'paused' && (
-                                <Button
-                                  size="sm"
-                                  variant="primary"
-                                  onClick={() => handleOpenLifecycle(sub, 'reactivate')}
-                                  title="Reactivate Subscription"
-                                >
-                                  <Play className="w-3.5 h-3.5 mr-1 text-emerald-500" />
-                                  Reactivate
-                                </Button>
-                              )}
+                          {['active', 'trialing', 'paused'].includes(sub.status) && !sub.cancel_at_period_end && (
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => handleOpenLifecycle(sub, 'cancel')}
+                              className="flex-1 text-xs font-bold"
+                            >
+                              Cancel
+                            </Button>
+                          )}
 
-                              {/* Cancel (if active/trialing/paused) */}
-                              {['active', 'trialing', 'paused'].includes(sub.status) && !sub.cancel_at_period_end && (
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  onClick={() => handleOpenLifecycle(sub, 'cancel')}
-                                  title="Cancel Subscription"
-                                >
-                                  Cancel
-                                </Button>
-                              )}
-
-                              {/* Restore (if cancelled/expired) */}
-                              {['cancelled', 'expired'].includes(sub.status) && (
-                                <Button
-                                  size="sm"
-                                  variant="primary"
-                                  onClick={() => handleOpenLifecycle(sub, 'restore')}
-                                  title="Restore Subscription"
-                                >
-                                  Restore
-                                </Button>
-                              )}
-
-                              {/* Audit History */}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleOpenHistory(sub)}
-                                title="View Audit History"
-                              >
-                                <History className="w-4 h-4 text-slate-400" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenHistory(sub)}
+                            className="text-xs font-bold"
+                          >
+                            <History className="w-3.5 h-3.5 mr-1" />
+                            History
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -678,101 +1039,144 @@ export const SubscriptionsManagementView: React.FC = () => {
 
       {/* TAB 2: PLANS & LIMITS */}
       {activeSubTab === 'plans' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.map((plan) => {
-            const isEnterprise = plan.code === 'enterprise';
-            const isPro = plan.code === 'professional';
-            return (
-              <div
-                key={plan.id}
-                className={`p-6 rounded-2xl bg-white dark:bg-slate-900 border shadow-sm flex flex-col justify-between ${
-                  isEnterprise
-                    ? 'border-purple-300 dark:border-purple-800 ring-2 ring-purple-500/20'
-                    : isPro
-                    ? 'border-blue-300 dark:border-blue-800 ring-2 ring-blue-500/20'
-                    : 'border-slate-200 dark:border-slate-800'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      {plan.code}
-                    </span>
-                    <Badge variant={plan.is_active ? 'success' : 'neutral'}>
-                      {plan.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
+        <div className="space-y-4">
+          <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                Canonical SaaS Plan Specifications
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Plans define authoritative limits and capability gates enforced across the POS, inventory, and storefront.
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1 rounded-full border border-indigo-200 dark:border-indigo-800">
+              {plans.length} Canonical Tiers Defined
+            </span>
+          </div>
 
-                  <h3 className="text-xl font-black text-slate-900 dark:text-white mt-2">
-                    {plan.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 min-h-[32px]">
-                    {plan.description || 'Standard plan tier specification.'}
-                  </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {plans.map((plan) => {
+              const isEnterprise = plan.code === 'enterprise';
+              const isPro = plan.code === 'professional';
 
-                  <div className="mt-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-3xl font-black text-slate-900 dark:text-white">
-                      {plan.currency} {plan.amount}
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium ml-1">/ {plan.billing_interval}</span>
-                  </div>
+              return (
+                <div
+                  key={plan.id}
+                  className={`p-6 rounded-3xl bg-white dark:bg-slate-900 border shadow-sm flex flex-col justify-between transition-all duration-200 ${
+                    isEnterprise
+                      ? 'border-purple-300 dark:border-purple-800/80 ring-2 ring-purple-500/15'
+                      : isPro
+                      ? 'border-sky-300 dark:border-sky-800/80 ring-2 ring-sky-500/15'
+                      : 'border-slate-200/90 dark:border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Tier: {plan.code}
+                      </span>
+                      <Badge variant={plan.is_active ? 'success' : 'neutral'}>
+                        {plan.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
 
-                  {/* Quotas */}
-                  <div className="mt-4 space-y-2">
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plan Quotas</span>
-                    <div className="space-y-1 text-sm text-slate-700 dark:text-slate-300">
-                      <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5"><Users className="w-4 h-4 text-slate-400" /> Max Users</span>
-                        <strong>{plan.limits.users ?? 'Unlimited'}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-slate-400" /> Max Locations</span>
-                        <strong>{plan.limits.locations ?? 'Unlimited'}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5"><Package className="w-4 h-4 text-slate-400" /> Max Products</span>
-                        <strong>{plan.limits.products ?? 'Unlimited'}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5"><ShoppingBag className="w-4 h-4 text-slate-400" /> Monthly Orders</span>
-                        <strong>{plan.limits.monthly_orders ?? 'Unlimited'}</strong>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
+                      {plan.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 min-h-[32px] leading-relaxed">
+                      {plan.description || 'Standard plan tier specification for retail organizations.'}
+                    </p>
+
+                    <div className="mt-5 pb-5 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+                          {plan.currency} {plan.amount}
+                        </span>
+                        <span className="text-xs text-slate-400 font-bold ml-1">
+                          / {plan.billing_interval}
+                        </span>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Feature Gates */}
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Gated Features</span>
-                    <div className="space-y-1.5 text-xs">
-                      {Object.entries(plan.features || {}).map(([featureKey, enabled]) => (
-                        <div key={featureKey} className="flex items-center justify-between">
-                          <span className="text-slate-600 dark:text-slate-400 capitalize">{featureKey.replace(/_/g, ' ')}</span>
-                          {enabled ? (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                              <CheckCircle className="w-3.5 h-3.5" /> Enabled
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-normal">Disabled</span>
-                          )}
+                    {/* Quotas */}
+                    <div className="mt-5 space-y-3">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                        Included Resource Quotas
+                      </span>
+                      <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                        <div className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-850">
+                          <span className="flex items-center gap-1.5 text-slate-500">
+                            <Users className="w-3.5 h-3.5 text-slate-400" /> Max Users
+                          </span>
+                          <strong className="font-bold text-slate-900 dark:text-white">
+                            {plan.limits.users ?? 'Unlimited'}
+                          </strong>
                         </div>
-                      ))}
+                        <div className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-850">
+                          <span className="flex items-center gap-1.5 text-slate-500">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" /> Max Locations
+                          </span>
+                          <strong className="font-bold text-slate-900 dark:text-white">
+                            {plan.limits.locations ?? 'Unlimited'}
+                          </strong>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-850">
+                          <span className="flex items-center gap-1.5 text-slate-500">
+                            <Package className="w-3.5 h-3.5 text-slate-400" /> Max Products
+                          </span>
+                          <strong className="font-bold text-slate-900 dark:text-white">
+                            {plan.limits.products ?? 'Unlimited'}
+                          </strong>
+                        </div>
+                        <div className="flex items-center justify-between py-1">
+                          <span className="flex items-center gap-1.5 text-slate-500">
+                            <ShoppingBag className="w-3.5 h-3.5 text-slate-400" /> Monthly Orders
+                          </span>
+                          <strong className="font-bold text-slate-900 dark:text-white">
+                            {plan.limits.monthly_orders ?? 'Unlimited'}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Feature Gates */}
+                    <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                        Feature Capability Matrix
+                      </span>
+                      <div className="space-y-2 text-xs">
+                        {Object.entries(plan.features || {}).map(([featureKey, enabled]) => (
+                          <div key={featureKey} className="flex items-center justify-between">
+                            <span className="text-slate-600 dark:text-slate-400 capitalize">
+                              {featureKey.replace(/_/g, ' ')}
+                            </span>
+                            {enabled ? (
+                              <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 text-[11px]">
+                                <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Enabled
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal text-[11px]">Disabled</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <Button
-                    variant="secondary"
-                    className="w-full flex items-center justify-center gap-1.5"
-                    onClick={() => handleOpenEditPlan(plan)}
-                  >
-                    <Edit className="w-4 h-4" />
-                    Configure Limits & Pricing
-                  </Button>
+                  <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <Button
+                      variant="outline"
+                      className="w-full rounded-2xl flex items-center justify-center gap-2 font-bold"
+                      onClick={() => handleOpenEditPlan(plan)}
+                    >
+                      <Edit className="w-4 h-4" />
+                      Configure Limits & Pricing
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -784,16 +1188,16 @@ export const SubscriptionsManagementView: React.FC = () => {
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Updating the plan for <strong>{selectedSub?.organization_name}</strong> will update tenant limits, gated features, and sync the organization record transactionally.
+            Updating the plan for <strong>{selectedSub?.organization_name || selectedSub?.organization_id}</strong> will transactionally update tenant limits, gated capabilities, and synchronize the organization plan tier.
           </p>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Select Target Plan
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+              Select Target Plan Tier
             </label>
             <Select
               value={targetPlanCode}
-              onChange={(val) => setTargetPlanCode(val)}
+              onChange={(e) => setTargetPlanCode(e.target.value)}
               options={plans.map((p) => ({
                 value: p.code,
                 label: `${p.name} (${p.currency} ${p.amount}/${p.billing_interval})`,
@@ -802,23 +1206,23 @@ export const SubscriptionsManagementView: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Audit Reason
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+              Administrative Audit Reason
             </label>
             <Input
               type="text"
-              placeholder="e.g., Customer requested tier upgrade"
+              placeholder="e.g., Customer requested tier upgrade to Professional"
               value={changePlanReason}
               onChange={(e) => setChangePlanReason(e.target.value)}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="secondary" onClick={() => setChangePlanModalOpen(false)} disabled={isProcessing}>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => setChangePlanModalOpen(false)} disabled={isProcessing}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleExecuteChangePlan} disabled={isProcessing}>
-              {isProcessing ? 'Updating...' : 'Confirm Plan Change'}
+            <Button variant="primary" onClick={handleExecuteChangePlan} isLoading={isProcessing} disabled={isProcessing}>
+              Confirm Plan Change
             </Button>
           </div>
         </div>
@@ -832,12 +1236,12 @@ export const SubscriptionsManagementView: React.FC = () => {
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Extend the active trial evaluation for <strong>{selectedSub?.organization_name}</strong>.
+            Grant additional evaluation days for <strong>{selectedSub?.organization_name || selectedSub?.organization_id}</strong>.
           </p>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Additional Days
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+              Additional Trial Days
             </label>
             <Input
               type="number"
@@ -846,26 +1250,43 @@ export const SubscriptionsManagementView: React.FC = () => {
               value={extendTrialDays}
               onChange={(e) => setExtendTrialDays(parseInt(e.target.value, 10) || 1)}
             />
+            {/* Quick Extension Buttons */}
+            <div className="flex gap-2 mt-2">
+              {[7, 14, 30].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setExtendTrialDays(d)}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${
+                    extendTrialDays === d
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  +{d} days
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Reason / Justification
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+              Audit Rationale / Justification
             </label>
             <Input
               type="text"
-              placeholder="e.g., Customer onboarding extension granted"
+              placeholder="e.g., Customer requested onboarding grace period"
               value={extendTrialReason}
               onChange={(e) => setExtendTrialReason(e.target.value)}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="secondary" onClick={() => setExtendTrialModalOpen(false)} disabled={isProcessing}>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => setExtendTrialModalOpen(false)} disabled={isProcessing}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleExecuteExtendTrial} disabled={isProcessing}>
-              {isProcessing ? 'Extending...' : 'Confirm Trial Extension'}
+            <Button variant="primary" onClick={handleExecuteExtendTrial} isLoading={isProcessing} disabled={isProcessing}>
+              Confirm Trial Extension
             </Button>
           </div>
         </div>
@@ -887,30 +1308,30 @@ export const SubscriptionsManagementView: React.FC = () => {
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Target Tenant: <strong>{selectedSub?.organization_name}</strong>
+            Target Organization: <strong>{selectedSub?.organization_name || selectedSub?.organization_id}</strong>
           </p>
 
           {lifecycleAction === 'cancel' && (
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
-              <label className="flex items-center gap-2.5 text-sm font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-2">
+              <label className="flex items-center gap-2.5 text-sm font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={cancelImmediate}
                   onChange={(e) => setCancelImmediate(e.target.checked)}
-                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 accent-rose-600"
                 />
                 Immediate Cancellation
               </label>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 {cancelImmediate
-                  ? 'The subscription will be cancelled immediately today, terminating billable service.'
+                  ? 'The subscription will terminate immediately, revoking access to billable capabilities today.'
                   : 'The subscription will remain active until the end of the current billing cycle.'}
               </p>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
               Audit Reason
             </label>
             <Input
@@ -921,16 +1342,17 @@ export const SubscriptionsManagementView: React.FC = () => {
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="secondary" onClick={() => setLifecycleModalOpen(false)} disabled={isProcessing}>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => setLifecycleModalOpen(false)} disabled={isProcessing}>
               Close
             </Button>
             <Button
               variant={lifecycleAction === 'cancel' || lifecycleAction === 'suspend' ? 'danger' : 'primary'}
               onClick={handleExecuteLifecycle}
+              isLoading={isProcessing}
               disabled={isProcessing}
             >
-              {isProcessing ? 'Processing...' : `Confirm ${lifecycleAction}`}
+              Confirm {lifecycleAction.toUpperCase()}
             </Button>
           </div>
         </div>
@@ -940,38 +1362,47 @@ export const SubscriptionsManagementView: React.FC = () => {
       <Modal
         isOpen={historyModalOpen}
         onClose={() => setHistoryModalOpen(false)}
-        title={`Subscription Audit History: ${selectedSub?.organization_name}`}
+        title={`Subscription Audit History: ${selectedSub?.organization_name || selectedSub?.organization_id}`}
+        size="lg"
       >
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           {historyLoading ? (
-            <div className="p-8 text-center">
+            <div className="p-12 text-center">
               <Spinner size="md" />
-              <p className="text-xs text-slate-400 mt-2">Loading audit events...</p>
+              <p className="text-xs text-slate-400 mt-2">Loading historical audit events...</p>
             </div>
           ) : historyRecords.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-sm">
+            <div className="p-12 text-center text-slate-400 text-sm">
               No audit records found for this subscription.
             </div>
           ) : (
             <div className="space-y-3">
               {historyRecords.map((rec) => (
-                <div key={rec.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs">
-                  <div className="flex items-center justify-between text-slate-500 font-mono">
-                    <span>{new Date(rec.timestamp).toLocaleString()}</span>
-                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">{rec.action}</span>
+                <div
+                  key={rec.id}
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850/80 border border-slate-200 dark:border-slate-800 text-xs space-y-1.5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-slate-500 font-mono">
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider text-[11px]">
+                      {rec.action}
+                    </span>
+                    <span className="text-[11px]">{new Date(rec.timestamp).toLocaleString()}</span>
                   </div>
-                  <div className="mt-1.5 text-slate-700 dark:text-slate-300">
-                    Actor: <strong>{rec.actor_name}</strong> ({rec.actor_role})
+                  <div className="text-slate-800 dark:text-slate-200">
+                    Actor: <strong>{rec.actor_name}</strong> <span className="text-slate-400">({rec.actor_role})</span>
                   </div>
                   {rec.metadata?.reason && (
-                    <div className="mt-1 text-slate-500 italic">
+                    <div className="text-slate-600 dark:text-slate-400 italic bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
                       Reason: "{rec.metadata.reason}"
                     </div>
                   )}
                   {rec.after_state && (
-                    <pre className="mt-2 p-2 rounded bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 overflow-x-auto text-[11px]">
-                      {JSON.stringify(rec.after_state, null, 2)}
-                    </pre>
+                    <div className="mt-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">State Snapshot:</div>
+                      <pre className="mt-1 p-2.5 rounded-xl bg-slate-950 text-slate-200 overflow-x-auto text-[10px] font-mono leading-relaxed">
+                        {JSON.stringify(rec.after_state, null, 2)}
+                      </pre>
+                    </div>
                   )}
                 </div>
               ))}
@@ -985,10 +1416,11 @@ export const SubscriptionsManagementView: React.FC = () => {
         isOpen={editPlanModalOpen}
         onClose={() => setEditPlanModalOpen(false)}
         title={`Configure Plan: ${selectedPlanForEdit?.name}`}
+        size="lg"
       >
-        <div className="space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
               Plan Display Name
             </label>
             <Input
@@ -999,7 +1431,7 @@ export const SubscriptionsManagementView: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
               Description
             </label>
             <Input
@@ -1010,8 +1442,8 @@ export const SubscriptionsManagementView: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Price ({selectedPlanForEdit?.currency})
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+              Price ({selectedPlanForEdit?.currency || 'SLE'})
             </label>
             <Input
               type="number"
@@ -1022,10 +1454,14 @@ export const SubscriptionsManagementView: React.FC = () => {
           </div>
 
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Authoritative Quotas</span>
-            <div className="grid grid-cols-2 gap-3">
+            <span className="text-xs font-black text-slate-400 uppercase tracking-wider block mb-2">
+              Authoritative Quotas
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Max Users</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Max Users
+                </label>
                 <Input
                   type="number"
                   placeholder="e.g. 5"
@@ -1034,7 +1470,9 @@ export const SubscriptionsManagementView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Max Locations</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Max Locations
+                </label>
                 <Input
                   type="number"
                   placeholder="e.g. 1"
@@ -1043,7 +1481,9 @@ export const SubscriptionsManagementView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Max Products</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Max Products
+                </label>
                 <Input
                   type="number"
                   placeholder="e.g. 250"
@@ -1052,7 +1492,9 @@ export const SubscriptionsManagementView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Monthly Orders</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Monthly Orders
+                </label>
                 <Input
                   type="number"
                   placeholder="e.g. 500"
@@ -1063,12 +1505,12 @@ export const SubscriptionsManagementView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="secondary" onClick={() => setEditPlanModalOpen(false)} disabled={isProcessing}>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => setEditPlanModalOpen(false)} disabled={isProcessing}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleExecuteEditPlan} disabled={isProcessing}>
-              {isProcessing ? 'Saving...' : 'Save Plan Configuration'}
+            <Button variant="primary" onClick={handleExecuteEditPlan} isLoading={isProcessing} disabled={isProcessing}>
+              Save Plan Configuration
             </Button>
           </div>
         </div>
