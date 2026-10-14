@@ -12,11 +12,11 @@ export function isPlatformRole(role: Role | string): boolean {
 }
 
 export function canManagePlatformPlans(role: Role | string): boolean {
-  return role === 'System Owner' || role === 'Platform Admin';
+  return role === 'System Owner' || role === 'Platform Finance';
 }
 
 export function canManagePlatformSubscriptions(role: Role | string): boolean {
-  return role === 'System Owner' || role === 'Platform Admin' || role === 'Platform Finance';
+  return role === 'System Owner' || role === 'Platform Finance';
 }
 
 export function canAccessPlatformSecurity(role: Role | string): boolean {
