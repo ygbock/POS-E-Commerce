@@ -134,7 +134,7 @@ export const SubscriptionsManagementView: React.FC = () => {
           <div className="space-y-2">
             <h1 id="billing-access-title" className="text-lg font-bold">Billing access required</h1>
             <p className="text-sm">Your current platform role ({currentRole}) does not have permission to manage SaaS subscriptions or plans.</p>
-            <p className="text-sm">Use a System Owner or Platform Finance account, or ask an authorized administrator to review your assigned platform role. This page has not sent any billing requests.</p>
+            <p className="text-sm">Use a System Owner, Platform Admin, or Platform Finance account, or ask an authorized administrator to review your assigned platform role. This page has not sent any billing requests.</p>
           </div>
         </div>
       </section>
@@ -365,9 +365,9 @@ export const SubscriptionsManagementView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6" aria-labelledby="saas-subscription-billing-title">
+    <div className="mx-auto max-w-screen-2xl space-y-7 pb-8" aria-labelledby="saas-subscription-billing-title">
       {/* Top Banner / Header */}
-      <header className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-white via-slate-50 to-indigo-50/20 p-6 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/20 sm:p-8">
+      <header className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white via-indigo-50/70 to-sky-50/70 p-6 shadow-lg shadow-indigo-950/5 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/30 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -376,7 +376,7 @@ export const SubscriptionsManagementView: React.FC = () => {
                 Financial Command Center
               </span>
               <span className="text-xs font-semibold text-slate-400">
-                Authoritative Multi-Tenant Billing
+                Platform Finance & Subscription Operations
               </span>
             </div>
             <h1
@@ -386,7 +386,7 @@ export const SubscriptionsManagementView: React.FC = () => {
               SaaS Subscription & Billing Management
             </h1>
             <p className="mt-1.5 max-w-3xl text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              Super Admin control plane for SaaS tenant subscriptions, quotas, and canonical plan tiers.
+              Manage tenant subscriptions, recurring revenue, trials, plan limits, and lifecycle actions from one secure billing workspace.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -447,9 +447,9 @@ export const SubscriptionsManagementView: React.FC = () => {
       )}
 
       {/* Authoritative Financial KPI Cards (Fully Responsive Grid) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {/* MRR Card */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md dark:hover:border-indigo-900 flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Authoritative MRR
@@ -708,7 +708,7 @@ export const SubscriptionsManagementView: React.FC = () => {
           </div>
 
           {/* Subscriptions Content Area */}
-          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-sm">
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-md shadow-slate-950/[0.03]">
             {isLoading ? (
               <div className="p-16 flex flex-col items-center justify-center">
                 <Spinner size="lg" />
@@ -1063,7 +1063,7 @@ export const SubscriptionsManagementView: React.FC = () => {
       {/* TAB 2: PLANS & LIMITS */}
       {activeSubTab === 'plans' && (
         <div className="space-y-4">
-          <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
                 Canonical SaaS Plan Specifications
