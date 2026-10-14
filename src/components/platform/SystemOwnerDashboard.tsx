@@ -10,6 +10,13 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  ArrowUpRight,
+  TrendingUp,
+  Layers,
+  ChevronRight,
+  Shield,
+  Ban,
+  Receipt,
 } from 'lucide-react';
 import { PlatformDashboardData, getPlatformTenantCounts } from './platformDashboard';
 import { authClient } from '../../services/authClient';
@@ -19,11 +26,31 @@ interface SystemOwnerDashboardProps {
   onNavigate?: (tab: string) => void;
 }
 
+interface BillingOverviewData {
+  mrr?: number;
+  arr?: number;
+  currency?: string;
+  activeCount?: number;
+  trialingCount?: number;
+  pausedCount?: number;
+  cancelledCount?: number;
+  planDistribution?: Array<{
+    code: string;
+    name: string;
+    amount: string;
+    currency: string;
+    totalSubscriptions: number;
+    activeSubscriptions: number;
+    trialingSubscriptions: number;
+  }>;
+}
+
 export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
   data: propData,
   onNavigate,
 }) => {
   const [liveData, setLiveData] = useState<PlatformDashboardData | null>(propData || null);
+  const [billingData, setBillingData] = useState<BillingOverviewData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(!propData);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,22 +58,32 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/platform/overview', {
-        headers: authClient.getAuthHeaders(),
-      });
-      if (!res.ok) {
-        if (res.status === 401) {
+      const headers = authClient.getAuthHeaders();
+      const [overviewRes, billingRes] = await Promise.all([
+        fetch('/api/platform/overview', { headers }),
+        fetch('/api/platform/billing', { headers }).catch(() => null),
+      ]);
+
+      if (!overviewRes.ok) {
+        if (overviewRes.status === 401) {
           throw new Error('Authentication required to access platform control plane.');
-        } else if (res.status === 403) {
+        } else if (overviewRes.status === 403) {
           throw new Error('Platform authorization required. Tenant roles cannot access control plane.');
         }
-        throw new Error(`Server returned status ${res.status}`);
+        throw new Error(`Server returned status ${overviewRes.status}`);
       }
-      const json = await res.json();
+      const json = await overviewRes.json();
       if (json.success && json.data) {
         setLiveData(json.data);
       } else {
         throw new Error(json.error?.message || 'Failed to load platform data');
+      }
+
+      if (billingRes && billingRes.ok) {
+        const billingJson = await billingRes.json();
+        if (billingJson.success && billingJson.data) {
+          setBillingData(billingJson.data);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to connect to platform API');
@@ -67,49 +104,20 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
   const tenants = activeData?.tenants ?? [];
   const counts = useMemo(() => getPlatformTenantCounts(tenants), [tenants]);
 
+  const rawMrr = billingData?.mrr ?? activeData?.mrr;
+  const rawCurrency = billingData?.currency || activeData?.currency || 'SLE';
+
   const mrrDisplay =
-    activeData?.mrr == null
+    rawMrr == null
       ? '—'
       : new Intl.NumberFormat(undefined, {
           style: 'currency',
-          currency: activeData.currency || 'USD',
+          currency: rawCurrency,
           maximumFractionDigits: 0,
-        }).format(activeData.mrr);
-
-  const card = (
-    label: string,
-    value: string,
-    description: string,
-    icon: React.ReactNode,
-    badge?: string
-  ) => (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all hover:border-blue-500/30">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            {label}
-          </p>
-          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-            {value}
-          </p>
-        </div>
-        <span className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-2.5 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
-          {icon}
-        </span>
-      </div>
-      <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-        <span>{description}</span>
-        {badge && (
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-            {badge}
-          </span>
-        )}
-      </div>
-    </div>
-  );
+        }).format(rawMrr);
 
   return (
-    <section className="space-y-6 animate-in fade-in duration-300" aria-labelledby="system-owner-title">
+    <section className="space-y-6 animate-in fade-in duration-300 pb-8" aria-labelledby="system-owner-title">
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
         <div>
@@ -127,7 +135,16 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigate?.('subscriptions')}
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 transition-all border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span>Plans & Subscriptions</span>
+          </button>
+
           <button
             type="button"
             onClick={fetchPlatformOverview}
@@ -187,34 +204,180 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
 
       {/* 4 Core Control-Plane Telemetry Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {card(
-          'Total Tenants',
-          activeData ? String(tenants.length) : '—',
-          activeData ? `${counts.active} active · ${counts.trial} trial` : 'Awaiting platform data',
-          <Building2 className="h-5 w-5" />,
-          activeData ? `${counts.active} Active` : undefined
-        )}
-        {card(
-          'Active Users',
-          activeData?.activeUsers != null ? String(activeData.activeUsers) : '—',
-          'Across all provisioned tenants',
-          <Users className="h-5 w-5" />,
-          'Verified DB'
-        )}
-        {card(
-          'Monthly Recurring Revenue',
-          mrrDisplay,
-          'Awaiting billing provider ledger',
-          <CreditCard className="h-5 w-5" />,
-          activeData?.mrr != null ? 'Live' : 'Neutral'
-        )}
-        {card(
-          'Platform Health',
-          activeData?.platformHealth != null ? `${activeData.platformHealth}%` : '100%',
-          'PostgreSQL cluster operational',
-          <Server className="h-5 w-5" />,
-          'Operational'
-        )}
+        {/* Total Tenants */}
+        <button
+          type="button"
+          onClick={() => onNavigate?.('tenants')}
+          className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all hover:border-blue-500/40 hover:shadow-sm cursor-pointer"
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Total Tenants
+              </p>
+              <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activeData ? String(tenants.length) : '—'}
+              </p>
+            </div>
+            <span className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-2.5 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
+              <Building2 className="h-5 w-5" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>{activeData ? `${counts.active} active · ${counts.trial} trial` : 'Awaiting platform data'}</span>
+            <span className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-0.5">
+              Manage <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
+        </button>
+
+        {/* Active Users */}
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Active Users
+              </p>
+              <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activeData?.activeUsers != null ? String(activeData.activeUsers) : '—'}
+              </p>
+            </div>
+            <span className="rounded-xl bg-violet-50 dark:bg-violet-950/40 p-2.5 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-900/50">
+              <Users className="h-5 w-5" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Across all provisioned tenants</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              Verified DB
+            </span>
+          </div>
+        </div>
+
+        {/* Monthly Recurring Revenue (Interactive link to Subscriptions) */}
+        <button
+          type="button"
+          onClick={() => onNavigate?.('subscriptions')}
+          className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all hover:border-emerald-500/40 hover:shadow-sm cursor-pointer"
+          title="Open SaaS Plans & Subscriptions Management"
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Monthly Recurring Revenue
+              </p>
+              <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                {mrrDisplay}
+              </p>
+            </div>
+            <span className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-2.5 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50">
+              <CreditCard className="h-5 w-5" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>
+              {billingData?.activeCount != null
+                ? `${billingData.activeCount} active · ${billingData.trialingCount || 0} trial`
+                : 'Awaiting billing provider ledger'}
+            </span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-0.5">
+              Subscriptions <ArrowUpRight className="w-3 h-3" />
+            </span>
+          </div>
+        </button>
+
+        {/* Platform Health */}
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Platform Health
+              </p>
+              <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activeData?.platformHealth != null ? `${activeData.platformHealth}%` : '100%'}
+              </p>
+            </div>
+            <span className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-2.5 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50">
+              <Server className="h-5 w-5" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>PostgreSQL cluster operational</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              Operational
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* DEDICATED PLANS & SUBSCRIPTIONS OVERSIGHT WIDGET */}
+      <div className="rounded-2xl border border-indigo-100 dark:border-slate-800 bg-gradient-to-r from-white via-indigo-50/20 to-white dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/20 p-5 sm:p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Plans & SaaS Subscription Oversight
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Authoritative SaaS billing distribution, evaluation windows, and quota governance
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigate?.('subscriptions')}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <span>Manage Plans & Subscriptions</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Paid</span>
+            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+              {billingData?.activeCount ?? counts.active}
+            </div>
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 block">
+              Good standing
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Trialing</span>
+            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+              {billingData?.trialingCount ?? counts.trial}
+            </div>
+            <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5 block">
+              Evaluation phase
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Suspended</span>
+            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+              {billingData?.pausedCount ?? counts.suspended}
+            </div>
+            <span className="text-[11px] text-slate-500 font-semibold mt-0.5 block">
+              Access on hold
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Normalized MRR</span>
+            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+              {mrrDisplay}
+            </div>
+            <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5 block">
+              {billingData?.arr ? `ARR ~${rawCurrency} ${billingData.arr.toLocaleString()}` : 'Live ledger'}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Tenant Portfolio & Security Posture */}
@@ -283,7 +446,7 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
               <p className="text-xs text-slate-500 dark:text-slate-400">Control-plane telemetry status</p>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
               <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
               <div>
                 <p className="text-xs font-bold text-slate-900 dark:text-white">HMAC-SHA256 Auth Active</p>
@@ -291,7 +454,7 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
               <ShieldAlert className="w-5 h-5 text-blue-500 shrink-0" />
               <div>
                 <p className="text-xs font-bold text-slate-900 dark:text-white">Tenant Isolation Boundary</p>
@@ -299,7 +462,7 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
               <Clock className="w-5 h-5 text-slate-400 shrink-0" />
               <div>
                 <p className="text-xs font-bold text-slate-900 dark:text-white">Database Cluster</p>
