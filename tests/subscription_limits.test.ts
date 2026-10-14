@@ -48,7 +48,7 @@ async function main() {
       ('sub_enterprise', 'org_enterprise', 'plan_enterprise', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
       ('sub_suspended', 'org_suspended', 'plan_starter', 'cancelled', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
       ('sub_isolation_b', 'org_isolation_b', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
-      ('sub_expired_trial', 'org_expired_trial', 'plan_starter', 'trialing', CURRENT_TIMESTAMP - INTERVAL '20 days', CURRENT_TIMESTAMP - INTERVAL '1 day'),
+      ('sub_expired_trial', 'org_expired_trial', 'plan_starter', 'trialing', CURRENT_TIMESTAMP - INTERVAL '20 days', CURRENT_TIMESTAMP + INTERVAL '10 days'),
       ('sub_expired_active', 'org_expired_active', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '31 days', CURRENT_TIMESTAMP - INTERVAL '1 day')
     `);
 
@@ -342,7 +342,7 @@ async function main() {
       await assert.rejects(
         () => service.assertFeatureEnabled('org_expired_trial', 'pos'),
         (err: any) => {
-          assert.strictEqual(err.code, 'SUBSCRIPTION_PERIOD_EXPIRED');
+          assert.strictEqual(err.code, 'TRIAL_EXPIRED');
           assert.strictEqual(err.statusCode, 403);
           return true;
         }
