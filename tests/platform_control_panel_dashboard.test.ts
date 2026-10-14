@@ -29,6 +29,14 @@ assert.match(ui, /role="alert"/, 'Dashboard must expose API failures to assistiv
 assert.match(ui, /Retry/, 'Dashboard errors must provide a retry action');
 assert.match(ui, /billingUnavailable/, 'Billing API failure must be represented separately from tenant metrics');
 assert.match(ui, /hasData/, 'Initial API failure must not display fabricated zero values');
+assert.match(ui, /function readMetricNumber\(value: unknown\): number \| null/, 'Optional API metrics must be normalized without coercing null to zero');
+assert.match(ui, /typeof value !== 'string' \|\| value\.trim\(\) === ''/, 'Missing and blank metric values must remain unavailable');
+assert.match(ui, /activeUsers: readMetricNumber\(overview\.activeUsers\)/, 'Missing active-user metrics must not be rendered as zero');
+assert.match(ui, /mrr: billing \? readMetricNumber\(billing\.mrr\) : null/, 'Missing billing revenue must remain unavailable rather than zero');
+assert.match(ui, /overviewUpdatedAt: new Date\(\)\.toISOString\(\)/, 'Overview refresh time must reflect a successful overview response');
+assert.match(ui, /billingUpdatedAt: billing\?\.lastUpdated \|\| null/, 'Billing refresh time must come from the billing API rather than a fabricated client timestamp');
+assert.match(ui, /Billing update timestamp unavailable/, 'Dashboard must distinguish unavailable billing timestamps from overview refresh time');
+assert.doesNotMatch(ui, /updatedAt: billing\?\.lastUpdated \|\| new Date\(\)\.toISOString\(\)/, 'Dashboard must not label the client refresh time as authoritative billing update time');
 assert.doesNotMatch(ui, /totalTenants:\s*12|activeSubscriptions:\s*11|mrr:\s*4890|99\.99%|All micro-services fully operational/, 'Dashboard must not display fabricated metrics');
 assert.doesNotMatch(ui, /<div\s+[^>]*onClick=/, 'Clickable dashboard actions must not be non-semantic div elements');
 
