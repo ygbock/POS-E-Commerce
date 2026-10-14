@@ -46,7 +46,8 @@ interface DashboardStats {
   currency: string;
   activeSubscriptions: number | null;
   trialingSubscriptions: number | null;
-  updatedAt: string | null;
+  overviewUpdatedAt: string | null;
+  billingUpdatedAt: string | null;
 }
 
 const EMPTY_STATS: DashboardStats = {
@@ -56,8 +57,16 @@ const EMPTY_STATS: DashboardStats = {
   currency: 'SLE',
   activeSubscriptions: null,
   trialingSubscriptions: null,
-  updatedAt: null,
+  overviewUpdatedAt: null,
+  billingUpdatedAt: null,
 };
+
+function readMetricNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 async function readApiData<T>(response: Response, fallbackMessage: string): Promise<T> {
   if (!response.ok) {
@@ -124,12 +133,13 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
 
       setStats({
         tenants,
-        activeUsers: Number.isFinite(Number(overview.activeUsers)) ? Number(overview.activeUsers) : null,
-        mrr: billing && Number.isFinite(Number(billing.mrr)) ? Number(billing.mrr) : null,
+        activeUsers: readMetricNumber(overview.activeUsers),
+        mrr: billing ? readMetricNumber(billing.mrr) : null,
         currency: billing?.currency || 'SLE',
-        activeSubscriptions: billing && Number.isFinite(Number(billing.activeCount)) ? Number(billing.activeCount) : null,
-        trialingSubscriptions: billing && Number.isFinite(Number(billing.trialingCount)) ? Number(billing.trialingCount) : null,
-        updatedAt: billing?.lastUpdated || new Date().toISOString(),
+        activeSubscriptions: billing ? readMetricNumber(billing.activeCount) : null,
+        trialingSubscriptions: billing ? readMetricNumber(billing.trialingCount) : null,
+        overviewUpdatedAt: new Date().toISOString(),
+        billingUpdatedAt: billing?.lastUpdated || null,
       });
       setHasData(true);
       setBillingUnavailable(billingFailed);
@@ -371,7 +381,10 @@ export const PlatformDashboard: React.FC<PlatformDashboardProps> = ({ setActiveT
           </div>
           <div className="pt-4 mt-auto border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 flex items-center gap-1.5">
             <Clock3 aria-hidden="true" className="w-3.5 h-3.5" />
-            <span>{stats.updatedAt ? `Metrics refreshed ${new Date(stats.updatedAt).toLocaleString()}` : 'Metrics have not been refreshed yet'}</span>
+            <div className="flex flex-col gap-1">
+              <span>{stats.overviewUpdatedAt ? `Overview refreshed ${new Date(stats.overviewUpdatedAt).toLocaleString()}` : 'Overview has not been refreshed yet'}</span>
+              {canViewBilling && <span>{stats.billingUpdatedAt ? `Billing data updated ${new Date(stats.billingUpdatedAt).toLocaleString()}` : 'Billing update timestamp unavailable'}</span>}
+            </div>
           </div>
         </aside>
       </div>
