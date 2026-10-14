@@ -35,7 +35,9 @@ async function main() {
       ('org_enterprise', 'Enterprise Global', 'ENT', true, 'enterprise'),
       ('org_suspended', 'Suspended LLC', 'SUSP', true, 'starter'),
       ('org_no_sub', 'Orphan Store', 'ORPH', true, 'starter'),
-      ('org_isolation_b', 'Isolation Corp B', 'ISOB', true, 'starter')
+      ('org_isolation_b', 'Isolation Corp B', 'ISOB', true, 'starter'),
+      ('org_expired_trial', 'Expired Trial Corp', 'EXTR', true, 'starter'),
+      ('org_expired_active', 'Expired Period Corp', 'EXPA', true, 'starter')
     `);
 
     await db.query(`
@@ -45,7 +47,9 @@ async function main() {
       ('sub_pro', 'org_pro', 'plan_professional', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
       ('sub_enterprise', 'org_enterprise', 'plan_enterprise', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
       ('sub_suspended', 'org_suspended', 'plan_starter', 'cancelled', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
-      ('sub_isolation_b', 'org_isolation_b', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days')
+      ('sub_isolation_b', 'org_isolation_b', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '25 days'),
+      ('sub_expired_trial', 'org_expired_trial', 'plan_starter', 'trialing', CURRENT_TIMESTAMP - INTERVAL '20 days', CURRENT_TIMESTAMP - INTERVAL '1 day'),
+      ('sub_expired_active', 'org_expired_active', 'plan_starter', 'active', CURRENT_TIMESTAMP - INTERVAL '31 days', CURRENT_TIMESTAMP - INTERVAL '1 day')
     `);
 
     // Insert baseline location for Starter
@@ -330,7 +334,31 @@ async function main() {
       );
     });
 
-    // Scenario 12: Concurrency safety with row locks
+    // Scenario 12: Expired billing windows fail closed even when status is stale
+    await run('Scenario 12: Expired trial and active billing period deny entitlements', async () => {
+      assert.strictEqual(await service.hasFeature('org_expired_trial', 'pos'), false);
+      assert.strictEqual(await service.hasFeature('org_expired_active', 'pos'), false);
+
+      await assert.rejects(
+        () => service.assertFeatureEnabled('org_expired_trial', 'pos'),
+        (err: any) => {
+          assert.strictEqual(err.code, 'SUBSCRIPTION_PERIOD_EXPIRED');
+          assert.strictEqual(err.statusCode, 403);
+          return true;
+        }
+      );
+
+      await assert.rejects(
+        () => service.assertCanCreateUser('org_expired_active'),
+        (err: any) => {
+          assert.strictEqual(err.code, 'SUBSCRIPTION_PERIOD_EXPIRED');
+          assert.strictEqual(err.statusCode, 403);
+          return true;
+        }
+      );
+    });
+
+    // Scenario 13: Concurrency safety with row locks
     await run('Scenario 12: Concurrency safety with row locks (assertWithinLimit forUpdate)', async () => {
       await db.withTransaction(async (tx) => {
         // Must succeed within transaction with row locking
@@ -340,8 +368,8 @@ async function main() {
       });
     });
 
-    // Scenario 13: Cross-tenant subscription isolation
-    await run('Scenario 13: Cross-tenant subscription isolation', async () => {
+    // Scenario 14: Cross-tenant subscription isolation
+    await run('Scenario 14: Cross-tenant subscription isolation', async () => {
       // Starter org is maxed out at 5 users
       await assert.rejects(async () => {
         await service.assertCanCreateUser('org_starter');
@@ -364,7 +392,7 @@ async function main() {
     });
 
     // Scenario 14: Platform role / admin respects tenant plan limits
-    await run('Scenario 14: Platform role / super admin respects tenant plan limits', async () => {
+    await run('Scenario 15: Platform role / super admin respects tenant plan limits', async () => {
       // Even if a super admin triggers user creation on org_starter, assertCanCreateUser('org_starter')
       // must enforce org_starter's limits and throw SUBSCRIPTION_LIMIT_REACHED
       let platformActorBlocked = false;
@@ -379,7 +407,7 @@ async function main() {
     });
 
     // Scenario 15: Error Sanitization and HTTP Status Mapping
-    await run('Scenario 15: Error Sanitization maps SUBSCRIPTION_LIMIT_REACHED and FEATURE_NOT_AVAILABLE to 403', async () => {
+    await run('Scenario 16: Error Sanitization maps SUBSCRIPTION_LIMIT_REACHED and FEATURE_NOT_AVAILABLE to 403', async () => {
       const limitErr = new SubscriptionLimitError('SUBSCRIPTION_LIMIT_REACHED', 'Organization reached limit of users', 403, { metric: 'users', limit: 5, current: 5 });
       const resLimit = buildApiErrorResponse(limitErr);
       assert.strictEqual(resLimit.status, 403);
