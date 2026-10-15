@@ -800,9 +800,10 @@ export class SubscriptionService {
         SELECT DISTINCT organization_id
         FROM organization_subscriptions
         WHERE created_at <= $1::timestamptz
+          AND current_period_start <= $1::timestamptz
           AND (trial_ends_at IS NULL OR trial_ends_at <= $1::timestamptz)
           AND (
-            status IN ('active', 'past_due', 'paused')
+            (status IN ('active', 'past_due', 'paused') AND current_period_end > $1::timestamptz)
             OR (status = 'cancelled' AND cancelled_at >= $1::timestamptz)
           )
       ),
