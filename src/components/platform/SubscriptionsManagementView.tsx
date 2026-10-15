@@ -511,7 +511,9 @@ export const SubscriptionsManagementView: React.FC = () => {
           </div>
           <div className="mt-3">
             <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-              {overview ? `${overview.currency} ${overview.mrr.toLocaleString()}` : '—'}
+              {overview ? (overview.currency === 'MULTI'
+                ? overview.revenueByCurrency.map((item) => `${item.currency} ${item.mrr.toLocaleString()}`).join(' · ')
+                : `${overview.currency} ${overview.mrr.toLocaleString()}`) : '—'}
             </div>
             <div className="mt-1 flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
               <TrendingUp className="w-3.5 h-3.5" />
@@ -519,7 +521,7 @@ export const SubscriptionsManagementView: React.FC = () => {
             </div>
           </div>
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 border-t border-slate-100 dark:border-slate-800/80 pt-2">
-            Paid active subscriptions only
+            Paid active subscriptions only · grouped by currency
           </p>
         </div>
 
