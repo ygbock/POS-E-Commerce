@@ -746,6 +746,7 @@ export class SubscriptionService {
     arr: number;
     churnRate30d: number;
     currency: string;
+    revenueByCurrency: Array<{ currency: string; mrr: number; arr: number }>;
     activeCount: number;
     trialingCount: number;
     pausedCount: number;
@@ -762,64 +763,95 @@ export class SubscriptionService {
     lastUpdated: string;
   }> {
     const db = this.getDb(client);
+    const now = new Date();
+    const periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // User correction #6:
-    // Active paid subscriptions only, normalized monthly equivalent, exclude trials, paused, cancelled.
-    const aggRes = await db.query<any>(`
+    const countsRes = await db.query<any>(`
       SELECT
-        COUNT(CASE WHEN os.status = 'active' THEN 1 END)::int AS active_count,
-        COUNT(CASE WHEN os.status = 'trialing' OR (os.status = 'active' AND os.trial_ends_at > CURRENT_TIMESTAMP) THEN 1 END)::int AS trialing_count,
-        COUNT(CASE WHEN os.status = 'paused' THEN 1 END)::int AS paused_count,
-        COUNT(CASE WHEN os.status IN ('cancelled', 'expired') THEN 1 END)::int AS cancelled_count,
+        COUNT(*) FILTER (WHERE os.status = 'active')::int AS active_count,
+        COUNT(*) FILTER (WHERE os.status = 'trialing' OR (os.status = 'active' AND os.trial_ends_at > CURRENT_TIMESTAMP))::int AS trialing_count,
+        COUNT(*) FILTER (WHERE os.status = 'paused')::int AS paused_count,
+        COUNT(*) FILTER (WHERE os.status IN ('cancelled', 'expired'))::int AS cancelled_count
+      FROM organization_subscriptions os
+    `);
+
+    // Never add nominal amounts across currencies. Yearly prices are normalized to monthly equivalents.
+    const revenueRes = await db.query<any>(`
+      SELECT sp.currency,
         COALESCE(SUM(
           CASE
-            WHEN os.status = 'active' AND (os.trial_ends_at IS NULL OR os.trial_ends_at <= CURRENT_TIMESTAMP) AND sp.amount > 0
-            THEN (CASE WHEN sp.billing_interval = 'yearly' THEN sp.amount / 12.0 ELSE sp.amount END)
+            WHEN os.status = 'active'
+              AND (os.trial_ends_at IS NULL OR os.trial_ends_at <= CURRENT_TIMESTAMP)
+              AND sp.amount > 0
+            THEN CASE WHEN sp.billing_interval = 'yearly' THEN sp.amount / 12.0 ELSE sp.amount END
             ELSE 0
           END
         ), 0)::numeric(15, 2) AS mrr
       FROM organization_subscriptions os
       JOIN subscription_plans sp ON sp.id = os.plan_id
+      GROUP BY sp.currency
+      ORDER BY sp.currency
     `);
 
+    // Logo churn: paid organizations in the cohort at the start of the 30-day window
+    // that have a recorded cancellation timestamp within the window. Count each org once.
     const churnRes = await db.query<any>(`
+      WITH cohort AS (
+        SELECT DISTINCT organization_id
+        FROM organization_subscriptions
+        WHERE created_at <= $1::timestamptz
+          AND (trial_ends_at IS NULL OR trial_ends_at <= $1::timestamptz)
+          AND (
+            status IN ('active', 'past_due', 'paused')
+            OR (status = 'cancelled' AND cancelled_at >= $1::timestamptz)
+          )
+      ),
+      churned AS (
+        SELECT DISTINCT os.organization_id
+        FROM organization_subscriptions os
+        JOIN cohort c ON c.organization_id = os.organization_id
+        WHERE os.status = 'cancelled'
+          AND os.cancelled_at >= $1::timestamptz
+          AND os.cancelled_at <= $2::timestamptz
+          AND os.created_at <= $1::timestamptz
+          AND (os.trial_ends_at IS NULL OR os.trial_ends_at <= $1::timestamptz)
+      )
       SELECT
-        COUNT(*) FILTER (WHERE action = 'PLATFORM_SUBSCRIPTION_CANCELLED')::int AS cancellations,
-        COUNT(DISTINCT organization_id)::int AS touched_tenants
-      FROM audit_events
-      WHERE action = 'PLATFORM_SUBSCRIPTION_CANCELLED'
-        AND timestamp >= CURRENT_TIMESTAMP - INTERVAL '30 days'
-    `);
+        (SELECT COUNT(*)::int FROM cohort) AS cohort_count,
+        (SELECT COUNT(*)::int FROM churned) AS churned_count
+    `, [periodStart.toISOString(), now.toISOString()]);
 
-    const distRes = await db.query<any>(`\n      SELECT
-        sp.code,
-        sp.name,
-        sp.amount::text AS amount,
-        sp.currency,
+    const distRes = await db.query<any>(`
+      SELECT sp.code, sp.name, sp.amount::text AS amount, sp.currency,
         COUNT(os.id)::int AS total_subscriptions,
-        COUNT(CASE WHEN os.status = 'active' THEN 1 END)::int AS active_subscriptions,
-        COUNT(CASE WHEN os.status = 'trialing' THEN 1 END)::int AS trialing_subscriptions
+        COUNT(*) FILTER (WHERE os.status = 'active')::int AS active_subscriptions,
+        COUNT(*) FILTER (WHERE os.status = 'trialing')::int AS trialing_subscriptions
       FROM subscription_plans sp
       LEFT JOIN organization_subscriptions os ON os.plan_id = sp.id
       GROUP BY sp.id, sp.code, sp.name, sp.amount, sp.currency, sp.display_order
       ORDER BY sp.display_order ASC, sp.amount ASC
     `);
 
-    const row = aggRes.rows[0];
-    const mrr = Number(row?.mrr || 0);
-    const activeCount = Number(row?.active_count || 0);
-    const cancellations30d = Number(churnRes.rows[0]?.cancellations || 0);
-    const churnRate30d = activeCount + cancellations30d > 0
-      ? Number(((cancellations30d / (activeCount + cancellations30d)) * 100).toFixed(2))
-      : 0;
+    const revenueByCurrency = revenueRes.rows.map((r: any) => {
+      const mrr = Number(r.mrr || 0);
+      return { currency: String(r.currency), mrr, arr: Number((mrr * 12).toFixed(2)) };
+    });
+    const singleCurrency = revenueByCurrency.length === 1;
+    const mrr = singleCurrency ? revenueByCurrency[0].mrr : 0;
+    const arr = singleCurrency ? revenueByCurrency[0].arr : 0;
+    const cohortCount = Number(churnRes.rows[0]?.cohort_count || 0);
+    const churnedCount = Number(churnRes.rows[0]?.churned_count || 0);
+    const churnRate30d = cohortCount > 0 ? Number(((churnedCount / cohortCount) * 100).toFixed(2)) : 0;
+    const row = countsRes.rows[0];
 
     return {
       status: 'operational',
       mrr,
-      arr: Number((mrr * 12).toFixed(2)),
+      arr,
       churnRate30d,
-      activeCount,
-      currency: 'SLE',
+      currency: singleCurrency ? revenueByCurrency[0].currency : (revenueByCurrency.length ? 'MULTI' : 'SLE'),
+      revenueByCurrency,
+      activeCount: Number(row?.active_count || 0),
       trialingCount: Number(row?.trialing_count || 0),
       pausedCount: Number(row?.paused_count || 0),
       cancelledCount: Number(row?.cancelled_count || 0),
@@ -832,7 +864,7 @@ export class SubscriptionService {
         activeSubscriptions: Number(r.active_subscriptions),
         trialingSubscriptions: Number(r.trialing_subscriptions),
       })),
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: now.toISOString(),
     };
   }
 }
