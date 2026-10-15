@@ -16,8 +16,8 @@ async function main() {
     await db.query(
       "INSERT INTO organizations (id, name, code, is_active, plan_tier) VALUES " +
       "('org_metrics_usd', 'Metrics USD', 'METRICS-USD', true, 'professional'), " +
-      "('org_metrics_gbp', 'Metrics GBP', 'METRICS-GBP', true, 'metrics-gbp'), " +
-      "('org_metrics_churned', 'Metrics Churned', 'METRICS-CHURNED', true, 'metrics-gbp')"
+      "('org_metrics_gbp', 'Metrics GBP', 'METRICS-GBP', true, 'professional'), " +
+      "('org_metrics_churned', 'Metrics Churned', 'METRICS-CHURNED', true, 'professional')"
     );
     await db.query(
       "INSERT INTO organization_subscriptions " +
