@@ -22,9 +22,9 @@ async function main() {
     await db.query(
       "INSERT INTO organization_subscriptions " +
       "(id, organization_id, plan_id, status, current_period_start, current_period_end, created_at) VALUES " +
-      "('sub_metrics_usd', 'org_metrics_usd', 'plan_professional', 'active', CURRENT_TIMESTAMP - INTERVAL '10 days', CURRENT_TIMESTAMP + INTERVAL '20 days', CURRENT_TIMESTAMP - INTERVAL '90 days'), " +
+      "('sub_metrics_usd', 'org_metrics_usd', 'plan_professional', 'active', CURRENT_TIMESTAMP - INTERVAL '60 days', CURRENT_TIMESTAMP + INTERVAL '30 days', CURRENT_TIMESTAMP - INTERVAL '90 days'), " +
       "('sub_metrics_gbp', 'org_metrics_gbp', 'plan_metrics_gbp', 'active', CURRENT_TIMESTAMP - INTERVAL '10 days', CURRENT_TIMESTAMP + INTERVAL '20 days', CURRENT_TIMESTAMP - INTERVAL '90 days'), " +
-      "('sub_metrics_churned', 'org_metrics_churned', 'plan_metrics_gbp', 'cancelled', CURRENT_TIMESTAMP - INTERVAL '60 days', CURRENT_TIMESTAMP - INTERVAL '30 days', CURRENT_TIMESTAMP - INTERVAL '90 days')"
+      "('sub_metrics_churned', 'org_metrics_churned', 'plan_metrics_gbp', 'cancelled', CURRENT_TIMESTAMP - INTERVAL '60 days', CURRENT_TIMESTAMP + INTERVAL '30 days', CURRENT_TIMESTAMP - INTERVAL '90 days')"
     );
     await db.query(
       "UPDATE organization_subscriptions SET cancelled_at = CURRENT_TIMESTAMP - INTERVAL '10 days' WHERE id = 'sub_metrics_churned'"
