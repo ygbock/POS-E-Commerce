@@ -2708,3 +2708,20 @@ The review identified and corrected seven issues in the initial Tenant Provision
 Regression coverage was expanded from 12 to 16 tenant provisioning scenarios. Migration verification now includes migration 016, and CI was expanded to run the platform/subscription/tenant suites plus the complete `npm test` regression command.
 
 **Verification boundary:** post-fix workstation/CI execution remains mandatory. TASK-5.6.5 is blocked until lint, all required regression suites, `npm test`, and `npm run build` pass after these changes.
+
+
+## TASK: MERCHANT-PORTAL-NAV-001 — Add Return Navigation from Business Workspace
+
+- **Status**: `IMPLEMENTED — CI VALIDATION PENDING`
+- **Date**: 2026-10-12
+- **Scope**: Frontend navigation and regression test only.
+
+### Changes
+
+- Added a persistent, responsive **Merchant Portal** action to the Discovery business workspace top bar. It is visible on desktop and mobile and navigates to the canonical `/business` merchant landing page.
+- Added a regression contract to `tests/merchant_workspace_consolidation.test.ts` verifying the accessible control, its destination, and its visible label.
+- No authentication, API, database, or tenant-authorization behavior was changed.
+
+### Verification
+
+- CI validation will run on the feature branch before the change is merged into `main`.

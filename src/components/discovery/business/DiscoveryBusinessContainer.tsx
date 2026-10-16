@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   AlertCircle,
+  ArrowLeft,
   Sparkles,
   UserCheck,
   ChevronDown,
@@ -379,6 +380,15 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
               <span>Merchant Portal</span>
             </button>
           )}
+          <button
+            type="button"
+            aria-label="Return to merchant portal"
+            onClick={() => window.location.assign('/business')}
+            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors min-h-[40px]"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Merchant Portal</span>
+          </button>
           <button
             type="button"
             onClick={() => {
