@@ -42,7 +42,9 @@ async function main() {
     assert.equal(overview.churnRate30d, 50, 'churn is cancellations divided by the start-of-window paid cohort');
     console.log('[PASS] billing metrics group MRR/ARR by currency and calculate cohort churn');
   } finally {
+    console.log('[DIAG] billing metrics: closing isolated database');
     await db.close();
+    console.log('[DIAG] billing metrics: database closed; active resources:', process.getActiveResourcesInfo());
   }
 }
 
