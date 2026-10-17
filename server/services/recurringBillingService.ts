@@ -12,7 +12,7 @@ export interface BillingCycleSummary {
 export class RecurringBillingService {
   constructor(private readonly db: DatabaseClient = getDatabaseClient()) {}
 
-  async processCycle(options: { invoiceLeadDays?: number; batchSize?: number } = {}): Promise<BillingCycleSummary> {
+  async processCycle(options: { invoiceLeadDays?: number; batchSize?: number; now?: Date } = {}): Promise<BillingCycleSummary> {
     const leadDays = Math.max(0, Math.min(30, Math.floor(options.invoiceLeadDays ?? 7)));
     const batchSize = Math.max(1, Math.min(500, Math.floor(options.batchSize ?? 100)));
     return this.db.withTransaction(async (tx) => {
@@ -20,22 +20,24 @@ export class RecurringBillingService {
       const due = await tx.query<any>(
         "SELECT os.id,os.organization_id,os.status,os.current_period_start,os.current_period_end,os.trial_ends_at,os.cancel_at_period_end,sp.code AS plan_code,sp.name AS plan_name,sp.amount::text AS plan_amount,sp.currency AS plan_currency,sp.billing_interval " +
         "FROM organization_subscriptions os JOIN subscription_plans sp ON sp.id=os.plan_id " +
-        "WHERE os.status IN ('active','trialing','past_due') AND (os.current_period_end <= CURRENT_TIMESTAMP + ($1 || ' days')::interval OR (os.trial_ends_at IS NOT NULL AND os.trial_ends_at <= CURRENT_TIMESTAMP)) " +
+        "WHERE os.status IN ('active','trialing','past_due') AND (os.current_period_end <= CURRENT_TIMESTAMP + ($1 || ' days')::interval OR (os.status = 'trialing' AND os.trial_ends_at IS NOT NULL AND os.trial_ends_at <= CURRENT_TIMESTAMP + ($1 || ' days')::interval)) " +
         "ORDER BY os.current_period_end LIMIT $2 FOR UPDATE OF os SKIP LOCKED",
         [leadDays, batchSize]
       );
       for (const sub of due.rows) {
         const end = new Date(sub.current_period_end);
-        const now = Date.now();
+        const now = options.now?.getTime() ?? Date.now();
+        const trialEnd = sub.status === 'trialing' && sub.trial_ends_at ? new Date(sub.trial_ends_at) : null;
+        const renewalStartDate = trialEnd && trialEnd.getTime() < end.getTime() ? trialEnd : end;
         const ended = end.getTime() <= now;
-        const trialEnded = sub.status === 'trialing' && sub.trial_ends_at && new Date(sub.trial_ends_at).getTime() <= now;
+        const trialEnded = Boolean(trialEnd && trialEnd.getTime() <= now);
         if (sub.cancel_at_period_end && ended) {
           await tx.query("UPDATE organization_subscriptions SET status='cancelled',cancelled_at=COALESCE(cancelled_at,CURRENT_TIMESTAMP),cancel_at_period_end=FALSE,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('active','trialing','past_due')", [sub.id]);
           summary.subscriptionsCancelled++;
           continue;
         }
-        const renewalStart = end.toISOString();
-        const renewalEndDate = new Date(end);
+        const renewalStart = renewalStartDate.toISOString();
+        const renewalEndDate = new Date(renewalStartDate);
         if (sub.billing_interval === 'yearly') renewalEndDate.setUTCFullYear(renewalEndDate.getUTCFullYear() + 1);
         else renewalEndDate.setUTCMonth(renewalEndDate.getUTCMonth() + 1);
         const renewalEnd = renewalEndDate.toISOString();
@@ -53,6 +55,9 @@ export class RecurringBillingService {
           }
           continue;
         }
+
+        // A zero-cost trial should expire cleanly, not generate a meaningless $0 renewal invoice.
+        if (trialEnd && trialEnd.getTime() > now && Number(sub.plan_amount) === 0) continue;
 
         const existing = await tx.query("SELECT id FROM billing_invoices WHERE subscription_id=$1 AND metadata->>'billing_cycle'='recurring' AND metadata->>'renewal_period_start'=$2 LIMIT 1", [sub.id, renewalStart]);
         if (existing.rows.length) continue;
