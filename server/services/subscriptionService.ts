@@ -49,12 +49,16 @@ export interface SubscriptionSnapshot extends OrganizationSubscription {
 
 export class SubscriptionService {
   private readonly db?: DatabaseClient;
+  private readonly repository: SubscriptionRepository;
 
   constructor(
-    private readonly repository: SubscriptionRepository = new SubscriptionRepository(),
+    repository?: SubscriptionRepository,
     db?: DatabaseClient
   ) {
     this.db = db;
+    // Keep injected isolated/test clients inside the dependency graph instead of
+    // accidentally constructing a repository backed by the process-wide singleton.
+    this.repository = repository || (db ? new SubscriptionRepository(db) : new SubscriptionRepository());
   }
 
   async getTenantSubscription(
