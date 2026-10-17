@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createIsolatedTestClient } from '../server/db/client';
 import { runMigrations } from '../server/db/migrator';
 import { SubscriptionService } from '../server/services/subscriptionService';
+import { SubscriptionRepository } from '../server/repositories/subscriptionRepository';
 
 async function main() {
   const db = createIsolatedTestClient();
@@ -30,7 +31,7 @@ async function main() {
       "UPDATE organization_subscriptions SET cancelled_at = CURRENT_TIMESTAMP - INTERVAL '10 days' WHERE id = 'sub_metrics_churned'"
     );
 
-    const overview = await new SubscriptionService(undefined, db).getBillingOverview();
+    const overview = await new SubscriptionService(new SubscriptionRepository(db), db).getBillingOverview();
     assert.equal(overview.currency, 'MULTI', 'mixed currencies must be explicit');
     assert.equal(overview.mrr, 0, 'legacy scalar MRR must not sum incompatible currencies');
     assert.equal(overview.arr, 0, 'legacy scalar ARR must not sum incompatible currencies');
@@ -42,9 +43,7 @@ async function main() {
     assert.equal(overview.churnRate30d, 50, 'churn is cancellations divided by the start-of-window paid cohort');
     console.log('[PASS] billing metrics group MRR/ARR by currency and calculate cohort churn');
   } finally {
-    console.log('[DIAG] billing metrics: closing isolated database');
     await db.close();
-    console.log('[DIAG] billing metrics: database closed; active resources:', process.getActiveResourcesInfo());
   }
 }
 
