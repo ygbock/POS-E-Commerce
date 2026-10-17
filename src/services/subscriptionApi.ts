@@ -145,10 +145,32 @@ export const subscriptionApi = {
     return request<BillingInvoice[]>(`/api/platform/billing/invoices${query}`);
   },
 
-  async createInvoice(organizationId: string, reason?: string): Promise<BillingInvoice> {
+  async createInvoice(
+    organizationId: string,
+    optionsOrReason?: string | { reason?: string; dueDays?: number; provider?: string }
+  ): Promise<BillingInvoice> {
+    const body =
+      typeof optionsOrReason === 'string'
+        ? { reason: optionsOrReason }
+        : optionsOrReason || {};
     return request<BillingInvoice>(`/api/platform/billing/invoices/${encodeURIComponent(organizationId)}`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify(body),
+    });
+  },
+
+  async getInvoice(invoiceId: string): Promise<BillingInvoice> {
+    return request<BillingInvoice>(`/api/platform/billing/invoices/${encodeURIComponent(invoiceId)}`);
+  },
+
+  async updateInvoiceStatus(
+    invoiceId: string,
+    status: 'open' | 'paid' | 'past_due' | 'void' | 'uncollectible',
+    reason?: string
+  ): Promise<BillingInvoice> {
+    return request<BillingInvoice>(`/api/platform/billing/invoices/${encodeURIComponent(invoiceId)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reason }),
     });
   },
 

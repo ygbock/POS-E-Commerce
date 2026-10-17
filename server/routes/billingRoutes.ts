@@ -73,6 +73,31 @@ export function createBillingRouter(db: DatabaseClient): Router {
     }
   });
 
+  router.patch('/invoices/:invoiceId/status', requireAuth(), requirePlatformPermission(PERMISSIONS.PLATFORM_BILLING), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const invoiceId = req.params.invoiceId.trim();
+      const targetStatus = typeof req.body?.status === 'string' ? req.body.status.trim().toLowerCase() : '';
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+      const validStatuses = ['open', 'paid', 'past_due', 'void', 'uncollectible'];
+      if (!validStatuses.includes(targetStatus)) {
+        return res.status(422).json({ success: false, error: { code: 'INVALID_STATUS', message: `Status must be one of: ${validStatuses.join(', ')}` } });
+      }
+      const updated = await billing.transitionInvoiceStatus(
+        invoiceId,
+        targetStatus as any,
+        'platform_operator',
+        undefined,
+        { reason: reason || 'Manual status change by platform operator', operatorUserId: (req as any).user?.id }
+      );
+      res.json({ success: true, data: updated });
+    } catch (err: any) {
+      const message = err?.message || 'Unable to transition invoice status.';
+      const code = String(message).split(':')[0] || 'BILLING_ERROR';
+      const status = code === 'INVOICE_NOT_FOUND' ? 404 : code === 'INVALID_INVOICE_STATE' ? 409 : 400;
+      res.status(status).json({ success: false, error: { code, message } });
+    }
+  });
+
   return router;
 }
 

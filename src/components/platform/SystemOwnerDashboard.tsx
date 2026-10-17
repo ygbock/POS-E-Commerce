@@ -17,9 +17,21 @@ import {
   Shield,
   Ban,
   Receipt,
+  Search,
+  Filter,
+  AlertTriangle,
+  Play,
+  RotateCcw,
+  Sparkles,
+  MoreVertical,
+  SlidersHorizontal,
+  ChevronDown,
+  Eye,
+  X,
 } from 'lucide-react';
 import { PlatformDashboardData, getPlatformTenantCounts } from './platformDashboard';
 import { authClient } from '../../services/authClient';
+import { subscriptionApi, TenantSubscription, BillingOverview } from '../../services/subscriptionApi';
 
 interface SystemOwnerDashboardProps {
   data?: PlatformDashboardData;
@@ -51,17 +63,46 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
 }) => {
   const [liveData, setLiveData] = useState<PlatformDashboardData | null>(propData || null);
   const [billingData, setBillingData] = useState<BillingOverviewData | null>(null);
+  const [subscriptions, setSubscriptions] = useState<TenantSubscription[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(!propData);
+  const [isSubsLoading, setIsSubsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Subscriptions Table Filter State for System Owner
+  const [subSearch, setSubSearch] = useState<string>('');
+  const [subFilter, setSubFilter] = useState<'all' | 'active' | 'trialing' | 'high_quota' | 'paused'>('all');
+  const [openActionSubId, setOpenActionSubId] = useState<string | null>(null);
+  const [quotaInspectionSub, setQuotaInspectionSub] = useState<TenantSubscription | null>(null);
+
+  // Close dropdown on click outside or Escape
+  useEffect(() => {
+    const handleClickOutside = () => setOpenActionSubId(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpenActionSubId(null);
+        setQuotaInspectionSub(null);
+      }
+    };
+    if (openActionSubId) {
+      document.addEventListener('click', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('click', handleClickOutside);
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [openActionSubId]);
 
   const fetchPlatformOverview = async () => {
     setIsLoading(true);
+    setIsSubsLoading(true);
     setError(null);
     try {
       const headers = authClient.getAuthHeaders();
-      const [overviewRes, billingRes] = await Promise.all([
+      const [overviewRes, billingRes, subsData] = await Promise.all([
         fetch('/api/platform/overview', { headers }),
         fetch('/api/platform/billing', { headers }).catch(() => null),
+        subscriptionApi.getSubscriptions({ limit: 50 }).catch(() => []),
       ]);
 
       if (!overviewRes.ok) {
@@ -85,10 +126,13 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
           setBillingData(billingJson.data);
         }
       }
+
+      setSubscriptions(subsData || []);
     } catch (err: any) {
       setError(err.message || 'Failed to connect to platform API');
     } finally {
       setIsLoading(false);
+      setIsSubsLoading(false);
     }
   };
 
@@ -97,6 +141,12 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
       fetchPlatformOverview();
     } else {
       setLiveData(propData);
+      // Fetch billing and subscriptions if propData was passed
+      subscriptionApi.getBillingOverview().then((b) => setBillingData(b)).catch(() => {});
+      subscriptionApi.getSubscriptions({ limit: 50 }).then((s) => {
+        setSubscriptions(s);
+        setIsSubsLoading(false);
+      }).catch(() => setIsSubsLoading(false));
     }
   }, [propData]);
 
@@ -116,16 +166,121 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
           maximumFractionDigits: 0,
         }).format(rawMrr);
 
+  // Compute maximum quota utilization ratio for a subscription
+  const getMaxQuotaRatio = (sub: TenantSubscription): number => {
+    const limits = sub.plan?.limits || {};
+    const usage = sub.usage || { users: 0, locations: 0, products: 0, monthly_orders: 0 };
+    const ratios: number[] = [];
+    if (limits.users) ratios.push(usage.users / limits.users);
+    if (limits.locations) ratios.push(usage.locations / limits.locations);
+    if (limits.products) ratios.push(usage.products / limits.products);
+    if (limits.monthly_orders) ratios.push(usage.monthly_orders / limits.monthly_orders);
+    return ratios.length ? Math.max(...ratios) : 0;
+  };
+
+  // Filter subscriptions for table
+  const filteredSubscriptions = useMemo(() => {
+    return subscriptions.filter((sub) => {
+      const name = (sub.organization_name || sub.organization_id || '').toLowerCase();
+      const code = (sub.organization_code || '').toLowerCase();
+      const planCode = (sub.plan?.code || '').toLowerCase();
+      const matchesSearch =
+        !subSearch.trim() ||
+        name.includes(subSearch.toLowerCase()) ||
+        code.includes(subSearch.toLowerCase()) ||
+        planCode.includes(subSearch.toLowerCase());
+
+      if (!matchesSearch) return false;
+
+      if (subFilter === 'active') return sub.status === 'active';
+      if (subFilter === 'trialing') return sub.status === 'trialing';
+      if (subFilter === 'paused') return sub.status === 'paused';
+      if (subFilter === 'high_quota') return getMaxQuotaRatio(sub) >= 0.8;
+
+      return true;
+    });
+  }, [subscriptions, subSearch, subFilter]);
+
+  const getSubStatusBadge = (sub: TenantSubscription) => {
+    if (sub.cancel_at_period_end) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60">
+          <Clock className="w-3 h-3 text-amber-600" />
+          <span>Cancelling</span>
+        </span>
+      );
+    }
+    switch (sub.status) {
+      case 'active':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Active</span>
+          </span>
+        );
+      case 'trialing':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span>Trial</span>
+          </span>
+        );
+      case 'paused':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+            <Ban className="w-3 h-3 text-slate-500" />
+            <span>Paused</span>
+          </span>
+        );
+      case 'cancelled':
+      case 'expired':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60">
+            <span>{sub.status}</span>
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            {sub.status}
+          </span>
+        );
+    }
+  };
+
+  const getSubPlanBadge = (code?: string) => {
+    switch (code) {
+      case 'enterprise':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60">
+            Enterprise
+          </span>
+        );
+      case 'professional':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/60">
+            Professional
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+            Starter
+          </span>
+        );
+    }
+  };
+
   return (
-    <section className="space-y-6 animate-in fade-in duration-300 pb-8" aria-labelledby="system-owner-title">
+    <section className="space-y-6 animate-in fade-in duration-300 pb-12" aria-labelledby="system-owner-title">
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+            <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
               SaaS Control Plane
             </span>
-            <span className="text-xs text-slate-400">Platform v2.4</span>
+            <span className="text-xs text-slate-400 font-mono">Platform v2.4</span>
           </div>
           <h1 id="system-owner-title" className="mt-2 text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
             System Owner Dashboard
@@ -158,65 +313,28 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
         </div>
       </header>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div
-          role="status"
-          aria-busy="true"
-          className="p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-center space-y-3"
-        >
-          <RefreshCw className="w-8 h-8 mx-auto animate-spin text-blue-500" />
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-            Querying platform control-plane telemetry...
-          </p>
-        </div>
-      )}
-
-      {/* Error state */}
-      {error && !isLoading && (
-        <div
-          role="alert"
-          className="p-4 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 flex items-start gap-3 text-rose-800 dark:text-rose-300 text-xs sm:text-sm"
-        >
-          <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+      {/* Error Alert */}
+      {error && (
+        <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
           <div className="flex-1">
-            <strong className="font-bold">Platform Communication Failure</strong>
-            <p className="mt-0.5">{error}</p>
+            <span className="font-bold">Dashboard Synchronization Error: </span>
+            {error}
           </div>
-          <button
-            onClick={fetchPlatformOverview}
-            className="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-200 dark:bg-rose-900/60 text-rose-900 dark:text-rose-100 hover:bg-rose-300 cursor-pointer"
-          >
-            Retry
-          </button>
         </div>
       )}
 
-      {/* Neutral state alert if data is empty or unpopulated */}
-      {!activeData && !isLoading && !error && (
-        <div
-          role="status"
-          className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 text-xs sm:text-sm text-slate-500 dark:text-slate-400"
-        >
-          <strong className="text-slate-800 dark:text-slate-200">Platform telemetry is in neutral state.</strong> No simulated or fabricated metrics are shown.
-        </div>
-      )}
-
-      {/* 4 Core Control-Plane Telemetry Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Primary Executive Metric Cards (Responsive Grid) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Total Tenants */}
-        <button
-          type="button"
-          onClick={() => onNavigate?.('tenants')}
-          className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all hover:border-blue-500/40 hover:shadow-sm cursor-pointer"
-        >
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all hover:border-slate-300 dark:hover:border-slate-700">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Total Tenants
               </p>
               <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-                {activeData ? String(tenants.length) : '—'}
+                {activeData?.totalTenants ?? tenants.length}
               </p>
             </div>
             <span className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-2.5 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
@@ -224,31 +342,33 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
             </span>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>{activeData ? `${counts.active} active · ${counts.trial} trial` : 'Awaiting platform data'}</span>
-            <span className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-0.5">
-              Manage <ChevronRight className="w-3 h-3" />
+            <span>
+              {counts.active} active · {counts.trial} trial
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50">
+              {counts.suspended} paused
             </span>
           </div>
-        </button>
+        </div>
 
-        {/* Active Users */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all">
+        {/* Active Platform Users */}
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all hover:border-slate-300 dark:hover:border-slate-700">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Active Users
               </p>
               <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-                {activeData?.activeUsers != null ? String(activeData.activeUsers) : '—'}
+                {activeData?.activeUsers ?? '—'}
               </p>
             </div>
-            <span className="rounded-xl bg-violet-50 dark:bg-violet-950/40 p-2.5 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-900/50">
+            <span className="rounded-xl bg-purple-50 dark:bg-purple-950/40 p-2.5 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-900/50">
               <Users className="h-5 w-5" />
             </span>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Across all provisioned tenants</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               Verified DB
             </span>
           </div>
@@ -287,7 +407,7 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
         </button>
 
         {/* Platform Health */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs transition-all hover:border-slate-300 dark:hover:border-slate-700">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -303,7 +423,7 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>PostgreSQL cluster operational</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               Operational
             </span>
           </div>
@@ -337,7 +457,7 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 pt-4">
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Paid</span>
             <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
@@ -378,6 +498,330 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
             </span>
           </div>
         </div>
+      </div>
+
+      {/* CORE SUBSCRIPTION TABLE FOR SYSTEM OWNER */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        {/* Table Header & Controls Bar */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <h2 className="font-bold text-slate-900 dark:text-white text-base">
+                  Tenant Subscriptions & Plan Licensing
+                </h2>
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                  {subscriptions.length} registered
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Real-time tenant subscription tiers, MRR contribution, renewal cycles, and resource utilization
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onNavigate?.('subscriptions')}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <span>Open Full Management Workspace</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search tenant or plan tier..."
+                value={subSearch}
+                onChange={(e) => setSubSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* Tactile Segmented Filter */}
+            <div className="p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 inline-flex items-center gap-1">
+              {[
+                { label: 'All', value: 'all' },
+                { label: 'Active', value: 'active' },
+                { label: 'Trial', value: 'trialing' },
+                { label: 'High Quota', value: 'high_quota' },
+                { label: 'Paused', value: 'paused' },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setSubFilter(tab.value as any)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    subFilter === tab.value
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Subscriptions Table / Cards */}
+        {isSubsLoading ? (
+          <div className="p-8 text-center text-xs text-slate-400">
+            <RefreshCw className="w-5 h-5 mx-auto animate-spin mb-2 text-indigo-500" />
+            Loading subscription ledger...
+          </div>
+        ) : filteredSubscriptions.length === 0 ? (
+          <div className="p-8 text-center text-xs text-slate-400">
+            No subscriptions found matching the selected filter criteria.
+          </div>
+        ) : (
+          <>
+            {/* Desktop & Tablet Table (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-950/50 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 select-none">
+                    <th className="px-5 py-3.5">Organization</th>
+                    <th className="px-5 py-3.5">Plan Tier</th>
+                    <th className="px-5 py-3.5">MRR Contribution</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5">Renewal Cycle</th>
+                    <th className="px-5 py-3.5 min-w-[140px]">Quota Health</th>
+                    <th className="px-5 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  {filteredSubscriptions.map((sub) => {
+                    const maxRatio = getMaxQuotaRatio(sub);
+                    const isHigh = maxRatio >= 0.8;
+                    const periodEnd = new Date(sub.current_period_end).toLocaleDateString();
+
+                    return (
+                      <tr
+                        key={sub.id}
+                        className="hover:bg-slate-50/60 dark:hover:bg-slate-850/40 transition-colors group"
+                      >
+                        {/* Tenant Organization */}
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center shrink-0 text-xs border border-indigo-200/40 dark:border-indigo-800/40">
+                              {(sub.organization_name || sub.organization_code || 'T').substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-900 dark:text-white truncate max-w-[180px]">
+                                {sub.organization_name || sub.organization_id}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
+                                <span>{sub.organization_code || 'ORG'}</span>
+                                <span>·</span>
+                                <span className="truncate max-w-[90px]">{sub.organization_id}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Plan Tier */}
+                        <td className="px-5 py-3.5">
+                          <div>{getSubPlanBadge(sub.plan?.code)}</div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                            {sub.plan?.billing_interval || 'monthly'}
+                          </div>
+                        </td>
+
+                        {/* MRR / Rate */}
+                        <td className="px-5 py-3.5">
+                          <span className="font-mono font-bold text-slate-900 dark:text-white">
+                            {sub.plan?.currency} {Number(sub.plan?.amount).toLocaleString()}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-5 py-3.5">
+                          {getSubStatusBadge(sub)}
+                        </td>
+
+                        {/* Renewal */}
+                        <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">
+                          <div className="flex items-center gap-1 text-[11px] font-mono">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>{periodEnd}</span>
+                          </div>
+                        </td>
+
+                        {/* Quota Health */}
+                        <td className="px-5 py-3.5 min-w-[140px]">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-slate-400 font-medium">Utilization</span>
+                              <span className={`font-mono font-bold ${isHigh ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-400'}`}>
+                                {Math.round(maxRatio * 100)}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  maxRatio >= 1.0
+                                    ? 'bg-rose-500'
+                                    : isHigh
+                                    ? 'bg-amber-500'
+                                    : 'bg-indigo-600 dark:bg-indigo-400'
+                                }`}
+                                style={{ width: `${Math.min(100, Math.round(maxRatio * 100))}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Administrative Action Dropdown */}
+                        <td className="px-5 py-3.5 text-right relative">
+                          <div className="relative inline-block text-left">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenActionSubId(openActionSubId === sub.id ? null : sub.id);
+                              }}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                                openActionSubId === sub.id
+                                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750'
+                              }`}
+                              title="Administrative actions"
+                            >
+                              <span>Actions</span>
+                              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${openActionSubId === sub.id ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {openActionSubId === sub.id && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className={`absolute right-0 ${
+                                  filteredSubscriptions.indexOf(sub) >= filteredSubscriptions.length - 2
+                                    ? 'bottom-full mb-1.5'
+                                    : 'top-full mt-1.5'
+                                } w-56 z-50 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xl p-1 text-xs divide-y divide-slate-100 dark:divide-slate-800 text-left`}
+                              >
+                                <div className="py-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionSubId(null);
+                                      onNavigate?.('subscriptions');
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left font-medium text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 transition-colors cursor-pointer"
+                                  >
+                                    <ArrowUpRight className="w-3.5 h-3.5 text-indigo-600" />
+                                    <span>Manage in Workspace</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionSubId(null);
+                                      setQuotaInspectionSub(sub);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>Inspect Quota Health</span>
+                                  </button>
+                                </div>
+                                <div className="py-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionSubId(null);
+                                      onNavigate?.('tenants');
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                  >
+                                    <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>View Tenant Directory</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List (< 768px) */}
+            <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredSubscriptions.map((sub) => {
+                const maxRatio = getMaxQuotaRatio(sub);
+                const isHigh = maxRatio >= 0.8;
+
+                return (
+                  <div key={sub.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center shrink-0 text-xs">
+                          {(sub.organization_name || sub.organization_code || 'T').substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 dark:text-white text-xs">
+                            {sub.organization_name || sub.organization_id}
+                          </h3>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            {sub.organization_code || 'ORG'}
+                          </p>
+                        </div>
+                      </div>
+                      <div>{getSubStatusBadge(sub)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium">Plan</span>
+                        <div className="mt-0.5">{getSubPlanBadge(sub.plan?.code)}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block font-medium">Rate</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                          {sub.plan?.currency} {Number(sub.plan?.amount).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <div className="text-[11px] text-slate-500">
+                        Renewal: <span className="font-mono font-semibold">{new Date(sub.current_period_end).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQuotaInspectionSub(sub)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>Inspect</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onNavigate?.('subscriptions')}
+                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        >
+                          <span>Manage</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Tenant Portfolio & Security Posture */}
@@ -423,7 +867,7 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize border ${
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold capitalize border ${
                         t.status === 'active'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
                           : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800'
@@ -481,6 +925,101 @@ export const SystemOwnerDashboard: React.FC<SystemOwnerDashboardProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Quick Quota Inspection Modal for System Owner */}
+      {quotaInspectionSub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                  {(quotaInspectionSub.organization_name || quotaInspectionSub.organization_code || 'T').substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                    {quotaInspectionSub.organization_name || quotaInspectionSub.organization_id}
+                  </h3>
+                  <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-0.5">
+                    <span>{quotaInspectionSub.organization_code || 'ORG'}</span>
+                    <span>·</span>
+                    <span>Plan: {quotaInspectionSub.plan?.name || 'Starter'}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuotaInspectionSub(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Resource Quota Utilization</h4>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { name: 'Users / Operators', used: quotaInspectionSub.usage?.users || 0, limit: quotaInspectionSub.plan?.limits?.users },
+                  { name: 'Store Locations', used: quotaInspectionSub.usage?.locations || 0, limit: quotaInspectionSub.plan?.limits?.locations },
+                  { name: 'Product Catalog', used: quotaInspectionSub.usage?.products || 0, limit: quotaInspectionSub.plan?.limits?.products },
+                  { name: 'Monthly Orders', used: quotaInspectionSub.usage?.monthly_orders || 0, limit: quotaInspectionSub.plan?.limits?.monthly_orders },
+                ].map((meter) => {
+                  const ratio = meter.limit ? meter.used / meter.limit : 0;
+                  const isHigh = ratio >= 0.8;
+                  const isExceeded = ratio >= 1.0;
+                  return (
+                    <div key={meter.name} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-100 dark:border-slate-800 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">{meter.name}</span>
+                        <span className="font-mono text-[11px] font-bold text-slate-900 dark:text-white">
+                          {meter.used} / {meter.limit ?? '∞'}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-750 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isExceeded ? 'bg-rose-500' : isHigh ? 'bg-amber-500' : 'bg-indigo-600 dark:bg-indigo-400'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }}
+                        />
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {isExceeded ? 'Quota Exceeded' : isHigh ? 'Approaching Limit' : 'Within Limits'} ({Math.round(ratio * 100)}%)
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+              <div className="text-slate-500">
+                Renewal: <strong className="text-slate-800 dark:text-slate-200">{new Date(quotaInspectionSub.current_period_end).toLocaleDateString()}</strong>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuotaInspectionSub(null)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuotaInspectionSub(null);
+                    onNavigate?.('subscriptions');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <span>Open Full Workspace</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

@@ -13,23 +13,32 @@
 
 ### Summary of Enhancements:
 1. **Frontend Design Constitution & Anti-AI-Slop Compliance**:
-   - Eliminated static pill capsules in headers and metadata in favor of clean typographic hierarchy with quiet typographic separators (`·`).
-   - Integrated tactile, segmented navigation bars for tab switching (`Tenant Subscriptions`, `Plan Tiers & Canonical Quotas`, `Feature & Quota Matrix`, `Invoices & Ledger`).
-2. **Interactive Financial KPI Cards**:
-   - Responsive grid (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5`) displaying Authoritative MRR, ARR projection, Active Subscribers, Trialing Accounts, Suspended (Paused), and Cancelled/Expired accounts.
-   - Interactive click-to-filter: Clicking any subscriber status card immediately filters the tenant subscriptions table.
-3. **Tenant Subscriptions Table & Touch-Friendly Mobile Cards**:
-   - Desktop view: Sortable columns (Organization Name, Plan & Rate, Status, Billing Cycle, Quotas & Utilization, Actions).
-   - Real-time billing progress bars displaying elapsed days in current billing cycle.
-   - Resource quota utilization meters with warning highlights for tenants approaching or exceeding capacity.
-   - Mobile card view (`md:hidden`): Touch-target compliant cards (&ge;44px targets), collapsible quota accordion, and accessible action grid.
-4. **Canonical Tier & Feature Matrix**:
-   - Added side-by-side comparative matrix evaluating Starter, Professional, and Enterprise quotas and feature gates at a glance.
-5. **Invoices & Collections Ledger**:
-   - Added dedicated tab connecting to authoritative billing invoices with on-demand invoice generation modal.
-6. **System Owner Dashboard Polish**:
-   - Added dedicated "Plans & SaaS Subscription Oversight" widget to `SystemOwnerDashboard.tsx` with revenue metrics and direct shortcut navigation.
-   - Made the MRR card interactive and navigable to `subscriptions`.
+   - Replaced generic pill filters with crisp segmented filter buttons (`rounded-lg font-semibold text-xs border`).
+   - Integrated tactile, segmented navigation bars for tab switching (`Tenant Subscriptions`, `Plan Tiers & Canonical Quotas`, `Invoices & Statements`).
+2. **Interactive Financial KPI Cards & Streamlined Filter Toolbar**:
+   - Responsive grid (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-5`) displaying Authoritative MRR, Active Subscribers, Trialing Accounts, Suspended (Paused), and Cancelled/Expired accounts.
+   - **Streamlined Filter Toolbar**: Removed the awkward, multi-line wrapping "Quick Filter:" button row. Replaced it with a cohesive, unified, single-row toolbar featuring:
+     - Search input with clear button
+     - Status selector (`All Statuses`, `Active`, `Trialing`, `Paused`, `Cancelled`)
+     - Plan selector (`All Plans`, `Starter`, `Professional`, `Enterprise`)
+     - Quotas & Health selector (`All Quotas & Cycles`, `High Quota ≥80%`, `Trial Ending Soon ≤7d`, `Cancelling Period-End`)
+     - Quick `Reset` button when filters are active
+     - Compact result counter (`Showing X of Y subscriptions`) with one-click `Clear all filters` shortcut.
+   - Preserved one-click interactive filtering from the financial KPI cards.
+3. **Tenant Subscriptions Table & Dropdown Actions Menu**:
+   - Desktop view: Sticky table header (`sticky top-0 z-10 backdrop-blur-xs`), fixed column minimum widths (`min-w-[1100px]`), sortable headers with direction indicators, and a horizontal swipe affordance for tablet screens (`xl:hidden`).
+   - **Administrative Actions Drop Down Menu**: Replaced the previous cluster of 6 separate action buttons with a clean, tactile **Actions ▾ Dropdown Menu** (`w-64`, click-outside dismissal, Escape key handler, intelligent upward/downward flip positioning based on row index). Contains structured action groups with icons and descriptive hints:
+     - Plan management: *Change Plan Tier*
+     - Evaluation: *Extend Trial Evaluation* (when active/trialing)
+     - Telemetry & Auditing: *Inspect Subscription Dossier*, *View Audit History*
+     - Lifecycle state transitions: *Suspend Subscription*, *Reactivate Subscription*, *Cancel Subscription*, or *Restore Subscription*.
+   - Mobile card view (`md:hidden`): Streamlined action toolbar featuring a full-width `Change Plan` primary action and the touch-friendly `Actions ▾` dropdown menu (meeting the ≥44px touch-target requirement).
+4. **Dedicated System Owner Dashboard Subscriptions Table**:
+   - Added live **Tenant Subscriptions & Plan Licensing Table** directly into `SystemOwnerDashboard.tsx`.
+   - Features tenant search, segmented status filters (All, Active, Trial, High Quota, Paused), renewal date indicators, quota health bars, and quick navigation to manage subscriptions.
+   - Fully responsive with both desktop table and mobile card list views.
+5. **Invoices & Billing Statements Ledger**:
+   - Dedicated tab connecting to authoritative billing invoices with on-demand invoice generation modal.
 
 ---
 
