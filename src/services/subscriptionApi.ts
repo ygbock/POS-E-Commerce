@@ -51,6 +51,7 @@ export interface BillingOverview {
   arr: number;
   churnRate30d: number;
   currency: string;
+  revenueByCurrency: Array<{ currency: string; mrr: number; arr: number }>;
   activeCount: number;
   trialingCount: number;
   pausedCount: number;
