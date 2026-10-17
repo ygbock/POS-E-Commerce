@@ -35,8 +35,7 @@ async function main() {
 
     // Once the invoice is paid, the lifecycle worker should activate the paid period from trial end.
     await db.query("UPDATE billing_invoices SET status='paid',paid_at=CURRENT_TIMESTAMP WHERE id=$1", [trialInvoice.rows[0].id]);
-    await db.query("UPDATE organization_subscriptions SET trial_ends_at=CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id='sub_cycle_trial'");
-    await billing.processCycle();
+    await billing.processCycle({ now: new Date(new Date(trialEnd.rows[0].trial_ends_at).getTime() + 1000) });
     const trialState = await db.query("SELECT status,current_period_start,current_period_end FROM organization_subscriptions WHERE id='sub_cycle_trial'");
     assert.equal(trialState.rows[0].status, 'active', 'paid trial renewal should become active');
     assert.equal(new Date(trialState.rows[0].current_period_start).getTime(), new Date(trialInvoice.rows[0].renewal_start).getTime());
