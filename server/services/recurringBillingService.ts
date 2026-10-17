@@ -12,7 +12,7 @@ export interface BillingCycleSummary {
 export class RecurringBillingService {
   constructor(private readonly db: DatabaseClient = getDatabaseClient()) {}
 
-  async processCycle(options: { invoiceLeadDays?: number; batchSize?: number } = {}): Promise<BillingCycleSummary> {
+  async processCycle(options: { invoiceLeadDays?: number; batchSize?: number; now?: Date } = {}): Promise<BillingCycleSummary> {
     const leadDays = Math.max(0, Math.min(30, Math.floor(options.invoiceLeadDays ?? 7)));
     const batchSize = Math.max(1, Math.min(500, Math.floor(options.batchSize ?? 100)));
     return this.db.withTransaction(async (tx) => {
@@ -26,7 +26,7 @@ export class RecurringBillingService {
       );
       for (const sub of due.rows) {
         const end = new Date(sub.current_period_end);
-        const now = Date.now();
+        const now = options.now?.getTime() ?? Date.now();
         const trialEnd = sub.status === 'trialing' && sub.trial_ends_at ? new Date(sub.trial_ends_at) : null;
         const renewalStartDate = trialEnd && trialEnd.getTime() < end.getTime() ? trialEnd : end;
         const ended = end.getTime() <= now;
