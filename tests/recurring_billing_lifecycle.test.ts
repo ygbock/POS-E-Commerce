@@ -35,14 +35,13 @@ async function main() {
 
     // Once the invoice is paid, the lifecycle worker should activate the paid period from trial end.
     await db.query("UPDATE billing_invoices SET status='paid',paid_at=CURRENT_TIMESTAMP WHERE id=$1", [trialInvoice.rows[0].id]);
+    // Keep the unrelated baseline subscription outside the simulated future trial-expiry clock.
+    await db.query("UPDATE organization_subscriptions SET current_period_end=CURRENT_TIMESTAMP + INTERVAL '30 days' WHERE id='sub_cycle_test'");
     await billing.processCycle({ now: new Date(new Date(trialEnd.rows[0].trial_ends_at).getTime() + 1000) });
     const trialState = await db.query("SELECT status,current_period_start,current_period_end FROM organization_subscriptions WHERE id='sub_cycle_trial'");
     assert.equal(trialState.rows[0].status, 'active', 'paid trial renewal should become active');
     assert.equal(new Date(trialState.rows[0].current_period_start).getTime(), new Date(trialInvoice.rows[0].renewal_start).getTime());
 
-    // Keep the unrelated baseline subscription outside the simulated future trial-expiry clock.
-    // Its overdue transition is tested separately below.
-    await db.query("UPDATE organization_subscriptions SET current_period_end=CURRENT_TIMESTAMP + INTERVAL '30 days' WHERE id='sub_cycle_test'");
 
     // A free trial ending without payment should expire without creating a $0 invoice.
     await db.query("INSERT INTO organizations (id,name,code,is_active,plan_tier) VALUES ('org_cycle_free_trial','Free Trial Cycle','CYCLE-FREE',true,'starter')");
