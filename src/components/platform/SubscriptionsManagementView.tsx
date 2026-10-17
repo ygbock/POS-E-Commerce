@@ -2818,6 +2818,8 @@ export const SubscriptionsManagementView: React.FC = () => {
             </div>
           </div>
         )}
+      </Modal>
+
       {/* INVOICE MODAL 1: CREATE NEW INVOICE */}
       <Modal
         isOpen={createInvoiceModalOpen}
