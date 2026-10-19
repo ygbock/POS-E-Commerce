@@ -220,9 +220,10 @@ async function main() {
       assert.strictEqual(new Date(sub.rows[0].current_period_start).getTime(), new Date(renewalStart).getTime());
       assert.strictEqual(new Date(sub.rows[0].current_period_end).getTime(), new Date(renewalEnd).getTime());
       const audit = await db.query(
-        "SELECT action FROM audit_events WHERE organization_id='org_billing_test' AND action='BILLING_RECURRING_INVOICE_SETTLED'"
+        "SELECT action FROM audit_events WHERE organization_id='org_billing_test' AND action='BILLING_RECURRING_INVOICE_SETTLED' AND metadata->>'invoiceId'=$1",
+        [invoice.id]
       );
-      assert.strictEqual(audit.rows.length, 1, 'manual renewal settlement must write subscription audit evidence');
+      assert.strictEqual(audit.rows.length, 1, 'manual renewal settlement must write subscription audit evidence for this invoice');
     });
 
     console.log('\nTASK-5.6.4 billing engine: ' + passed + ' passed, ' + failed + ' failed');
