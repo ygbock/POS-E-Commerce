@@ -20,9 +20,9 @@ export class RecurringBillingService {
       const due = await tx.query<any>(
         "SELECT os.id,os.organization_id,os.status,os.current_period_start,os.current_period_end,os.trial_ends_at,os.cancel_at_period_end,sp.code AS plan_code,sp.name AS plan_name,sp.amount::text AS plan_amount,sp.currency AS plan_currency,sp.billing_interval " +
         "FROM organization_subscriptions os JOIN subscription_plans sp ON sp.id=os.plan_id " +
-        "WHERE os.status IN ('active','trialing','past_due') AND (os.current_period_end <= CURRENT_TIMESTAMP + ($1 || ' days')::interval OR (os.status = 'trialing' AND os.trial_ends_at IS NOT NULL AND os.trial_ends_at <= CURRENT_TIMESTAMP + ($1 || ' days')::interval)) " +
+        "WHERE os.status IN ('active','trialing','past_due') AND (os.current_period_end <= $3::timestamptz + ($1 || ' days')::interval OR (os.status = 'trialing' AND os.trial_ends_at IS NOT NULL AND os.trial_ends_at <= $3::timestamptz + ($1 || ' days')::interval)) " +
         "ORDER BY os.current_period_end LIMIT $2 FOR UPDATE OF os SKIP LOCKED",
-        [leadDays, batchSize]
+        [leadDays, batchSize, (options.now ?? new Date()).toISOString()]
       );
       for (const sub of due.rows) {
         const end = new Date(sub.current_period_end);
@@ -50,6 +50,28 @@ export class RecurringBillingService {
             await tx.query("UPDATE organization_subscriptions SET status='expired',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='trialing'", [sub.id]);
             summary.subscriptionsExpired++;
           } else {
+            // If the worker missed the advance-invoicing window, create the renewal invoice
+            // before marking the subscription past due. Idempotency is enforced by the
+            // recurring-period unique index and the explicit lookup below.
+            const existingRenewal = await tx.query(
+              "SELECT id FROM billing_invoices WHERE subscription_id=$1 AND metadata->>'billing_cycle'='recurring' AND metadata->>'renewal_period_start'=$2 LIMIT 1",
+              [sub.id, renewalStart]
+            );
+            if (!existingRenewal.rows.length) {
+              const seq = await tx.query<{ invoice_number: string }>("SELECT 'INV-' || TO_CHAR(CURRENT_DATE,'YYYYMMDD') || '-' || LPAD(nextval('billing_invoice_number_seq')::text,6,'0') AS invoice_number");
+              const amount = Number(sub.plan_amount);
+              const invoiceId = 'inv_' + randomUUID().replace(/-/g, '');
+              const items = [{ type: 'subscription', description: String(sub.plan_name) + ' plan renewal', planCode: sub.plan_code, quantity: 1, unitAmount: amount.toFixed(2), amount: amount.toFixed(2), currency: sub.plan_currency }];
+              const inserted = await tx.query<{ id: string }>(
+                "INSERT INTO billing_invoices (id,organization_id,subscription_id,invoice_number,status,subtotal,tax,total,currency,period_start,period_end,due_at,line_items,metadata) " +
+                "VALUES ($1,$2,$3,$4,'open',$5,0,$5,$6,$7,$8,$7::timestamptz + INTERVAL '7 days',$9::jsonb,$10::jsonb) ON CONFLICT DO NOTHING RETURNING id",
+                [invoiceId, sub.organization_id, sub.id, seq.rows[0].invoice_number, amount.toFixed(2), sub.plan_currency, renewalStart, renewalEnd, JSON.stringify(items), JSON.stringify({ source: 'recurring_billing_worker', billing_cycle: 'recurring', renewal_period_start: renewalStart, renewal_period_end: renewalEnd })]
+              );
+              if (inserted.rows.length) {
+                await tx.query("INSERT INTO billing_invoice_status_history (id,invoice_id,from_status,to_status,source,metadata) VALUES ($1,$2,NULL,'open','recurring_billing_worker',$3::jsonb)", ['bih_' + randomUUID().replace(/-/g, ''), inserted.rows[0].id, JSON.stringify({ billing_cycle: 'recurring', subscription_id: sub.id, recovery: 'missed_advance_window' })]);
+                summary.invoicesCreated++;
+              }
+            }
             const changed = await tx.query("UPDATE organization_subscriptions SET status='past_due',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('active','trialing') RETURNING id", [sub.id]);
             summary.subscriptionsMarkedPastDue += changed.rows.length;
           }
@@ -74,7 +96,13 @@ export class RecurringBillingService {
         await tx.query("INSERT INTO billing_invoice_status_history (id,invoice_id,from_status,to_status,source,metadata) VALUES ($1,$2,NULL,'open','recurring_billing_worker',$3::jsonb)", ['bih_' + randomUUID().replace(/-/g, ''), inserted.rows[0].id, JSON.stringify({ billing_cycle: 'recurring', subscription_id: sub.id })]);
         summary.invoicesCreated++;
       }
-      const overdue = await tx.query<{ id: string }>("UPDATE billing_invoices SET status='past_due',updated_at=CURRENT_TIMESTAMP WHERE status='open' AND due_at IS NOT NULL AND due_at<CURRENT_TIMESTAMP RETURNING id");
+      const overdue = await tx.query<{ id: string }>("UPDATE billing_invoices SET status='past_due',updated_at=CURRENT_TIMESTAMP WHERE status='open' AND due_at IS NOT NULL AND due_at<$1::timestamptz RETURNING id", [(options.now ?? new Date()).toISOString()]);
+      for (const invoice of overdue.rows) {
+        await tx.query(
+          "INSERT INTO billing_invoice_status_history (id,invoice_id,from_status,to_status,source,metadata) VALUES ($1,$2,'open','past_due','recurring_billing_worker',$3::jsonb)",
+          ['bih_' + randomUUID().replace(/-/g, ''), invoice.id, JSON.stringify({ reason: 'invoice_due_date_elapsed' })]
+        );
+      }
       summary.invoicesMarkedPastDue = overdue.rows.length;
       return summary;
     });
