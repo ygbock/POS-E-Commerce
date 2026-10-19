@@ -199,6 +199,70 @@ export class BillingService {
           source, providerEventId || null, JSON.stringify(metadata),
         ]
       );
+
+      // Manual settlement of a recurring renewal must use the same period
+      // boundary rules as the recurring worker. Generic/manual invoices must
+      // never reactivate or extend a subscription.
+      if (targetStatus === 'paid' && current.subscription_id && current.metadata?.billing_cycle === 'recurring') {
+        const periodStart = current.period_start;
+        const periodEnd = current.period_end;
+        const startMs = new Date(periodStart).getTime();
+        const endMs = new Date(periodEnd).getTime();
+        if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+          const subResult = await tx.query<{
+            id: string;
+            organization_id: string;
+            status: string;
+            current_period_start: string;
+            current_period_end: string;
+            trial_ends_at: string | null;
+            cancel_at_period_end: boolean;
+          }>(
+            'SELECT id, organization_id, status, current_period_start, current_period_end, trial_ends_at, cancel_at_period_end FROM organization_subscriptions WHERE id=$1 AND organization_id=$2 FOR UPDATE',
+            [current.subscription_id, current.organization_id]
+          );
+          const sub = subResult.rows[0];
+          if (sub && !sub.cancel_at_period_end && ['active', 'past_due', 'trialing'].includes(sub.status)) {
+            const currentEnd = new Date(sub.current_period_end).getTime();
+            const trialEnd = sub.trial_ends_at ? new Date(sub.trial_ends_at).getTime() : NaN;
+            const renewalBoundaryMatches =
+              (currentEnd === startMs && currentEnd <= Date.now()) ||
+              (sub.status === 'trialing' && trialEnd === startMs && trialEnd <= Date.now());
+            if (renewalBoundaryMatches) {
+              const activated = await tx.query(
+                `UPDATE organization_subscriptions
+                 SET status='active', current_period_start=$1, current_period_end=$2,
+                     trial_ends_at=NULL, updated_at=CURRENT_TIMESTAMP
+                 WHERE id=$3 AND organization_id=$4
+                   AND status IN ('active','past_due','trialing') AND cancel_at_period_end=FALSE
+                 RETURNING id`,
+                [periodStart, periodEnd, sub.id, sub.organization_id]
+              );
+              if (activated.rows.length) {
+                await this.subscriptions.recordSubscriptionAudit(tx, {
+                  organizationId: sub.organization_id,
+                  actorId: String(metadata.operatorUserId || 'system_billing'),
+                  actorName: 'Platform billing operator',
+                  actorRole: 'platform_operator',
+                  action: 'BILLING_RECURRING_INVOICE_SETTLED',
+                  beforeState: {
+                    status: sub.status,
+                    current_period_start: sub.current_period_start,
+                    current_period_end: sub.current_period_end,
+                  },
+                  afterState: {
+                    status: 'active',
+                    current_period_start: periodStart,
+                    current_period_end: periodEnd,
+                  },
+                  reason: typeof metadata.reason === 'string' ? metadata.reason : 'Recurring renewal invoice manually marked paid',
+                  metadata: { invoiceId: current.id, invoiceNumber: current.invoice_number },
+                });
+              }
+            }
+          }
+        }
+      }
       return updated.rows[0];
     });
   }

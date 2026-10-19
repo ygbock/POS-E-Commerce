@@ -193,6 +193,39 @@ async function main() {
       assert.strictEqual(new Date(sub.rows[0].current_period_end).getTime(), new Date(renewalEnd).getTime());
     });
 
+
+    await run('manual recurring invoice settlement restores only the matching expired billing period', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      await db.query(
+        "UPDATE organization_subscriptions SET status='past_due',current_period_start=CURRENT_TIMESTAMP - INTERVAL '31 days',current_period_end=CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id='sub_billing_test'"
+      );
+      const before = await db.query("SELECT current_period_end FROM organization_subscriptions WHERE id='sub_billing_test'");
+      const renewalStart = new Date(before.rows[0].current_period_end).toISOString();
+      const renewalEnd = new Date(new Date(renewalStart).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const invoice = await billing.createInvoice('org_billing_test', { reason: 'manual recurring settlement test' });
+      await db.query(
+        "UPDATE billing_invoices SET period_start=$2,period_end=$3,metadata=metadata || $4::jsonb WHERE id=$1",
+        [invoice.id, renewalStart, renewalEnd, JSON.stringify({ billing_cycle: 'recurring', renewal_period_start: renewalStart, renewal_period_end: renewalEnd })]
+      );
+
+      const paid = await billing.transitionInvoiceStatus(invoice.id, 'paid', 'platform_operator', undefined, {
+        reason: 'verified payment',
+        operatorUserId: 'platform_admin_test',
+      });
+      assert.strictEqual(paid.status, 'paid');
+      const sub = await db.query(
+        "SELECT status,current_period_start,current_period_end FROM organization_subscriptions WHERE id='sub_billing_test'"
+      );
+      assert.strictEqual(sub.rows[0].status, 'active');
+      assert.strictEqual(new Date(sub.rows[0].current_period_start).getTime(), new Date(renewalStart).getTime());
+      assert.strictEqual(new Date(sub.rows[0].current_period_end).getTime(), new Date(renewalEnd).getTime());
+      const audit = await db.query(
+        "SELECT action FROM audit_events WHERE organization_id='org_billing_test' AND action='BILLING_RECURRING_INVOICE_SETTLED' AND metadata->>'invoiceId'=$1",
+        [invoice.id]
+      );
+      assert.strictEqual(audit.rows.length, 1, 'manual renewal settlement must write subscription audit evidence for this invoice');
+    });
+
     console.log('\nTASK-5.6.4 billing engine: ' + passed + ' passed, ' + failed + ' failed');
   } finally {
     await db.close();
