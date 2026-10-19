@@ -281,7 +281,57 @@ export class BillingService {
                 [`bih_${randomUUID().replace(/-/g, '')}`, current.id, current.status, target, eventId, JSON.stringify(event.metadata || {})]
               );
             }
-            subscriptionStatusToApply = target === 'paid' ? 'active' : target === 'past_due' ? 'past_due' : null;
+            // Failed invoice payment may mark the authoritative subscription past due.
+            // A paid invoice advances access only when it is a recurring renewal for the
+            // exact ended period; generic invoices must never reactivate a subscription.
+            subscriptionStatusToApply = target === 'past_due' ? 'past_due' : null;
+          }
+        }
+      }
+
+      if (invoice?.subscription_id && target === 'paid' && invoice.metadata?.billing_cycle === 'recurring') {
+        const periodStart = new Date(invoice.period_start).getTime();
+        const periodEnd = new Date(invoice.period_end).getTime();
+        if (Number.isFinite(periodStart) && Number.isFinite(periodEnd) && periodEnd > periodStart) {
+          const subResult = await tx.query<{
+            id: string; organization_id: string; status: string;
+            current_period_start: string; current_period_end: string;
+            trial_ends_at: string | null; cancel_at_period_end: boolean;
+          }>(
+            'SELECT id, organization_id, status, current_period_start, current_period_end, trial_ends_at, cancel_at_period_end FROM organization_subscriptions WHERE id=$1 AND organization_id=$2 FOR UPDATE',
+            [invoice.subscription_id, invoice.organization_id]
+          );
+          const sub = subResult.rows[0];
+          if (sub && !sub.cancel_at_period_end && ['active', 'past_due', 'trialing'].includes(sub.status)) {
+            const currentEnd = new Date(sub.current_period_end).getTime();
+            const trialEnd = sub.trial_ends_at ? new Date(sub.trial_ends_at).getTime() : NaN;
+            const boundaryMatches =
+              (currentEnd === periodStart && currentEnd <= Date.now()) ||
+              (sub.status === 'trialing' && trialEnd === periodStart && trialEnd <= Date.now());
+            if (boundaryMatches) {
+              const activated = await tx.query(
+                `UPDATE organization_subscriptions
+                 SET status='active', current_period_start=$1, current_period_end=$2,
+                     trial_ends_at=NULL, updated_at=CURRENT_TIMESTAMP
+                 WHERE id=$3 AND organization_id=$4
+                   AND status IN ('active','past_due','trialing') AND cancel_at_period_end=FALSE
+                 RETURNING id`,
+                [invoice.period_start, invoice.period_end, sub.id, sub.organization_id]
+              );
+              if (activated.rows.length) {
+                await this.subscriptions.recordSubscriptionAudit(tx, {
+                  organizationId: sub.organization_id,
+                  actorId: 'system_billing',
+                  actorName: 'Billing webhook',
+                  actorRole: 'system',
+                  action: 'BILLING_RECURRING_INVOICE_SETTLED',
+                  beforeState: { status: sub.status, current_period_start: sub.current_period_start, current_period_end: sub.current_period_end },
+                  afterState: { status: 'active', current_period_start: invoice.period_start, current_period_end: invoice.period_end },
+                  reason: 'Recurring renewal invoice paid by provider webhook',
+                  metadata: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, providerEventId: eventId },
+                });
+              }
+            }
           }
         }
       }
