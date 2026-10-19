@@ -20,9 +20,9 @@ export class RecurringBillingService {
       const due = await tx.query<any>(
         "SELECT os.id,os.organization_id,os.status,os.current_period_start,os.current_period_end,os.trial_ends_at,os.cancel_at_period_end,sp.code AS plan_code,sp.name AS plan_name,sp.amount::text AS plan_amount,sp.currency AS plan_currency,sp.billing_interval " +
         "FROM organization_subscriptions os JOIN subscription_plans sp ON sp.id=os.plan_id " +
-        "WHERE os.status IN ('active','trialing','past_due') AND (os.current_period_end <= CURRENT_TIMESTAMP + ($1 || ' days')::interval OR (os.status = 'trialing' AND os.trial_ends_at IS NOT NULL AND os.trial_ends_at <= CURRENT_TIMESTAMP + ($1 || ' days')::interval)) " +
+        "WHERE os.status IN ('active','trialing','past_due') AND (os.current_period_end <= $3::timestamptz + ($1 || ' days')::interval OR (os.status = 'trialing' AND os.trial_ends_at IS NOT NULL AND os.trial_ends_at <= $3::timestamptz + ($1 || ' days')::interval)) " +
         "ORDER BY os.current_period_end LIMIT $2 FOR UPDATE OF os SKIP LOCKED",
-        [leadDays, batchSize]
+        [leadDays, batchSize, (options.now ?? new Date()).toISOString()]
       );
       for (const sub of due.rows) {
         const end = new Date(sub.current_period_end);
@@ -74,7 +74,7 @@ export class RecurringBillingService {
         await tx.query("INSERT INTO billing_invoice_status_history (id,invoice_id,from_status,to_status,source,metadata) VALUES ($1,$2,NULL,'open','recurring_billing_worker',$3::jsonb)", ['bih_' + randomUUID().replace(/-/g, ''), inserted.rows[0].id, JSON.stringify({ billing_cycle: 'recurring', subscription_id: sub.id })]);
         summary.invoicesCreated++;
       }
-      const overdue = await tx.query<{ id: string }>("UPDATE billing_invoices SET status='past_due',updated_at=CURRENT_TIMESTAMP WHERE status='open' AND due_at IS NOT NULL AND due_at<CURRENT_TIMESTAMP RETURNING id");
+      const overdue = await tx.query<{ id: string }>("UPDATE billing_invoices SET status='past_due',updated_at=CURRENT_TIMESTAMP WHERE status='open' AND due_at IS NOT NULL AND due_at<$1::timestamptz RETURNING id", [(options.now ?? new Date()).toISOString()]);
       summary.invoicesMarkedPastDue = overdue.rows.length;
       return summary;
     });
