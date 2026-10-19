@@ -232,44 +232,130 @@ export class BillingService {
       );
 
       let target: BillingInvoiceStatus | null = null;
-      if (['invoice.paid', 'payment.succeeded', 'subscription.active'].includes(type)) target = 'paid';
+      // A subscription status notification is not proof of invoice payment.
+      // Only payment/invoice events may settle an invoice.
+      if (['invoice.paid', 'payment.succeeded'].includes(type)) target = 'paid';
       if (['invoice.payment_failed', 'payment.failed', 'subscription.past_due'].includes(type)) target = 'past_due';
       if (['invoice.voided', 'invoice.void'].includes(type)) target = 'void';
 
       let invoice: BillingInvoice | null = null;
-      if (target && (event.invoiceId || event.providerInvoiceId)) {
-        const lookup = event.invoiceId || event.providerInvoiceId;
+      let subscriptionStatusToApply: 'active' | 'past_due' | null = null;
+      const invoiceLookup = event.invoiceId || event.providerInvoiceId;
+      if (target && invoiceLookup) {
         const inv = await tx.query<BillingInvoice>(
           'SELECT * FROM billing_invoices WHERE id = $1 OR invoice_number = $1 OR provider_invoice_id = $1 LIMIT 1 FOR UPDATE',
-          [lookup]
+          [invoiceLookup]
         );
+        if (!inv.rows[0]) {
+          // Do not acknowledge an invoice-linked event until its invoice can be resolved.
+          // Throwing rolls back the RECEIVED event row so the provider can retry later.
+          throw new Error('INVOICE_NOT_FOUND: Webhook invoice could not be resolved');
+        }
         if (inv.rows[0]) {
-          invoice = inv.rows[0];
-          const paidAt = target === 'paid' ? 'CURRENT_TIMESTAMP' : 'NULL';
-          const updated = await tx.query<BillingInvoice>(
-            `UPDATE billing_invoices SET status=$1, paid_at=${paidAt}, updated_at=CURRENT_TIMESTAMP,
-                    provider=COALESCE(provider,$2), provider_invoice_id=COALESCE(provider_invoice_id,$3)
-             WHERE id=$4 RETURNING *`,
-            [target, provider, event.providerInvoiceId || null, invoice.id]
-          );
-          invoice = updated.rows[0];
-          await tx.query(
-            `INSERT INTO billing_invoice_status_history
-              (id, invoice_id, from_status, to_status, source, provider_event_id, metadata)
-             VALUES ($1,$2,$3,$4,'webhook',$5,$6::jsonb)
-             ON CONFLICT (invoice_id, provider_event_id) WHERE provider_event_id IS NOT NULL DO NOTHING`,
-            [`bih_${randomUUID().replace(/-/g, '')}`, invoice.id, inv.rows[0].status, target, eventId, JSON.stringify(event.metadata || {})]
-          );
+          const current = inv.rows[0];
+          if (event.organizationId && event.organizationId !== current.organization_id) {
+            throw new Error('WEBHOOK_INVOICE_MISMATCH: Invoice does not belong to the supplied organization');
+          }
+          if (event.subscriptionId && current.subscription_id && event.subscriptionId !== current.subscription_id) {
+            throw new Error('WEBHOOK_SUBSCRIPTION_MISMATCH: Invoice does not belong to the supplied subscription');
+          }
+
+          invoice = current;
+          const terminal = ['paid', 'void'].includes(current.status);
+          // Preserve terminal invoice states when providers deliver out-of-order events.
+          if (!terminal || current.status === target) {
+            if (current.status !== target) {
+              const paidAt = target === 'paid' ? 'CURRENT_TIMESTAMP' : 'NULL';
+              const updated = await tx.query<BillingInvoice>(
+                `UPDATE billing_invoices SET status=$1, paid_at=${paidAt}, updated_at=CURRENT_TIMESTAMP,
+                        provider=COALESCE(provider,$2), provider_invoice_id=COALESCE(provider_invoice_id,$3)
+                 WHERE id=$4 RETURNING *`,
+                [target, provider, event.providerInvoiceId || null, current.id]
+              );
+              invoice = updated.rows[0];
+              await tx.query(
+                `INSERT INTO billing_invoice_status_history
+                  (id, invoice_id, from_status, to_status, source, provider_event_id, metadata)
+                 VALUES ($1,$2,$3,$4,'webhook',$5,$6::jsonb)
+                 ON CONFLICT (invoice_id, provider_event_id) WHERE provider_event_id IS NOT NULL DO NOTHING`,
+                [`bih_${randomUUID().replace(/-/g, '')}`, current.id, current.status, target, eventId, JSON.stringify(event.metadata || {})]
+              );
+            }
+            // Failed invoice payment may mark the authoritative subscription past due.
+            // A paid invoice advances access only when it is a recurring renewal for the
+            // exact ended period; generic invoices must never reactivate a subscription.
+            subscriptionStatusToApply = target === 'past_due' ? 'past_due' : null;
+          }
         }
       }
 
-      if (target && event.subscriptionId) {
-        const status = target === 'paid' ? 'active' : target === 'past_due' ? 'past_due' : null;
-        if (status) {
-          await tx.query(
-            'UPDATE organization_subscriptions SET status=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2 AND status NOT IN (\'cancelled\',\'expired\')',
-            [status, event.subscriptionId]
+      if (invoice?.subscription_id && target === 'paid' && invoice.metadata?.billing_cycle === 'recurring') {
+        const periodStart = new Date(invoice.period_start).getTime();
+        const periodEnd = new Date(invoice.period_end).getTime();
+        if (Number.isFinite(periodStart) && Number.isFinite(periodEnd) && periodEnd > periodStart) {
+          const subResult = await tx.query<{
+            id: string; organization_id: string; status: string;
+            current_period_start: string; current_period_end: string;
+            trial_ends_at: string | null; cancel_at_period_end: boolean;
+          }>(
+            'SELECT id, organization_id, status, current_period_start, current_period_end, trial_ends_at, cancel_at_period_end FROM organization_subscriptions WHERE id=$1 AND organization_id=$2 FOR UPDATE',
+            [invoice.subscription_id, invoice.organization_id]
           );
+          const sub = subResult.rows[0];
+          if (sub && !sub.cancel_at_period_end && ['active', 'past_due', 'trialing'].includes(sub.status)) {
+            const currentEnd = new Date(sub.current_period_end).getTime();
+            const trialEnd = sub.trial_ends_at ? new Date(sub.trial_ends_at).getTime() : NaN;
+            const boundaryMatches =
+              (currentEnd === periodStart && currentEnd <= Date.now()) ||
+              (sub.status === 'trialing' && trialEnd === periodStart && trialEnd <= Date.now());
+            if (boundaryMatches) {
+              const activated = await tx.query(
+                `UPDATE organization_subscriptions
+                 SET status='active', current_period_start=$1, current_period_end=$2,
+                     trial_ends_at=NULL, updated_at=CURRENT_TIMESTAMP
+                 WHERE id=$3 AND organization_id=$4
+                   AND status IN ('active','past_due','trialing') AND cancel_at_period_end=FALSE
+                 RETURNING id`,
+                [invoice.period_start, invoice.period_end, sub.id, sub.organization_id]
+              );
+              if (activated.rows.length) {
+                await this.subscriptions.recordSubscriptionAudit(tx, {
+                  organizationId: sub.organization_id,
+                  actorId: 'system_billing',
+                  actorName: 'Billing webhook',
+                  actorRole: 'system',
+                  action: 'BILLING_RECURRING_INVOICE_SETTLED',
+                  beforeState: { status: sub.status, current_period_start: sub.current_period_start, current_period_end: sub.current_period_end },
+                  afterState: { status: 'active', current_period_start: invoice.period_start, current_period_end: invoice.period_end },
+                  reason: 'Recurring renewal invoice paid by provider webhook',
+                  metadata: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, providerEventId: eventId },
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Invoice-linked subscription changes use the invoice's authoritative
+      // subscription_id, never an unverified ID from the webhook.
+      if (invoice?.subscription_id && subscriptionStatusToApply) {
+        await tx.query(
+          "UPDATE organization_subscriptions SET status=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2 AND organization_id=$3 AND status NOT IN ('cancelled','expired')",
+          [subscriptionStatusToApply, invoice.subscription_id, invoice.organization_id]
+        );
+      } else if (!invoiceLookup && type === 'subscription.past_due' && event.subscriptionId) {
+        // Subscription-only past-due events require a matching tenant identity.
+        const sub = await tx.query<{ id: string; organization_id: string }>(
+          'SELECT id, organization_id FROM organization_subscriptions WHERE id=$1 FOR UPDATE',
+          [event.subscriptionId]
+        );
+        if (sub.rows[0] && (!event.organizationId || event.organizationId === sub.rows[0].organization_id)) {
+          await tx.query(
+            "UPDATE organization_subscriptions SET status='past_due', updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status NOT IN ('cancelled','expired')",
+            [sub.rows[0].id]
+          );
+        } else if (sub.rows[0] && event.organizationId && event.organizationId !== sub.rows[0].organization_id) {
+          throw new Error('WEBHOOK_SUBSCRIPTION_MISMATCH: Subscription does not belong to the supplied organization');
         }
       }
 

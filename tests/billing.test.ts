@@ -73,6 +73,82 @@ async function main() {
       assert.strictEqual(Number(events.rows[0]?.count), 1);
     });
 
+    await run('out-of-order failure webhooks cannot reverse a paid invoice', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const invoice = await billing.createInvoice('org_billing_test');
+      await billing.transitionInvoiceStatus(invoice.id, 'paid', 'test');
+      const event = {
+        id: 'evt_late_failure_after_paid',
+        type: 'invoice.payment_failed',
+        organizationId: 'org_billing_test',
+        invoiceId: invoice.id,
+        subscriptionId: 'sub_billing_test',
+      };
+      const result = await billing.processWebhook(event, JSON.stringify(event), 'test-provider');
+      assert.strictEqual(result.invoice?.status, 'paid');
+      const persisted = await billing.getInvoice(invoice.id);
+      assert.strictEqual(persisted?.status, 'paid');
+      assert.ok(persisted?.paid_at, 'paid timestamp must be preserved');
+      const sub = await new SubscriptionRepository(db).getForOrganization('org_billing_test');
+      assert.strictEqual(sub?.status, 'active', 'late failure must not downgrade the subscription');
+    });
+
+    await run('webhook cannot update a subscription unrelated to its invoice', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const invoice = await billing.createInvoice('org_billing_test');
+      const event = {
+        id: 'evt_mismatched_subscription',
+        type: 'invoice.paid',
+        organizationId: 'org_billing_test',
+        invoiceId: invoice.id,
+        subscriptionId: 'sub_unrelated',
+      };
+      await assert.rejects(
+        () => billing.processWebhook(event, JSON.stringify(event), 'test-provider'),
+        /WEBHOOK_SUBSCRIPTION_MISMATCH/
+      );
+      const persisted = await billing.getInvoice(invoice.id);
+      assert.strictEqual(persisted?.status, 'open', 'mismatched webhook must not settle the invoice');
+      const eventRows = await db.query(
+        "SELECT COUNT(*)::int AS count FROM billing_events WHERE provider='test-provider' AND provider_event_id='evt_mismatched_subscription'"
+      );
+      assert.strictEqual(Number(eventRows.rows[0]?.count), 0, 'rejected event must roll back atomically');
+    });
+
+    await run('unmatched invoice webhooks remain retryable', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const event = {
+        id: 'evt_invoice_mapping_not_ready',
+        type: 'invoice.paid',
+        organizationId: 'org_billing_test',
+        invoiceId: 'inv_provider_mapping_not_ready',
+      };
+      await assert.rejects(
+        () => billing.processWebhook(event, JSON.stringify(event), 'test-provider'),
+        /INVOICE_NOT_FOUND/
+      );
+      const eventRows = await db.query(
+        "SELECT COUNT(*)::int AS count FROM billing_events WHERE provider='test-provider' AND provider_event_id='evt_invoice_mapping_not_ready'"
+      );
+      assert.strictEqual(Number(eventRows.rows[0]?.count), 0, 'unresolved invoice event must not be marked processed');
+    });
+
+    await run('subscription.active notifications do not settle invoices without payment confirmation', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const invoice = await billing.createInvoice('org_billing_test');
+      const event = {
+        id: 'evt_subscription_active_no_payment',
+        type: 'subscription.active',
+        organizationId: 'org_billing_test',
+        invoiceId: invoice.id,
+        subscriptionId: 'sub_billing_test',
+      };
+      const result = await billing.processWebhook(event, JSON.stringify(event), 'test-provider');
+      assert.strictEqual(result.invoice, null);
+      const persisted = await billing.getInvoice(invoice.id);
+      assert.strictEqual(persisted?.status, 'open');
+    });
+
     await run('failed payment marks invoice past_due without trusting client payment state', async () => {
       const billing = new BillingService(db, new SubscriptionRepository(db));
       const invoice = await billing.createInvoice('org_billing_test');
@@ -87,6 +163,34 @@ async function main() {
       assert.strictEqual(result.invoice?.status, 'past_due');
       const sub = await new SubscriptionRepository(db).getForOrganization('org_billing_test');
       assert.strictEqual(sub?.status, 'past_due');
+    });
+
+    await run('paid webhook reactivates only a recurring invoice matching the ended subscription period', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      await db.query(
+        "UPDATE organization_subscriptions SET status='past_due',current_period_start=CURRENT_TIMESTAMP - INTERVAL '31 days',current_period_end=CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id='sub_billing_test'"
+      );
+      const boundary = await db.query("SELECT current_period_end FROM organization_subscriptions WHERE id='sub_billing_test'");
+      const renewalStart = new Date(boundary.rows[0].current_period_end).toISOString();
+      const renewalEnd = new Date(new Date(renewalStart).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const genericInvoice = await billing.createInvoice('org_billing_test', { reason: 'generic invoice must not restore access' });
+      const genericEvent = { id: 'evt_generic_paid_no_reactivation', type: 'invoice.paid', organizationId: 'org_billing_test', invoiceId: genericInvoice.id, subscriptionId: 'sub_billing_test' };
+      await billing.processWebhook(genericEvent, JSON.stringify(genericEvent), 'test-provider');
+      let sub = await db.query("SELECT status FROM organization_subscriptions WHERE id='sub_billing_test'");
+      assert.strictEqual(sub.rows[0].status, 'past_due', 'generic invoice payment must not reactivate a past-due subscription');
+
+      const renewalInvoice = await billing.createInvoice('org_billing_test', { reason: 'recurring renewal settlement' });
+      await db.query(
+        "UPDATE billing_invoices SET period_start=$2,period_end=$3,metadata=metadata || $4::jsonb WHERE id=$1",
+        [renewalInvoice.id, renewalStart, renewalEnd, JSON.stringify({ billing_cycle: 'recurring', renewal_period_start: renewalStart, renewal_period_end: renewalEnd })]
+      );
+      const renewalEvent = { id: 'evt_recurring_paid_matching_period', type: 'invoice.paid', organizationId: 'org_billing_test', invoiceId: renewalInvoice.id, subscriptionId: 'sub_billing_test' };
+      await billing.processWebhook(renewalEvent, JSON.stringify(renewalEvent), 'test-provider');
+      sub = await db.query("SELECT status,current_period_start,current_period_end FROM organization_subscriptions WHERE id='sub_billing_test'");
+      assert.strictEqual(sub.rows[0].status, 'active');
+      assert.strictEqual(new Date(sub.rows[0].current_period_start).getTime(), new Date(renewalStart).getTime());
+      assert.strictEqual(new Date(sub.rows[0].current_period_end).getTime(), new Date(renewalEnd).getTime());
     });
 
     console.log('\nTASK-5.6.4 billing engine: ' + passed + ' passed, ' + failed + ' failed');
