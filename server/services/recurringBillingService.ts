@@ -97,6 +97,12 @@ export class RecurringBillingService {
         summary.invoicesCreated++;
       }
       const overdue = await tx.query<{ id: string }>("UPDATE billing_invoices SET status='past_due',updated_at=CURRENT_TIMESTAMP WHERE status='open' AND due_at IS NOT NULL AND due_at<$1::timestamptz RETURNING id", [(options.now ?? new Date()).toISOString()]);
+      for (const invoice of overdue.rows) {
+        await tx.query(
+          "INSERT INTO billing_invoice_status_history (id,invoice_id,from_status,to_status,source,metadata) VALUES ($1,$2,'open','past_due','recurring_billing_worker',$3::jsonb)",
+          ['bih_' + randomUUID().replace(/-/g, ''), invoice.id, JSON.stringify({ reason: 'invoice_due_date_elapsed' })]
+        );
+      }
       summary.invoicesMarkedPastDue = overdue.rows.length;
       return summary;
     });
