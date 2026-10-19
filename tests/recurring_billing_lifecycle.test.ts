@@ -43,6 +43,10 @@ async function main() {
     assert.equal(new Date(trialState.rows[0].current_period_start).getTime(), new Date(trialInvoice.rows[0].renewal_start).getTime());
 
 
+    // Keep the baseline invoice outside the later simulated future clock; that clock is
+    // intended to test the isolated clock invoice, not retroactively age unrelated fixtures.
+    await db.query("UPDATE billing_invoices SET due_at=CURRENT_TIMESTAMP + INTERVAL '60 days' WHERE subscription_id='sub_cycle_test'");
+
     // The injected clock must control SQL due selection, not only in-memory decisions.
     await db.query("INSERT INTO organizations (id,name,code,is_active,plan_tier) VALUES ('org_cycle_clock','Clock Cycle','CYCLE-CLOCK',true,'professional')");
     await db.query(
