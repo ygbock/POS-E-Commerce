@@ -49,7 +49,7 @@ async function main() {
       "INSERT INTO organization_subscriptions (id,organization_id,plan_id,status,current_period_start,current_period_end) " +
       "VALUES ('sub_cycle_clock','org_cycle_clock','plan_professional','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '20 days')"
     );
-    const clockNow = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000);
+    const clockNow = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
     const clockSummary = await billing.processCycle({ now: clockNow, invoiceLeadDays: 7 });
     assert.equal(clockSummary.invoicesCreated, 1, 'injected future clock should select subscriptions due within the lead window');
 
