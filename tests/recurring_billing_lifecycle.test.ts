@@ -83,6 +83,10 @@ async function main() {
     assert.equal(overdue.subscriptionsMarkedPastDue, 1, 'expired unpaid period must become past due');
     const state = await db.query("SELECT status FROM organization_subscriptions WHERE id='sub_cycle_test'");
     assert.equal(state.rows[0].status, 'past_due');
+    const recoveredInvoice = await db.query(
+      "SELECT id,status FROM billing_invoices WHERE subscription_id='sub_cycle_test' AND metadata->>'renewal_period_start'=(SELECT current_period_end::text FROM organization_subscriptions WHERE id='sub_cycle_test')"
+    );
+    assert.equal(recoveredInvoice.rows.length, 1, 'missed advance window should still create the renewal invoice');
 
     await db.query("UPDATE organization_subscriptions SET status='active',cancel_at_period_end=TRUE,current_period_end=CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id='sub_cycle_test'");
     const cancelled = await billing.processCycle();
