@@ -43,6 +43,23 @@ async function main() {
     assert.equal(new Date(trialState.rows[0].current_period_start).getTime(), new Date(trialInvoice.rows[0].renewal_start).getTime());
 
 
+    // The injected clock must control SQL due selection, not only in-memory decisions.
+    await db.query("INSERT INTO organizations (id,name,code,is_active,plan_tier) VALUES ('org_cycle_clock','Clock Cycle','CYCLE-CLOCK',true,'professional')");
+    await db.query(
+      "INSERT INTO organization_subscriptions (id,organization_id,plan_id,status,current_period_start,current_period_end) " +
+      "VALUES ('sub_cycle_clock','org_cycle_clock','plan_professional','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP + INTERVAL '20 days')"
+    );
+    const clockNow = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000);
+    const clockSummary = await billing.processCycle({ now: clockNow, invoiceLeadDays: 7 });
+    assert.equal(clockSummary.invoicesCreated, 1, 'injected future clock should select subscriptions due within the lead window');
+
+    const clockInvoice = await db.query("SELECT id FROM billing_invoices WHERE subscription_id='sub_cycle_clock'");
+    assert.equal(clockInvoice.rows.length, 1);
+    await db.query("UPDATE billing_invoices SET due_at=CURRENT_TIMESTAMP + INTERVAL '2 days' WHERE id=$1", [clockInvoice.rows[0].id]);
+    const overdueClock = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    const overdueClockSummary = await billing.processCycle({ now: overdueClock, invoiceLeadDays: 0 });
+    assert.ok(overdueClockSummary.invoicesMarkedPastDue >= 1, 'injected future clock should mark invoices overdue based on due_at');
+
     // A free trial ending without payment should expire without creating a $0 invoice.
     await db.query("INSERT INTO organizations (id,name,code,is_active,plan_tier) VALUES ('org_cycle_free_trial','Free Trial Cycle','CYCLE-FREE',true,'starter')");
     await db.query(
