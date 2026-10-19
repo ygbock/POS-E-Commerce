@@ -246,6 +246,11 @@ export class BillingService {
           'SELECT * FROM billing_invoices WHERE id = $1 OR invoice_number = $1 OR provider_invoice_id = $1 LIMIT 1 FOR UPDATE',
           [invoiceLookup]
         );
+        if (!inv.rows[0]) {
+          // Do not acknowledge an invoice-linked event until its invoice can be resolved.
+          // Throwing rolls back the RECEIVED event row so the provider can retry later.
+          throw new Error('INVOICE_NOT_FOUND: Webhook invoice could not be resolved');
+        }
         if (inv.rows[0]) {
           const current = inv.rows[0];
           if (event.organizationId && event.organizationId !== current.organization_id) {
