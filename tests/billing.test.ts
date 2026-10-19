@@ -115,6 +115,24 @@ async function main() {
       assert.strictEqual(Number(eventRows.rows[0]?.count), 0, 'rejected event must roll back atomically');
     });
 
+    await run('unmatched invoice webhooks remain retryable', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const event = {
+        id: 'evt_invoice_mapping_not_ready',
+        type: 'invoice.paid',
+        organizationId: 'org_billing_test',
+        invoiceId: 'inv_provider_mapping_not_ready',
+      };
+      await assert.rejects(
+        () => billing.processWebhook(event, JSON.stringify(event), 'test-provider'),
+        /INVOICE_NOT_FOUND/
+      );
+      const eventRows = await db.query(
+        "SELECT COUNT(*)::int AS count FROM billing_events WHERE provider='test-provider' AND provider_event_id='evt_invoice_mapping_not_ready'"
+      );
+      assert.strictEqual(Number(eventRows.rows[0]?.count), 0, 'unresolved invoice event must not be marked processed');
+    });
+
     await run('subscription.active notifications do not settle invoices without payment confirmation', async () => {
       const billing = new BillingService(db, new SubscriptionRepository(db));
       const invoice = await billing.createInvoice('org_billing_test');
