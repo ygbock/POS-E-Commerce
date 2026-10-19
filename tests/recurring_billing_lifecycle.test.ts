@@ -63,6 +63,13 @@ async function main() {
     const overdueClock = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
     const overdueClockSummary = await billing.processCycle({ now: overdueClock, invoiceLeadDays: 0 });
     assert.ok(overdueClockSummary.invoicesMarkedPastDue >= 1, 'injected future clock should mark invoices overdue based on due_at');
+    const overdueHistory = await db.query(
+      "SELECT from_status,to_status,source FROM billing_invoice_status_history WHERE invoice_id=$1 AND to_status='past_due'",
+      [clockInvoice.rows[0].id]
+    );
+    assert.equal(overdueHistory.rows.length, 1, 'overdue invoice transition must be recorded once');
+    assert.equal(overdueHistory.rows[0].from_status, 'open');
+    assert.equal(overdueHistory.rows[0].source, 'recurring_billing_worker');
 
     // A free trial ending without payment should expire without creating a $0 invoice.
     await db.query("INSERT INTO organizations (id,name,code,is_active,plan_tier) VALUES ('org_cycle_free_trial','Free Trial Cycle','CYCLE-FREE',true,'starter')");
