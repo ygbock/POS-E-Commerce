@@ -232,44 +232,75 @@ export class BillingService {
       );
 
       let target: BillingInvoiceStatus | null = null;
-      if (['invoice.paid', 'payment.succeeded', 'subscription.active'].includes(type)) target = 'paid';
+      // A subscription status notification is not proof of invoice payment.
+      // Only payment/invoice events may settle an invoice.
+      if (['invoice.paid', 'payment.succeeded'].includes(type)) target = 'paid';
       if (['invoice.payment_failed', 'payment.failed', 'subscription.past_due'].includes(type)) target = 'past_due';
       if (['invoice.voided', 'invoice.void'].includes(type)) target = 'void';
 
       let invoice: BillingInvoice | null = null;
-      if (target && (event.invoiceId || event.providerInvoiceId)) {
-        const lookup = event.invoiceId || event.providerInvoiceId;
+      let subscriptionStatusToApply: 'active' | 'past_due' | null = null;
+      const invoiceLookup = event.invoiceId || event.providerInvoiceId;
+      if (target && invoiceLookup) {
         const inv = await tx.query<BillingInvoice>(
           'SELECT * FROM billing_invoices WHERE id = $1 OR invoice_number = $1 OR provider_invoice_id = $1 LIMIT 1 FOR UPDATE',
-          [lookup]
+          [invoiceLookup]
         );
         if (inv.rows[0]) {
-          invoice = inv.rows[0];
-          const paidAt = target === 'paid' ? 'CURRENT_TIMESTAMP' : 'NULL';
-          const updated = await tx.query<BillingInvoice>(
-            `UPDATE billing_invoices SET status=$1, paid_at=${paidAt}, updated_at=CURRENT_TIMESTAMP,
-                    provider=COALESCE(provider,$2), provider_invoice_id=COALESCE(provider_invoice_id,$3)
-             WHERE id=$4 RETURNING *`,
-            [target, provider, event.providerInvoiceId || null, invoice.id]
-          );
-          invoice = updated.rows[0];
-          await tx.query(
-            `INSERT INTO billing_invoice_status_history
-              (id, invoice_id, from_status, to_status, source, provider_event_id, metadata)
-             VALUES ($1,$2,$3,$4,'webhook',$5,$6::jsonb)
-             ON CONFLICT (invoice_id, provider_event_id) WHERE provider_event_id IS NOT NULL DO NOTHING`,
-            [`bih_${randomUUID().replace(/-/g, '')}`, invoice.id, inv.rows[0].status, target, eventId, JSON.stringify(event.metadata || {})]
-          );
+          const current = inv.rows[0];
+          if (event.organizationId && event.organizationId !== current.organization_id) {
+            throw new Error('WEBHOOK_INVOICE_MISMATCH: Invoice does not belong to the supplied organization');
+          }
+          if (event.subscriptionId && current.subscription_id && event.subscriptionId !== current.subscription_id) {
+            throw new Error('WEBHOOK_SUBSCRIPTION_MISMATCH: Invoice does not belong to the supplied subscription');
+          }
+
+          invoice = current;
+          const terminal = ['paid', 'void'].includes(current.status);
+          // Preserve terminal invoice states when providers deliver out-of-order events.
+          if (!terminal || current.status === target) {
+            if (current.status !== target) {
+              const paidAt = target === 'paid' ? 'CURRENT_TIMESTAMP' : 'NULL';
+              const updated = await tx.query<BillingInvoice>(
+                `UPDATE billing_invoices SET status=$1, paid_at=${paidAt}, updated_at=CURRENT_TIMESTAMP,
+                        provider=COALESCE(provider,$2), provider_invoice_id=COALESCE(provider_invoice_id,$3)
+                 WHERE id=$4 RETURNING *`,
+                [target, provider, event.providerInvoiceId || null, current.id]
+              );
+              invoice = updated.rows[0];
+              await tx.query(
+                `INSERT INTO billing_invoice_status_history
+                  (id, invoice_id, from_status, to_status, source, provider_event_id, metadata)
+                 VALUES ($1,$2,$3,$4,'webhook',$5,$6::jsonb)
+                 ON CONFLICT (invoice_id, provider_event_id) WHERE provider_event_id IS NOT NULL DO NOTHING`,
+                [`bih_${randomUUID().replace(/-/g, '')}`, current.id, current.status, target, eventId, JSON.stringify(event.metadata || {})]
+              );
+            }
+            subscriptionStatusToApply = target === 'paid' ? 'active' : target === 'past_due' ? 'past_due' : null;
+          }
         }
       }
 
-      if (target && event.subscriptionId) {
-        const status = target === 'paid' ? 'active' : target === 'past_due' ? 'past_due' : null;
-        if (status) {
+      // Invoice-linked subscription changes use the invoice's authoritative
+      // subscription_id, never an unverified ID from the webhook.
+      if (invoice?.subscription_id && subscriptionStatusToApply) {
+        await tx.query(
+          "UPDATE organization_subscriptions SET status=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2 AND organization_id=$3 AND status NOT IN ('cancelled','expired')",
+          [subscriptionStatusToApply, invoice.subscription_id, invoice.organization_id]
+        );
+      } else if (!invoiceLookup && type === 'subscription.past_due' && event.subscriptionId) {
+        // Subscription-only past-due events require a matching tenant identity.
+        const sub = await tx.query<{ id: string; organization_id: string }>(
+          'SELECT id, organization_id FROM organization_subscriptions WHERE id=$1 FOR UPDATE',
+          [event.subscriptionId]
+        );
+        if (sub.rows[0] && (!event.organizationId || event.organizationId === sub.rows[0].organization_id)) {
           await tx.query(
-            'UPDATE organization_subscriptions SET status=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2 AND status NOT IN (\'cancelled\',\'expired\')',
-            [status, event.subscriptionId]
+            "UPDATE organization_subscriptions SET status='past_due', updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status NOT IN ('cancelled','expired')",
+            [sub.rows[0].id]
           );
+        } else if (sub.rows[0] && event.organizationId && event.organizationId !== sub.rows[0].organization_id) {
+          throw new Error('WEBHOOK_SUBSCRIPTION_MISMATCH: Subscription does not belong to the supplied organization');
         }
       }
 
