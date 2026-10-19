@@ -50,6 +50,28 @@ export class RecurringBillingService {
             await tx.query("UPDATE organization_subscriptions SET status='expired',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='trialing'", [sub.id]);
             summary.subscriptionsExpired++;
           } else {
+            // If the worker missed the advance-invoicing window, create the renewal invoice
+            // before marking the subscription past due. Idempotency is enforced by the
+            // recurring-period unique index and the explicit lookup below.
+            const existingRenewal = await tx.query(
+              "SELECT id FROM billing_invoices WHERE subscription_id=$1 AND metadata->>'billing_cycle'='recurring' AND metadata->>'renewal_period_start'=$2 LIMIT 1",
+              [sub.id, renewalStart]
+            );
+            if (!existingRenewal.rows.length) {
+              const seq = await tx.query<{ invoice_number: string }>("SELECT 'INV-' || TO_CHAR(CURRENT_DATE,'YYYYMMDD') || '-' || LPAD(nextval('billing_invoice_number_seq')::text,6,'0') AS invoice_number");
+              const amount = Number(sub.plan_amount);
+              const invoiceId = 'inv_' + randomUUID().replace(/-/g, '');
+              const items = [{ type: 'subscription', description: String(sub.plan_name) + ' plan renewal', planCode: sub.plan_code, quantity: 1, unitAmount: amount.toFixed(2), amount: amount.toFixed(2), currency: sub.plan_currency }];
+              const inserted = await tx.query<{ id: string }>(
+                "INSERT INTO billing_invoices (id,organization_id,subscription_id,invoice_number,status,subtotal,tax,total,currency,period_start,period_end,due_at,line_items,metadata) " +
+                "VALUES ($1,$2,$3,$4,'open',$5,0,$5,$6,$7,$8,$7::timestamptz + INTERVAL '7 days',$9::jsonb,$10::jsonb) ON CONFLICT DO NOTHING RETURNING id",
+                [invoiceId, sub.organization_id, sub.id, seq.rows[0].invoice_number, amount.toFixed(2), sub.plan_currency, renewalStart, renewalEnd, JSON.stringify(items), JSON.stringify({ source: 'recurring_billing_worker', billing_cycle: 'recurring', renewal_period_start: renewalStart, renewal_period_end: renewalEnd })]
+              );
+              if (inserted.rows.length) {
+                await tx.query("INSERT INTO billing_invoice_status_history (id,invoice_id,from_status,to_status,source,metadata) VALUES ($1,$2,NULL,'open','recurring_billing_worker',$3::jsonb)", ['bih_' + randomUUID().replace(/-/g, ''), inserted.rows[0].id, JSON.stringify({ billing_cycle: 'recurring', subscription_id: sub.id, recovery: 'missed_advance_window' })]);
+                summary.invoicesCreated++;
+              }
+            }
             const changed = await tx.query("UPDATE organization_subscriptions SET status='past_due',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('active','trialing') RETURNING id", [sub.id]);
             summary.subscriptionsMarkedPastDue += changed.rows.length;
           }
