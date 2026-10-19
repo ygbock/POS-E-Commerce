@@ -165,6 +165,34 @@ async function main() {
       assert.strictEqual(sub?.status, 'past_due');
     });
 
+    await run('paid webhook reactivates only a recurring invoice matching the ended subscription period', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      await db.query(
+        "UPDATE organization_subscriptions SET status='past_due',current_period_start=CURRENT_TIMESTAMP - INTERVAL '31 days',current_period_end=CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id='sub_billing_test'"
+      );
+      const boundary = await db.query("SELECT current_period_end FROM organization_subscriptions WHERE id='sub_billing_test'");
+      const renewalStart = new Date(boundary.rows[0].current_period_end).toISOString();
+      const renewalEnd = new Date(new Date(renewalStart).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const genericInvoice = await billing.createInvoice('org_billing_test', { reason: 'generic invoice must not restore access' });
+      const genericEvent = { id: 'evt_generic_paid_no_reactivation', type: 'invoice.paid', organizationId: 'org_billing_test', invoiceId: genericInvoice.id, subscriptionId: 'sub_billing_test' };
+      await billing.processWebhook(genericEvent, JSON.stringify(genericEvent), 'test-provider');
+      let sub = await db.query("SELECT status FROM organization_subscriptions WHERE id='sub_billing_test'");
+      assert.strictEqual(sub.rows[0].status, 'past_due', 'generic invoice payment must not reactivate a past-due subscription');
+
+      const renewalInvoice = await billing.createInvoice('org_billing_test', { reason: 'recurring renewal settlement' });
+      await db.query(
+        "UPDATE billing_invoices SET period_start=$2,period_end=$3,metadata=metadata || $4::jsonb WHERE id=$1",
+        [renewalInvoice.id, renewalStart, renewalEnd, JSON.stringify({ billing_cycle: 'recurring', renewal_period_start: renewalStart, renewal_period_end: renewalEnd })]
+      );
+      const renewalEvent = { id: 'evt_recurring_paid_matching_period', type: 'invoice.paid', organizationId: 'org_billing_test', invoiceId: renewalInvoice.id, subscriptionId: 'sub_billing_test' };
+      await billing.processWebhook(renewalEvent, JSON.stringify(renewalEvent), 'test-provider');
+      sub = await db.query("SELECT status,current_period_start,current_period_end FROM organization_subscriptions WHERE id='sub_billing_test'");
+      assert.strictEqual(sub.rows[0].status, 'active');
+      assert.strictEqual(new Date(sub.rows[0].current_period_start).getTime(), new Date(renewalStart).getTime());
+      assert.strictEqual(new Date(sub.rows[0].current_period_end).getTime(), new Date(renewalEnd).getTime());
+    });
+
     console.log('\nTASK-5.6.4 billing engine: ' + passed + ' passed, ' + failed + ' failed');
   } finally {
     await db.close();
