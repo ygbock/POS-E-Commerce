@@ -73,6 +73,64 @@ async function main() {
       assert.strictEqual(Number(events.rows[0]?.count), 1);
     });
 
+    await run('out-of-order failure webhooks cannot reverse a paid invoice', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const invoice = await billing.createInvoice('org_billing_test');
+      await billing.transitionInvoiceStatus(invoice.id, 'paid', 'test');
+      const event = {
+        id: 'evt_late_failure_after_paid',
+        type: 'invoice.payment_failed',
+        organizationId: 'org_billing_test',
+        invoiceId: invoice.id,
+        subscriptionId: 'sub_billing_test',
+      };
+      const result = await billing.processWebhook(event, JSON.stringify(event), 'test-provider');
+      assert.strictEqual(result.invoice?.status, 'paid');
+      const persisted = await billing.getInvoice(invoice.id);
+      assert.strictEqual(persisted?.status, 'paid');
+      assert.ok(persisted?.paid_at, 'paid timestamp must be preserved');
+      const sub = await new SubscriptionRepository(db).getForOrganization('org_billing_test');
+      assert.strictEqual(sub?.status, 'active', 'late failure must not downgrade the subscription');
+    });
+
+    await run('webhook cannot update a subscription unrelated to its invoice', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const invoice = await billing.createInvoice('org_billing_test');
+      const event = {
+        id: 'evt_mismatched_subscription',
+        type: 'invoice.paid',
+        organizationId: 'org_billing_test',
+        invoiceId: invoice.id,
+        subscriptionId: 'sub_unrelated',
+      };
+      await assert.rejects(
+        () => billing.processWebhook(event, JSON.stringify(event), 'test-provider'),
+        /WEBHOOK_SUBSCRIPTION_MISMATCH/
+      );
+      const persisted = await billing.getInvoice(invoice.id);
+      assert.strictEqual(persisted?.status, 'open', 'mismatched webhook must not settle the invoice');
+      const eventRows = await db.query(
+        "SELECT COUNT(*)::int AS count FROM billing_events WHERE provider='test-provider' AND provider_event_id='evt_mismatched_subscription'"
+      );
+      assert.strictEqual(Number(eventRows.rows[0]?.count), 0, 'rejected event must roll back atomically');
+    });
+
+    await run('subscription.active notifications do not settle invoices without payment confirmation', async () => {
+      const billing = new BillingService(db, new SubscriptionRepository(db));
+      const invoice = await billing.createInvoice('org_billing_test');
+      const event = {
+        id: 'evt_subscription_active_no_payment',
+        type: 'subscription.active',
+        organizationId: 'org_billing_test',
+        invoiceId: invoice.id,
+        subscriptionId: 'sub_billing_test',
+      };
+      const result = await billing.processWebhook(event, JSON.stringify(event), 'test-provider');
+      assert.strictEqual(result.invoice, null);
+      const persisted = await billing.getInvoice(invoice.id);
+      assert.strictEqual(persisted?.status, 'open');
+    });
+
     await run('failed payment marks invoice past_due without trusting client payment state', async () => {
       const billing = new BillingService(db, new SubscriptionRepository(db));
       const invoice = await billing.createInvoice('org_billing_test');
