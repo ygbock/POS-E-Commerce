@@ -197,6 +197,9 @@ async function runAuditSecurityTests() {
           nested: {
             pin: '1234',
             cvv: '999',
+            cvc: '123',
+            security_code: '456',
+            securityCode: '789',
           },
         },
         metadata: {
@@ -223,6 +226,9 @@ async function runAuditSecurityTests() {
       assert.strictEqual(afterState.private_key, '[REDACTED]', 'Private key must be redacted');
       assert.strictEqual(afterState.nested.pin, '[REDACTED]', 'PIN must be redacted');
       assert.strictEqual(afterState.nested.cvv, '[REDACTED]', 'CVV must be redacted');
+      assert.strictEqual(afterState.nested.cvc, '[REDACTED]', 'CVC must be redacted');
+      assert.strictEqual(afterState.nested.security_code, '[REDACTED]', 'Security code must be redacted');
+      assert.strictEqual(afterState.nested.securityCode, '[REDACTED]', 'Camel-case security code must be redacted');
       assert.strictEqual(meta.authorization, '[REDACTED]', 'Authorization header must be redacted');
       assert.strictEqual(meta.webhook_secret, '[REDACTED]', 'Webhook secret must be redacted');
       assert.strictEqual(meta.actor_email, 'admin.alpha@test.com', 'Actor email preserved');
