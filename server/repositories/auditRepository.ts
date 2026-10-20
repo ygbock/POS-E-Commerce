@@ -65,7 +65,7 @@ export interface SecurityMetrics {
   recentSecurityEvents: AuditEventRecord[];
 }
 
-const SENSITIVE_KEY_PATTERN = /^(.*_)?(password|passwd|pin|token|secret|jwt|salt|hash|cvv|authorization|credit_card|card_number|pan|private_key|api_key|apiKey|webhook_secret|encryption_key|refresh_token|auth_token)(_.*)?$/i;
+const SENSITIVE_KEY_PATTERN = /^(.*_)?(password|passwd|pin|token|secret|jwt|salt|hash|cvv|cvv2|cvc|security_code|securityCode|authorization|credit_card|card_number|pan|private_key|api_key|apiKey|webhook_secret|encryption_key|refresh_token|auth_token)(_.*)?$/i;
 
 /**
  * Deeply sanitizes objects or arrays to prevent secrets/credentials from being recorded in audit storage.
