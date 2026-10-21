@@ -4,10 +4,13 @@ import {
   ArrowRight,
   BarChart3,
   Building2,
+  Calendar,
   Check,
   CheckCircle2,
   ChevronRight,
   Clock,
+  Copy,
+  ExternalLink,
   Eye,
   EyeOff,
   FileCheck2,
@@ -19,18 +22,23 @@ import {
   History,
   Info,
   Layers,
+  Mail,
   MapPin,
+  MessageSquare,
   Phone,
   Plus,
   RefreshCw,
   Search,
+  Send,
   ShieldAlert,
   ShieldCheck,
+  Sliders,
   SlidersHorizontal,
   Sparkles,
   Star,
   Tag,
   UserCheck,
+  Users,
   X,
   XCircle,
 } from 'lucide-react';
@@ -97,48 +105,62 @@ interface QueueSummary {
   reports: Record<string, number>;
 }
 
-const queueMeta: Record<Queue, { label: string; description: string; icon: React.ReactNode; color: string }> = {
+const queueMeta: Record<Queue, { label: string; shortLabel: string; description: string; icon: React.ReactNode; color: string; bgActive: string }> = {
   listings: {
-    label: 'Listings',
-    description: 'Business listings awaiting platform moderation and publication decisions.',
+    label: 'Listing Approvals',
+    shortLabel: 'Listings',
+    description: 'Directory listings awaiting platform quality review and publication decisions.',
     icon: <ShieldCheck className="w-4 h-4" />,
     color: 'text-indigo-600 dark:text-indigo-400',
+    bgActive: 'bg-indigo-50 border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300',
   },
   verification: {
-    label: 'Verification',
-    description: 'Official legal business verification applications.',
-    icon: <ShieldCheck className="w-4 h-4" />,
+    label: 'Merchant Verification',
+    shortLabel: 'Verification',
+    description: 'Official government registration, tax IDs, and regulatory licenses.',
+    icon: <CheckCircle2 className="w-4 h-4" />,
     color: 'text-emerald-600 dark:text-emerald-400',
+    bgActive: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300',
   },
   claims: {
-    label: 'Claims',
-    description: 'Ownership claims for unowned or contested discovery listings.',
+    label: 'Ownership Claims',
+    shortLabel: 'Claims',
+    description: 'Business ownership claims transferring active OWNER authority.',
     icon: <UserCheck className="w-4 h-4" />,
     color: 'text-blue-600 dark:text-blue-400',
+    bgActive: 'bg-blue-50 border-blue-200 dark:bg-blue-950/40 dark:border-blue-800 text-blue-700 dark:text-blue-300',
   },
   reviews: {
-    label: 'Reviews',
-    description: 'Customer reviews awaiting content policy moderation.',
+    label: 'Customer Reviews',
+    shortLabel: 'Reviews',
+    description: 'Customer ratings & feedback awaiting community standard moderation.',
     icon: <FileCheck2 className="w-4 h-4" />,
     color: 'text-amber-600 dark:text-amber-400',
+    bgActive: 'bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800 text-amber-700 dark:text-amber-300',
   },
   reports: {
-    label: 'Reports',
-    description: 'Business and service abuse, scam, or inaccuracy reports.',
+    label: 'Abuse Reports',
+    shortLabel: 'Reports',
+    description: 'Scam, inaccurate information, or community guideline violation reports.',
     icon: <Flag className="w-4 h-4" />,
     color: 'text-rose-600 dark:text-rose-400',
+    bgActive: 'bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:border-rose-800 text-rose-700 dark:text-rose-300',
   },
   history: {
-    label: 'History',
-    description: 'Immutable moderation audit log and state transition timeline.',
+    label: 'Audit History',
+    shortLabel: 'Audit Trail',
+    description: 'Immutable ledger of all trust events, transitions, and rationale.',
     icon: <Clock className="w-4 h-4" />,
     color: 'text-slate-600 dark:text-slate-400',
+    bgActive: 'bg-slate-100 border-slate-300 dark:bg-slate-800 dark:border-slate-700 text-slate-800 dark:text-slate-200',
   },
   search: {
-    label: 'Search',
-    description: 'Search quality analytics and platform ranking controls.',
+    label: 'Search & Ranking',
+    shortLabel: 'Search Ranking',
+    description: 'Search analytics and real-time algorithm scoring weights.',
     icon: <BarChart3 className="w-4 h-4" />,
     color: 'text-purple-600 dark:text-purple-400',
+    bgActive: 'bg-purple-50 border-purple-200 dark:bg-purple-950/40 dark:border-purple-800 text-purple-700 dark:text-purple-300',
   },
 };
 
@@ -169,6 +191,8 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   const [items, setItems] = useState<ModerationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [reason, setReason] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expandedJson, setExpandedJson] = useState<Record<string, boolean>>({});
@@ -209,6 +233,25 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
   const [createListingOpen, setCreateListingOpen] = useState(false);
   const [createListingName, setCreateListingName] = useState('');
   const [createListingBusy, setCreateListingBusy] = useState(false);
+
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (!successToast) return;
+    const timer = setTimeout(() => setSuccessToast(null), 3800);
+    return () => clearTimeout(timer);
+  }, [successToast]);
+
+  // Copy feedback timer
+  useEffect(() => {
+    if (!copiedId) return;
+    const timer = setTimeout(() => setCopiedId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [copiedId]);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard?.writeText(text);
+    setCopiedId(id);
+  };
 
   // Load summary metrics across queues
   const loadSummary = useCallback(async () => {
@@ -332,6 +375,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
       setCreateListingOpen(false);
       setListingStatusFilter('DRAFT');
       setListingPage(1);
+      setSuccessToast(`Discovery listing "${name}" drafted successfully.`);
       await load();
     } catch (err: any) {
       setError(err?.message || 'Unable to create Discovery listing.');
@@ -376,6 +420,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           body: JSON.stringify({ status, reason: note || undefined, issues: selectedIssues }),
         }
       );
+      setSuccessToast(`Listing decision "${status}" applied successfully.`);
       setSelectedListing(null);
       setListingDetail(null);
       await load();
@@ -402,6 +447,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           : { status, reason: currentReason || undefined };
       await platformRequest(path, { method: 'POST', body: JSON.stringify(body) });
       setReason((prev) => ({ ...prev, [item.id]: '' }));
+      setSuccessToast(`${queueMeta[queue].shortLabel} decision "${status}" recorded.`);
       await load();
     } catch (err: any) {
       setError(err?.message || 'Unable to apply moderation decision.');
@@ -415,16 +461,27 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
     const negative = ['REJECTED', 'HIDDEN', 'DISMISSED', 'SUSPENDED'];
     const neutral = ['DRAFT', 'PAUSED', 'ARCHIVED', 'UNVERIFIED'];
     const cls = positive.includes(status)
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
       : negative.includes(status)
-      ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800'
+      ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
       : neutral.includes(status)
       ? 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-      : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800';
+      : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
     return (
       <span
-        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${cls}`}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${cls}`}
       >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${
+            positive.includes(status)
+              ? 'bg-emerald-500'
+              : negative.includes(status)
+              ? 'bg-rose-500'
+              : neutral.includes(status)
+              ? 'bg-slate-400'
+              : 'bg-amber-500 animate-pulse'
+          }`}
+        />
         {status}
       </span>
     );
@@ -473,7 +530,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
 
     return (
       <div className="space-y-3">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2.5 sm:grid-cols-2">
           {keys.map((k) => {
             const val = ev[k];
             const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '—');
@@ -481,7 +538,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             return (
               <div
                 key={k}
-                className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-900/60"
+                className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900/80"
               >
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   {k.replace(/_/g, ' ')}
@@ -491,12 +548,13 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                     href={val as string}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:underline dark:text-indigo-400 truncate max-w-full"
+                    className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-400 truncate max-w-full"
                   >
-                    View Document <ArrowRight className="w-3 h-3" />
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                    Inspect Document File
                   </a>
                 ) : (
-                  <div className="mt-0.5 text-xs font-medium text-slate-800 dark:text-slate-200 break-words">
+                  <div className="mt-1 text-xs font-semibold text-slate-800 dark:text-slate-200 break-words">
                     {strVal}
                   </div>
                 )}
@@ -508,13 +566,14 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           <button
             type="button"
             onClick={() => setExpandedJson((prev) => ({ ...prev, [itemId]: !prev[itemId] }))}
-            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 inline-flex items-center gap-1"
+            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 inline-flex items-center gap-1 transition-colors"
           >
-            {isExpanded ? 'Hide Raw JSON' : 'Inspect Raw Technical JSON'}
+            {isExpanded ? 'Hide Raw Technical JSON' : 'Inspect Raw Technical JSON'}
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
           </button>
         </div>
         {isExpanded && (
-          <pre className="max-h-52 overflow-auto rounded-xl bg-slate-950 p-3 text-[11px] text-slate-200 font-mono">
+          <pre className="max-h-56 overflow-auto rounded-xl bg-slate-950 p-3.5 text-[11px] text-slate-200 font-mono shadow-inner border border-slate-800">
             {JSON.stringify(evidence, null, 2)}
           </pre>
         )}
@@ -522,32 +581,69 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
     );
   };
 
+  const totalPendingAll =
+    (summary?.listings.submitted || 0) +
+    (summary?.listings.under_review || 0) +
+    (summary?.verification.pending || 0) +
+    (summary?.claims.pending || 0) +
+    (summary?.reviews.pending || 0) +
+    (summary?.reports.pending || 0) +
+    (summary?.reports.under_review || 0);
+
   return (
     <section className="space-y-6" aria-labelledby="platform-discovery-moderation-title">
-      {/* Top Banner / Header */}
-      <header className="rounded-3xl border border-slate-200/80 bg-gradient-to-r from-white via-slate-50 to-indigo-50/30 p-6 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/20 sm:p-8">
+      {/* Toast Feedback */}
+      {successToast && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-2.5 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white shadow-xl shadow-emerald-600/30 transition-all animate-in fade-in slide-in-from-top-4">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{successToast}</span>
+          <button
+            type="button"
+            onClick={() => setSuccessToast(null)}
+            className="ml-2 rounded-lg p-0.5 hover:bg-emerald-700/60"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Top Banner / Executive Header */}
+      <header className="rounded-3xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/90 to-indigo-50/40 p-5 shadow-xs dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/20 sm:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-0.5 text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 Platform Trust & Safety
               </span>
-              <span className="text-xs font-semibold text-slate-400">
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                <ShieldAlert className="w-3 h-3 text-slate-400" />
                 Server-Authoritative Moderation Engine
               </span>
+              {totalPendingAll > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-black text-amber-800 dark:bg-amber-950/80 dark:text-amber-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />
+                  {totalPendingAll} items need action
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                  <Check className="w-3 h-3" />
+                  All Queues Clear
+                </span>
+              )}
             </div>
             <h1
               id="platform-discovery-moderation-title"
-              className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl"
+              className="text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl"
             >
               Discovery Trust & Moderation
             </h1>
-            <p className="mt-1.5 max-w-3xl text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            <p className="max-w-3xl text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
               Centrally inspect, verify, and enforce quality across Sierra Leone directory listings, business ownership claims, customer reviews, and abuse reports. Decisions write to an immutable trust event ledger.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+
+          <div className="flex flex-wrap items-center gap-2.5 sm:self-start lg:self-center">
             {queue === 'listings' && (
               <button
                 type="button"
@@ -555,7 +651,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                   setCreateListingOpen(true);
                   setError(null);
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 active:scale-95 transition-all"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 Create listing
@@ -565,17 +661,17 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 active:scale-95 transition-all"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 active:scale-95 transition-all cursor-pointer"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
               Refresh queue
             </button>
           </div>
         </div>
       </header>
 
-      {/* Queue Selection Cards with Real KPI Counters */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+      {/* Queue Selection Cards - Responsive Grid with Pending Badges */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
         {(Object.keys(queueMeta) as Queue[]).map((key) => {
           const isSelected = queue === key;
           const meta = queueMeta[key];
@@ -590,37 +686,39 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 setQueue(key);
                 setError(null);
               }}
-              className={`relative flex flex-col justify-between rounded-2xl border p-4 text-left transition-all duration-200 ${
+              className={`relative flex flex-col justify-between rounded-2xl border p-3.5 text-left transition-all duration-200 cursor-pointer ${
                 isSelected
                   ? 'border-indigo-600 bg-white shadow-md ring-2 ring-indigo-600/20 dark:border-indigo-500 dark:bg-slate-900'
-                  : 'border-slate-200 bg-white/70 hover:border-indigo-200 hover:bg-white dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-slate-700'
+                  : 'border-slate-200/90 bg-white/80 hover:border-indigo-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-slate-700'
               }`}
             >
               <div className="flex items-center justify-between w-full">
-                <span className={`p-2 rounded-xl bg-slate-100 dark:bg-slate-800 ${meta.color}`}>
+                <span className={`p-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 ${meta.color}`}>
                   {meta.icon}
                 </span>
                 {key !== 'history' && key !== 'search' && (
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black ${
                       hasPending
-                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                        : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
+                        : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
                     }`}
                   >
-                    {hasPending ? `${pendingCount} pending` : 'Clear'}
+                    {hasPending ? `${pendingCount} pend` : 'Clear'}
                   </span>
                 )}
                 {key === 'history' && (
-                  <span className="text-[10px] font-mono text-slate-400">Ledger</span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400">Ledger</span>
                 )}
                 {key === 'search' && (
-                  <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400">Weights</span>
+                  <span className="text-[10px] font-mono font-bold text-purple-600 dark:text-purple-400">Weights</span>
                 )}
               </div>
               <div className="mt-3">
-                <p className="text-sm font-extrabold text-slate-900 dark:text-white">{meta.label}</p>
-                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2">
+                <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                  {meta.shortLabel}
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
                   {meta.description}
                 </p>
               </div>
@@ -631,8 +729,8 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
 
       {/* LISTINGS QUEUE FILTER BAR */}
       {queue === 'listings' && (
-        <div className="space-y-4 rounded-3xl border border-slate-200/90 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+        <div className="space-y-4 rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-indigo-600" />
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
@@ -642,63 +740,37 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             {/* Quick Filter Presets */}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] font-bold text-slate-400 mr-1">Quick:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setListingStatusFilter('SUBMITTED');
-                  setListingPage(1);
-                }}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                  listingStatusFilter === 'SUBMITTED'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                }`}
-              >
-                Submitted
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setListingStatusFilter('UNDER_REVIEW');
-                  setListingPage(1);
-                }}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                  listingStatusFilter === 'UNDER_REVIEW'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                }`}
-              >
-                Under Review
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setListingStatusFilter('REJECTED');
-                  setListingIssuesFilter('true');
-                  setListingPage(1);
-                }}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                  listingStatusFilter === 'REJECTED'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                }`}
-              >
-                Has Issues
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setListingStatusFilter('PUBLISHED');
-                  setListingPage(1);
-                }}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                  listingStatusFilter === 'PUBLISHED'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                }`}
-              >
-                Published
-              </button>
+              {[
+                { label: 'Submitted', val: 'SUBMITTED' },
+                { label: 'Under Review', val: 'UNDER_REVIEW' },
+                { label: 'Has Issues', val: 'REJECTED', issues: 'true' },
+                { label: 'Published', val: 'PUBLISHED' },
+                { label: 'Draft', val: 'DRAFT' },
+                { label: 'Suspended', val: 'SUSPENDED' },
+              ].map((preset) => {
+                const isActive =
+                  listingStatusFilter === preset.val &&
+                  (!preset.issues || listingIssuesFilter === preset.issues);
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setListingStatusFilter(preset.val);
+                      if (preset.issues) setListingIssuesFilter(preset.issues);
+                      else setListingIssuesFilter('');
+                      setListingPage(1);
+                    }}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -708,7 +780,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 Search Query
               </label>
               <div className="relative mt-1">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
                   id="listing-search"
                   value={listingSearch}
@@ -717,8 +789,20 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                     setListingPage(1);
                   }}
                   placeholder="Business name, slug, or type…"
-                  className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-2 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950"
+                  className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-8 py-2 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 font-medium"
                 />
+                {listingSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListingSearch('');
+                      setListingPage(1);
+                    }}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -807,7 +891,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-slate-700 dark:text-slate-300">
                 {listingMeta.total === 0
@@ -818,21 +902,23 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                       listingMeta.total
                     }`}
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setListingSearch('');
-                  setListingModeFilter('');
-                  setListingVerificationFilter('');
-                  setListingIssuesFilter('');
-                  setListingPage(1);
-                }}
-                className="ml-2 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                Reset filters
-              </button>
+              {(listingSearch || listingModeFilter || listingVerificationFilter || listingIssuesFilter) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListingSearch('');
+                    setListingModeFilter('');
+                    setListingVerificationFilter('');
+                    setListingIssuesFilter('');
+                    setListingPage(1);
+                  }}
+                  className="ml-2 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-end sm:self-auto">
               <select
                 value={listingPageSize}
                 onChange={(e) => {
@@ -850,7 +936,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 type="button"
                 disabled={!listingMeta.hasPreviousPage || loading}
                 onClick={() => setListingPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+                className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Previous
               </button>
@@ -861,7 +947,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 type="button"
                 disabled={!listingMeta.hasNextPage || loading}
                 onClick={() => setListingPage((p) => p + 1)}
-                className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+                className="rounded-lg border px-3 py-1.5 font-bold disabled:opacity-40 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Next
               </button>
@@ -872,8 +958,8 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
 
       {/* VERIFICATION QUEUE FILTER BAR */}
       {queue === 'verification' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
             <label htmlFor="verification-status-filter" className="text-xs font-bold text-slate-700 dark:text-slate-300">
               Application status:
             </label>
@@ -888,8 +974,24 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               <option value="REJECTED">Rejected Applications</option>
               <option value="ALL">All Applications</option>
             </select>
+            <div className="flex gap-1">
+              {['PENDING', 'APPROVED', 'REJECTED', 'ALL'].map((statusKey) => (
+                <button
+                  key={statusKey}
+                  type="button"
+                  onClick={() => setVerificationFilter(statusKey)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${
+                    verificationFilter === statusKey
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  {statusKey === 'ALL' ? 'All' : statusKey}
+                </button>
+              ))}
+            </div>
           </div>
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             Authenticates official legal registrations with regulatory & trade authorities.
           </span>
         </div>
@@ -898,39 +1000,60 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
       {/* CLAIMS QUEUE FILTER BAR */}
       {queue === 'claims' && (
         <div className="space-y-3">
-          <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/50 dark:bg-blue-950/20 shadow-xs">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-blue-900 dark:text-blue-200">
+              <div className="text-xs text-blue-900 dark:text-blue-200 leading-relaxed">
                 <span className="font-black uppercase tracking-wider">Legal Ownership Policy:</span>{' '}
                 Platform-created Discovery listings start unowned. Approving an ownership claim transfers full active{' '}
                 <strong className="underline">OWNER</strong> role to the claimant user. Only approve after verifying valid registration, lease, or business evidence.
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <label htmlFor="claims-status-filter" className="text-xs font-bold text-slate-700 dark:text-slate-300">
-              Claim status:
-            </label>
-            <select
-              id="claims-status-filter"
-              value={claimsFilter}
-              onChange={(e) => setClaimsFilter(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold dark:border-slate-700 dark:bg-slate-950"
-            >
-              <option value="PENDING">Pending Claims (Action Required)</option>
-              <option value="APPROVED">Approved Claims</option>
-              <option value="REJECTED">Rejected Claims</option>
-              <option value="ALL">All Claims</option>
-            </select>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <label htmlFor="claims-status-filter" className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Claim status:
+              </label>
+              <select
+                id="claims-status-filter"
+                value={claimsFilter}
+                onChange={(e) => setClaimsFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold dark:border-slate-700 dark:bg-slate-950"
+              >
+                <option value="PENDING">Pending Claims (Action Required)</option>
+                <option value="APPROVED">Approved Claims</option>
+                <option value="REJECTED">Rejected Claims</option>
+                <option value="ALL">All Claims</option>
+              </select>
+              <div className="flex gap-1">
+                {['PENDING', 'APPROVED', 'REJECTED', 'ALL'].map((statusKey) => (
+                  <button
+                    key={statusKey}
+                    type="button"
+                    onClick={() => setClaimsFilter(statusKey)}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${
+                      claimsFilter === statusKey
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    {statusKey === 'ALL' ? 'All' : statusKey}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <span className="text-xs text-slate-400">
+              Verifies tenant authorization and legal representative identity.
+            </span>
           </div>
         </div>
       )}
 
       {/* REVIEWS QUEUE FILTER BAR */}
       {queue === 'reviews' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
             <label htmlFor="reviews-status-filter" className="text-xs font-bold text-slate-700 dark:text-slate-300">
               Review moderation status:
             </label>
@@ -946,6 +1069,22 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               <option value="REJECTED">Rejected Reviews</option>
               <option value="ALL">All Reviews</option>
             </select>
+            <div className="flex gap-1">
+              {['PENDING', 'PUBLISHED', 'HIDDEN', 'REJECTED', 'ALL'].map((statusKey) => (
+                <button
+                  key={statusKey}
+                  type="button"
+                  onClick={() => setReviewsFilter(statusKey)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${
+                    reviewsFilter === statusKey
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  {statusKey === 'ALL' ? 'All' : statusKey}
+                </button>
+              ))}
+            </div>
           </div>
           <span className="text-xs text-slate-400">
             Enforces Community Guidelines against harassment, spam, and paid promotional abuse.
@@ -955,28 +1094,55 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
 
       {/* REPORTS QUEUE FILTER BAR */}
       {queue === 'reports' && (
-        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <label htmlFor="report-status-filter" className="text-xs font-bold text-slate-600 dark:text-slate-300">
-            Report status:
-          </label>
-          <select
-            id="report-status-filter"
-            value={reportsFilter}
-            onChange={(e) => setReportsFilter(e.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold dark:border-slate-700 dark:bg-slate-900"
-          >
-            <option value="">All open & historical</option>
-            <option value="PENDING">Pending (Unassigned)</option>
-            <option value="UNDER_REVIEW">Under review</option>
-            <option value="RESOLVED">Resolved</option>
-            <option value="DISMISSED">Dismissed</option>
-          </select>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <label htmlFor="report-status-filter" className="text-xs font-bold text-slate-600 dark:text-slate-300">
+              Report status:
+            </label>
+            <select
+              id="report-status-filter"
+              value={reportsFilter}
+              onChange={(e) => setReportsFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold dark:border-slate-700 dark:bg-slate-900"
+            >
+              <option value="">All open & historical</option>
+              <option value="PENDING">Pending (Unassigned)</option>
+              <option value="UNDER_REVIEW">Under review</option>
+              <option value="RESOLVED">Resolved</option>
+              <option value="DISMISSED">Dismissed</option>
+            </select>
+            <div className="flex gap-1">
+              {[
+                { label: 'All', val: '' },
+                { label: 'Pending', val: 'PENDING' },
+                { label: 'Reviewing', val: 'UNDER_REVIEW' },
+                { label: 'Resolved', val: 'RESOLVED' },
+                { label: 'Dismissed', val: 'DISMISSED' },
+              ].map((pill) => (
+                <button
+                  key={pill.label}
+                  type="button"
+                  onClick={() => setReportsFilter(pill.val)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${
+                    reportsFilter === pill.val
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <span className="text-xs text-slate-400">
+            Triages customer and merchant reports regarding fraudulent activity or inaccuracies.
+          </span>
         </div>
       )}
 
       {/* HISTORY QUEUE FILTER BAR */}
       {queue === 'history' && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
           <div className="flex items-center gap-2">
             <label htmlFor="history-entity-filter" className="text-xs font-bold text-slate-700 dark:text-slate-300">
               Entity Type:
@@ -995,14 +1161,24 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               <option value="REPORT">Reports</option>
             </select>
           </div>
-          <div className="flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3 pointer-events-none" />
             <input
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
               placeholder="Search by Business ID, Actor ID, or reason keyword…"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950"
+              className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-2 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 font-medium"
             />
           </div>
+          {historySearch && (
+            <button
+              type="button"
+              onClick={() => setHistorySearch('')}
+              className="rounded-lg border px-2.5 py-1.5 text-xs font-bold dark:border-slate-700"
+            >
+              Clear
+            </button>
+          )}
         </div>
       )}
 
@@ -1040,7 +1216,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
             ].map(([label, value, hint]) => (
               <div
                 key={String(label)}
-                className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+                className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-xs"
               >
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
                 <div className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{String(value)}</div>
@@ -1050,7 +1226,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 shadow-sm">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-black text-slate-900 dark:text-white">Search quality analytics</h2>
@@ -1095,7 +1271,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               <p className="mt-3 text-[11px] text-slate-400">{searchAnalytics.queryPrivacy}</p>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 shadow-sm">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-black text-slate-900 dark:text-white">Discovery ranking controls</h2>
@@ -1138,7 +1314,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                     );
                     setSearchDirty(true);
                   }}
-                  className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                  className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-bold hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
                 >
                   Balanced
                 </button>
@@ -1163,7 +1339,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                     );
                     setSearchDirty(true);
                   }}
-                  className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                  className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-bold hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
                 >
                   Trust-Heavy
                 </button>
@@ -1188,7 +1364,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                     );
                     setSearchDirty(true);
                   }}
-                  className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                  className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-bold hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
                 >
                   Proximity-First
                 </button>
@@ -1252,7 +1428,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                     setSearchRanking((prev) => (prev ? { ...prev, is_active: e.target.checked } : prev));
                     setSearchDirty(true);
                   }}
-                  className="rounded accent-indigo-600"
+                  className="rounded accent-indigo-600 cursor-pointer"
                 />
                 Apply custom weights to live discovery search queries
               </label>
@@ -1283,13 +1459,14 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                       );
                       setSearchRanking(saved);
                       setSearchDirty(false);
+                      setSuccessToast('Discovery ranking configuration updated.');
                     } catch (err: any) {
                       setError(err?.message || 'Unable to save ranking configuration.');
                     } finally {
                       setSearchSaving(false);
                     }
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40"
+                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-40 cursor-pointer transition-all"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   {searchSaving ? 'Saving…' : 'Save ranking controls'}
@@ -1300,9 +1477,9 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
         </div>
       )}
 
-      {/* MAIN DATA TABLE / ITEM LIST (for listings, verification, claims, reviews, reports, history) */}
+      {/* MAIN DATA TABLE / ITEM LIST */}
       {queue !== 'search' && (
-        <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="border-b border-slate-100 p-5 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
@@ -1310,7 +1487,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               </span>
               <div>
                 <h2 className="text-sm font-black text-slate-900 dark:text-white capitalize">
-                  {queueMeta[queue].label} Queue
+                  {queueMeta[queue].label}
                 </h2>
                 <p className="text-[11px] text-slate-500">
                   {queue === 'listings'
@@ -1371,7 +1548,19 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                         </div>
 
                         <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
-                          <span className="font-mono">ID: {item.id}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(item.id, item.id)}
+                            className="inline-flex items-center gap-1 font-mono text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
+                            title="Click to copy ID"
+                          >
+                            <span>ID: {item.id}</span>
+                            {copiedId === item.id ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3 opacity-60" />
+                            )}
+                          </button>
                           <span>•</span>
                           <span>Created {new Date(item.created_at).toLocaleString()}</span>
                           {item.organization_id && (
@@ -1384,11 +1573,11 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
 
                         {/* LISTINGS QUEUE SPECIFIC ACTIONS */}
                         {queue === 'listings' && (
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <div className="mt-3 flex flex-wrap items-center gap-2.5">
                             <button
                               type="button"
                               onClick={() => void openListing(item)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
                               Open listing review
@@ -1507,7 +1696,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
 
                       {/* DECISION ACTION SIDEBAR FOR VERIFICATION, CLAIMS, REVIEWS, REPORTS */}
                       {queue !== 'listings' && queue !== 'history' && (
-                        <div className="w-full lg:w-80 space-y-2.5 bg-slate-50/70 dark:bg-slate-900/50 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                        <div className="w-full lg:w-88 space-y-2.5 bg-slate-50/80 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/90 dark:border-slate-800">
                           <label
                             htmlFor={`reason-${item.id}`}
                             className="text-[11px] font-black uppercase tracking-wider text-slate-500 block"
@@ -1522,16 +1711,23 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => applyPresetReason(item.id, 'Official business registration verified')}
-                                  className="text-[10px] rounded bg-white px-1.5 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
                                 >
                                   Verified match
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => applyPresetReason(item.id, 'Document illegible or cropped')}
-                                  className="text-[10px] rounded bg-white px-1.5 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
                                 >
                                   Illegible doc
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => applyPresetReason(item.id, 'Missing tax identification number')}
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
+                                >
+                                  Missing tax ID
                                 </button>
                               </>
                             )}
@@ -1540,14 +1736,14 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => applyPresetReason(item.id, 'Claimant business authority confirmed')}
-                                  className="text-[10px] rounded bg-white px-1.5 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
                                 >
                                   Authority confirmed
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => applyPresetReason(item.id, 'Insufficient proof of business ownership')}
-                                  className="text-[10px] rounded bg-white px-1.5 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
                                 >
                                   Insufficient proof
                                 </button>
@@ -1558,16 +1754,34 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => applyPresetReason(item.id, 'Genuine customer review approved')}
-                                  className="text-[10px] rounded bg-white px-1.5 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
                                 >
                                   Policy compliant
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => applyPresetReason(item.id, 'Violates harassment / spam guidelines')}
-                                  className="text-[10px] rounded bg-white px-1.5 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
                                 >
                                   Policy violation
+                                </button>
+                              </>
+                            )}
+                            {queue === 'reports' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => applyPresetReason(item.id, 'Abuse confirmed, listing penalized')}
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
+                                >
+                                  Abuse confirmed
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => applyPresetReason(item.id, 'False report, dismissed')}
+                                  className="text-[10px] rounded bg-white px-2 py-0.5 border text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
+                                >
+                                  False report
                                 </button>
                               </>
                             )}
@@ -1591,7 +1805,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'APPROVED')}
-                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   <CheckCircle2 className="h-3.5 w-3.5" />
                                   Approve
@@ -1600,7 +1814,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'REJECTED')}
-                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   <XCircle className="h-3.5 w-3.5" />
                                   Reject
@@ -1614,7 +1828,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'APPROVED')}
-                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   <Check className="h-3.5 w-3.5" />
                                   Approve claim
@@ -1623,7 +1837,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'REJECTED')}
-                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+                                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   <X className="h-3.5 w-3.5" />
                                   Reject claim
@@ -1637,7 +1851,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'PUBLISHED')}
-                                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   Publish
                                 </button>
@@ -1645,7 +1859,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'HIDDEN')}
-                                  className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                                  className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   Hide
                                 </button>
@@ -1653,7 +1867,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'REJECTED')}
-                                  className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+                                  className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   Reject
                                 </button>
@@ -1666,7 +1880,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'UNDER_REVIEW')}
-                                  className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                                  className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   Reviewing
                                 </button>
@@ -1674,7 +1888,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'RESOLVED')}
-                                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   Resolve
                                 </button>
@@ -1682,7 +1896,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   type="button"
                                   disabled={busyId === item.id}
                                   onClick={() => void decide(item, 'DISMISSED')}
-                                  className="rounded-xl bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+                                  className="rounded-xl bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 cursor-pointer transition-all"
                                 >
                                   Dismiss
                                 </button>
@@ -1708,10 +1922,10 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           aria-modal="true"
           aria-labelledby="create-discovery-listing-title"
         >
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600">
+                <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                   Platform-created listing
                 </div>
                 <h2
@@ -1720,7 +1934,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 >
                   Create Discovery listing
                 </h2>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                   The listing starts as DRAFT, Discovery-only, and unowned. Ownership is established only after an eligible business-owner claim is approved.
                 </p>
               </div>
@@ -1729,7 +1943,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 onClick={() => {
                   if (!createListingBusy) setCreateListingOpen(false);
                 }}
-                className="rounded-xl border p-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1760,7 +1974,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 type="button"
                 disabled={createListingBusy}
                 onClick={() => setCreateListingOpen(false)}
-                className="rounded-xl border px-4 py-2.5 text-xs font-bold disabled:opacity-50"
+                className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-xs font-bold disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1768,7 +1982,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 type="button"
                 disabled={createListingBusy || createListingName.trim().length < 2}
                 onClick={() => void createPlatformListing()}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 shadow-md shadow-indigo-600/20 hover:bg-indigo-700"
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 shadow-md shadow-indigo-600/20 hover:bg-indigo-700 cursor-pointer transition-all"
               >
                 <Plus className="h-4 w-4" />
                 {createListingBusy ? 'Creating…' : 'Create draft listing'}
@@ -1786,7 +2000,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
           aria-modal="true"
           aria-label="Listing moderation review"
         >
-          <div className="w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 shrink-0">
               <div className="flex items-center gap-3">
@@ -1795,7 +2009,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                 </span>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                       Listing Moderation Inspector
                     </span>
                     {statusBadge(
@@ -1810,14 +2024,14 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedListing(null)}
-                className="rounded-xl border p-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Modal Navigation Tabs */}
-            <div className="flex border-b border-slate-200 bg-slate-50/70 px-6 dark:border-slate-800 dark:bg-slate-900/50 shrink-0">
+            <div className="flex overflow-x-auto border-b border-slate-200 bg-slate-50/70 px-6 dark:border-slate-800 dark:bg-slate-900/50 shrink-0 no-scrollbar">
               {[
                 { id: 'profile', label: 'Business Profile', icon: <Building2 className="w-3.5 h-3.5" /> },
                 { id: 'location', label: 'Location & Map', icon: <MapPin className="w-3.5 h-3.5" /> },
@@ -1829,7 +2043,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setModalTab(tab.id as any)}
-                  className={`flex items-center gap-2 py-3 px-3 text-xs font-extrabold border-b-2 transition-all ${
+                  className={`flex items-center gap-2 py-3 px-3 text-xs font-extrabold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
                     modalTab === tab.id
                       ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
                       : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -2080,7 +2294,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                             key={key}
                             className={`rounded-2xl border p-3.5 transition-all ${
                               isChecked
-                                ? 'border-rose-300 bg-white dark:border-rose-800 dark:bg-slate-900 shadow-sm'
+                                ? 'border-rose-300 bg-white dark:border-rose-800 dark:bg-slate-900 shadow-xs'
                                 : 'border-rose-200/60 bg-white/60 dark:border-rose-950 dark:bg-slate-900/40'
                             }`}
                           >
@@ -2096,7 +2310,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                     return next;
                                   })
                                 }
-                                className="accent-rose-600 rounded"
+                                className="accent-rose-600 rounded cursor-pointer"
                               />
                               <span>{label}</span>
                             </label>
@@ -2110,7 +2324,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                                   }))
                                 }
                                 placeholder="Specific instructions for this correction…"
-                                className="mt-2 w-full rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-1.5 text-xs dark:border-rose-900 dark:bg-slate-950 outline-none focus:border-rose-500"
+                                className="mt-2 w-full rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-1.5 text-xs dark:border-rose-900 dark:bg-slate-950 outline-none focus:border-rose-500 font-medium"
                               />
                             )}
                           </div>
@@ -2150,7 +2364,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                           type="button"
                           disabled={busyId === selectedListing.id}
                           onClick={() => void decideListing('UNDER_REVIEW')}
-                          className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                          className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 cursor-pointer transition-all"
                         >
                           Start review
                         </button>
@@ -2162,7 +2376,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                             type="button"
                             disabled={busyId === selectedListing.id}
                             onClick={() => void decideListing('APPROVED')}
-                            className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-all"
                           >
                             <Check className="w-4 h-4" />
                             Approve
@@ -2171,7 +2385,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                             type="button"
                             disabled={busyId === selectedListing.id}
                             onClick={() => void decideListing('REJECTED')}
-                            className="inline-flex items-center gap-1.5 rounded-2xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-2xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50 cursor-pointer transition-all"
                           >
                             <X className="w-4 h-4" />
                             Reject & request changes
@@ -2184,7 +2398,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                           type="button"
                           disabled={busyId === selectedListing.id}
                           onClick={() => void decideListing('PUBLISHED')}
-                          className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                          className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 cursor-pointer transition-all"
                         >
                           Publish listing
                         </button>
@@ -2195,7 +2409,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                           type="button"
                           disabled={busyId === selectedListing.id}
                           onClick={() => void decideListing('SUSPENDED')}
-                          className="rounded-2xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+                          className="rounded-2xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50 cursor-pointer transition-all"
                         >
                           Suspend listing
                         </button>
@@ -2208,7 +2422,7 @@ export const PlatformDiscoveryModerationView: React.FC = () => {
                           type="button"
                           disabled={busyId === selectedListing.id}
                           onClick={() => void decideListing('UNDER_REVIEW')}
-                          className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-bold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-50"
+                          className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-bold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-50 cursor-pointer transition-all"
                         >
                           Reopen for review
                         </button>
