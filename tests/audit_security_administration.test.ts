@@ -172,7 +172,18 @@ async function runAuditSecurityTests() {
       }
       assert.strictEqual(deleteFailed, true, 'Deleting from audit_events must be blocked by immutability trigger');
 
-      markPassed('1. Database Append-Only Immutability Trigger');
+      // TRUNCATE is a statement-level operation and bypasses row-level UPDATE/DELETE triggers.
+      let truncateFailed = false;
+      try {
+        await db.query('TRUNCATE TABLE audit_events');
+      } catch (err: any) {
+        if (err.message && err.message.includes('IMMUTABLE_RECORD')) {
+          truncateFailed = true;
+        }
+      }
+      assert.strictEqual(truncateFailed, true, 'Truncating audit_events must be blocked by immutability trigger');
+
+      markPassed('1. Database Append-Only Immutability Trigger (UPDATE, DELETE, TRUNCATE)');
     } catch (err) {
       markFailed('1. Database Append-Only Immutability Trigger', err);
     }
