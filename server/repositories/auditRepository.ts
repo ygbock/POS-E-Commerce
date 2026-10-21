@@ -70,6 +70,13 @@ const SENSITIVE_KEY_PATTERN = /^(.*_)?(password|passwd|pin|token|secret|jwt|salt
 /**
  * Deeply sanitizes objects or arrays to prevent secrets/credentials from being recorded in audit storage.
  */
+function normalizeAuditKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .toLowerCase();
+}
+
 export function sanitizeAuditData(data: any): any {
   if (data === null || data === undefined) return data;
   if (typeof data !== 'object') {
@@ -86,7 +93,7 @@ export function sanitizeAuditData(data: any): any {
 
   const sanitized: Record<string, any> = {};
   for (const [key, val] of Object.entries(data)) {
-    if (SENSITIVE_KEY_PATTERN.test(key)) {
+    if (SENSITIVE_KEY_PATTERN.test(normalizeAuditKey(key))) {
       sanitized[key] = '[REDACTED]';
     } else if (typeof val === 'object' && val !== null) {
       sanitized[key] = sanitizeAuditData(val);
