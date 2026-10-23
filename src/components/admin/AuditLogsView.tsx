@@ -71,6 +71,7 @@ export const AuditLogsView: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize] = useState<number>(20);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Filter States
@@ -200,28 +201,69 @@ export const AuditLogsView: React.FC = () => {
     );
   };
 
-  // Safe Export functionality
-  const handleExport = () => {
-    if (logs.length === 0) return;
-    const sanitizedRows = logs.map((log) => ({
-      id: log.id,
-      timestamp: log.timestamp,
-      actor: log.actor_name,
-      role: log.actor_role,
-      action: log.action,
-      module: log.entity_type,
-      targetId: log.entity_id,
-      result: log.result || 'SUCCESS',
-      severity: log.severity || 'Info',
-      ipAddress: log.ip_address || '',
-    }));
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(sanitizedRows, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `audit_logs_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+  // Export the complete filtered result set, not only the visible page.
+  // Bound the export to protect the browser and keep one export operation predictable.
+  const handleExport = async () => {
+    const maxExportRows = 10000;
+    if (totalCount === 0 || isExporting) return;
+
+    setIsExporting(true);
+    setError(null);
+    try {
+      const exportEndDate = new Date().toISOString();
+      const filters = {
+        endDate: exportEndDate,
+        startDate: dateRange.startDate,
+        entityType: selectedModule !== 'ALL' ? selectedModule : undefined,
+        severity: selectedSeverity !== 'ALL' ? selectedSeverity : undefined,
+        result: selectedResult !== 'ALL' ? selectedResult : undefined,
+        search: searchTerm.trim() ? searchTerm.trim() : undefined,
+      };
+      const firstPage = await auditApiClient.fetchAuditLogs({ ...filters, page: 1, pageSize: 100 });
+      const expectedCount = firstPage.pagination?.totalCount ?? firstPage.data.length;
+      if (expectedCount > maxExportRows) {
+        throw new Error(`This filtered export contains ${expectedCount.toLocaleString()} records. Narrow the filters to export no more than ${maxExportRows.toLocaleString()} records at a time.`);
+      }
+
+      const allLogs = [...(firstPage.data || [])];
+      const totalPagesToFetch = Math.ceil(expectedCount / 100);
+      for (let page = 2; page <= totalPagesToFetch; page += 1) {
+        const result = await auditApiClient.fetchAuditLogs({ ...filters, page, pageSize: 100 });
+        if ((result.pagination?.totalCount ?? expectedCount) !== expectedCount) {
+          throw new Error('Audit records changed during export. Please retry to ensure the export is complete.');
+        }
+        allLogs.push(...(result.data || []));
+      }
+      if (allLogs.length !== expectedCount) {
+        throw new Error('The audit export was incomplete. No file was downloaded; please retry.');
+      }
+
+      const sanitizedRows = allLogs.map((log) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        actor: log.actor_name,
+        role: log.actor_role,
+        action: log.action,
+        module: log.entity_type,
+        targetId: log.entity_id,
+        result: log.result || 'SUCCESS',
+        severity: log.severity || 'Info',
+        ipAddress: log.ip_address || '',
+      }));
+      const blob = new Blob([JSON.stringify(sanitizedRows, null, 2)], { type: 'application/json;charset=utf-8' });
+      const objectUrl = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.href = objectUrl;
+      downloadAnchor.download = `audit_logs_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to export the filtered audit logs.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -248,8 +290,9 @@ export const AuditLogsView: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleExport}
-            disabled={logs.length === 0}
+            onClick={() => void handleExport()}
+            disabled={totalCount === 0 || isExporting}
+            isLoading={isExporting}
             leftIcon={<Download className="h-4 w-4" />}
           >
             Export Logs
