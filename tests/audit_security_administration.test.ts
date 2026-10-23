@@ -197,6 +197,17 @@ async function runAuditSecurityTests() {
           nested: {
             pin: '1234',
             cvv: '999',
+            cvc: '123',
+            security_code: '456',
+            securityCode: '789',
+            cardSecurityCode: '012',
+            cardCvv: '234',
+            userPassword: 'DoNotStoreThisPassword!',
+            accessToken: 'opaque-access-token-value',
+            refreshToken: 'opaque-refresh-token-value',
+            clientSecret: 'client-secret-value',
+            privateKey: 'private-key-material',
+            creditCardNumber: '4111111111111111',
           },
         },
         metadata: {
@@ -223,6 +234,17 @@ async function runAuditSecurityTests() {
       assert.strictEqual(afterState.private_key, '[REDACTED]', 'Private key must be redacted');
       assert.strictEqual(afterState.nested.pin, '[REDACTED]', 'PIN must be redacted');
       assert.strictEqual(afterState.nested.cvv, '[REDACTED]', 'CVV must be redacted');
+      assert.strictEqual(afterState.nested.cvc, '[REDACTED]', 'CVC must be redacted');
+      assert.strictEqual(afterState.nested.security_code, '[REDACTED]', 'Security code must be redacted');
+      assert.strictEqual(afterState.nested.securityCode, '[REDACTED]', 'Camel-case security code must be redacted');
+      assert.strictEqual(afterState.nested.cardSecurityCode, '[REDACTED]', 'Card security code must be redacted');
+      assert.strictEqual(afterState.nested.cardCvv, '[REDACTED]', 'Card CVV must be redacted');
+      assert.strictEqual(afterState.nested.userPassword, '[REDACTED]', 'Camel-case password must be redacted');
+      assert.strictEqual(afterState.nested.accessToken, '[REDACTED]', 'Access token must be redacted');
+      assert.strictEqual(afterState.nested.refreshToken, '[REDACTED]', 'Refresh token must be redacted');
+      assert.strictEqual(afterState.nested.clientSecret, '[REDACTED]', 'Client secret must be redacted');
+      assert.strictEqual(afterState.nested.privateKey, '[REDACTED]', 'Camel-case private key must be redacted');
+      assert.strictEqual(afterState.nested.creditCardNumber, '[REDACTED]', 'Camel-case credit card number must be redacted');
       assert.strictEqual(meta.authorization, '[REDACTED]', 'Authorization header must be redacted');
       assert.strictEqual(meta.webhook_secret, '[REDACTED]', 'Webhook secret must be redacted');
       assert.strictEqual(meta.actor_email, 'admin.alpha@test.com', 'Actor email preserved');
