@@ -397,6 +397,42 @@ async function runAuditSecurityTests() {
     }
 
     // -----------------------------------------------------------------
+    // TEST 6b: Audit Query Date Filter Validation
+    // -----------------------------------------------------------------
+    try {
+      const invalidStart = await fetch(`${baseUrl}/api/tenant/audit?startDate=not-a-date`, {
+        headers: { Authorization: `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(invalidStart.status, 422, 'Malformed startDate must return 422');
+      const invalidStartBody = await invalidStart.json();
+      assert.strictEqual(invalidStartBody.error?.code, 'VALIDATION_ERROR');
+
+      const invalidCalendarDate = await fetch(`${baseUrl}/api/tenant/audit?endDate=2026-02-30`, {
+        headers: { Authorization: `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(invalidCalendarDate.status, 422, 'Impossible calendar date must return 422');
+
+      const invalidDatetime = await fetch(`${baseUrl}/api/tenant/audit?startDate=2026-10-21T25%3A61%3A00Z`, {
+        headers: { Authorization: `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(invalidDatetime.status, 422, 'Invalid datetime components must return 422');
+
+      const reversedRange = await fetch(`${baseUrl}/api/tenant/audit?startDate=2026-10-22&endDate=2026-10-21`, {
+        headers: { Authorization: `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(reversedRange.status, 422, 'Reversed date range must return 422');
+
+      const validRange = await fetch(`${baseUrl}/api/tenant/audit?startDate=2026-10-01&endDate=2026-10-31T23%3A59%3A59Z`, {
+        headers: { Authorization: `Bearer ${alphaToken}` },
+      });
+      assert.strictEqual(validRange.status, 200, 'Valid ISO date range must be accepted');
+
+      markPassed('6b. Audit Query Date Filter Validation');
+    } catch (err) {
+      markFailed('6b. Audit Query Date Filter Validation', err);
+    }
+
+    // -----------------------------------------------------------------
     // TEST 7: Composable Multi-Filter & Parameterized Text Search
     // -----------------------------------------------------------------
     try {

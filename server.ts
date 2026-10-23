@@ -1277,6 +1277,34 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ------------------------------------------------------------------
   // 3. AUDIT & SECURITY ADMINISTRATION ENDPOINTS (AUD-001)
   // ------------------------------------------------------------------
+  function parseAuditDateFilter(value: unknown, field: 'startDate' | 'endDate'): string | undefined {
+    if (value === undefined) return undefined;
+    const invalid = () => new ApiError('VALIDATION_ERROR', `${field} must be a valid ISO date or datetime.`, 422);
+    if (typeof value !== 'string') throw invalid();
+
+    const match = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2}))?$/.exec(value);
+    if (!match) throw invalid();
+
+    const [, datePart, hour, minute, second, , zone] = match;
+    const calendarDate = new Date(`${datePart}T00:00:00.000Z`);
+    if (!Number.isFinite(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== datePart) throw invalid();
+
+    if (hour !== undefined) {
+      const h = Number(hour);
+      const m = Number(minute);
+      const s = second === undefined ? 0 : Number(second);
+      if (h > 23 || m > 59 || s > 59) throw invalid();
+      if (zone !== 'Z') {
+        const offset = /([+-])(\d{2}):(\d{2})$/.exec(zone!);
+        if (!offset || Number(offset[2]) > 23 || Number(offset[3]) > 59) throw invalid();
+      }
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) throw invalid();
+    return value;
+  }
+
   const handleAuditQuery = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = await resolveAuthorizedTenant(req, auditRepo, 'AUDIT');
@@ -1287,12 +1315,18 @@ export async function createApp(options: CreateAppOptions = {}) {
       const rawLimit = parseInt((req.query.pageSize || req.query.limit) as string, 10);
       const pageSize = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 100);
 
+      const startDate = parseAuditDateFilter(req.query.startDate, 'startDate');
+      const endDate = parseAuditDateFilter(req.query.endDate, 'endDate');
+      if (startDate && endDate && new Date(startDate).getTime() > new Date(endDate).getTime()) {
+        throw new ApiError('VALIDATION_ERROR', 'startDate must be earlier than or equal to endDate.', 422);
+      }
+
       const result = await auditRepo.queryAuditEvents({
         organizationId: orgId,
         page,
         pageSize,
-        startDate: typeof req.query.startDate === 'string' ? req.query.startDate : undefined,
-        endDate: typeof req.query.endDate === 'string' ? req.query.endDate : undefined,
+        startDate,
+        endDate,
         action: typeof req.query.action === 'string' ? req.query.action : undefined,
         entityType: typeof (req.query.entityType || req.query.module) === 'string' ? (req.query.entityType || req.query.module) as string : undefined,
         entityId: typeof (req.query.entityId || req.query.targetId || req.query.target) === 'string' ? (req.query.entityId || req.query.targetId || req.query.target) as string : undefined,
