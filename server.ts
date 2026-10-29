@@ -3513,15 +3513,69 @@ export async function createApp(options: CreateAppOptions = {}) {
   };
 }
 
+export function resolveServerConfig() {
+  let port = 3000;
+  let host = '0.0.0.0';
+
+  for (let i = 2; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if ((arg === '--port' || arg === '-p') && process.argv[i + 1]) {
+      const p = parseInt(process.argv[i + 1], 10);
+      if (!isNaN(p)) port = p;
+    } else if (arg.startsWith('--port=')) {
+      const p = parseInt(arg.split('=')[1], 10);
+      if (!isNaN(p)) port = p;
+    } else if ((arg === '--host' || arg === '-h') && process.argv[i + 1]) {
+      host = process.argv[i + 1];
+    } else if (arg.startsWith('--host=')) {
+      host = arg.split('=')[1];
+    }
+  }
+
+  // If CLI didn't specify port, check env vars, respecting constraint that port 8080 is internal proxy
+  if (port === 3000) {
+    if (process.env.APP_PORT) {
+      port = parseInt(process.env.APP_PORT, 10);
+    } else if (process.env.PORT && process.env.PORT !== '8080') {
+      port = parseInt(process.env.PORT, 10);
+    }
+  }
+
+  if (process.env.HOST && host === '0.0.0.0') {
+    host = process.env.HOST;
+  }
+
+  return { port, host };
+}
+
 export async function startServer() {
-  const PORT = parseInt(process.env.PORT || '3000', 10);
+  const { port, host } = resolveServerConfig();
 
   const { app } = await createApp();
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Product Service API] Server running on http://0.0.0.0:${PORT}`);
+  const server = app.listen(port, host, () => {
+    console.log(`[Product Service API] Server running on http://${host}:${port}`);
   });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[Product Service API] Port ${port} is already in use.`);
+    } else {
+      console.error(`[Product Service API] Server error:`, err);
+    }
+  });
+
+  return server;
 }
+
+// Global safety net for unhandled async errors to prevent unexpected server termination
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Process] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Process] Uncaught Exception:', err);
+});
 
 // Auto-start server when executed directly as entrypoint
 const isMain =
@@ -3531,5 +3585,8 @@ const isMain =
     process.argv[1].endsWith('server.cjs'));
 
 if (isMain && process.env.NODE_ENV !== 'test') {
-  startServer();
+  startServer().catch((err) => {
+    console.error('[Product Service API] Failed to start server:', err);
+  });
 }
+
