@@ -225,17 +225,30 @@ export const AuditLogsView: React.FC = () => {
         throw new Error(`This filtered export contains ${expectedCount.toLocaleString()} records. Narrow the filters to export no more than ${maxExportRows.toLocaleString()} records at a time.`);
       }
 
-      const allLogs = [...(firstPage.data || [])];
+      const firstPageRows = firstPage.data || [];
+      if (firstPageRows.length > Math.min(100, expectedCount)) {
+        throw new Error('The audit export returned an invalid first page. No file was downloaded; please retry.');
+      }
+      const allLogs = [...firstPageRows];
       const totalPagesToFetch = Math.ceil(expectedCount / 100);
       for (let page = 2; page <= totalPagesToFetch; page += 1) {
         const result = await auditApiClient.fetchAuditLogs({ ...filters, page, pageSize: 100 });
         if ((result.pagination?.totalCount ?? expectedCount) !== expectedCount) {
           throw new Error('Audit records changed during export. Please retry to ensure the export is complete.');
         }
-        allLogs.push(...(result.data || []));
+        const pageRows = result.data || [];
+        const expectedPageRows = Math.min(100, expectedCount - allLogs.length);
+        if (pageRows.length !== expectedPageRows) {
+          throw new Error('The audit export returned an incomplete page. No file was downloaded; please retry.');
+        }
+        allLogs.push(...pageRows);
       }
       if (allLogs.length !== expectedCount) {
         throw new Error('The audit export was incomplete. No file was downloaded; please retry.');
+      }
+      const exportedIds = new Set(allLogs.map((log) => log.id));
+      if (exportedIds.size !== allLogs.length) {
+        throw new Error('The audit export contained duplicate records. No file was downloaded; please retry.');
       }
 
       const sanitizedRows = allLogs.map((log) => ({
