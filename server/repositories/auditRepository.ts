@@ -308,8 +308,8 @@ export class AuditRepository {
     const itemsRes = await db.query<AuditEventRecord>(
       `SELECT * FROM audit_events
        WHERE ${whereClause}
-       ORDER BY timestamp DESC
-       LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`,
+       ORDER BY timestamp DESC, id DESC
+       LIMIT ${paginationParams.length - 1} OFFSET ${paginationParams.length}`,
       paginationParams
     );
 
