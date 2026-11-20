@@ -9,6 +9,7 @@ export interface DiscoveryBusinessRecord {
   id: string; public_id: string; organization_id: string | null; tenant_slug?: string | null; name: string; legal_name: string | null;
   slug: string; business_type: string | null; short_description: string | null; description: string | null;
   phone: string | null; email: string | null; whatsapp: string | null; website: string | null;
+  social_links?: any;
   logo_url: string | null; cover_image_url: string | null; business_mode: DiscoveryBusinessMode;
   listing_status: DiscoveryListingStatus; verification_status: DiscoveryVerificationStatus; is_discoverable: boolean;
   created_by_user_id: string | null; created_by_role: string | null; published_at: string | null; suspended_at: string | null; archived_at: string | null;
@@ -41,31 +42,33 @@ export class DiscoveryBusinessRepository {
   private db(client?: DatabaseClient): DatabaseClient { return client || this.defaultClient; }
 
   async createBusiness(data: Omit<DiscoveryBusinessRecord, 'created_at' | 'updated_at' | 'published_at' | 'suspended_at' | 'archived_at'>, client?: DatabaseClient): Promise<DiscoveryBusinessRecord> {
+    const socialLinks = data.social_links ? (typeof data.social_links === 'string' ? data.social_links : JSON.stringify(data.social_links)) : '[]';
     const result = await this.db(client).query<DiscoveryBusinessRecord>(
       `INSERT INTO discovery_businesses (id, public_id, organization_id, name, legal_name, slug, business_type,
        short_description, description, phone, email, whatsapp, website, logo_url, cover_image_url, business_mode,
-       listing_status, verification_status, is_discoverable, created_by_user_id, created_by_role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+       listing_status, verification_status, is_discoverable, created_by_user_id, created_by_role, social_links)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
       [data.id, data.public_id, data.organization_id, data.name, data.legal_name, data.slug, data.business_type,
        data.short_description, data.description, data.phone, data.email, data.whatsapp, data.website, data.logo_url,
        data.cover_image_url, data.business_mode, data.listing_status, data.verification_status, data.is_discoverable,
-       data.created_by_user_id, data.created_by_role],
+       data.created_by_user_id, data.created_by_role, socialLinks],
     );
     return result.rows[0];
   }
 
   async updateBusiness(id: string, patch: Partial<Pick<DiscoveryBusinessRecord,
     'organization_id' | 'name' | 'legal_name' | 'slug' | 'business_type' | 'short_description' | 'description' |
-    'phone' | 'email' | 'whatsapp' | 'website' | 'logo_url' | 'cover_image_url' | 'business_mode' |
+    'phone' | 'email' | 'whatsapp' | 'website' | 'social_links' | 'logo_url' | 'cover_image_url' | 'business_mode' |
     'listing_status' | 'verification_status' | 'is_discoverable' | 'published_at' | 'suspended_at' | 'archived_at'>>, client?: DatabaseClient): Promise<DiscoveryBusinessRecord | null> {
     const entries = Object.entries(patch).filter(([, value]) => value !== undefined);
     if (!entries.length) return this.findById(id, client);
-    const allowed = new Set(['organization_id','name','legal_name','slug','business_type','short_description','description','phone','email','whatsapp','website','logo_url','cover_image_url','business_mode','listing_status','verification_status','is_discoverable','published_at','suspended_at','archived_at']);
+    const allowed = new Set(['organization_id','name','legal_name','slug','business_type','short_description','description','phone','email','whatsapp','website','social_links','logo_url','cover_image_url','business_mode','listing_status','verification_status','is_discoverable','published_at','suspended_at','archived_at']);
     if (entries.some(([key]) => !allowed.has(key))) throw new Error('DISCOVERY_INVALID_PATCH');
     const assignments = entries.map(([key], index) => `${key} = $${index + 2}`).join(', ');
+    const params = entries.map(([, value]) => (typeof value === 'object' && value !== null ? JSON.stringify(value) : value));
     const result = await this.db(client).query<DiscoveryBusinessRecord>(
       `UPDATE discovery_businesses SET ${assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
-      [id, ...entries.map(([, value]) => value)],
+      [id, ...params],
     );
     return result.rows[0] || null;
   }

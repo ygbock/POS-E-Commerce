@@ -22,6 +22,7 @@ export interface DiscoveryBusinessCreateInput {
   email?: string | null;
   whatsapp?: string | null;
   website?: string | null;
+  socialLinks?: Array<{ id: string; platform: string; url: string; label?: string }> | null;
   logoUrl?: string | null;
   coverImageUrl?: string | null;
   businessMode?: DiscoveryBusinessMode;
@@ -145,6 +146,7 @@ export class DiscoveryBusinessService {
         email: normalizeText(input.email, 255, 'email'),
         whatsapp: normalizeText(input.whatsapp, 64, 'whatsapp'),
         website: normalizeText(input.website, 2048, 'website'),
+        social_links: input.socialLinks || (input as any).social_links || [],
         logo_url: normalizeText(input.logoUrl, 2048, 'logoUrl'),
         cover_image_url: normalizeText(input.coverImageUrl, 2048, 'coverImageUrl'),
         business_mode: mode,
@@ -260,14 +262,20 @@ export class DiscoveryBusinessService {
         [id],
       ),
     ]);
-    // Public visibility settings are enforced in the API response, not only by
-    // presentation components. This prevents disabled contact details, reviews,
-    // and storefront links from leaking through direct API consumers.
+    let parsedSocialLinks: any[] = [];
+    if (business.social_links) {
+      if (Array.isArray(business.social_links)) {
+        parsedSocialLinks = business.social_links;
+      } else if (typeof business.social_links === 'string') {
+        try { parsedSocialLinks = JSON.parse(business.social_links); } catch { parsedSocialLinks = []; }
+      }
+    }
     const publicBusiness = {
       ...business,
       phone: settings.allow_phone_contact ? business.phone : null,
       whatsapp: settings.allow_whatsapp_contact ? business.whatsapp : null,
       tenant_slug: settings.allow_public_store_link ? business.tenant_slug : null,
+      social_links: parsedSocialLinks,
     };
     const publicLocations = locations.map((location) => ({
       ...location,
@@ -344,6 +352,9 @@ export class DiscoveryBusinessService {
         ...(patch.email !== undefined ? { email: normalizeText(patch.email, 255, 'email') } : {}),
         ...(patch.whatsapp !== undefined ? { whatsapp: normalizeText(patch.whatsapp, 64, 'whatsapp') } : {}),
         ...(patch.website !== undefined ? { website: normalizeText(patch.website, 2048, 'website') } : {}),
+        ...(patch.socialLinks !== undefined || (patch as any).social_links !== undefined
+          ? { social_links: patch.socialLinks !== undefined ? patch.socialLinks : (patch as any).social_links }
+          : {}),
         ...(patch.logoUrl !== undefined ? { logo_url: normalizeText(patch.logoUrl, 2048, 'logoUrl') } : {}),
         ...(patch.coverImageUrl !== undefined ? { cover_image_url: normalizeText(patch.coverImageUrl, 2048, 'coverImageUrl') } : {}),
         ...(patch.businessMode !== undefined ? { business_mode: nextMode } : {}),

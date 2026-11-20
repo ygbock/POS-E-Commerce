@@ -32,6 +32,7 @@ import type {
   DiscoverySearchAttributionEvent,
   DiscoverySearchRankingConfig,
   DiscoveryListingManagementWorkspace,
+  DiscoverySocialLink,
 } from '../types/discovery';
 
 export class DiscoveryApiError extends Error {
@@ -540,7 +541,24 @@ export const discoveryApi = {
   /**
    * Create a new discovery business listing
    */
-  async createBusiness(data: { name: string; legalName?: string | null; businessType?: string | null; shortDescription?: string | null; description?: string | null; phone?: string | null; email?: string | null; whatsapp?: string | null; website?: string | null; logoUrl?: string | null; coverImageUrl?: string | null; businessMode?: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE'; organizationId?: string | null; submitImmediately?: boolean }): Promise<DiscoveryBusiness> {
+  async createBusiness(data: {
+    name: string;
+    legalName?: string | null;
+    businessType?: string | null;
+    shortDescription?: string | null;
+    description?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    whatsapp?: string | null;
+    website?: string | null;
+    socialLinks?: DiscoverySocialLink[] | null;
+    social_links?: DiscoverySocialLink[] | null;
+    logoUrl?: string | null;
+    coverImageUrl?: string | null;
+    businessMode?: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE';
+    organizationId?: string | null;
+    submitImmediately?: boolean;
+  }): Promise<DiscoveryBusiness> {
     return request<DiscoveryBusiness>('/api/discovery/businesses', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -550,11 +568,47 @@ export const discoveryApi = {
   /**
    * Update existing discovery business details
    */
-  async updateBusiness(id: string, patch: { name?: string; legalName?: string | null; businessType?: string | null; shortDescription?: string | null; description?: string | null; phone?: string | null; email?: string | null; whatsapp?: string | null; website?: string | null; logoUrl?: string | null; coverImageUrl?: string | null; businessMode?: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE'; organizationId?: string | null }): Promise<DiscoveryBusiness> {
+  async updateBusiness(
+    id: string,
+    patch: {
+      name?: string;
+      legalName?: string | null;
+      businessType?: string | null;
+      shortDescription?: string | null;
+      description?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      whatsapp?: string | null;
+      website?: string | null;
+      socialLinks?: DiscoverySocialLink[] | null;
+      social_links?: DiscoverySocialLink[] | null;
+      logoUrl?: string | null;
+      coverImageUrl?: string | null;
+      businessMode?: 'DISCOVERY_ONLY' | 'DISCOVERY_AND_STORE';
+      organizationId?: string | null;
+    }
+  ): Promise<DiscoveryBusiness> {
     return request<DiscoveryBusiness>(`/api/discovery/businesses/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
+  },
+
+  /**
+   * Upload logo or cover banner image for a business
+   */
+  async uploadBusinessMedia(
+    id: string,
+    payload: { type: 'logo' | 'banner'; data: string; fileName?: string }
+  ): Promise<{ url: string; type: string; size: number; fileName: string }> {
+    return request<{ url: string; type: string; size: number; fileName: string }>(
+      `/api/discovery/businesses/${encodeURIComponent(id)}/media`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
   },
   async getStoreReadiness(businessId: string): Promise<{
     businessId: string;

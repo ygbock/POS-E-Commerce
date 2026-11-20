@@ -48,6 +48,7 @@ import { DiscoveryBusinessTeamPanel } from './DiscoveryBusinessTeamPanel';
 import { CustomerManagementView } from '../../crm/CustomerManagementView';
 import { PurchasingManagement } from '../../purchasing/PurchasingManagement';
 import { DiscoveryStoreWorkspace } from './DiscoveryStoreWorkspace';
+import { CommerceProvider } from '../../../context/CommerceContext';
 
 interface DiscoveryBusinessContainerProps {
   initialBusinessId?: string;
@@ -460,103 +461,105 @@ export const DiscoveryBusinessContainer: React.FC<DiscoveryBusinessContainerProp
       </nav>
 
       {/* Tab Contents */}
-      <div className="mt-6">
-        {activeTab === 'dashboard' && (
-          <DiscoveryBusinessDashboard
-            business={selectedBusiness}
-            businessRole={businessRole}
-            onNavigateTab={(tab) => setActiveTab(tab)}
-            onOpenOnboardingStep={handleOpenOnboardingStep}
-            onOpenStoreConversion={() => canManageStore && setIsStoreConversionOpen(true)}
-            onViewPublicListing={handleViewPublicCard}
-          />
-        )}
+      <CommerceProvider>
+        <div className="mt-6">
+          {activeTab === 'dashboard' && (
+            <DiscoveryBusinessDashboard
+              business={selectedBusiness}
+              businessRole={businessRole}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onOpenOnboardingStep={handleOpenOnboardingStep}
+              onOpenStoreConversion={() => canManageStore && setIsStoreConversionOpen(true)}
+              onViewPublicListing={handleViewPublicCard}
+            />
+          )}
 
-        {activeTab === 'submission' && (
-          <DiscoveryListingManagementWorkspace
-            business={selectedBusiness}
-            onUpdate={handleBusinessUpdated}
-            onNavigateTab={(tab) => setActiveTab(tab)}
-            onOpenPreview={handleViewPublicCard}
-          />
-        )}
+          {activeTab === 'submission' && (
+            <DiscoveryListingManagementWorkspace
+              business={selectedBusiness}
+              onUpdate={handleBusinessUpdated}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onOpenPreview={handleViewPublicCard}
+            />
+          )}
 
-        {activeTab === 'store' && selectedBusiness.business_mode === 'DISCOVERY_AND_STORE' && (
-          <DiscoveryStoreWorkspace business={selectedBusiness} />
-        )}
+          {activeTab === 'store' && selectedBusiness.business_mode === 'DISCOVERY_AND_STORE' && (
+            <DiscoveryStoreWorkspace business={selectedBusiness} />
+          )}
 
-        {activeTab === 'listing' && (
-          <DiscoveryListingEditor
-            business={selectedBusiness}
-            onUpdate={handleBusinessUpdated}
-            onOpenStoreConversion={() => setIsStoreConversionOpen(true)}
-          />
-        )}
+          {activeTab === 'listing' && (
+            <DiscoveryListingEditor
+              business={selectedBusiness}
+              onUpdate={handleBusinessUpdated}
+              onOpenStoreConversion={() => setIsStoreConversionOpen(true)}
+            />
+          )}
 
-        {activeTab === 'locations' && (
-          <DiscoveryLocationsPanel
-            business={selectedBusiness}
-            onSelectHoursLocation={handleNavigateToHoursForLocation}
-          />
-        )}
+          {activeTab === 'locations' && (
+            <DiscoveryLocationsPanel
+              business={selectedBusiness}
+              onSelectHoursLocation={handleNavigateToHoursForLocation}
+            />
+          )}
 
-        {activeTab === 'hours' && (
-          <DiscoveryHoursEditor
-            business={selectedBusiness}
-            initialLocationId={hoursSelectedLocId}
-          />
-        )}
+          {activeTab === 'hours' && (
+            <DiscoveryHoursEditor
+              business={selectedBusiness}
+              initialLocationId={hoursSelectedLocId}
+            />
+          )}
 
-        {activeTab === 'services' && (
-          <DiscoveryServicesManager business={selectedBusiness} />
-        )}
+          {activeTab === 'services' && (
+            <DiscoveryServicesManager business={selectedBusiness} />
+          )}
 
-        {activeTab === 'quotes' && (
-          <DiscoveryQuotesInbox business={selectedBusiness} />
-        )}
+          {activeTab === 'quotes' && (
+            <DiscoveryQuotesInbox business={selectedBusiness} />
+          )}
 
-        {activeTab === 'contacts' && (
-          <DiscoveryContactInbox business={selectedBusiness} />
-        )}
+          {activeTab === 'contacts' && (
+            <DiscoveryContactInbox business={selectedBusiness} />
+          )}
 
-        {activeTab === 'reviews' && (
-          <DiscoveryReviewsPanel business={selectedBusiness} />
-        )}
+          {activeTab === 'reviews' && (
+            <DiscoveryReviewsPanel business={selectedBusiness} />
+          )}
 
-        {activeTab === 'verification' && (
-          <DiscoveryVerificationPanel
-            business={selectedBusiness}
-            onUpdate={handleBusinessUpdated}
-          />
-        )}
+          {activeTab === 'verification' && (
+            <DiscoveryVerificationPanel
+              business={selectedBusiness}
+              onUpdate={handleBusinessUpdated}
+            />
+          )}
 
-        {activeTab === 'trust' && (
-          <DiscoveryTrustCenter
-            business={selectedBusiness}
-            onNavigateToVerification={() => setActiveTab('verification')}
-          />
-        )}
+          {activeTab === 'trust' && (
+            <DiscoveryTrustCenter
+              business={selectedBusiness}
+              onNavigateToVerification={() => setActiveTab('verification')}
+            />
+          )}
 
-        {activeTab === 'analytics' && (
-          <DiscoveryAnalyticsPanel business={selectedBusiness} />
-        )}
+          {activeTab === 'analytics' && (
+            <DiscoveryAnalyticsPanel business={selectedBusiness} />
+          )}
 
-        {activeTab === 'settings' && (
-          <DiscoverySettingsPanel business={selectedBusiness} />
-        )}
+          {activeTab === 'settings' && (
+            <DiscoverySettingsPanel business={selectedBusiness} />
+          )}
 
-        {activeTab === 'customers' && <CustomerManagementView />}
+          {activeTab === 'customers' && <CustomerManagementView />}
 
-        {activeTab === 'purchasing' && <PurchasingManagement />}
+          {activeTab === 'purchasing' && <PurchasingManagement />}
 
-        {activeTab === 'team' && (
-          <DiscoveryBusinessTeamPanel businessId={selectedBusiness.id} />
-        )}
+          {activeTab === 'team' && (
+            <DiscoveryBusinessTeamPanel businessId={selectedBusiness.id} />
+          )}
 
-        {activeTab === 'search' && (
-          <DiscoverySearchAliasesPanel business={selectedBusiness} />
-        )}
-      </div>
+          {activeTab === 'search' && (
+            <DiscoverySearchAliasesPanel business={selectedBusiness} />
+          )}
+        </div>
+      </CommerceProvider>
 
       {/* Store Conversion Modal */}
       {isStoreConversionOpen && (

@@ -92,7 +92,23 @@ export type DiscoveryDataState =
   | 'location_unavailable'
   | 'location_denied'
   | 'not_found'
-  | 'suspended';
+export type DiscoverySocialPlatform =
+  | 'website'
+  | 'facebook'
+  | 'instagram'
+  | 'x'
+  | 'linkedin'
+  | 'tiktok'
+  | 'youtube'
+  | 'whatsapp'
+  | 'other';
+
+export interface DiscoverySocialLink {
+  id: string;
+  platform: DiscoverySocialPlatform;
+  url: string;
+  label?: string;
+}
 
 /**
  * Public and administrative business listing record
@@ -177,6 +193,7 @@ export interface DiscoveryBusiness {
   whatsapp?: string | null;
   email?: string | null;
   website?: string | null;
+  social_links?: DiscoverySocialLink[] | null;
   logo_url?: string | null;
   cover_image_url?: string | null;
   business_mode: DiscoveryBusinessMode;

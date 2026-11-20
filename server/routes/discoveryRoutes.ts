@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { DatabaseClient } from '../db/client.ts';
 import { requireAuth, requireTenantAccess, requireCustomerIdentity, requireBusinessOwnerIdentity } from '../middleware/auth.ts'
 import { createRateLimiter } from '../middleware/rateLimiter.ts';
@@ -640,6 +642,83 @@ export function createDiscoveryRouter(db: DatabaseClient) {
       if (!(await owned(req, req.params.id, 'business.listing.manage'))) return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business modification forbidden.' } });
       res.json({ success: true, data: await businessService.update(req.params.id, req.body, actor(req)) });
     } catch (err) { next(err); }
+  });
+
+  // Business Visual Media Upload (Banner & Logo)
+  router.post('/businesses/:id/media', requireAuth(), async (req, res, next) => {
+    try {
+      if (!(await owned(req, req.params.id, 'business.listing.manage'))) {
+        return res.status(403).json({ success: false, error: { code: 'TENANT_ACCESS_DENIED', message: 'Business modification forbidden.' } });
+      }
+
+      const { type, data, fileName } = req.body || {};
+      if (!type || !['logo', 'banner'].includes(type)) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_MEDIA_TYPE', message: 'Media type must be logo or banner.' } });
+      }
+      if (!data || typeof data !== 'string') {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_IMAGE_DATA', message: 'Image data is required.' } });
+      }
+
+      let mimeType = 'image/png';
+      let base64Content = data;
+
+      const dataUrlMatch = data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+      if (dataUrlMatch) {
+        mimeType = dataUrlMatch[1];
+        base64Content = dataUrlMatch[2];
+      }
+
+      const allowedMimes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
+      if (!allowedMimes.includes(mimeType.toLowerCase())) {
+        return res.status(400).json({ success: false, error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Supported formats are PNG, JPEG, WebP, SVG, and GIF.' } });
+      }
+
+      const buffer = Buffer.from(base64Content, 'base64');
+      if (buffer.length > 5 * 1024 * 1024) {
+        return res.status(400).json({ success: false, error: { code: 'IMAGE_TOO_LARGE', message: 'Image size cannot exceed 5MB.' } });
+      }
+
+      const extMap: Record<string, string> = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/webp': 'webp',
+        'image/svg+xml': 'svg',
+        'image/gif': 'gif',
+      };
+      const ext = extMap[mimeType.toLowerCase()] || 'png';
+      const fileId = `${type}_${randomUUID().replace(/-/g, '')}.${ext}`;
+
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'discovery');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      const filePath = path.join(uploadDir, fileId);
+      fs.writeFileSync(filePath, buffer);
+
+      const publicUrl = `/uploads/discovery/${fileId}`;
+
+      // Update business database record directly
+      await db.query(
+        `UPDATE discovery_businesses
+            SET ${type === 'logo' ? 'logo_url' : 'cover_image_url'} = $1,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2`,
+        [publicUrl, req.params.id]
+      );
+
+      res.json({
+        success: true,
+        data: {
+          url: publicUrl,
+          type,
+          size: buffer.length,
+          fileName: fileName || fileId,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
   });
 
   for (const [path, action] of [

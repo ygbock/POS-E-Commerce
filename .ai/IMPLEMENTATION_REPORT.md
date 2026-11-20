@@ -1,5 +1,50 @@
 # Implementation Report
 
+## TASK: DISC-SOCIAL-001 — Multiple Web & Social Media Links for Discovery Businesses
+
+- **Status**: `IMPLEMENTED — READY FOR REVIEW`
+- **Scope**:
+  - `server/db/migrations/074_discovery_social_links.sql`
+  - `server/repositories/discoveryBusinessRepository.ts`
+  - `server/services/discoveryBusinessService.ts`
+  - `src/types/discovery.ts`
+  - `src/services/discoveryApi.ts`
+  - `src/components/discovery/socialLinks.tsx`
+  - `src/components/discovery/business/DiscoveryOnboardingWizard.tsx`
+  - `src/components/discovery/business/DiscoveryListingEditor.tsx`
+  - `src/components/discovery/DiscoveryBusinessProfile.tsx`
+- **Verification Gates**:
+  - `npm run lint` (`tsc --noEmit`): **PASS** (0 errors)
+  - `npm run test:discovery-profile`: **PASS** (12 assertions)
+  - `npm run test:discovery-public-visibility`: **PASS** (6 acceptance areas)
+  - `npm run test:discovery-accessibility`: **PASS** (static accessibility contract)
+  - `npm run test:discovery-business-owner-journey-ui`: **PASS** (journey UI contract)
+  - `npm run test:discovery-location-map`: **PASS** (map & GPS onboarding)
+  - `npm run test:discovery-release-gate`: **PASS** (release gate)
+  - `compile_applet`: **PASS** (Vite build succeeds cleanly)
+
+### Summary of Enhancements:
+1. **Database Schema & Persistence**:
+   - Added migration `074_discovery_social_links.sql` adding `social_links JSONB DEFAULT '[]'::jsonb` to `discovery_businesses`.
+   - Updated repository and service layers to persist, validate, update, and return structured social links in public profiles.
+2. **Types & Shared Utilities**:
+   - Created `DiscoverySocialPlatform` (`facebook`, `instagram`, `tiktok`, `x`, `whatsapp`, `linkedin`, `youtube`, `website`, `other`) and `DiscoverySocialLink` in `src/types/discovery.ts`.
+   - Built reusable `socialLinks.tsx` with platform metadata, SVG icons, brand colors, domain auto-detection, and URL sanitization.
+3. **Listing Onboarding Wizard (Step 3: Customer Contact)**:
+   - Added a prominent `+ Add Web / Social Link` button at the top right of the section header card and sub-card.
+   - Provided instant quick-add preset buttons (`+ Facebook`, `+ Instagram`, `+ Website`, `+ TikTok`, `+ WhatsApp Channel`).
+   - Enabled interactive customization: platform select dropdown, URL input with auto-detection, optional custom label, and quick removal.
+   - Synchronizes `socialLinks` alongside primary `website` for backward compatibility.
+4. **Business Workspace (`DiscoveryListingEditor.tsx`)**:
+   - Added a top-right `+ Add Web / Social Link` button on the Direct Contact card header.
+   - Integrated full customization of multiple web and social links with quick-add chips, inline editing, and deletion.
+5. **Business Profile Page (`DiscoveryBusinessProfile.tsx`)**:
+   - Contact Information sidebar card renders a "Web & Social Profiles" subsection with branded badges, verified links, and domain snippets.
+   - Hero action row displays quick-access buttons to top social profiles alongside WhatsApp and Call.
+   - Profile header includes a "Follow & Connect Online" interactive badge cluster.
+
+---
+
 ## TASK: UI-PLANS-001 — Platform Plans & Subscriptions Workspace and System Owner Dashboard Responsiveness Modernization
 
 - **Status**: `IMPLEMENTED — READY FOR REVIEW`

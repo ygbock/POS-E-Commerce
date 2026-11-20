@@ -177,7 +177,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
               handleCardClick();
             }
           }}
-          className="flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-indigo-600 active:scale-[0.98] dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold transition-all shadow-2xs min-h-[40px]"
+          className="flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-indigo-600 active:scale-[0.98] dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold transition-all shadow-2xs min-h-[44px]"
         >
           <span className="truncate">View Profile</span>
           <ArrowUpRight className="w-3.5 h-3.5 opacity-80 shrink-0" aria-hidden="true" />
@@ -187,7 +187,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
         {storeUrl && (
           <a
             href={storeUrl}
-            className="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-950/70 transition-colors min-h-[40px] shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-950/70 transition-colors min-h-[44px] shrink-0"
             aria-label={`Visit ${business.name} storefront`}
             title={`Visit ${business.name} Storefront`}
           >
@@ -201,11 +201,11 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
           {business.phone && (
             <a
               href={`tel:${business.phone}`}
-              className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600 transition-colors"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600 transition-colors"
               title={`Call ${business.name}`}
               aria-label={`Call ${business.name}`}
             >
-              <Phone className="w-3.5 h-3.5" aria-hidden="true" />
+              <Phone className="w-4 h-4" aria-hidden="true" />
             </a>
           )}
 
@@ -214,11 +214,11 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
               href={`https://wa.me/${business.whatsapp.replace(/[^0-9]/g, '')}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-10 h-10 flex items-center justify-center rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition-colors"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition-colors"
               title="Chat on WhatsApp"
               aria-label={`Chat with ${business.name} on WhatsApp`}
             >
-              <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
+              <MessageSquare className="w-4 h-4" aria-hidden="true" />
             </a>
           )}
 
@@ -227,11 +227,11 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
               href={`https://www.google.com/maps/search/?api=1&query=${business.latitude},${business.longitude}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600 transition-colors"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600 transition-colors"
               title="Get Directions"
               aria-label={`Get directions to ${business.name}`}
             >
-              <Navigation className="w-3.5 h-3.5" aria-hidden="true" />
+              <Navigation className="w-4 h-4" aria-hidden="true" />
             </a>
           )}
         </div>

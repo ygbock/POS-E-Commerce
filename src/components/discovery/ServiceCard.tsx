@@ -161,11 +161,11 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                 event.stopPropagation();
                 onOpenService(service);
               }}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               title="View Service Details"
               aria-label={`View details for ${service.name}`}
             >
-              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+              <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
           <button
@@ -174,7 +174,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
               event.stopPropagation();
               onRequestService?.(service);
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Request Quote</span>

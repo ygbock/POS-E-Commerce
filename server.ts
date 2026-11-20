@@ -4,6 +4,7 @@ import { REFRESH_COOKIE } from './server/auth/session';
 import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID, randomInt } from 'node:crypto';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_BRANDS, INITIAL_COUPONS } from './src/data/initialData.ts';
 import { Product, ProductVariant, CatalogAttribute, Category, Brand } from './src/types/index.ts';
@@ -3457,6 +3458,15 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use('/api', (err: any, req: Request, res: Response, _next: NextFunction) => {
     return apiErrorHandler(err, req, res);
   });
+
+  // ------------------------------------------------------------------
+  // 9b. STATIC UPLOAD ASSETS
+  // ------------------------------------------------------------------
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsDir));
 
   // ------------------------------------------------------------------
   // 10. VITE MIDDLEWARE SETUP (DEV & PROD FALLBACK)

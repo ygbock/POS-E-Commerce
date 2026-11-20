@@ -259,7 +259,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setBrowseOpen(!browseOpen)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold tracking-wide uppercase transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold tracking-wide uppercase transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 min-h-[40px]"
               >
                 <span>Browse</span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-300 transition-transform duration-200" style={{ transform: browseOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />

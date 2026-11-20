@@ -787,7 +787,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                   value={query}
                   onChange={(e) => onQueryChange(e.target.value)}
                   placeholder="Search local services, businesses, or products…"
-                  className="w-full px-3 sm:px-4 py-3 sm:py-3.5 bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-0 min-h-[44px]"
+                  className="w-full px-3.5 sm:px-4 py-3 sm:py-3.5 bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-0 min-h-[48px]"
                 />
               </div>
             </div>
@@ -795,7 +795,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
             {/* Deep Blue Action Search Button */}
             <button
               type="submit"
-              className="w-full md:w-auto flex items-center justify-center gap-2 bg-[#0054a6] hover:bg-[#004080] active:scale-[0.98] text-white px-6 py-3 rounded-xl transition-all font-black shrink-0 shadow-lg shadow-blue-900/20 min-h-[44px] cursor-pointer"
+              className="w-full md:w-auto flex items-center justify-center gap-2 bg-[#0054a6] hover:bg-[#004080] active:scale-[0.98] text-white px-6 py-3 rounded-xl transition-all font-black shrink-0 shadow-lg shadow-blue-900/20 min-h-[48px] cursor-pointer"
               aria-label="Submit Search"
             >
               <Search className="w-4 h-4 shrink-0" />
@@ -805,7 +805,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
 
           {/* Quick Category Buttons: Dynamically rendered from platform-governed categories */}
           <div className="pt-3 sm:pt-4">
-            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 py-1 w-full text-[10px] sm:text-xs font-bold select-none">
+            <div className="flex items-center sm:justify-center overflow-x-auto sm:flex-wrap gap-2 sm:gap-2.5 py-1.5 w-full text-xs font-bold no-scrollbar max-w-full px-1 select-none">
               {quickCategories.length > 0 ? (
                 quickCategories.map((cat) => {
                   const Icon = getHeroCategoryIcon(cat.slug || cat.name, cat.icon_name);
@@ -822,7 +822,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                           onSearch(cat.name);
                         }
                       }}
-                      className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap shrink-0 active:scale-95 cursor-pointer ${
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full transition-all whitespace-nowrap shrink-0 active:scale-95 cursor-pointer min-h-[40px] ${
                         isSelected
                           ? 'bg-amber-400 text-slate-950 shadow-sm'
                           : 'bg-white/10 hover:bg-white/20 text-white hover:text-amber-300 border border-white/10'
@@ -841,7 +841,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                       onQueryChange('Restaurants');
                       onSearch('Restaurants');
                     }}
-                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95 min-h-[40px]"
                   >
                     <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span>Restaurants</span>
@@ -852,7 +852,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                       onQueryChange('Plumbers');
                       onSearch('Plumbers');
                     }}
-                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95 min-h-[40px]"
                   >
                     <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span>Plumbers</span>
@@ -863,7 +863,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                       onQueryChange('Nail Salons');
                       onSearch('Nail Salons');
                     }}
-                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95 min-h-[40px]"
                   >
                     <SparklesIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span>Nail Salons</span>
@@ -874,7 +874,7 @@ export const DiscoveryHero: React.FC<DiscoveryHeroProps> = ({
                       onQueryChange('Electricians');
                       onSearch('Electricians');
                     }}
-                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 hover:text-amber-300 text-white border border-white/10 transition-all whitespace-nowrap shrink-0 active:scale-95 min-h-[40px]"
                   >
                     <Plug className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span>Electricians</span>
